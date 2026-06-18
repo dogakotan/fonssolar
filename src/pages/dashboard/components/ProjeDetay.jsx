@@ -1066,7 +1066,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
             İş Planı
           </button>
           <button onClick={() => setTab('tickets')} style={tab === 'tickets' ? tabBtnActive : tabBtn}>
-            Ticket'lar
+            Ticket
           </button>
         </div>
 

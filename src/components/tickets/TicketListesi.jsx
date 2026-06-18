@@ -8,12 +8,10 @@ const SEVERITY = {
   'düşük':  { bg: '#F3F4F6', color: '#374151', label: 'Düşük' },
   'orta':   { bg: '#FEF3C7', color: '#92400E', label: 'Orta' },
   'yüksek': { bg: '#FEE2E2', color: '#991B1B', label: 'Yüksek' },
-  'kritik': { bg: '#991B1B', color: '#FFFFFF', label: 'Kritik' },
 }
 const STATUS = {
   'açık':      { bg: '#FEE2E2', color: '#991B1B', label: 'Oluşturuldu' },
   'işlemde':   { bg: '#FEF3C7', color: '#92400E', label: 'İşleme Alındı' },
-  'çözüldü':   { bg: '#D1FAE5', color: '#065F46', label: 'Çözüldü' },
   'kapatıldı': { bg: '#F3F4F6', color: '#6B7280', label: 'Kapatıldı' },
 }
 const CATEGORY = {
@@ -28,7 +26,6 @@ const STATUS_TABS = [
   { key: 'all',       label: 'Tüm Ticketlar' },
   { key: 'açık',      label: 'Oluşturuldu' },
   { key: 'işlemde',   label: 'İşleme Alındı' },
-  { key: 'çözüldü',   label: 'Çözüldü' },
   { key: 'kapatıldı', label: 'Kapatıldı' },
 ]
 
@@ -39,7 +36,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   const [statusTab, setStatusTab]       = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [severityFilter, setSeverityFilter] = useState('all')
-  const [myTickets, setMyTickets]       = useState(false)
+  const [myTickets] = useState(false)
   const [showNew, setShowNew]           = useState(false)
   const [selected, setSelected]         = useState(null)
 
@@ -86,20 +83,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
         ))}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, padding: '8px 0', alignItems: 'center' }}>
-          <button
-            onClick={() => setMyTickets(v => !v)}
-            style={{
-              border: myTickets ? 'none' : '1px solid #E5E7EB',
-              borderRadius: 6, padding: '6px 12px', fontSize: 13, fontFamily: 'inherit',
-              cursor: 'pointer', fontWeight: myTickets ? 600 : 400,
-              background: myTickets ? '#185FA5' : 'transparent',
-              color: myTickets ? '#fff' : '#6B7280',
-            }}
-          >
-            Benim Ticket'larım
-          </button>
-
-          <select
+<select
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value)}
             style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', color: '#374151', cursor: 'pointer' }}
@@ -118,12 +102,14 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
             {Object.entries(SEVERITY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
 
-          <button
-            onClick={() => setShowNew(true)}
-            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            + Yeni Ticket
-          </button>
+          {!isAdmin && (
+            <button
+              onClick={() => setShowNew(true)}
+              style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+            >
+              + Yeni Ticket
+            </button>
+          )}
         </div>
       </div>
 
@@ -132,7 +118,6 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
         <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>Yükleniyor…</div>
       ) : tickets.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>🎉</div>
           Bu kriterde ticket bulunamadı.
         </div>
       ) : (

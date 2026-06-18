@@ -14,7 +14,6 @@ const SEVERITY = {
 const STATUS = {
   'açık':      { bg: '#FEE2E2', color: '#991B1B', label: 'Oluşturuldu',  db: 'açık' },
   'işlemde':   { bg: '#FEF3C7', color: '#92400E', label: 'İşleme Alındı', db: 'işlemde' },
-  'çözüldü':   { bg: '#D1FAE5', color: '#065F46', label: 'Çözüldü',      db: 'çözüldü' },
   'kapatıldı': { bg: '#F3F4F6', color: '#6B7280', label: 'Kapatıldı',    db: 'kapatıldı' },
 }
 const CATEGORY = {
@@ -273,7 +272,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                 <div>
                   <p style={{ fontSize: 11, color: '#6B7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 500 }}>Durum Değiştir</p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    {['açık', 'işlemde', 'çözüldü', 'kapatıldı'].map(s => {
+                    {['açık', 'işlemde', 'kapatıldı'].map(s => {
                       const b = STATUS[s]
                       const isActive = ticket.status === s
                       return (

@@ -2,19 +2,19 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 
 export default function TicketStats({ refreshKey }) {
-  const [c, setC] = useState({ acik: 0, islemde: 0, bugun: 0, kritik: 0 })
+  const [c, setC] = useState({ acik: 0, islemde: 0, bugun: 0, cozuldu: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       const today = new Date().toISOString().split('T')[0]
-      const [acik, islemde, bugun, kritik] = await Promise.all([
+      const [acik, islemde, bugun, cozuldu] = await Promise.all([
         supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'açık'),
         supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'işlemde'),
         supabase.from('tickets').select('*', { count: 'exact', head: true }).gte('created_at', today),
-        supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('severity', 'kritik').neq('status', 'kapatıldı'),
+        supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'kapatıldı'),
       ])
-      setC({ acik: acik.count ?? 0, islemde: islemde.count ?? 0, bugun: bugun.count ?? 0, kritik: kritik.count ?? 0 })
+      setC({ acik: acik.count ?? 0, islemde: islemde.count ?? 0, bugun: bugun.count ?? 0, cozuldu: cozuldu.count ?? 0 })
       setLoading(false)
     }
     load()
@@ -24,7 +24,7 @@ export default function TicketStats({ refreshKey }) {
     { label: 'Oluşturuldu',   value: c.acik,    accent: '#991B1B', note: 'Bekliyor' },
     { label: 'İşleme Alındı', value: c.islemde, accent: '#D97706', note: 'İnceleniyor' },
     { label: 'Bugün Açılan',  value: c.bugun,   accent: '#185FA5', note: 'Son 24 saat' },
-    { label: 'Kritik',        value: c.kritik,  accent: '#991B1B', note: 'Acil müdahale', dark: true },
+    { label: 'Kapatıldı',     value: c.cozuldu, accent: '#6B7280', note: 'Tamamlandı' },
   ]
 
   return (
