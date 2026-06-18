@@ -1,0 +1,12 @@
+# Supabase lokal geliştirme konfigürasyonu
+# npx supabase init ile oluşturulur
+# npx supabase start ile lokal instance başlatılır
+
+[api]
+port = 54321
+
+[db]
+port = 54322
+
+[studio]
+port = 54323

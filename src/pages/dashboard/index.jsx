@@ -1,0 +1,118 @@
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { signOut } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
+import Sidebar from '../../components/layouts/Sidebar'
+import TabGenel from './components/TabGenel'
+import TabProjeler from './components/TabProjeler'
+import TabIsPlan from './components/TabIsPlan'
+import TabSatinAlma from './components/TabSatinAlma'
+import TabEkip from './components/TabEkip'
+import TabRaporlar from './components/TabRaporlar'
+import TabFinans from './components/TabFinans'
+import TabTickets from './components/TabTickets'
+import ProjeDetay from './components/ProjeDetay'
+import FloatingAgent from '../../components/agent/FloatingAgent'
+import './Dashboard.css'
+
+const TABS = {
+  genel:        { title: 'Genel Bakış',  subtitle: 'Proje özeti ve aktif görevler' },
+  projeler:     { title: 'Projeler',     subtitle: 'Tüm GES projeleri' },
+  'is-plani':   { title: 'İş Planı',     subtitle: 'Görev takip ve zaman çizelgesi' },
+  'satin-alma': { title: 'Satın Alma',   subtitle: 'Tedarik talepleri ve siparişler' },
+  ekip:         { title: 'Ekip',         subtitle: 'Proje ekibi ve roller' },
+  raporlar:     { title: 'AI Raporlar',  subtitle: 'Agent raporları ve geçmiş analiz çıktıları' },
+  finans:       { title: 'Finans',       subtitle: 'Fatura yönetimi ve maliyet takibi' },
+  tickets:      { title: 'Ticket Sistemi', subtitle: 'Sahadan yöneticiye hata bildirimi' },
+}
+
+const ROLE_TABS = {
+  muhasebe:          ['finans'],
+  satin_alma_uzmani: ['satin-alma'],
+}
+
+const ROLE_DEFAULT = {
+  muhasebe:          'finans',
+  satin_alma_uzmani: 'satin-alma',
+}
+
+export default function Dashboard() {
+  const { role } = useAuth()
+  const [activeTab,           setActiveTab]           = useState('genel')
+  const [selectedProjectId,   setSelectedProjectId]   = useState(null)
+  const [selectedProjectName, setSelectedProjectName] = useState('')
+  const [showProjectDetail,   setShowProjectDetail]   = useState(false)
+  const [selectedDate,        setSelectedDate]        = useState(null)   // null = canlı (bugün)
+  const navigate = useNavigate()
+
+  // Kısıtlı roller → başlangıç sekmesi
+  useEffect(() => {
+    if (role && ROLE_DEFAULT[role]) setActiveTab(ROLE_DEFAULT[role])
+  }, [role])
+
+  function handleSelectProject(id, name) {
+    setSelectedProjectId(id)
+    setSelectedProjectName(name)
+    if (activeTab === 'projeler') {
+      setShowProjectDetail(true)
+    } else {
+      setActiveTab('is-plani')
+    }
+  }
+
+  function handleTabChange(tab) {
+    const allowed = ROLE_TABS[role]
+    if (allowed && !allowed.includes(tab)) return
+    setShowProjectDetail(false)
+    setActiveTab(tab)
+  }
+
+  const showingDetail = activeTab === 'projeler' && showProjectDetail
+
+  return (
+    <div className="dashboard">
+      <Sidebar
+        active={activeTab}
+        onTab={handleTabChange}
+        onLogout={async () => { await signOut(); navigate('/login') }}
+      />
+      <main className="dash-main">
+        <header className="dash-header">
+          <div style={{ flex: 1 }}>
+            <h2>{showingDetail ? selectedProjectName : TABS[activeTab].title}</h2>
+            <p>
+              {showingDetail
+                ? 'Proje detayı ve Gantt görünümü'
+                : TABS[activeTab].subtitle}
+              {!showingDetail && selectedProjectName && ['is-plani', 'satin-alma', 'raporlar'].includes(activeTab) && (
+                <span style={{ marginLeft: '0.5rem', color: 'var(--color-primary)', fontWeight: 600 }}>
+                  — {selectedProjectName}
+                </span>
+              )}
+            </p>
+          </div>
+        </header>
+
+        {activeTab === 'genel'      && <TabGenel onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
+        {activeTab === 'projeler'   && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
+        {activeTab === 'projeler'   && showProjectDetail  && (
+          <ProjeDetay
+            projectId={selectedProjectId}
+            projectName={selectedProjectName}
+            onBack={() => setShowProjectDetail(false)}
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+          />
+        )}
+        {activeTab === 'is-plani'   && <TabIsPlan projectId={selectedProjectId} selectedDate={selectedDate} />}
+        {activeTab === 'satin-alma' && <TabSatinAlma projectId={selectedProjectId} selectedDate={selectedDate} />}
+        {activeTab === 'ekip'       && <TabEkip projectId={selectedProjectId} />}
+        {activeTab === 'raporlar'   && <TabRaporlar projectId={selectedProjectId} projectName={selectedProjectName} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
+        {activeTab === 'finans'     && <TabFinans selectedDate={selectedDate} />}
+        {activeTab === 'tickets'    && <TabTickets selectedDate={selectedDate} />}
+      </main>
+
+      <FloatingAgent activeTab={activeTab} projectId={selectedProjectId} selectedDate={selectedDate} />
+    </div>
+  )
+}
