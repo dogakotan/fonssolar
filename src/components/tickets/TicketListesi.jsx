@@ -19,34 +19,29 @@ const STATUS = {
 const CATEGORY = {
   'elektrik': { bg: '#EFF6FF', color: '#185FA5' },
   'mekanik':  { bg: '#F5F3FF', color: '#7C3AED' },
-  'isg':      { bg: '#FEE2E2', color: '#991B1B' },
-  'kalite':   { bg: '#D1FAE5', color: '#065F46' },
-  'lojistik': { bg: '#FEF3C7', color: '#92400E' },
-  'teknik':   { bg: '#F3F4F6', color: '#374151' },
-  'genel':    { bg: '#F3F4F6', color: '#6B7280' },
 }
 
 const TH = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
 
 const STATUS_TABS = [
-  { key: 'all',      label: 'Tüm Ticketlar' },
-  { key: 'açık',     label: 'Açık' },
-  { key: 'işlemde',  label: 'İşlemde' },
-  { key: 'çözüldü',  label: 'Çözüldü' },
-  { key: 'kapatıldı',label: 'Kapatıldı' },
+  { key: 'all',       label: 'Tüm Ticketlar' },
+  { key: 'açık',      label: 'Oluşturuldu' },
+  { key: 'işlemde',   label: 'İşleme Alındı' },
+  { key: 'çözüldü',   label: 'Çözüldü' },
+  { key: 'kapatıldı', label: 'Kapatıldı' },
 ]
 
 export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId }) {
   const { user, isAdmin, projectId: authProjectId } = useAuth()
-  const [tickets, setTickets]             = useState([])
-  const [loading, setLoading]             = useState(true)
-  const [statusTab, setStatusTab]         = useState('all')
+  const [tickets, setTickets]           = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [statusTab, setStatusTab]       = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [severityFilter, setSeverityFilter] = useState('all')
-  const [myTickets, setMyTickets]         = useState(false)
-  const [showNew, setShowNew]             = useState(false)
-  const [selected, setSelected]           = useState(null)
+  const [myTickets, setMyTickets]       = useState(false)
+  const [showNew, setShowNew]           = useState(false)
+  const [selected, setSelected]         = useState(null)
 
   useEffect(() => { fetchTickets() }, [statusTab, categoryFilter, severityFilter, myTickets, refreshKey, propProjectId])
 
@@ -54,16 +49,16 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     setLoading(true)
     let q = supabase
       .from('tickets')
-      .select('*, projects(name), profiles!created_by(full_name), assignee:profiles!assigned_to(full_name)')
+      .select('*, profiles!created_by(full_name), assignee:profiles!assigned_to(full_name)')
       .order('created_at', { ascending: false })
 
-    if (statusTab !== 'all')        q = q.eq('status', statusTab)
-    if (categoryFilter !== 'all')   q = q.eq('category', categoryFilter)
-    if (severityFilter !== 'all')   q = q.eq('severity', severityFilter)
+    if (statusTab !== 'all')      q = q.eq('status', statusTab)
+    if (categoryFilter !== 'all') q = q.eq('category', categoryFilter)
+    if (severityFilter !== 'all') q = q.eq('severity', severityFilter)
 
     const effectiveProjectId = propProjectId || (!isAdmin ? authProjectId : null)
-    if (effectiveProjectId)         q = q.eq('project_id', effectiveProjectId)
-    if (myTickets && user?.id)      q = q.eq('created_by', user.id)
+    if (effectiveProjectId)       q = q.eq('project_id', effectiveProjectId)
+    if (myTickets && user?.id)    q = q.eq('created_by', user.id)
 
     const { data } = await q
     setTickets(data || [])
@@ -109,10 +104,9 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
             onChange={e => setCategoryFilter(e.target.value)}
             style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', color: '#374151', cursor: 'pointer' }}
           >
-            <option value="all">Tüm Kategoriler</option>
-            {Object.keys(CATEGORY).map(c => (
-              <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-            ))}
+            <option value="all">Tüm Cinsler</option>
+            <option value="elektrik">Elektrik</option>
+            <option value="mekanik">Mekanik</option>
           </select>
 
           <select
@@ -120,7 +114,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
             onChange={e => setSeverityFilter(e.target.value)}
             style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', color: '#374151', cursor: 'pointer' }}
           >
-            <option value="all">Tüm Şiddetler</option>
+            <option value="all">Tüm Aciliyetler</option>
             {Object.entries(SEVERITY).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
 
@@ -145,7 +139,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-              {['#', 'BAŞLIK', 'KATEGORİ', 'ŞİDDET', 'DURUM', 'ATANAN', 'TARİH', 'İŞLEM'].map(h => (
+              {['#', 'AÇIKLAMA', 'CİNS', 'ACİLİYET', 'DURUM', 'LOKASYON', 'TARİH', 'İŞLEM'].map(h => (
                 <th key={h} style={TH}>{h}</th>
               ))}
             </tr>
@@ -154,7 +148,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
             {tickets.map((t, idx) => {
               const sv = SEVERITY[t.severity] || SEVERITY['orta']
               const st = STATUS[t.status]     || STATUS['açık']
-              const ca = CATEGORY[t.category] || CATEGORY['genel']
+              const ca = CATEGORY[t.category] || { bg: '#F3F4F6', color: '#374151' }
               return (
                 <tr
                   key={t.id}
@@ -164,13 +158,13 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
                   <td style={{ padding: '12px 16px', fontSize: 12, color: '#9CA3AF', fontWeight: 500 }}>#{idx + 1}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#111827', maxWidth: 240 }}>
-                    <span style={{ display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {t.title}
+                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#111827', maxWidth: 260 }}>
+                    <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.45 }}>
+                      {t.description || t.title}
                     </span>
-                    {t.projects?.name && (
-                      <span style={{ fontSize: 11, color: '#9CA3AF', display: 'block', marginTop: 1 }}>{t.projects.name}</span>
-                    )}
+                    <span style={{ fontSize: 11, color: '#9CA3AF', display: 'block', marginTop: 2 }}>
+                      {t.profiles?.full_name || '—'}
+                    </span>
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{ background: ca.bg, color: ca.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
@@ -188,7 +182,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                     </span>
                   </td>
                   <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280' }}>
-                    {t.assignee?.full_name || <span style={{ color: '#D1D5DB' }}>Atanmadı</span>}
+                    {t.location || <span style={{ color: '#D1D5DB' }}>—</span>}
                   </td>
                   <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280' }}>{fmtDate(t.created_at)}</td>
                   <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
@@ -216,7 +210,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
         <TicketDetayModal
           ticket={selected}
           onClose={() => setSelected(null)}
-          onUpdated={() => { fetchTickets(); onNewTicket?.() }}
+          onUpdated={() => { setSelected(null); fetchTickets(); onNewTicket?.() }}
         />
       )}
     </div>

@@ -12,10 +12,10 @@ const SEVERITY = {
   'kritik': { bg: '#991B1B', color: '#FFFFFF', label: 'Kritik' },
 }
 const STATUS = {
-  'açık':      { bg: '#FEE2E2', color: '#991B1B', label: 'Oluşturuldu' },
-  'işlemde':   { bg: '#FEF3C7', color: '#92400E', label: 'İşleme Alındı' },
-  'çözüldü':   { bg: '#D1FAE5', color: '#065F46', label: 'Çözüldü' },
-  'kapatıldı': { bg: '#F3F4F6', color: '#6B7280', label: 'Kapatıldı' },
+  'açık':      { bg: '#FEE2E2', color: '#991B1B', label: 'Oluşturuldu',  db: 'açık' },
+  'işlemde':   { bg: '#FEF3C7', color: '#92400E', label: 'İşleme Alındı', db: 'işlemde' },
+  'çözüldü':   { bg: '#D1FAE5', color: '#065F46', label: 'Çözüldü',      db: 'çözüldü' },
+  'kapatıldı': { bg: '#F3F4F6', color: '#6B7280', label: 'Kapatıldı',    db: 'kapatıldı' },
 }
 const CATEGORY = {
   'elektrik': { bg: '#EFF6FF', color: '#185FA5' },
@@ -124,7 +124,11 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
   async function handleStatusChange(newStatus) {
     if (newStatus === ticket.status) return
     setUpdating(true)
-    await supabase.from('tickets').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', ticket.id)
+    await supabase.from('tickets').update({
+      status:     newStatus,
+      updated_by: user.id,
+      updated_at: new Date().toISOString(),
+    }).eq('id', ticket.id)
     setUpdating(false)
     refreshTicket()
     fetchHistory()

@@ -2,64 +2,56 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
-const INPUT = {
-  border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px',
-  fontSize: 13, fontFamily: 'inherit', outline: 'none',
-  width: '100%', boxSizing: 'border-box',
-}
 const LABEL = {
   fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase',
   letterSpacing: '0.4px', display: 'block', marginBottom: 4,
 }
 
-const CATEGORIES = ['teknik', 'isg', 'kalite', 'lojistik', 'elektrik', 'mekanik', 'genel']
+const TICKET_TYPES = [
+  { value: 'elektrik', label: 'Elektrik', bg: '#EFF6FF', color: '#185FA5' },
+  { value: 'mekanik',  label: 'Mekanik',  bg: '#F5F3FF', color: '#7C3AED' },
+]
+
 const SEVERITIES = [
-  { value: 'düşük',  bg: '#F3F4F6', color: '#374151' },
-  { value: 'orta',   bg: '#FEF3C7', color: '#92400E' },
-  { value: 'yüksek', bg: '#FEE2E2', color: '#991B1B' },
-  { value: 'kritik', bg: '#991B1B', color: '#FFFFFF' },
+  { value: 'düşük',  label: 'Düşük',  bg: '#F3F4F6', color: '#374151' },
+  { value: 'orta',   label: 'Orta',   bg: '#FEF3C7', color: '#92400E' },
+  { value: 'yüksek', label: 'Yüksek', bg: '#FEE2E2', color: '#991B1B' },
+  { value: 'kritik', label: 'Kritik', bg: '#991B1B', color: '#FFFFFF' },
 ]
 
 export default function YeniTicketModal({ onClose, onSaved }) {
-  const { user, projectId: authProjectId } = useAuth()
-  const [projects, setProjects] = useState([])
-  const [autoProject, setAutoProject] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({
-    project_id: '', title: '', category: 'teknik', severity: 'orta', description: '',
-  })
+  const { user, profile, projectId } = useAuth()
+  const [project, setProject]       = useState(null)
+  const [category, setCategory]     = useState('elektrik')
+  const [severity, setSeverity]     = useState('orta')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving]         = useState(false)
 
   useEffect(() => {
-    if (authProjectId) {
-      supabase.from('projects').select('id, name, location').eq('id', authProjectId).single()
-        .then(({ data }) => { if (data) setAutoProject(data) })
-    } else {
-      supabase.from('projects').select('id, name').order('name').then(({ data }) => setProjects(data || []))
-    }
-  }, [authProjectId])
-
-  const setF = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }))
+    if (!projectId) return
+    supabase.from('projects').select('id, name, location')
+      .eq('id', projectId).single()
+      .then(({ data }) => { if (data) setProject(data) })
+  }, [projectId])
 
   async function handleSubmit() {
-    if (!form.title.trim() || !form.description.trim()) return
+    if (!description.trim()) return
     setSaving(true)
-    const effectiveProjectId = authProjectId || form.project_id || null
-    const location = autoProject?.location || null
     const { error } = await supabase.from('tickets').insert({
-      project_id:  effectiveProjectId,
-      title:       form.title.trim(),
-      description: form.description.trim(),
-      category:    form.category,
-      severity:    form.severity,
-      status:      'açık',
+      project_id:  projectId,
       created_by:  user.id,
-      location,
+      title:       description.trim().slice(0, 60),
+      description: description.trim(),
+      category,
+      severity,
+      status:      'açık',
+      location:    project?.location || null,
     })
     setSaving(false)
     if (!error) onSaved()
   }
 
-  const canSubmit = form.title.trim() && form.description.trim()
+  const today = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -70,73 +62,93 @@ export default function YeniTicketModal({ onClose, onSaved }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9CA3AF' }}>×</button>
         </div>
 
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-          {authProjectId ? (
+          {/* Otomatik dolan bilgiler — readonly */}
+          <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
             <div>
-              <label style={LABEL}>Proje</label>
-              <div style={{ ...INPUT, background: '#F9FAFB', color: '#374151', cursor: 'default', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>{autoProject?.name || 'Yükleniyor…'}</span>
-                {autoProject?.location && (
-                  <span style={{ fontSize: 11, color: '#9CA3AF' }}>{autoProject.location}</span>
-                )}
-              </div>
+              <p style={{ ...LABEL, marginBottom: 2 }}>Proje</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#111827' }}>{project?.name || '—'}</p>
             </div>
-          ) : (
             <div>
-              <label style={LABEL}>Proje</label>
-              <select value={form.project_id} onChange={setF('project_id')} style={INPUT}>
-                <option value="">— Proje seçin —</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+              <p style={{ ...LABEL, marginBottom: 2 }}>Lokasyon</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#111827' }}>{project?.location || '—'}</p>
             </div>
-          )}
-
-          <div>
-            <label style={LABEL}>Başlık *</label>
-            <input type="text" placeholder="Sorunu kısaca özetleyin" value={form.title} onChange={setF('title')} style={INPUT} />
+            <div>
+              <p style={{ ...LABEL, marginBottom: 2 }}>Tarih</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#111827' }}>{today}</p>
+            </div>
+            <div>
+              <p style={{ ...LABEL, marginBottom: 2 }}>Oluşturan</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#111827' }}>{profile?.full_name || user?.email || '—'}</p>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={LABEL}>Kategori</label>
-              <select value={form.category} onChange={setF('category')} style={INPUT}>
-                {CATEGORIES.map(c => (
-                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={LABEL}>Şiddet</label>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {SEVERITIES.map(s => (
+          {/* Ticket Cinsi */}
+          <div>
+            <label style={LABEL}>Ticket Cinsi</label>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {TICKET_TYPES.map(t => {
+                const active = category === t.value
+                return (
                   <button
-                    key={s.value}
-                    onClick={() => setForm(f => ({ ...f, severity: s.value }))}
+                    key={t.value}
+                    onClick={() => setCategory(t.value)}
                     style={{
-                      flex: 1, padding: '7px 6px', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                      flex: 1, padding: '11px 0', borderRadius: 8, fontSize: 13, fontWeight: 600,
                       cursor: 'pointer', fontFamily: 'inherit',
-                      background: form.severity === s.value ? s.bg : '#F9FAFB',
-                      color: form.severity === s.value ? s.color : '#6B7280',
-                      border: form.severity === s.value ? `2px solid ${s.color === '#FFFFFF' ? '#991B1B' : s.color}` : '1px solid #E5E7EB',
+                      background: active ? t.bg : '#fff',
+                      color: active ? t.color : '#6B7280',
+                      border: active ? `2px solid ${t.color}` : '1px solid #E5E7EB',
+                      transition: 'all 0.15s',
                     }}
                   >
-                    {s.value.charAt(0).toUpperCase() + s.value.slice(1)}
+                    {t.label}
                   </button>
-                ))}
-              </div>
+                )
+              })}
             </div>
           </div>
 
+          {/* Aciliyet */}
+          <div>
+            <label style={LABEL}>Aciliyet</label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {SEVERITIES.map(s => {
+                const active = severity === s.value
+                return (
+                  <button
+                    key={s.value}
+                    onClick={() => setSeverity(s.value)}
+                    style={{
+                      flex: 1, padding: '9px 0', borderRadius: 7, fontSize: 12, fontWeight: 500,
+                      cursor: 'pointer', fontFamily: 'inherit',
+                      background: active ? s.bg : '#fff',
+                      color: active ? s.color : '#6B7280',
+                      border: active ? `2px solid ${s.color === '#FFFFFF' ? '#991B1B' : s.color}` : '1px solid #E5E7EB',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {s.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Açıklama */}
           <div>
             <label style={LABEL}>Açıklama *</label>
             <textarea
               placeholder="Sorunu detaylı açıklayın: nerede, nasıl, ne zaman tespit edildi..."
-              value={form.description}
-              onChange={setF('description')}
-              rows={4}
-              style={{ ...INPUT, resize: 'vertical' }}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              rows={5}
+              style={{
+                border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px',
+                fontSize: 13, fontFamily: 'inherit', outline: 'none',
+                width: '100%', boxSizing: 'border-box', resize: 'vertical',
+              }}
             />
           </div>
         </div>
@@ -147,8 +159,8 @@ export default function YeniTicketModal({ onClose, onSaved }) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !canSubmit}
-            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: canSubmit ? 1 : 0.5 }}
+            disabled={saving || !description.trim()}
+            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: description.trim() ? 1 : 0.5 }}
           >
             {saving ? 'Kaydediliyor…' : 'Ticket Oluştur'}
           </button>

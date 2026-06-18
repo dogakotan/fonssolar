@@ -21,10 +21,10 @@ export default function TicketStats({ refreshKey }) {
   }, [refreshKey])
 
   const cards = [
-    { label: 'Açık Ticketlar', value: c.acik,    accent: '#991B1B', note: 'Bekliyor' },
-    { label: 'İşlemdeki',      value: c.islemde, accent: '#D97706', note: 'İnceleniyor' },
-    { label: 'Bugün Açılan',   value: c.bugun,   accent: '#185FA5', note: 'Son 24 saat' },
-    { label: 'Kritik',         value: c.kritik,  accent: '#991B1B', note: 'Acil müdahale', dark: true },
+    { label: 'Oluşturuldu',   value: c.acik,    accent: '#991B1B', note: 'Bekliyor' },
+    { label: 'İşleme Alındı', value: c.islemde, accent: '#D97706', note: 'İnceleniyor' },
+    { label: 'Bugün Açılan',  value: c.bugun,   accent: '#185FA5', note: 'Son 24 saat' },
+    { label: 'Kritik',        value: c.kritik,  accent: '#991B1B', note: 'Acil müdahale', dark: true },
   ]
 
   return (
