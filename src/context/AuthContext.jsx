@@ -29,7 +29,7 @@ export function AuthProvider({ children }) {
   async function fetchProfile(userId) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, email, full_name, role, role_key')
+      .select('id, email, full_name, role, role_key, project_id')
       .eq('id', userId)
       .single()
     setProfile(data ?? null)
@@ -40,8 +40,9 @@ export function AuthProvider({ children }) {
   // role null ise (profiles'da kayıt yoksa) tam erişim — sadece 'muhasebe' açıkça set edilince kısıtla
   const isAdmin    = role === null || role === 'admin'
   const isMuhasebe = role === 'muhasebe'
+  const projectId  = profile?.project_id ?? null
 
-  const value = { user, profile, role, isAdmin, isMuhasebe, loading }
+  const value = { user, profile, role, isAdmin, isMuhasebe, loading, projectId }
 
   return (
     <AuthContext.Provider value={value}>

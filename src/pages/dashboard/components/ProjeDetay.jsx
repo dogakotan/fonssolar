@@ -5,6 +5,7 @@ import WeatherWidget from '../../../components/ui/WeatherWidget'
 import ExportButton from '../../../components/ui/ExportButton'
 import DateNavigator from '../../../components/ui/DateNavigator'
 import { exportGunlukRaporPdf, exportGunlukRaporExcel } from '../../../utils/exportUtils'
+import TicketListesi from '../../../components/tickets/TicketListesi'
 
 // ── Periyot yardımcıları ──────────────────────────────────────────────────────
 const PERIODS = [
@@ -1064,6 +1065,9 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           <button onClick={() => setTab('gantt')} style={tab === 'gantt' ? tabBtnActive : tabBtn}>
             İş Planı
           </button>
+          <button onClick={() => setTab('tickets')} style={tab === 'tickets' ? tabBtnActive : tabBtn}>
+            Ticket'lar
+          </button>
         </div>
 
         {/* ── Sağ grup: Tarih Seç + Dışa Aktar ── */}
@@ -1234,7 +1238,9 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         </div>
       )}
 
-      {loading ? (
+      {tab === 'tickets' ? (
+        <TicketListesi projectId={projectId} />
+      ) : loading ? (
         <p style={{ color: 'var(--color-muted)', padding: '2rem' }}>Yükleniyor…</p>
       ) : tab === 'genel' ? (
         <GenelDashboard

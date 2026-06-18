@@ -12,8 +12,8 @@ const SEVERITY = {
   'kritik': { bg: '#991B1B', color: '#FFFFFF', label: 'Kritik' },
 }
 const STATUS = {
-  'açık':      { bg: '#FEE2E2', color: '#991B1B', label: 'Açık' },
-  'işlemde':   { bg: '#FEF3C7', color: '#92400E', label: 'İşlemde' },
+  'açık':      { bg: '#FEE2E2', color: '#991B1B', label: 'Oluşturuldu' },
+  'işlemde':   { bg: '#FEF3C7', color: '#92400E', label: 'İşleme Alındı' },
   'çözüldü':   { bg: '#D1FAE5', color: '#065F46', label: 'Çözüldü' },
   'kapatıldı': { bg: '#F3F4F6', color: '#6B7280', label: 'Kapatıldı' },
 }

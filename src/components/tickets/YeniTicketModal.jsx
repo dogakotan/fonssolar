@@ -21,30 +21,39 @@ const SEVERITIES = [
 ]
 
 export default function YeniTicketModal({ onClose, onSaved }) {
-  const { user } = useAuth()
+  const { user, projectId: authProjectId } = useAuth()
   const [projects, setProjects] = useState([])
+  const [autoProject, setAutoProject] = useState(null)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     project_id: '', title: '', category: 'teknik', severity: 'orta', description: '',
   })
 
   useEffect(() => {
-    supabase.from('projects').select('id, name').order('name').then(({ data }) => setProjects(data || []))
-  }, [])
+    if (authProjectId) {
+      supabase.from('projects').select('id, name, location').eq('id', authProjectId).single()
+        .then(({ data }) => { if (data) setAutoProject(data) })
+    } else {
+      supabase.from('projects').select('id, name').order('name').then(({ data }) => setProjects(data || []))
+    }
+  }, [authProjectId])
 
   const setF = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }))
 
   async function handleSubmit() {
     if (!form.title.trim() || !form.description.trim()) return
     setSaving(true)
+    const effectiveProjectId = authProjectId || form.project_id || null
+    const location = autoProject?.location || null
     const { error } = await supabase.from('tickets').insert({
-      project_id:  form.project_id  || null,
+      project_id:  effectiveProjectId,
       title:       form.title.trim(),
       description: form.description.trim(),
       category:    form.category,
       severity:    form.severity,
       status:      'açık',
       created_by:  user.id,
+      location,
     })
     setSaving(false)
     if (!error) onSaved()
@@ -63,13 +72,25 @@ export default function YeniTicketModal({ onClose, onSaved }) {
 
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          <div>
-            <label style={LABEL}>Proje</label>
-            <select value={form.project_id} onChange={setF('project_id')} style={INPUT}>
-              <option value="">— Proje seçin —</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
+          {authProjectId ? (
+            <div>
+              <label style={LABEL}>Proje</label>
+              <div style={{ ...INPUT, background: '#F9FAFB', color: '#374151', cursor: 'default', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{autoProject?.name || 'Yükleniyor…'}</span>
+                {autoProject?.location && (
+                  <span style={{ fontSize: 11, color: '#9CA3AF' }}>{autoProject.location}</span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label style={LABEL}>Proje</label>
+              <select value={form.project_id} onChange={setF('project_id')} style={INPUT}>
+                <option value="">— Proje seçin —</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
 
           <div>
             <label style={LABEL}>Başlık *</label>

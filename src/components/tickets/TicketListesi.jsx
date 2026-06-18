@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 import YeniTicketModal from './YeniTicketModal'
 import TicketDetayModal from './TicketDetayModal'
 
@@ -10,8 +11,8 @@ const SEVERITY = {
   'kritik': { bg: '#991B1B', color: '#FFFFFF', label: 'Kritik' },
 }
 const STATUS = {
-  'açık':      { bg: '#FEE2E2', color: '#991B1B', label: 'Açık' },
-  'işlemde':   { bg: '#FEF3C7', color: '#92400E', label: 'İşlemde' },
+  'açık':      { bg: '#FEE2E2', color: '#991B1B', label: 'Oluşturuldu' },
+  'işlemde':   { bg: '#FEF3C7', color: '#92400E', label: 'İşleme Alındı' },
   'çözüldü':   { bg: '#D1FAE5', color: '#065F46', label: 'Çözüldü' },
   'kapatıldı': { bg: '#F3F4F6', color: '#6B7280', label: 'Kapatıldı' },
 }
@@ -36,16 +37,18 @@ const STATUS_TABS = [
   { key: 'kapatıldı',label: 'Kapatıldı' },
 ]
 
-export default function TicketListesi({ onNewTicket, refreshKey }) {
+export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId }) {
+  const { user, isAdmin, projectId: authProjectId } = useAuth()
   const [tickets, setTickets]             = useState([])
   const [loading, setLoading]             = useState(true)
   const [statusTab, setStatusTab]         = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [severityFilter, setSeverityFilter] = useState('all')
+  const [myTickets, setMyTickets]         = useState(false)
   const [showNew, setShowNew]             = useState(false)
   const [selected, setSelected]           = useState(null)
 
-  useEffect(() => { fetchTickets() }, [statusTab, categoryFilter, severityFilter, refreshKey])
+  useEffect(() => { fetchTickets() }, [statusTab, categoryFilter, severityFilter, myTickets, refreshKey, propProjectId])
 
   async function fetchTickets() {
     setLoading(true)
@@ -57,6 +60,10 @@ export default function TicketListesi({ onNewTicket, refreshKey }) {
     if (statusTab !== 'all')        q = q.eq('status', statusTab)
     if (categoryFilter !== 'all')   q = q.eq('category', categoryFilter)
     if (severityFilter !== 'all')   q = q.eq('severity', severityFilter)
+
+    const effectiveProjectId = propProjectId || (!isAdmin ? authProjectId : null)
+    if (effectiveProjectId)         q = q.eq('project_id', effectiveProjectId)
+    if (myTickets && user?.id)      q = q.eq('created_by', user.id)
 
     const { data } = await q
     setTickets(data || [])
@@ -84,6 +91,19 @@ export default function TicketListesi({ onNewTicket, refreshKey }) {
         ))}
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, padding: '8px 0', alignItems: 'center' }}>
+          <button
+            onClick={() => setMyTickets(v => !v)}
+            style={{
+              border: myTickets ? 'none' : '1px solid #E5E7EB',
+              borderRadius: 6, padding: '6px 12px', fontSize: 13, fontFamily: 'inherit',
+              cursor: 'pointer', fontWeight: myTickets ? 600 : 400,
+              background: myTickets ? '#185FA5' : 'transparent',
+              color: myTickets ? '#fff' : '#6B7280',
+            }}
+          >
+            Benim Ticket'larım
+          </button>
+
           <select
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value)}
