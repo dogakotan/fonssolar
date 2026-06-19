@@ -6,6 +6,8 @@ import ExportButton from '../../../components/ui/ExportButton'
 import DateNavigator from '../../../components/ui/DateNavigator'
 import { exportGunlukRaporPdf, exportGunlukRaporExcel } from '../../../utils/exportUtils'
 import TicketListesi from '../../../components/tickets/TicketListesi'
+import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../context/AuthContext'
 
 // ── Periyot yardımcıları ──────────────────────────────────────────────────────
 const PERIODS = [
@@ -565,7 +567,7 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
   return (
     <div>
       {/* ── KPI + Hava Durumu ─────────────────────────── */}
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', marginBottom: '1.25rem' }}>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
 
         {[
           {
@@ -584,7 +586,7 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
             ? { label: 'Dönem İlerlemesi', value: periodProgressSum.toFixed(1), note: 'Toplam daily_progress', cls: 'primary-text' }
             : { label: 'Gecikmiş', value: late, note: 'Takvim dışı görev', cls: late > 0 ? 'red-text' : '' },
         ].map(k => (
-          <div key={k.label} className="stat-card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <div key={k.label} className="stat-card" style={{ flex: '1 1 120px', minWidth: 120, display: 'flex', flexDirection: 'column' }}>
             <p className="stat-label">{k.label}</p>
             <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
               <p className={`stat-value ${k.cls}`} style={{ margin: 0 }}>{k.value}</p>
@@ -594,7 +596,7 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
         ))}
 
         {/* Halka grafik */}
-        <div className="stat-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <div className="stat-card" style={{ flex: '1 1 120px', minWidth: 120, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <p className="stat-label" style={{ alignSelf: 'stretch' }}>Genel İlerleme</p>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <DonutChart pct={avgPct} />
@@ -604,7 +606,7 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
 
         {/* Hava durumu */}
         {city && (
-          <div className="stat-card" style={{ flexShrink: 0, width: 265, display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem 1.25rem' }}>
+          <div className="stat-card" style={{ flex: '1 1 220px', maxWidth: 265, display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem 1.25rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <p className="stat-label" style={{ margin: 0 }}>Hava Durumu</p>
               <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>{city}</span>
@@ -618,7 +620,7 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
       {project && (
         <div className="card" style={{ marginBottom: '1.25rem' }}>
           <div className="card-header"><h3>Proje Bilgisi</h3></div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', padding: '0.25rem 0' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem', padding: '1rem 1.25rem' }}>
             <InfoItem label="Konum"          value={project.location || '—'} />
             <InfoItem label="Kapasite (kWp)" value={project.capacity_kwp ? `${(project.capacity_kwp / 1000).toFixed(2)} MWp` : '—'} />
             <InfoItem label="Kapasite (kWe)" value={project.capacity_kwe ? project.capacity_kwe.toLocaleString('tr-TR') + ' kWe' : '—'} />
@@ -688,31 +690,33 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
           <p style={{ padding: '1.5rem', color: 'var(--color-muted)', textAlign: 'center' }}>Veri bulunamadı.</p>
         ) : (
           <>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>İş Paketi</th>
-                  <th>Durum</th>
-                  <th>Başlangıç</th>
-                  <th>Bitiş</th>
-                  <th style={{ width: 160 }}>İlerleme</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map(w => {
-                  const s = STATUS_MAP[w.status] || { badge: 'blue', label: w.status || 'Aktif' }
-                  return (
-                    <tr key={w.id}>
-                      <td className="fw">{w.name || w.title || '—'}</td>
-                      <td><span className={`badge ${s.badge}`}>● {s.label}</span></td>
-                      <td style={{ fontSize: 13, color: 'var(--color-muted)' }}>{w.start_date ? new Date(w.start_date).toLocaleDateString('tr-TR') : '—'}</td>
-                      <td style={{ fontSize: 13, color: 'var(--color-muted)' }}>{w.due_date   ? new Date(w.due_date).toLocaleDateString('tr-TR')   : '—'}</td>
-                      <td><ProgBar pct={w.progress || 0} /></td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table" style={{ minWidth: 480 }}>
+                <thead>
+                  <tr>
+                    <th>İş Paketi</th>
+                    <th>Durum</th>
+                    <th>Başlangıç</th>
+                    <th>Bitiş</th>
+                    <th style={{ width: 160 }}>İlerleme</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map(w => {
+                    const s = STATUS_MAP[w.status] || { badge: 'blue', label: w.status || 'Aktif' }
+                    return (
+                      <tr key={w.id}>
+                        <td className="fw">{w.name || w.title || '—'}</td>
+                        <td><span className={`badge ${s.badge}`}>● {s.label}</span></td>
+                        <td style={{ fontSize: 13, color: 'var(--color-muted)' }}>{w.start_date ? new Date(w.start_date).toLocaleDateString('tr-TR') : '—'}</td>
+                        <td style={{ fontSize: 13, color: 'var(--color-muted)' }}>{w.due_date   ? new Date(w.due_date).toLocaleDateString('tr-TR')   : '—'}</td>
+                        <td><ProgBar pct={w.progress || 0} /></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
             {filtered.length > gorunenSayi && (
               <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--color-border)', textAlign: 'center' }}>
                 <button
@@ -726,6 +730,327 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Ekip Listesi ─────────────────────────────────────────────────────────────
+const EKIP_ROLE_CFG = {
+  admin:               { label: 'Admin',                 color: '#DC2626', bg: '#FEE2E2' },
+  proje_koordinatoru:  { label: 'Proje Koordinatörü',    color: '#003B8E', bg: '#DBEAFE' },
+  proje_kurulum_sefi:  { label: 'Proje Kurulum Şefi',    color: '#0369a1', bg: '#E0F2FE' },
+  santiye_sefi:        { label: 'Şantiye Şefi',          color: '#0F6E56', bg: '#D1FAE5' },
+  mekanik_sef:         { label: 'Mekanik Şef',           color: '#0891B2', bg: '#ECFEFF' },
+  elektrik_sefi:       { label: 'Elektrik Şefi',         color: '#7C3AED', bg: '#EDE9FE' },
+  isg_sorumlusu:       { label: 'İSG Sorumlusu',         color: '#D97706', bg: '#FEF3C7' },
+  kalite_kontrol_sefi: { label: 'Kalite Kontrol Şefi',   color: '#B45309', bg: '#FEF9C3' },
+  lojistik_tedarik:    { label: 'Lojistik & Tedarik',    color: '#9F1239', bg: '#FFE4E6' },
+  enh_sorumlusu:       { label: 'ENH Sorumlusu',         color: '#0F766E', bg: '#CCFBF1' },
+  operasyon_sorumlusu: { label: 'Operasyon Sorumlusu',   color: '#4F46E5', bg: '#EEF2FF' },
+  evrak_takip:         { label: 'Evrak Takip Uzmanı',    color: '#6D28D9', bg: '#F5F3FF' },
+  maliyet_kontrolcu:   { label: 'Maliyet Kontrolcü',     color: '#065F46', bg: '#ECFDF5' },
+  muhasebe:             { label: 'Muhasebe',                color: '#6D28D9', bg: '#F5F3FF' },
+  satin_alma_uzmani:    { label: 'Satın Alma Uzmanı',       color: '#0F766E', bg: '#CCFBF1' },
+  is_makinesi_operator: { label: 'İş Makinesi Op. Şefi',   color: '#EA580C', bg: '#FFEDD5' },
+  proje_tasarim_sorumlusu: { label: 'Proje Tasarım Sorum.', color: '#0891B2', bg: '#CFFAFE' },
+}
+const AVATAR_RENKLER = ['#003B8E','#0F6E56','#7C3AED','#D97706','#0369a1','#059669','#DC2626','#0F766E','#6D28D9','#B45309']
+function ekipAvatarRenk(name) { return AVATAR_RENKLER[(name?.charCodeAt(0) || 0) % AVATAR_RENKLER.length] }
+function ekipInitials(name) { return name?.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase() || '?' }
+function ekipRolCfg(k) { return EKIP_ROLE_CFG[k] || { label: k?.replace(/_/g, ' ') || 'Kullanıcı', color: '#64748B', bg: '#F1F5F9' } }
+
+function EkipListesi({ projectId }) {
+  const { isAdmin } = useAuth()
+  const [members,     setMembers]     = useState([])
+  const [allProfiles, setAllProfiles] = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [showModal,   setShowModal]   = useState(false)
+  const [assigning,   setAssigning]   = useState(null)
+  const [modalTab,    setModalTab]    = useState('assign')
+  const [search,      setSearch]      = useState('')
+  const [newForm,     setNewForm]     = useState({ full_name: '', role_key: '', email: '' })
+  const [creating,    setCreating]    = useState(false)
+
+  async function load() {
+    setLoading(true)
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, role, role_key, project_id')
+      .eq('project_id', projectId)
+      .order('full_name')
+    setMembers(data || [])
+    setLoading(false)
+  }
+
+  useEffect(() => { if (projectId) load() }, [projectId])
+
+  async function openModal() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name, email, role, role_key, project_id')
+      .order('full_name')
+    setAllProfiles(data || [])
+    setModalTab('assign')
+    setSearch('')
+    setNewForm({ full_name: '', role_key: '', email: '' })
+    setShowModal(true)
+  }
+
+  async function assign(profileId) {
+    setAssigning(profileId)
+    await supabase.from('profiles').update({ project_id: projectId }).eq('id', profileId)
+    setAssigning(null)
+    setShowModal(false)
+    load()
+  }
+
+  async function createAndAssign() {
+    if (!newForm.full_name.trim() || !newForm.role_key) return
+    setCreating(true)
+    const { error } = await supabase.from('profiles').insert({
+      id: crypto.randomUUID(),
+      full_name: newForm.full_name.trim(),
+      role_key: newForm.role_key,
+      email: newForm.email.trim() || null,
+      project_id: projectId,
+    })
+    if (!error) {
+      setShowModal(false)
+      setNewForm({ full_name: '', role_key: '', email: '' })
+      load()
+    }
+    setCreating(false)
+  }
+
+  async function remove(profileId) {
+    if (!confirm('Bu kişiyi projeden çıkarmak istediğinizden emin misiniz?')) return
+    await supabase.from('profiles').update({ project_id: null }).eq('id', profileId)
+    load()
+  }
+
+  const candidates = allProfiles.filter(p => p.project_id !== projectId)
+  const filteredCandidates = search.trim()
+    ? candidates.filter(p =>
+        (p.full_name || '').toLowerCase().includes(search.toLowerCase()) ||
+        (p.email || '').toLowerCase().includes(search.toLowerCase())
+      )
+    : candidates
+
+  const inputStyle = { width: '100%', padding: '9px 12px', border: '1px solid var(--color-border)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }
+
+  return (
+    <div className="card">
+      {/* Başlık */}
+      <div className="card-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <h3 style={{ margin: 0 }}>Proje Ekibi</h3>
+          <span style={{ background: '#EFF6FF', color: '#003B8E', fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999 }}>
+            {members.length} kişi
+          </span>
+        </div>
+        {isAdmin && (
+          <button
+            onClick={openModal}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: '#003B8E', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Ekip Üyesi Ekle
+          </button>
+        )}
+      </div>
+
+      {/* Liste */}
+      {loading ? (
+        <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--color-muted)', fontSize: 13 }}>Yükleniyor…</div>
+      ) : members.length === 0 ? (
+        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-muted)', fontSize: 13 }}>
+          Bu projeye henüz ekip üyesi atanmamış.
+        </div>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table" style={{ minWidth: 480 }}>
+            <thead>
+              <tr>
+                <th style={{ width: 48 }}></th>
+                <th>Ad Soyad</th>
+                <th>Rol</th>
+                <th>E-posta</th>
+                {isAdmin && <th style={{ width: 90 }}>İşlem</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {members.map(m => {
+                const cfg = ekipRolCfg(m.role_key)
+                const clr = ekipAvatarRenk(m.full_name)
+                return (
+                  <tr key={m.id}>
+                    <td style={{ padding: '8px 12px' }}>
+                      <div style={{ width: 34, height: 34, borderRadius: '50%', background: clr, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                        {ekipInitials(m.full_name)}
+                      </div>
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--color-text)' }}>{m.full_name || '—'}</span>
+                    </td>
+                    <td>
+                      <span style={{ background: cfg.bg, color: cfg.color, padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', display: 'inline-block' }}>
+                        {cfg.label}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: 'var(--color-muted)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {m.email || '—'}
+                    </td>
+                    {isAdmin && (
+                      <td style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                        <button
+                          onClick={() => remove(m.id)}
+                          style={{ border: '1px solid #FCA5A5', borderRadius: 6, padding: '4px 12px', background: '#FFF5F5', color: '#DC2626', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          Çıkar
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Modal */}
+      {showModal && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}
+          onClick={e => e.target === e.currentTarget && setShowModal(false)}
+        >
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, maxHeight: '82vh', display: 'flex', flexDirection: 'column', boxShadow: '0 24px 64px rgba(0,0,0,0.22)', overflow: 'hidden' }}>
+
+            {/* Modal Başlık + Sekmeler */}
+            <div style={{ padding: '1.25rem 1.5rem 0', borderBottom: '1px solid var(--color-border)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.875rem' }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>Ekip Üyesi Ekle</h3>
+                <button
+                  onClick={() => setShowModal(false)}
+                  style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--color-muted)', fontSize: 18, lineHeight: 1, padding: '4px 8px', borderRadius: 6, fontFamily: 'inherit' }}
+                >✕</button>
+              </div>
+              <div style={{ display: 'flex' }}>
+                {[['assign', 'Mevcut Üye Ata'], ['new', 'Yeni Üye Oluştur']].map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setModalTab(key)}
+                    style={{
+                      border: 'none', background: 'none', padding: '0.5rem 1rem',
+                      fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                      borderBottom: modalTab === key ? '2px solid #003B8E' : '2px solid transparent',
+                      color: modalTab === key ? '#003B8E' : 'var(--color-muted)',
+                    }}
+                  >{label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Modal Gövde */}
+            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.5rem' }}>
+              {modalTab === 'assign' ? (
+                <>
+                  <input
+                    type="text"
+                    placeholder="İsim veya e-posta ara…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    style={{ ...inputStyle, marginBottom: '0.75rem' }}
+                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    {filteredCandidates.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-muted)', fontSize: 13 }}>
+                        {search ? 'Arama sonucu bulunamadı.' : 'Eklenecek kullanıcı bulunamadı.'}
+                      </div>
+                    ) : filteredCandidates.map(p => {
+                      const cfg = ekipRolCfg(p.role_key)
+                      const clr = ekipAvatarRenk(p.full_name)
+                      const isBusy = assigning === p.id
+                      return (
+                        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.625rem', borderRadius: 8, border: '1px solid var(--color-border-md)', background: 'var(--color-bg)' }}>
+                          <div style={{ width: 36, height: 36, borderRadius: '50%', background: clr, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 12, flexShrink: 0 }}>
+                            {ekipInitials(p.full_name)}
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 13 }}>{p.full_name || '—'}</div>
+                            {p.email && <div style={{ fontSize: 11, color: 'var(--color-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.email}</div>}
+                            <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
+                              {p.role_key && <span style={{ background: cfg.bg, color: cfg.color, padding: '1px 7px', borderRadius: 999, fontSize: 10, fontWeight: 700 }}>{cfg.label}</span>}
+                              {p.project_id && p.project_id !== projectId && <span style={{ background: '#FEF3C7', color: '#92400E', padding: '1px 7px', borderRadius: 999, fontSize: 10, fontWeight: 700 }}>Başka projede</span>}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => assign(p.id)}
+                            disabled={!!assigning}
+                            style={{ padding: '5px 14px', background: isBusy ? '#94A3B8' : '#003B8E', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 700, cursor: assigning ? 'not-allowed' : 'pointer', flexShrink: 0, fontFamily: 'inherit' }}
+                          >
+                            {isBusy ? '…' : 'Ekle'}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 5 }}>Ad Soyad <span style={{ color: '#DC2626' }}>*</span></label>
+                    <input
+                      type="text"
+                      placeholder="Ahmet Yılmaz"
+                      value={newForm.full_name}
+                      onChange={e => setNewForm(f => ({ ...f, full_name: e.target.value }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 5 }}>Rol <span style={{ color: '#DC2626' }}>*</span></label>
+                    <select
+                      value={newForm.role_key}
+                      onChange={e => setNewForm(f => ({ ...f, role_key: e.target.value }))}
+                      style={{ ...inputStyle, background: '#fff', cursor: 'pointer' }}
+                    >
+                      <option value="">— Rol seçin —</option>
+                      {Object.entries(EKIP_ROLE_CFG).map(([k, v]) => (
+                        <option key={k} value={k}>{v.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 600, marginBottom: 5 }}>
+                      E-posta <span style={{ fontWeight: 400, color: 'var(--color-muted)', fontSize: 11 }}>(opsiyonel)</span>
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="ahmet@fonssolar.com"
+                      value={newForm.email}
+                      onChange={e => setNewForm(f => ({ ...f, email: e.target.value }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <button
+                    onClick={createAndAssign}
+                    disabled={!newForm.full_name.trim() || !newForm.role_key || creating}
+                    style={{
+                      padding: '10px', color: '#fff', border: 'none', borderRadius: 8,
+                      fontSize: 13, fontWeight: 700, fontFamily: 'inherit', marginTop: 4,
+                      background: (!newForm.full_name.trim() || !newForm.role_key || creating) ? '#94A3B8' : '#003B8E',
+                      cursor: (!newForm.full_name.trim() || !newForm.role_key || creating) ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {creating ? 'Oluşturuluyor…' : 'Üye Oluştur ve Ekle'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -983,6 +1308,7 @@ const backBtn = {
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
 export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate }) {
   const [tab, setTab]                = useState('genel')
+
   const [project, setProject]        = useState(null)
   const [wps, setWPs]                = useState([])
   const [allIlerleme, setAllIlerleme] = useState([])
@@ -1056,9 +1382,9 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   return (
     <div>
       {/* Eylem çubuğu */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
         <button onClick={onBack} style={backBtn}>← Projelere Dön</button>
-        <div style={{ display: 'flex', gap: '0.4rem' }}>
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
           <button onClick={() => setTab('genel')} style={tab === 'genel' ? tabBtnActive : tabBtn}>
             Genel Dashboard
           </button>
@@ -1068,10 +1394,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           <button onClick={() => setTab('tickets')} style={tab === 'tickets' ? tabBtnActive : tabBtn}>
             Ticket
           </button>
+          <button onClick={() => setTab('ekip')} style={tab === 'ekip' ? tabBtnActive : tabBtn}>
+            Ekip
+          </button>
         </div>
 
-        {/* ── Sağ grup: Tarih Seç + Dışa Aktar ── */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {/* ── Sağ grup: Tarih Seç + Dışa Aktar (ticket sekmesinde gizli) ── */}
+        {tab !== 'tickets' && <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
 
           {/* Tarih Seç */}
           {setSelectedDate && (
@@ -1181,7 +1510,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
               </div>
             )}
           </div>
-        </div>
+        </div>}
       </div>
 
       {/* ── Periyot Seçici ─────────────────────────────────────────── */}
@@ -1238,7 +1567,9 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         </div>
       )}
 
-      {tab === 'tickets' ? (
+      {tab === 'ekip' ? (
+        <EkipListesi projectId={projectId} />
+      ) : tab === 'tickets' ? (
         <TicketListesi projectId={projectId} />
       ) : loading ? (
         <p style={{ color: 'var(--color-muted)', padding: '2rem' }}>Yükleniyor…</p>

@@ -2,28 +2,36 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
+const fmtDate     = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
 const SEVERITY = {
   'düşük':  { bg: '#F3F4F6', color: '#374151', label: 'Düşük' },
   'orta':   { bg: '#FEF3C7', color: '#92400E', label: 'Orta' },
   'yüksek': { bg: '#FEE2E2', color: '#991B1B', label: 'Yüksek' },
-  'kritik': { bg: '#991B1B', color: '#FFFFFF', label: 'Kritik' },
 }
 const STATUS = {
-  'açık':      { bg: '#FEE2E2', color: '#991B1B', label: 'Oluşturuldu',  db: 'açık' },
-  'işlemde':   { bg: '#FEF3C7', color: '#92400E', label: 'İşleme Alındı', db: 'işlemde' },
-  'kapatıldı': { bg: '#F3F4F6', color: '#6B7280', label: 'Kapatıldı',    db: 'kapatıldı' },
+  'gönderildi':   { bg: '#DBEAFE', color: '#1D4ED8', label: 'Gönderildi' },
+  'açık':         { bg: '#DBEAFE', color: '#1D4ED8', label: 'Gönderildi' },
+  'işlemde':      { bg: '#E5E7EB', color: '#6B7280', label: 'İşlemde' },
+  'kapatıldı':    { bg: '#D1FAE5', color: '#065F46', label: 'Kapatıldı' },
+  'iptal_edildi': { bg: '#F3F4F6', color: '#9CA3AF', label: 'İptal Edildi' },
 }
 const CATEGORY = {
+  'genel':    { bg: '#F3F4F6', color: '#6B7280' },
   'elektrik': { bg: '#EFF6FF', color: '#185FA5' },
   'mekanik':  { bg: '#F5F3FF', color: '#7C3AED' },
-  'isg':      { bg: '#FEE2E2', color: '#991B1B' },
-  'kalite':   { bg: '#D1FAE5', color: '#065F46' },
-  'lojistik': { bg: '#FEF3C7', color: '#92400E' },
-  'teknik':   { bg: '#F3F4F6', color: '#374151' },
-  'genel':    { bg: '#F3F4F6', color: '#6B7280' },
+}
+
+const ACTION_DEFAULTS = {
+  process: 'Ticketınız işleme alındı.',
+  close:   'Ticketınız kapatıldı.',
+  cancel:  'Ticketınız iptal edildi.',
+}
+const ACTION_QUESTIONS = {
+  process: 'Ticket işleme alınacak. Onaylıyor musunuz?',
+  close:   'İşlemi kapatmak istiyor musunuz?',
+  cancel:  'İşlemi iptal etmek istiyor musunuz?',
 }
 
 function Avatar({ name }) {
@@ -35,55 +43,36 @@ function Avatar({ name }) {
   )
 }
 
-function Badge({ map, value, style: extra }) {
+function Badge({ map, value }) {
   const b = map[value] || { bg: '#F3F4F6', color: '#374151', label: value || '—' }
   return (
-    <span style={{ background: b.bg, color: b.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, ...extra }}>
+    <span style={{ background: b.bg, color: b.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
       {b.label || (value?.charAt(0)?.toUpperCase() + value?.slice(1)) || '—'}
     </span>
   )
 }
 
-const historyLabel = (item) => {
-  if (item.field === 'status')      return `Durum: ${item.old_value || '—'} → ${item.new_value}`
-  if (item.field === 'assigned_to') return `Atama değişti`
-  if (item.field === 'severity')    return `Şiddet: ${item.old_value || '—'} → ${item.new_value}`
-  return `${item.field}: ${item.old_value || '—'} → ${item.new_value}`
-}
-
 export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }) {
   const { user, isAdmin } = useAuth()
-  const [ticket, setTicket]         = useState(initial)
-  const [comments, setComments]     = useState([])
-  const [history, setHistory]       = useState([])
-  const [teamMembers, setTeamMembers] = useState([])
-  const [commentText, setCommentText] = useState('')
-  const [sending, setSending]       = useState(false)
-  const [updating, setUpdating]     = useState(false)
+  const [ticket]                            = useState(initial)
+  const [notifications, setNotifications]  = useState([])
+  const [history, setHistory]              = useState([])
+  const [commentText, setCommentText]      = useState('')
+  const [updating, setUpdating]            = useState(false)
+  const [error, setError]                  = useState(null)
+  const [pendingAction, setPendingAction]  = useState(null)
+  const [confirmVisible, setConfirmVisible] = useState(false)
 
-  useEffect(() => {
-    fetchComments()
-    fetchHistory()
-    if (isAdmin) fetchTeam()
-  }, [ticket.id])
+  useEffect(() => { fetchNotifications(); fetchHistory() }, [ticket.id])
 
-  async function refreshTicket() {
-    const { data } = await supabase
-      .from('tickets')
-      .select('*, projects(name), profiles!created_by(full_name), assignee:profiles!assigned_to(full_name)')
-      .eq('id', ticket.id)
-      .single()
-    if (data) setTicket(data)
-    onUpdated?.()
-  }
-
-  async function fetchComments() {
+  async function fetchNotifications() {
     const { data } = await supabase
       .from('ticket_comments')
       .select('*, profiles!user_id(full_name)')
       .eq('ticket_id', ticket.id)
+      .eq('is_notification', true)
       .order('created_at', { ascending: true })
-    setComments(data || [])
+    setNotifications(data || [])
   }
 
   async function fetchHistory() {
@@ -95,52 +84,76 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
     setHistory(data || [])
   }
 
-  async function fetchTeam() {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, full_name')
-      .order('full_name')
-    setTeamMembers(data || [])
+  function initiateAction(type) {
+    setCommentText(prev => prev.trim() ? prev : ACTION_DEFAULTS[type])
+    setPendingAction(type)
+    setConfirmVisible(true)
   }
 
-  async function handleComment() {
-    if (!commentText.trim()) return
-    setSending(true)
-    await supabase.from('ticket_comments').insert({ ticket_id: ticket.id, user_id: user.id, content: commentText.trim() })
+  function cancelAction() {
+    setConfirmVisible(false)
+    setPendingAction(null)
     setCommentText('')
-    setSending(false)
-    fetchComments()
+    setError(null)
   }
 
-  async function handleAssign(userId) {
+  async function executeAction() {
+    if (pendingAction === 'cancel' && !commentText.trim()) {
+      setError('İptal sebebi boş bırakılamaz.')
+      return
+    }
     setUpdating(true)
-    await supabase.from('tickets').update({ assigned_to: userId || null, updated_at: new Date().toISOString() }).eq('id', ticket.id)
-    setUpdating(false)
-    refreshTicket()
-    fetchHistory()
-  }
+    setError(null)
 
-  async function handleStatusChange(newStatus) {
-    if (newStatus === ticket.status) return
-    setUpdating(true)
-    await supabase.from('tickets').update({
+    const statusMap = { process: 'işlemde', close: 'kapatıldı', cancel: 'iptal_edildi' }
+    const newStatus = statusMap[pendingAction]
+    const noteText  = commentText.trim() || ACTION_DEFAULTS[pendingAction]
+
+    const { error: err } = await supabase.from('tickets').update({
       status:     newStatus,
       updated_by: user.id,
       updated_at: new Date().toISOString(),
+      ...(newStatus === 'kapatıldı' ? { resolved_at: new Date().toISOString() } : {}),
     }).eq('id', ticket.id)
+
+    if (err) { setError('İşlem kaydedilemedi.'); setUpdating(false); return }
+
+    await supabase.from('ticket_comments').insert({
+      ticket_id:       ticket.id,
+      user_id:         user.id,
+      content:         noteText,
+      is_notification: true,
+      sent_by_admin:   isAdmin,
+    })
+
     setUpdating(false)
-    refreshTicket()
-    fetchHistory()
+    setConfirmVisible(false)
+    onUpdated?.()
+    onClose()
   }
 
-  const sv = SEVERITY[ticket.severity] || SEVERITY['orta']
-  const st = STATUS[ticket.status]     || STATUS['açık']
-  const ca = CATEGORY[ticket.category] || CATEGORY['genel']
+  const ca       = CATEGORY[ticket.category] || CATEGORY['genel']
+  const isActive = ticket.status === 'gönderildi' || ticket.status === 'açık' || ticket.status === 'işlemde'
+
+  const canProcess = isAdmin && (ticket.status === 'gönderildi' || ticket.status === 'açık')
+  const canClose   = isAdmin && isActive
+  const canCancel  = isAdmin
+    ? isActive
+    : (user?.id === ticket.created_by && isActive)
+  const hasActions = canProcess || canClose || canCancel
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '30px 20px', overflowY: 'auto' }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 760, boxShadow: '0 20px 60px rgba(0,0,0,0.2)', marginBottom: 30 }}>
-
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000,
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: '30px 20px', overflowY: 'auto' }}
+      onClick={onClose}
+    >
+      <div
+        style={{ position: 'relative', background: '#fff', borderRadius: 16, width: '100%', maxWidth: 760,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.2)', marginBottom: 30 }}
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div style={{ padding: '18px 24px', borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -149,18 +162,20 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                 {ticket.category?.charAt(0).toUpperCase() + ticket.category?.slice(1) || '—'}
               </span>
               <Badge map={SEVERITY} value={ticket.severity} />
-              <Badge map={STATUS} value={ticket.status} />
+              <Badge map={STATUS}   value={ticket.status} />
             </div>
-            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>{ticket.title}</h2>
+            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
+              {ticket.title || ticket.description}
+            </h2>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9CA3AF', flexShrink: 0 }}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#9CA3AF', flexShrink: 0, lineHeight: 1 }}>×</button>
         </div>
 
         {/* Body */}
-        <div style={{ padding: 24, display: 'flex', gap: 24 }}>
+        <div className="ticket-detail-body">
 
-          {/* ─── Sol kolon ─── */}
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Sol kolon */}
+          <div style={{ flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 20 }}>
 
             {/* Açıklama */}
             <div>
@@ -170,48 +185,51 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
               </p>
             </div>
 
-            {/* Yorumlar */}
+            {/* Bildirimler */}
             <div>
               <p style={{ fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 12px' }}>
-                Yorumlar {comments.length > 0 && `(${comments.length})`}
+                Bildirimler {notifications.length > 0 && `(${notifications.length})`}
               </p>
-
-              {comments.length === 0 ? (
-                <p style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 12 }}>Henüz yorum yok.</p>
+              {notifications.length === 0 ? (
+                <p style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 12 }}>Henüz bildirim yok.</p>
               ) : (
                 <div style={{ marginBottom: 12 }}>
-                  {comments.map(c => (
+                  {notifications.map(c => (
                     <div key={c.id} style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
                       <Avatar name={c.profiles?.full_name} />
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{c.profiles?.full_name || 'Kullanıcı'}</span>
+                          <span style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{c.profiles?.full_name || 'Yönetici'}</span>
                           <span style={{ fontSize: 11, color: '#9CA3AF' }}>{fmtDateTime(c.created_at)}</span>
                         </div>
-                        <p style={{ fontSize: 13, color: '#374151', margin: 0, lineHeight: 1.55, background: '#F9FAFB', borderRadius: 8, padding: '8px 12px' }}>{c.content}</p>
+                        <p style={{ fontSize: 13, color: '#374151', margin: 0, lineHeight: 1.55, background: '#EFF6FF', borderRadius: 8, padding: '8px 12px', borderLeft: '3px solid #185FA5' }}>
+                          {c.content}
+                        </p>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: 8 }}>
-                <textarea
-                  value={commentText}
-                  onChange={e => setCommentText(e.target.value)}
-                  placeholder="Yorum ekle..."
-                  rows={2}
-                  style={{ flex: 1, border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, resize: 'none', fontFamily: 'inherit', outline: 'none' }}
-                  onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleComment() }}
-                />
-                <button
-                  onClick={handleComment}
-                  disabled={sending || !commentText.trim()}
-                  style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', alignSelf: 'flex-end', fontFamily: 'inherit', fontSize: 13, opacity: commentText.trim() ? 1 : 0.5 }}
-                >
-                  {sending ? '…' : 'Gönder'}
-                </button>
-              </div>
+              {/* Mesaj textarea — sadece aktif ve izinli */}
+              {hasActions && isActive && (
+                <div>
+                  <textarea
+                    value={commentText}
+                    onChange={e => setCommentText(e.target.value)}
+                    placeholder={pendingAction ? ACTION_DEFAULTS[pendingAction] : 'İşlem yaparken gönderilecek mesajı önceden yazabilirsiniz.'}
+                    rows={2}
+                    style={{ width: '100%', border: `1px solid ${pendingAction ? '#185FA5' : '#E5E7EB'}`, borderRadius: 8, padding: '8px 12px', fontSize: 13, resize: 'none', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s', background: pendingAction ? '#F0F7FF' : '#fff' }}
+                  />
+                  {pendingAction && (
+                    <p style={{ fontSize: 11, color: pendingAction === 'cancel' ? '#DC2626' : '#185FA5', margin: '4px 0 0' }}>
+                      {pendingAction === 'cancel'
+                        ? 'İptal sebebi zorunludur. Bu mesaj ticket sahibine gönderilecek.'
+                        : 'Bu mesaj ticket sahibine bildirim olarak gönderilecek. Düzenleyebilirsiniz.'}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Geçmiş */}
@@ -222,7 +240,11 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                   {history.map(h => (
                     <div key={h.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: '#6B7280', padding: '4px 0 4px 10px', position: 'relative' }}>
                       <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#D1D5DB', flexShrink: 0, marginTop: 3, position: 'absolute', left: -4 }} />
-                      <span>{historyLabel(h)} — <strong style={{ color: '#374151' }}>{h.profiles?.full_name || '—'}</strong> — {fmtDate(h.created_at)}</span>
+                      <span>
+                        {h.field === 'status' ? `Durum: ${h.old_value || '—'} → ${h.new_value}` : `${h.field}: ${h.old_value || '—'} → ${h.new_value}`}
+                        {' — '}<strong style={{ color: '#374151' }}>{h.profiles?.full_name || '—'}</strong>
+                        {' — '}{fmtDate(h.created_at)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -230,75 +252,103 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
             )}
           </div>
 
-          {/* ─── Sağ kolon ─── */}
-          <div style={{ width: 260, flexShrink: 0 }}>
+          {/* Sağ kolon */}
+          <div className="ticket-detail-sidebar" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
             {/* Detaylar */}
-            <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '14px 16px', marginBottom: 16 }}>
+            <div style={{ background: '#F9FAFB', borderRadius: 10, padding: '14px 16px' }}>
               <p style={{ fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 12px' }}>Detaylar</p>
               {[
-                { label: 'Proje',       value: ticket.projects?.name || '—' },
-                { label: 'Oluşturan',   value: ticket.profiles?.full_name || '—' },
-                { label: 'Atanan',      value: ticket.assignee?.full_name || 'Atanmadı' },
-                { label: 'Açılma',      value: fmtDate(ticket.created_at) },
-                { label: 'Çözüm',       value: ticket.resolved_at ? fmtDate(ticket.resolved_at) : '—' },
+                { label: 'Proje',     value: ticket.projects?.name || '—' },
+                { label: 'Oluşturan', value: ticket.creator?.full_name || '—' },
+                { label: 'Lokasyon',  value: ticket.location || '—' },
+                { label: 'Açılma',    value: fmtDate(ticket.created_at) },
+                { label: 'Çözüm',     value: ticket.resolved_at ? fmtDate(ticket.resolved_at) : '—' },
               ].map(({ label, value }) => (
-                <div key={label} style={{ marginBottom: 10 }}>
+                <div key={label} style={{ marginBottom: 9 }}>
                   <p style={{ fontSize: 10, color: '#9CA3AF', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</p>
                   <p style={{ margin: 0, fontSize: 13, color: '#111827', fontWeight: 500 }}>{value}</p>
                 </div>
               ))}
             </div>
 
-            {/* Admin aksiyonları */}
-            {isAdmin && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-                {/* Atama */}
-                <div>
-                  <p style={{ fontSize: 11, color: '#6B7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 500 }}>Ata</p>
-                  <select
-                    value={ticket.assigned_to || ''}
-                    onChange={e => handleAssign(e.target.value)}
-                    disabled={updating}
-                    style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '7px 10px', fontSize: 13, fontFamily: 'inherit', color: '#374151' }}
+            {/* Aksiyon butonları */}
+            {hasActions && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {canProcess && (
+                  <button
+                    onClick={() => initiateAction('process')}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid #185FA5', background: '#EFF6FF', color: '#185FA5', textAlign: 'center' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#DBEAFE' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#EFF6FF' }}
                   >
-                    <option value="">— Atanmadı —</option>
-                    {teamMembers.map(m => <option key={m.id} value={m.id}>{m.full_name || m.email}</option>)}
-                  </select>
-                </div>
+                    İşleme Al
+                  </button>
+                )}
+                {canClose && (
+                  <button
+                    onClick={() => initiateAction('close')}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid #D1D5DB', background: '#F9FAFB', color: '#374151', textAlign: 'center' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#E5E7EB' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#F9FAFB' }}
+                  >
+                    Kapat
+                  </button>
+                )}
+                {canCancel && (
+                  <button
+                    onClick={() => initiateAction('cancel')}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid #FECACA', background: '#FEF2F2', color: '#DC2626', textAlign: 'center' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#FEE2E2' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#FEF2F2' }}
+                  >
+                    İptal Et
+                  </button>
+                )}
+              </div>
+            )}
 
-                {/* Durum */}
-                <div>
-                  <p style={{ fontSize: 11, color: '#6B7280', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 500 }}>Durum Değiştir</p>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                    {['açık', 'işlemde', 'kapatıldı'].map(s => {
-                      const b = STATUS[s]
-                      const isActive = ticket.status === s
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => handleStatusChange(s)}
-                          disabled={updating || isActive}
-                          style={{
-                            padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500,
-                            cursor: isActive ? 'default' : 'pointer', textAlign: 'left',
-                            fontFamily: 'inherit',
-                            border: isActive ? `2px solid ${b.color === '#991B1B' ? b.color : b.color}` : '1px solid #E5E7EB',
-                            background: isActive ? b.bg : '#fff',
-                            color: isActive ? b.color : '#374151',
-                          }}
-                        >
-                          {b.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
+            {!isActive && (
+              <div style={{ background: '#F3F4F6', borderRadius: 8, padding: '10px 14px', textAlign: 'center' }}>
+                <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>
+                  {ticket.status === 'kapatıldı' ? 'Kapatılmış' : 'İptal edilmiş'}
+                </p>
               </div>
             )}
           </div>
         </div>
+
+        {/* Onay overlay */}
+        {confirmVisible && (
+          <div style={{ position: 'absolute', inset: 0, background: 'rgba(17,24,39,0.35)', borderRadius: 16, zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: '28px 32px', maxWidth: 360, width: '90%', textAlign: 'center', boxShadow: '0 12px 40px rgba(0,0,0,0.22)' }}>
+              <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: '#111827' }}>
+                {ACTION_QUESTIONS[pendingAction]}
+              </h3>
+              <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '10px 14px', marginBottom: error ? 12 : 20, fontSize: 13, color: '#374151', fontStyle: 'italic', textAlign: 'left', lineHeight: 1.5 }}>
+                "{commentText || ACTION_DEFAULTS[pendingAction]}"
+              </div>
+              {error && (
+                <p style={{ color: '#DC2626', fontSize: 12, margin: '0 0 14px' }}>{error}</p>
+              )}
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={executeAction}
+                  disabled={updating}
+                  style={{ flex: 1, background: pendingAction === 'cancel' ? '#DC2626' : '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '11px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: updating ? 0.7 : 1 }}
+                >
+                  {updating ? '…' : 'Onayla'}
+                </button>
+                <button
+                  onClick={cancelAction}
+                  style={{ flex: 1, background: '#F3F4F6', color: '#374151', border: 'none', borderRadius: 8, padding: '11px', fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  Vazgeç
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

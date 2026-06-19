@@ -67,8 +67,8 @@ export default function YeniTalepModal({ onClose, onSaved }) {
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: 560, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
+      <div className="modal-centered-box" style={{ width: '100%', maxWidth: 560 }}>
 
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#111827' }}>Yeni Satın Alma Talebi</h2>
@@ -119,7 +119,7 @@ export default function YeniTalepModal({ onClose, onSaved }) {
           <div>
             <label style={LABEL}>Malzeme Kalemleri</label>
             {items.map((item, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 80px 90px 100px 36px', gap: 6, marginBottom: 6 }}>
+              <div key={i} className="talep-item-row">
                 <input
                   placeholder="Malzeme adı"
                   value={item.name}

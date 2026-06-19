@@ -9,12 +9,22 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const u = session?.user ?? null
-      setUser(u)
-      if (u) fetchProfile(u.id)
-      else setLoading(false)
-    })
+    let active = true
+
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (!active) return
+        const u = session?.user ?? null
+        setUser(u)
+        if (u) fetchProfile(u.id)
+        else setLoading(false)
+      })
+      .catch(() => {
+        if (!active) return
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
+      })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null
@@ -23,17 +33,25 @@ export function AuthProvider({ children }) {
       else { setProfile(null); setLoading(false) }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function fetchProfile(userId) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, role, role_key, project_id')
-      .eq('id', userId)
-      .single()
-    setProfile(data ?? null)
-    setLoading(false)
+    try {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, role, role_key, project_id')
+        .eq('id', userId)
+        .single()
+      setProfile(data ?? null)
+    } catch {
+      setProfile(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const role       = profile?.role_key ?? null
@@ -46,7 +64,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={value}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   )
 }

@@ -89,8 +89,8 @@ export default function TabGenel({ onSelectProject, selectedDate, setSelectedDat
 
   return (
     <>
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', marginBottom: '1.75rem' }}>
-        <div className="stats-grid" style={{ flex: 1, marginBottom: 0, gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', marginBottom: '1.75rem', flexWrap: 'wrap' }}>
+        <div className="stats-grid" style={{ flex: 1, minWidth: 0, marginBottom: 0, gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
           {stats.map(s => (
             <div className="stat-card" key={s.label}>
               <p className="stat-label">{s.label}</p>
@@ -101,7 +101,7 @@ export default function TabGenel({ onSelectProject, selectedDate, setSelectedDat
         </div>
 
         {konum && (
-          <div className="stat-card" style={{ flexShrink: 0, width: 290, padding: '1rem 1.25rem', alignSelf: 'stretch', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div className="stat-card" style={{ flexShrink: 0, width: 'clamp(220px, 25%, 290px)', padding: '1rem 1.25rem', alignSelf: 'stretch', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <p className="stat-label" style={{ margin: 0 }}>Hava Durumu</p>
               <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
@@ -168,34 +168,36 @@ export default function TabGenel({ onSelectProject, selectedDate, setSelectedDat
             />
           </div>
         </div>
-        <table className="data-table">
-          <thead>
-            <tr><th>Proje Adı</th><th>Konum</th><th>kWp</th><th>kWe</th><th>Durum</th><th>İlerleme</th></tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-muted)' }}>Yükleniyor…</td></tr>
-            )}
-            {!loading && displayProjects.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-muted)' }}>
-                {selectedDate ? `${selectedDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })} tarihinde kayıtlı proje yok.` : 'Proje bulunamadı.'}
-              </td></tr>
-            )}
-            {displayProjects.map(p => {
-              const s = STATUS_MAP[p.status] || { badge: 'blue', label: 'Aktif' }
-              return (
-                <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => onSelectProject?.(p.id, p.name)}>
-                  <td className="fw">{p.name}</td>
-                  <td>{p.location || '—'}</td>
-                  <td>{p.capacity_kwp?.toLocaleString('tr-TR') || '—'}</td>
-                  <td>{p.capacity_kwe?.toLocaleString('tr-TR') || '—'}</td>
-                  <td><span className={`badge ${s.badge}`}>● {s.label}</span></td>
-                  <td><ProgBar pct={p.progress || 0} /></td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table" style={{ minWidth: 520 }}>
+            <thead>
+              <tr><th>Proje Adı</th><th>Konum</th><th>kWp</th><th>kWe</th><th>Durum</th><th>İlerleme</th></tr>
+            </thead>
+            <tbody>
+              {loading && (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-muted)' }}>Yükleniyor…</td></tr>
+              )}
+              {!loading && displayProjects.length === 0 && (
+                <tr><td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-muted)' }}>
+                  {selectedDate ? `${selectedDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })} tarihinde kayıtlı proje yok.` : 'Proje bulunamadı.'}
+                </td></tr>
+              )}
+              {displayProjects.map(p => {
+                const s = STATUS_MAP[p.status] || { badge: 'blue', label: 'Aktif' }
+                return (
+                  <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => onSelectProject?.(p.id, p.name)}>
+                    <td className="fw">{p.name}</td>
+                    <td>{p.location || '—'}</td>
+                    <td>{p.capacity_kwp?.toLocaleString('tr-TR') || '—'}</td>
+                    <td>{p.capacity_kwe?.toLocaleString('tr-TR') || '—'}</td>
+                    <td><span className={`badge ${s.badge}`}>● {s.label}</span></td>
+                    <td><ProgBar pct={p.progress || 0} /></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   )

@@ -65,13 +65,6 @@ export const getPendingPurchaseCount = () =>
     .select('id', { count: 'exact', head: true })
     .eq('status', 'bekliyor')
 
-// Legacy — eski purchase_items tablosu için (kaldırılabilir)
-export const getPurchaseItems = (projectId) =>
-  supabase.from('purchase_items').select('*').eq('project_id', projectId).order('created_at', { ascending: false })
-
-export const getAllPurchaseItems = () =>
-  supabase.from('purchase_items').select('*').order('created_at', { ascending: false })
-
 // ── Ekip ──────────────────────────────────────────────────────────────────────
 export const getProfile = (userId) =>
   supabase.from('profiles').select('*').eq('id', userId).single()
@@ -81,12 +74,6 @@ export const getTeamMembers = () =>
     .from('profiles')
     .select('id, full_name, email, role')
     .order('full_name')
-
-export const getTeamRoles = () =>
-  supabase
-    .from('team_roles')
-    .select('id, title, responsibilities, report_type, color')
-    .order('created_at', { ascending: true })
 
 // ── Agent Raporları ───────────────────────────────────────────────────────────
 export const getAgentReports = (projectId) =>

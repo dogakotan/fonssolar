@@ -1,885 +1,623 @@
-import { useState, useRef, useEffect } from 'react'
-import * as XLSX from 'xlsx'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../../lib/supabase'
-import { insertAgentReport } from '../../../api'
-import { AGENT_PROMPTS } from '../../../utils/agentLoader'
+import { useAuth } from '../../../context/AuthContext'
+import { getProjects } from '../../../api'
 
-// ── Ajan katalogu ──────────────────────────────────────────────────────────
-const AGENT_CATALOG = [
-  // Proje Yönetimi
-  {
-    id: 'proje-koordinatoru',
-    isim: 'Proje Koordinatörü',
-    ikon: '📋',
-    renk: '#534ab7',
-    kategori: 'Proje Yönetimi',
-    aciklama: 'GES projelerinin genel ilerleyişini takip eder, farklı ekiplerden gelen bilgileri birleştirir ve yönetime düzenli rapor sunar.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Proje Koordinatörü ajanısın.
+// ─── Rol Konfigürasyonu ───────────────────────────────────────────────────────
 
-GES projelerinin genel ilerleyişini takip etmek, farklı ekiplerden gelen bilgileri birleştirmek, kurum süreçlerini izlemek, riskleri belirlemek ve yönetime düzenli rapor sunmak senin ana görevindir.
-
-Sorumlulukların arasında genel proje koordinasyonunu takip etmek, proje takvimi ve kilometre taşlarını izlemek, paydaş yönetimini desteklemek, TEİAŞ/EPDK/TEDAŞ süreçlerini takip etmek, haftalık ve aylık raporlar hazırlamak, gecikme ve risk tespiti yapmak bulunmaktadır.
-
-Büyük resmi görürsün, gereksiz teknik detaya boğulmazsın. Yönetimin hızlı karar alabileceği net özetler üretirsin. Eksik veri varsa açıkça belirtirsin. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'proje-tasarim-sorumlusu',
-    isim: 'Proje Tasarım Sorumlusu',
-    ikon: '📐',
-    renk: '#0369a1',
-    kategori: 'Proje Yönetimi',
-    aciklama: 'GES projelerinde tasarım ve proje dokümantasyonu süreçlerini destekler, TEDAŞ standartlarına uygun proje çizimi ve BOM listesi hazırlar.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Proje Tasarım Sorumlusu ajanısın.
-
-GES projelerinde tasarım ve proje dokümantasyonu süreçlerini desteklemek, TEDAŞ standartlarına uygun proje çizimi, uygulama projesi hazırlanması, proje onay süreci takibi ve proje BOM listesi oluşturulması konularında çalışırsın.
-
-Teknik, net ve kontrol listesi mantığında çalışırsın. Varsayım yapmazsın; eksik veri varsa açıkça belirtirsin. Proje çizimlerini yorumlar ve kontrol edersin; nihai mühendislik onayı yerine geçmezsin. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'proje-kurulum-sefi',
-    isim: 'Proje Kurulum Şefi',
-    ikon: '🏭',
-    renk: '#0f6e56',
-    kategori: 'Proje Yönetimi',
-    aciklama: 'GES sahasında mekanik ve elektrik kurulum süreçlerini bütüncül şekilde takip eder, iş programına göre sapmaları tespit eder.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Proje Kurulum Şefi ajanısın.
-
-GES sahasında mekanik ve elektrik kurulum süreçlerini bütüncül şekilde takip etmek, günlük saha ilerlemesini değerlendirmek, iş programına göre sapmaları tespit etmek ve ekip/kaynak optimizasyonu için aksiyon önerileri üretmek senin ana görevindir.
-
-Saha gerçeklerine odaklanırsın. Teorik açıklamalardan çok uygulanabilir aksiyon üretirsin. Günlük üretim verilerini iş programı ile karşılaştırırsın. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'evrak-takip-uzmani',
-    isim: 'Evrak Takip Uzmanı',
-    ikon: '📂',
-    renk: '#6d4c41',
-    kategori: 'Proje Yönetimi',
-    aciklama: 'GES projelerinde gerekli resmi evrakları, kurum başvurularını ve onay süreçlerini takip eder; eksik belgeleri tespit eder.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Evrak Takip Uzmanı ajanısın.
-
-GES projelerinde gerekli resmi evrakları, kurum başvurularını, onay süreçlerini ve proje dokümanlarını düzenli şekilde takip etmek; eksik, hatalı veya geciken belgeleri tespit ederek ilgili ekiplere aksiyon listesi hazırlamak senin ana görevindir.
-
-Düzenli, sistematik ve kontrol listesi mantığında çalışırsın. Her belgenin durumunu net sınıflandırırsın: hazır / eksik / incelemede / revizyonda / onaylandı / beklemede. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'maliyet-kontrolcu',
-    isim: 'Maliyet Kontrolcü',
-    ikon: '💰',
-    renk: '#3b6d11',
-    kategori: 'Proje Yönetimi',
-    aciklama: 'GES projelerinde proje bütçesini, gerçekleşen maliyetleri, hakedişleri ve maliyet sapmalarını takip eder.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Maliyet Kontrolcü ajanısın.
-
-GES projelerinde proje bütçesini, gerçekleşen maliyetleri, satın alma harcamalarını, hakedişleri ve maliyet sapmalarını takip etmek; proje yönetimine finansal durum, risk ve aksiyon önerileri sunmak senin ana görevindir.
-
-Sayısal, net ve tablo odaklı çalışırsın. Maliyetleri sadece listelemezsin; bütçe, gerçekleşen, sapma ve sebep ilişkisiyle analiz edersin. Finansal karar vermezsin; karar destek raporu üretirsin. Yanıtların Türkçe olsun.`,
-  },
-  // Saha Operasyonu
-  {
-    id: 'santiye-sefi',
-    isim: 'Şantiye Şefi',
-    ikon: '🏗️',
-    renk: '#374151',
-    kategori: 'Saha Operasyonu',
-    aciklama: 'GES sahasında günlük operasyonu takip eder, ekiplerin vardiya içindeki faaliyetlerini raporlar ve saha düzenini değerlendirir.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Şantiye Şefi ajanısın.
-
-GES sahasında günlük operasyonu takip etmek, ekiplerin vardiya içindeki faaliyetlerini raporlamak, saha düzeni, iş güvenliği, kalite ve günlük üretim durumunu değerlendirmek senin ana görevindir.
-
-Sahadan gelen bilgileri net ve pratik şekilde düzenlersin. Uzun teorik açıklamalar yapmazsın. Günlük gerçekleşen işleri somut kalemlerle yazarsın. Kritik İSG riski varsa raporun en üstünde belirtirsin. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'operasyon-sorumlusu',
-    isim: 'Operasyon Sorumlusu',
-    ikon: '⚙️',
-    renk: '#1e3a5f',
-    kategori: 'Saha Operasyonu',
-    aciklama: 'GES projelerinde saha operasyonlarının düzenli, verimli ve kesintisiz ilerlemesini takip eder; ekip, malzeme ve makine koordinasyonu yapar.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Operasyon Sorumlusu ajanısın.
-
-GES projelerinde saha operasyonlarının düzenli, verimli ve kesintisiz ilerlemesini takip etmek; ekip, malzeme, makine, lojistik ve günlük operasyon ihtiyaçlarını koordine edecek raporlar hazırlamak senin ana görevindir.
-
-Pratik, çözüm odaklı ve saha gerçeklerine uygun çalışırsın. Her aksaklığı iş programına etkisi ve gerekli aksiyon ile birlikte belirtirsin. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'mekanik-sef',
-    isim: 'Mekanik Şef',
-    ikon: '🔩',
-    renk: '#854f0b',
-    kategori: 'Saha Operasyonu',
-    aciklama: 'GES sahasında mekanik imalatların ilerleyişini takip eder; kazık çakımı, konstrüksiyon ve panel montaj süreçlerini raporlar.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Mekanik Şef ajanısın.
-
-GES sahasında mekanik imalatların proje çizimlerine, uygulama planına ve kalite beklentilerine uygun ilerleyip ilerlemediğini takip etmek; kazık, konstrüksiyon ve panel montaj süreçlerini günlük/haftalık olarak raporlamak senin ana görevindir.
-
-Sahadaki mekanik imalatlara odaklanırsın. Net, ölçülebilir ve üretim odaklı rapor hazırlarsın. Sadece "yapıldı" demezsin; miktar, lokasyon, ekip ve varsa sorun belirtirsin. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'elektrik-sefi',
-    isim: 'Elektrik Şefi',
-    ikon: '⚡',
-    renk: '#185fa5',
-    kategori: 'Saha Operasyonu',
-    aciklama: 'GES sahasında elektrik imalatların ilerleyişini takip eder; DC/AC kablolama, inverter, trafo ve OG bağlantı işlerini raporlar.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Elektrik Şefi ajanısın.
-
-GES sahasında elektrik imalatların proje çizimlerine, uygulama projesine, teknik şartnamelere ve saha iş programına uygun ilerleyip ilerlemediğini takip etmek; DC, AC, OG bağlantı işleri ve test-devreye alma öncesi elektrik hazırlıklarını raporlamak senin ana görevindir.
-
-Sahadaki elektrik imalatlara odaklanırsın. Net, teknik ve ölçülebilir rapor hazırlarsın. Elektrik güvenlik riski varsa raporun en üstünde belirtirsin. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'is-makinesi-operator-sefi',
-    isim: 'İş Makinesi Operatör Şefi',
-    ikon: '🚜',
-    renk: '#5c3317',
-    kategori: 'Saha Operasyonu',
-    aciklama: 'GES sahasında kullanılan iş makinelerinin doğru ve verimli kullanılmasını takip eder; arıza, bakım ve makine planlamasını raporlar.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan İş Makinesi Operatör Şefi ajanısın.
-
-GES sahasında kullanılan iş makinelerinin doğru, verimli, güvenli ve iş programına uygun şekilde kullanılmasını takip etmek; makine kullanım durumunu, operatör ekiplerini, arıza/bakım ihtiyaçlarını ve saha içi makine planlamasını raporlamak senin ana görevindir.
-
-Saha ve makine operasyonlarına pratik gözle bakarsın. Hangi makinenin nerede, hangi iş için, kaç saat kullanıldığını net belirtirsin. Güvenlik riski olan makine operasyonlarını raporun en üstünde belirtirsin. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'enh-sorumlusu',
-    isim: 'ENH Sorumlusu',
-    ikon: '🔌',
-    renk: '#1a3650',
-    kategori: 'Saha Operasyonu',
-    aciklama: 'GES projelerinde enerji nakil hattı, OG hat uygulamaları ve şebeke bağlantı süreçlerini takip eder.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan ENH Sorumlusu ajanısın.
-
-GES projelerinde enerji nakil hattı, bağlantı hattı, OG hat uygulamaları, direk güzergahı, hat imalatı, kurum izinleri ve kabul süreçlerini takip etmek; ENH kaynaklı teknik, operasyonel ve resmi süreç risklerini raporlamak senin ana görevindir.
-
-ENH sürecini hem teknik hem resmi izin boyutuyla değerlendirirsin. Güzergah veya izin kaynaklı gecikmeleri kritik risk olarak işaretlersin. Yanıtların Türkçe olsun.`,
-  },
-  // Kalite & Güvenlik & Lojistik
-  {
-    id: 'isg-sorumlusu',
-    isim: 'İSG Sorumlusu',
-    ikon: '🦺',
-    renk: '#a32d2d',
-    kategori: 'Kalite & Güvenlik & Lojistik',
-    aciklama: 'GES sahasında iş sağlığı ve güvenliği süreçlerini takip eder, saha risklerini belirler ve İSG raporları hazırlar.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan İSG Sorumlusu ajanısın.
-
-GES sahasında iş sağlığı ve güvenliği süreçlerini takip etmek, saha risklerini belirlemek, uygunsuzlukları kayıt altına almak, ramak kala/olay bildirimlerini düzenlemek ve ekiplerin güvenli çalışma kurallarına uygun ilerlemesini desteklemek senin ana görevindir.
-
-Güvenlik risklerini önceliklendirirsin. Kritik riskleri raporun en üstünde belirtirsin. Sadece problemi yazmazsın; gerekli aksiyon, sorumlu ekip ve hedef kapanış tarihi de belirtirsin. Dili net, uyarıcı ve aksiyon odaklı kullanırsın. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'kalite-kontrol-sefi',
-    isim: 'Kalite Kontrol Şefi',
-    ikon: '✅',
-    renk: '#065f46',
-    kategori: 'Kalite & Güvenlik & Lojistik',
-    aciklama: 'GES sahasında mekanik ve elektrik imalatların proje çizimlerine ve teknik şartnamelere uygunluğunu takip eder; punch list hazırlar.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Kalite Kontrol Şefi ajanısın.
-
-GES sahasında yapılan mekanik, elektrik ve altyapı imalatlarının proje çizimlerine, teknik şartnamelere, kalite beklentilerine ve saha uygulama standartlarına uygunluğunu takip etmek; uygunsuzlukları tespit etmek, punch list hazırlamak ve kabul öncesi kalite kontrol süreçlerini raporlamak senin ana görevindir.
-
-Detaycı, sistematik ve kontrol listesi mantığında çalışırsın. Uygunsuzlukları açık, ölçülebilir ve lokasyon bazlı yazarsın. Her uygunsuzluk için etki, risk seviyesi, sorumlu ekip ve gerekli aksiyonu belirtirsin. Yanıtların Türkçe olsun.`,
-  },
-  {
-    id: 'lojistik-tedarik-sorumlusu',
-    isim: 'Lojistik & Tedarik Sorumlusu',
-    ikon: '🚛',
-    renk: '#5f5e5a',
-    kategori: 'Kalite & Güvenlik & Lojistik',
-    aciklama: 'GES projelerinde malzeme, ekipman ve bileşenlerin zamanında doğru sahaya ulaşmasını takip eder; tedarik risklerini raporlar.',
-    sistemPrompt: `Sen Fons Solar büyük ölçekli GES projeleri için çalışan Lojistik ve Tedarik Sorumlusu ajanısın.
-
-GES projelerinde ihtiyaç duyulan malzeme, ekipman ve ana sistem bileşenlerinin zamanında, doğru miktarda, doğru sahaya ve doğru iş paketine uygun şekilde ulaşmasını takip etmek; tedarik ve lojistik kaynaklı gecikme risklerini raporlamak senin ana görevindir.
-
-Malzeme akışını proje iş programıyla birlikte değerlendirirsin. Sadece "geldi/gelmedi" demekle yetinmezsin; malzemenin hangi iş paketini etkilediğini belirtirsin. Sahada üretimi durdurabilecek eksikleri raporun en üstünde belirtirsin. Yanıtların Türkçe olsun.`,
-  },
-]
-
-const KATEGORILER = ['Tümü', 'Proje Yönetimi', 'Saha Operasyonu', 'Kalite & Güvenlik & Lojistik']
-
-// ── Claude API çağrısı ──────────────────────────────────────────────────────
-async function claudeMesaj(sistemPrompt, mesajGecmisi, pdfBase64 = null) {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
-  if (!apiKey) throw new Error('VITE_ANTHROPIC_API_KEY .env dosyasında tanımlı değil.')
-
-  const gecmis = mesajGecmisi.slice(-20)
-
-  const messages = gecmis.map((m, idx) => {
-    if (pdfBase64 && m.role === 'user' && idx === gecmis.length - 1) {
-      const base64Data = pdfBase64.split(',')[1] || pdfBase64
-      return {
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: base64Data },
-          },
-          { type: 'text', text: m.content || '(PDF dosyası yüklendi, lütfen incele)' },
-        ],
-      }
-    }
-    // Sadece role ve content gönder — display/dosyaAdi gibi UI alanları API'ye gitmemeli
-    return { role: m.role, content: m.content }
-  })
-
-  const headers = {
-    'Content-Type': 'application/json',
-    'x-api-key': apiKey,
-    'anthropic-version': '2023-06-01',
-    'anthropic-dangerous-direct-browser-access': 'true',
-  }
-  if (pdfBase64) headers['anthropic-beta'] = 'pdfs-2024-09-25'
-
-  const response = await fetch('/anthropic/v1/messages', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
-      system: sistemPrompt,
-      messages,
-    }),
-  })
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `API hatası: ${response.status}`)
-  }
-
-  const data = await response.json()
-  return data.content[0]?.text || ''
+const ROLE_CFG = {
+  admin:                { label: 'Admin',                 color: '#DC2626', bg: '#FEE2E2' },
+  proje_koordinatoru:   { label: 'Proje Koordinatörü',    color: '#003B8E', bg: '#DBEAFE' },
+  proje_kurulum_sefi:   { label: 'Proje Kurulum Şefi',    color: '#0369a1', bg: '#E0F2FE' },
+  santiye_sefi:         { label: 'Şantiye Şefi',          color: '#0F6E56', bg: '#D1FAE5' },
+  mekanik_sef:          { label: 'Mekanik Şef',           color: '#0891B2', bg: '#ECFEFF' },
+  elektrik_sefi:        { label: 'Elektrik Şefi',         color: '#7C3AED', bg: '#EDE9FE' },
+  isg_sorumlusu:        { label: 'İSG Sorumlusu',         color: '#D97706', bg: '#FEF3C7' },
+  kalite_kontrol_sefi:  { label: 'Kalite Kontrol Şefi',   color: '#B45309', bg: '#FEF9C3' },
+  lojistik_tedarik:     { label: 'Lojistik & Tedarik',    color: '#9F1239', bg: '#FFE4E6' },
+  enh_sorumlusu:        { label: 'ENH Sorumlusu',         color: '#0F766E', bg: '#CCFBF1' },
+  operasyon_sorumlusu:  { label: 'Operasyon Sorumlusu',   color: '#4F46E5', bg: '#EEF2FF' },
+  evrak_takip:          { label: 'Evrak Takip Uzmanı',    color: '#6D28D9', bg: '#F5F3FF' },
+  maliyet_kontrolcu:    { label: 'Maliyet Kontrolcü',     color: '#065F46', bg: '#ECFDF5' },
+  is_makinesi_sefi:     { label: 'İş Makinesi Şefi',      color: '#92400E', bg: '#FFFBEB' },
+  muhasebe:             { label: 'Muhasebe',               color: '#6D28D9', bg: '#F5F3FF' },
+  satin_alma_uzmani:    { label: 'Satın Alma Uzmanı',      color: '#0F766E', bg: '#CCFBF1' },
+  proje_tasarim:        { label: 'Proje Tasarım Sorumlusu', color: '#1D4ED8', bg: '#EFF6FF' },
 }
 
-// ── Ajan Dizin Kartı ───────────────────────────────────────────────────────
-function AjanKart({ ajan, onSec }) {
+const ROLE_KEYS = Object.keys(ROLE_CFG)
+
+const AVATAR_PALETTE = [
+  '#003B8E', '#0F6E56', '#7C3AED', '#D97706',
+  '#0369a1', '#059669', '#DC2626', '#0F766E',
+  '#6D28D9', '#B45309', '#0891B2', '#4F46E5',
+]
+
+function getRoleCfg(roleKey) {
+  return ROLE_CFG[roleKey] || { label: roleKey?.replace(/_/g, ' ') || 'Kullanıcı', color: '#64748B', bg: '#F1F5F9' }
+}
+
+function initials(name) {
+  if (!name) return '?'
+  return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
+}
+
+function avatarColor(name) {
+  if (!name) return AVATAR_PALETTE[0]
+  return AVATAR_PALETTE[name.charCodeAt(0) % AVATAR_PALETTE.length]
+}
+
+// ─── Ana Bileşen ──────────────────────────────────────────────────────────────
+
+export default function TabEkip({ projectId }) {
+  const { isAdmin, projectId: myProjectId } = useAuth()
+
+  const [projects,    setProjects]    = useState([])
+  const [members,     setMembers]     = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [selProject,  setSelProject]  = useState(projectId || myProjectId || '')
+  const [showAdd,     setShowAdd]     = useState(false)
+  const [editTarget,  setEditTarget]  = useState(null)
+
+  // Admin: projeleri yükle
+  useEffect(() => {
+    if (!isAdmin) return
+    getProjects().then(({ data }) => setProjects(data || []))
+  }, [isAdmin])
+
+  // Seçili proje dışarıdan değişince güncelle
+  useEffect(() => {
+    if (projectId) setSelProject(projectId)
+  }, [projectId])
+
+  // Ekip üyelerini yükle
+  const loadMembers = useCallback(async () => {
+    setLoading(true)
+    let q = supabase
+      .from('profiles')
+      .select('id, full_name, email, role, role_key, project_id')
+      .order('full_name')
+
+    if (selProject) {
+      q = q.eq('project_id', selProject)
+    } else if (!isAdmin) {
+      q = myProjectId ? q.eq('project_id', myProjectId) : q
+    }
+
+    const { data } = await q
+    setMembers(data || [])
+    setLoading(false)
+  }, [selProject, isAdmin, myProjectId])
+
+  useEffect(() => { loadMembers() }, [loadMembers])
+
+  async function handleRemove(profileId) {
+    if (!confirm('Bu kişiyi projeden çıkarmak istediğinizden emin misiniz?')) return
+    await supabase.from('profiles').update({ project_id: null }).eq('id', profileId)
+    loadMembers()
+  }
+
+  // İstatistik hesapla
+  const roleSummary = members.reduce((acc, m) => {
+    const k = m.role_key || 'diger'
+    acc[k] = (acc[k] || 0) + 1
+    return acc
+  }, {})
+  const topRoles = Object.entries(roleSummary).sort((a, b) => b[1] - a[1]).slice(0, 3)
+  const selProjectName = projects.find(p => p.id === selProject)?.name || ''
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+
+      {/* ── Üst Kontroller ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        {isAdmin && (
+          <select
+            value={selProject}
+            onChange={e => setSelProject(e.target.value)}
+            style={selectStyle}
+          >
+            <option value=''>Tüm Ekip</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        )}
+
+        {!isAdmin && selProjectName && (
+          <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+            📍 {selProjectName}
+          </span>
+        )}
+
+        <div style={{ flex: 1 }} />
+
+        {isAdmin && selProject && (
+          <button onClick={() => setShowAdd(true)} style={btnPrimaryStyle}>
+            <span style={{ fontSize: '1rem', lineHeight: 1 }}>+</span>
+            Ekip Üyesi Ekle
+          </button>
+        )}
+      </div>
+
+      {/* ── İstatistik Satırı ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '0.75rem' }}>
+        <StatCard num={members.length} label="Toplam Üye" color="var(--color-primary)" />
+        {topRoles.map(([key, count]) => {
+          const cfg = getRoleCfg(key)
+          return <StatCard key={key} num={count} label={cfg.label} color={cfg.color} />
+        })}
+      </div>
+
+      {/* ── Üye Kartları / Boş Durum ── */}
+      {loading ? (
+        <LoadingGrid />
+      ) : members.length === 0 ? (
+        <EmptyState isAdmin={isAdmin} selProject={selProject} onAdd={() => setShowAdd(true)} />
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))',
+          gap: '1rem'
+        }}>
+          {members.map(m =>
+            editTarget?.id === m.id
+              ? (
+                <EditCard
+                  key={m.id}
+                  member={m}
+                  projects={projects}
+                  onSave={async (id, updates) => {
+                    await supabase.from('profiles').update(updates).eq('id', id)
+                    setEditTarget(null)
+                    loadMembers()
+                  }}
+                  onCancel={() => setEditTarget(null)}
+                />
+              ) : (
+                <MemberCard
+                  key={m.id}
+                  member={m}
+                  isAdmin={isAdmin}
+                  projectName={projects.find(p => p.id === m.project_id)?.name}
+                  onEdit={() => setEditTarget(m)}
+                  onRemove={() => handleRemove(m.id)}
+                />
+              )
+          )}
+        </div>
+      )}
+
+      {/* ── Modal: Üye Ekle ── */}
+      {showAdd && (
+        <AddMemberModal
+          currentProjectId={selProject}
+          projectName={selProjectName}
+          onAssign={async (profileId) => {
+            await supabase.from('profiles').update({ project_id: selProject }).eq('id', profileId)
+            setShowAdd(false)
+            loadMembers()
+          }}
+          onClose={() => setShowAdd(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── İstatistik Kartı ─────────────────────────────────────────────────────────
+
+function StatCard({ num, label, color }) {
+  return (
+    <div style={{
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-border-md)',
+      borderRadius: '10px', padding: '1rem',
+      textAlign: 'center',
+      boxShadow: 'var(--shadow-card)',
+    }}>
+      <div style={{ fontSize: '1.75rem', fontWeight: 800, color, lineHeight: 1 }}>{num}</div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--color-muted)', marginTop: '0.3rem', lineHeight: 1.3 }}>{label}</div>
+    </div>
+  )
+}
+
+// ─── Üye Kartı ────────────────────────────────────────────────────────────────
+
+function MemberCard({ member, isAdmin, projectName, onEdit, onRemove }) {
+  const cfg = getRoleCfg(member.role_key)
+  const color = avatarColor(member.full_name)
+
   return (
     <div
-      onClick={() => onSec(ajan)}
       style={{
-        background: '#fff',
-        border: '1px solid var(--color-border)',
-        borderRadius: '0.75rem',
-        padding: '1.25rem',
-        cursor: 'pointer',
-        transition: 'box-shadow 0.18s, border-color 0.18s',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.625rem',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border-md)',
+        borderRadius: '12px', padding: '1.25rem',
+        boxShadow: 'var(--shadow-card)',
+        display: 'flex', flexDirection: 'column', gap: '0.875rem',
+        transition: 'box-shadow 0.15s, transform 0.15s',
       }}
-      onMouseEnter={e => {
-        e.currentTarget.style.boxShadow = `0 4px 20px rgba(0,0,0,0.10)`
-        e.currentTarget.style.borderColor = ajan.renk
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.boxShadow = 'none'
-        e.currentTarget.style.borderColor = 'var(--color-border)'
-      }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,0.12)'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--shadow-card)'; e.currentTarget.style.transform = 'none' }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <span style={{
-          fontSize: '1.75rem',
-          width: 48,
-          height: 48,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: `${ajan.renk}18`,
-          borderRadius: '0.625rem',
-          flexShrink: 0,
+      {/* Avatar + İsim + Rol */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+        <div style={{
+          width: '50px', height: '50px', borderRadius: '50%',
+          background: color, color: 'white',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: 800, fontSize: '1rem', flexShrink: 0, letterSpacing: '0.5px',
+          boxShadow: `0 2px 8px ${color}55`
         }}>
-          {ajan.ikon}
-        </span>
+          {initials(member.full_name)}
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)', marginBottom: '0.2rem', lineHeight: 1.3 }}>
-            {ajan.isim}
+          <div style={{
+            fontWeight: 700, fontSize: '0.95rem', color: 'var(--color-text)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+          }}>
+            {member.full_name || 'İsimsiz Kullanıcı'}
           </div>
           <span style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            padding: '0.15rem 0.5rem',
-            borderRadius: 999,
-            fontSize: '0.65rem',
-            fontWeight: 600,
-            background: `${ajan.renk}18`,
-            color: ajan.renk,
-            letterSpacing: '0.02em',
+            display: 'inline-block', marginTop: '0.25rem',
+            background: cfg.bg, color: cfg.color,
+            padding: '0.15rem 0.6rem', borderRadius: '999px',
+            fontSize: '0.7rem', fontWeight: 700
           }}>
-            {ajan.kategori}
+            {member.role || cfg.label}
           </span>
         </div>
       </div>
-      <p style={{
-        fontSize: '0.78rem',
-        color: 'var(--color-muted)',
-        margin: 0,
-        lineHeight: 1.55,
-        display: '-webkit-box',
-        WebkitLineClamp: 3,
-        WebkitBoxOrient: 'vertical',
-        overflow: 'hidden',
-      }}>
-        {ajan.aciklama}
-      </p>
-      <button
-        onClick={e => { e.stopPropagation(); onSec(ajan) }}
-        style={{
-          marginTop: 'auto',
-          padding: '0.5rem 0.875rem',
-          background: ajan.renk,
-          color: '#fff',
-          border: 'none',
-          borderRadius: '0.5rem',
-          fontSize: '0.78rem',
-          fontWeight: 600,
-          cursor: 'pointer',
-          alignSelf: 'flex-start',
-          transition: 'opacity 0.15s',
-        }}
-        onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
-        onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
-      >
-        Sohbet Başlat
-      </button>
+
+      {/* Bilgi Satırları */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+        <InfoRow icon="✉️" text={member.email || '—'} />
+        {projectName && <InfoRow icon="📍" text={projectName} />}
+      </div>
+
+      {/* Admin Butonları */}
+      {isAdmin && (
+        <div style={{
+          display: 'flex', gap: '0.5rem',
+          borderTop: '1px solid var(--color-border)',
+          paddingTop: '0.75rem', marginTop: '0.125rem'
+        }}>
+          <button onClick={onEdit} style={btnSecondaryStyle}>Düzenle</button>
+          <button onClick={onRemove} style={btnDangerStyle}>Projeden Çıkar</button>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Sohbet Balonu ──────────────────────────────────────────────────────────
-function MesajBalonu({ mesaj }) {
-  const kullanici = mesaj.role === 'user'
-  const gosterilen = mesaj.display !== undefined ? mesaj.display : mesaj.content
+function InfoRow({ icon, text }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: 'var(--color-muted)' }}>
+      <span style={{ flexShrink: 0 }}>{icon}</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</span>
+    </div>
+  )
+}
+
+// ─── Düzenleme Kartı ──────────────────────────────────────────────────────────
+
+function EditCard({ member, projects, onSave, onCancel }) {
+  const [fullName, setFullName] = useState(member.full_name || '')
+  const [role,     setRole]     = useState(member.role || '')
+  const [roleKey,  setRoleKey]  = useState(member.role_key || '')
+  const [projId,   setProjId]   = useState(member.project_id || '')
+  const [saving,   setSaving]   = useState(false)
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave(member.id, {
+      full_name: fullName.trim(),
+      role: role.trim(),
+      role_key: roleKey || null,
+      project_id: projId || null,
+    })
+    setSaving(false)
+  }
+
   return (
     <div style={{
-      display: 'flex',
-      justifyContent: kullanici ? 'flex-end' : 'flex-start',
-      marginBottom: '0.75rem',
+      background: 'var(--color-surface)',
+      border: '2px solid var(--color-primary)',
+      borderRadius: '12px', padding: '1.25rem',
+      display: 'flex', flexDirection: 'column', gap: '0.75rem',
+      boxShadow: 'var(--shadow-card)',
     }}>
-      <div style={{
-        maxWidth: '75%',
-        padding: '0.75rem 1rem',
-        borderRadius: kullanici ? '1rem 1rem 0.25rem 1rem' : '1rem 1rem 1rem 0.25rem',
-        background: kullanici ? 'var(--color-primary)' : '#f1f5f9',
-        color: kullanici ? '#fff' : 'var(--color-text)',
-        fontSize: '0.84rem',
-        lineHeight: 1.6,
-        wordBreak: 'break-word',
-        whiteSpace: 'pre-wrap',
-      }}>
-        {gosterilen}
-        {mesaj.dosyaAdi && (
-          <div style={{
-            marginTop: gosterilen ? '0.5rem' : 0,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.3rem',
-            padding: '0.25rem 0.6rem',
-            background: kullanici ? 'rgba(255,255,255,0.18)' : '#e2e8f0',
-            borderRadius: '0.375rem',
-            fontSize: '0.75rem',
-            fontWeight: 600,
-            color: kullanici ? '#fff' : '#475569',
-          }}>
-            {mesaj.dosyaIkon || '📎'} {mesaj.dosyaAdi}
-          </div>
-        )}
+      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-primary)' }}>
+        ✏️ Düzenleniyor: {member.email}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <label style={labelStyle}>Ad Soyad</label>
+        <input value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} placeholder="Ad Soyad" />
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <label style={labelStyle}>Görünen Unvan</label>
+        <input value={role} onChange={e => setRole(e.target.value)} style={inputStyle} placeholder="ör: Şantiye Şefi" />
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <label style={labelStyle}>Rol</label>
+        <select value={roleKey} onChange={e => setRoleKey(e.target.value)} style={inputStyle}>
+          <option value=''>Seçin…</option>
+          {ROLE_KEYS.map(k => (
+            <option key={k} value={k}>{ROLE_CFG[k].label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <label style={labelStyle}>Proje</label>
+        <select value={projId} onChange={e => setProjId(e.target.value)} style={inputStyle}>
+          <option value=''>Proje atanmamış</option>
+          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
+
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
+        <button onClick={handleSave} disabled={saving} style={{ ...btnPrimaryStyle, flex: 1, justifyContent: 'center' }}>
+          {saving ? 'Kaydediliyor…' : 'Kaydet'}
+        </button>
+        <button onClick={onCancel} style={{ ...btnSecondaryStyle, flex: 1 }}>İptal</button>
       </div>
     </div>
   )
 }
 
-// ── Risk seviyesi çıkarıcı (AgentPanel ile tutarlı) ───────────────────────
-function riskCikar(metin) {
-  if (!metin) return null
-  const esles = metin.match(/R[İI]SK_SEV[İI]YES[İI]:\s*(d[üu][şs][üu]k|orta|y[üu]ksek|kritik)/i)
-  return esles ? esles[1].toLowerCase() : null
-}
+// ─── Üye Ekleme Modalı ────────────────────────────────────────────────────────
 
-// ── Sohbet Paneli ──────────────────────────────────────────────────────────
-function SohbetPaneli({ ajan, onGeri, projectId }) {
-  const [mesajlar, setMesajlar] = useState([])
-  const [girdi, setGirdi] = useState('')
-  const [yukleniyor, setYukleniyor] = useState(false)
-  const [hata, setHata] = useState(null)
-  const [dosya, setDosya] = useState(null)
-  const [dosyaIcerik, setDosyaIcerik] = useState('')
-  const [dosyaPdfBase64, setDosyaPdfBase64] = useState('')
-  const mesajSonuRef = useRef(null)
-  const dosyaInputRef = useRef(null)
+function AddMemberModal({ currentProjectId, projectName, onAssign, onClose }) {
+  const [profiles,  setProfiles]  = useState([])
+  const [search,    setSearch]    = useState('')
+  const [loading,   setLoading]   = useState(true)
+  const [assigning, setAssigning] = useState(null)
 
   useEffect(() => {
-    mesajSonuRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [mesajlar, yukleniyor])
+    supabase
+      .from('profiles')
+      .select('id, full_name, email, role, role_key, project_id')
+      .order('full_name')
+      .then(({ data }) => {
+        setProfiles(data || [])
+        setLoading(false)
+      })
+  }, [])
 
-  function dosyaSec(e) {
-    const f = e.target.files[0]
-    if (!f) return
+  const candidates = profiles.filter(p => {
+    if (p.project_id === currentProjectId) return false // zaten bu projede
+    const q = search.toLowerCase()
+    return !q || (p.full_name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q)
+  })
 
-    const uzanti = f.name.split('.').pop().toLowerCase()
-
-    if (uzanti === 'pdf') {
-      const okulu = new FileReader()
-      okulu.onload = ev => {
-        setDosya(f)
-        setDosyaIcerik('')
-        setDosyaPdfBase64(ev.target.result)
-      }
-      okulu.readAsDataURL(f)
-    } else if (uzanti === 'xlsx' || uzanti === 'xls') {
-      const okulu = new FileReader()
-      okulu.onload = ev => {
-        try {
-          const wb = XLSX.read(ev.target.result, { type: 'array' })
-          const satirlar = []
-          wb.SheetNames.forEach(sheetAdi => {
-            const ws = wb.Sheets[sheetAdi]
-            const csv = XLSX.utils.sheet_to_csv(ws)
-            if (csv.trim()) {
-              satirlar.push(`[Sayfa: ${sheetAdi}]\n${csv}`)
-            }
-          })
-          setDosya(f)
-          setDosyaIcerik(satirlar.join('\n\n'))
-          setDosyaPdfBase64('')
-        } catch {
-          setDosya(f)
-          setDosyaIcerik('(Excel dosyası okunamadı)')
-          setDosyaPdfBase64('')
-        }
-      }
-      okulu.readAsArrayBuffer(f)
-    } else {
-      const okulu = new FileReader()
-      okulu.onload = ev => {
-        setDosya(f)
-        setDosyaIcerik(ev.target.result)
-        setDosyaPdfBase64('')
-      }
-      okulu.readAsText(f)
-    }
-
-    e.target.value = ''
-  }
-
-  function dosyaKaldir() {
-    setDosya(null)
-    setDosyaIcerik('')
-    setDosyaPdfBase64('')
-  }
-
-  async function gonder() {
-    const metin = girdi.trim()
-    if (!metin && !dosya) return
-    setHata(null)
-
-    // Dosya ikonunu belirle
-    const dosyaIkon = dosya
-      ? (dosya.name.endsWith('.pdf') ? '📄' : dosya.name.match(/\.xlsx?$/i) ? '📊' : '📎')
-      : null
-
-    // API'ye gönderilecek tam içerik (dosya verisi dahil, 12000 karakter sınırı)
-    let tamMesaj = metin
-    if (dosya && dosyaIcerik) {
-      const kisaltilmis = dosyaIcerik.length > 12000
-        ? dosyaIcerik.slice(0, 12000) + '\n\n[...içerik kesildi — dosya çok büyük]'
-        : dosyaIcerik
-      tamMesaj = `${metin}\n\n---\nYüklenen Dosya (${dosya.name}):\n${kisaltilmis}`
-    } else if (dosya && dosyaPdfBase64) {
-      tamMesaj = metin || '(PDF dosyası yüklendi, lütfen incele)'
-    }
-
-    // UI'da gösterilecek kısa metin (dosya içeriği gizli)
-    const goruntulenen = metin || ''
-
-    const yeniKullaniciMesaj = {
-      role: 'user',
-      content: tamMesaj,
-      display: goruntulenen,
-      dosyaAdi: dosya?.name || null,
-      dosyaIkon,
-    }
-    const guncellenmis = [...mesajlar, yeniKullaniciMesaj]
-    setMesajlar(guncellenmis)
-    setGirdi('')
-    setDosya(null)
-    setDosyaIcerik('')
-    const pdfKopya = dosyaPdfBase64
-    setDosyaPdfBase64('')
-    setYukleniyor(true)
-
-    try {
-      const prompt = AGENT_PROMPTS[ajan.id] || ajan.sistemPrompt
-      const yanit = await claudeMesaj(prompt, guncellenmis, pdfKopya || null)
-      setMesajlar(prev => [...prev, { role: 'assistant', content: yanit }])
-
-      // Ajan yanıtını Supabase agent_reports tablosuna kaydet
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        const riskSeviye = riskCikar(yanit)
-        await insertAgentReport({
-          project_id: projectId || 'genel',
-          agent_role: ajan.id,
-          input_data: { sohbet_mesaji: tamMesaj, mesaj_sayisi: guncellenmis.length },
-          report_text: yanit,
-          risk_level: riskSeviye,
-          created_by: user?.id ?? null,
-        })
-      } catch (kayitHata) {
-        // Kayıt hatası kullanıcı deneyimini bozmamalı — sadece konsola yaz
-        console.warn('[TabEkip] agent_reports kayıt hatası:', kayitHata.message)
-      }
-    } catch (e) {
-      setHata(e.message)
-    } finally {
-      setYukleniyor(false)
-    }
-  }
-
-  function klavyeBasildi(e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      gonder()
-    }
+  async function handleAssign(profileId) {
+    setAssigning(profileId)
+    await onAssign(profileId)
+    setAssigning(null)
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Sohbet başlık */}
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 1000, padding: '1rem'
+      }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.875rem',
-        padding: '1rem 1.5rem',
-        borderBottom: '1px solid var(--color-border)',
-        background: '#fff',
-        flexShrink: 0,
+        background: 'var(--color-surface)', borderRadius: '16px',
+        padding: '1.5rem', width: '100%', maxWidth: '500px',
+        maxHeight: '82vh', display: 'flex', flexDirection: 'column', gap: '1rem',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
       }}>
-        <button
-          onClick={onGeri}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.375rem',
-            padding: '0.4rem 0.75rem',
-            background: 'none',
-            border: '1px solid var(--color-border)',
-            borderRadius: '0.5rem',
-            cursor: 'pointer',
-            fontSize: '0.78rem',
-            color: 'var(--color-muted)',
-            fontFamily: 'inherit',
-            fontWeight: 500,
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
-        >
-          ← Ajanlara Dön
-        </button>
-        <span style={{
-          fontSize: '1.375rem',
-          width: 40,
-          height: 40,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: `${ajan.renk}18`,
-          borderRadius: '0.5rem',
-          flexShrink: 0,
-        }}>
-          {ajan.ikon}
-        </span>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-text)' }}>{ajan.isim}</div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--color-muted)', marginTop: '0.1rem' }}>{ajan.kategori}</div>
+        {/* Başlık */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--color-text)' }}>
+              Ekip Üyesi Ekle
+            </h3>
+            {projectName && (
+              <p style={{ margin: '0.15rem 0 0', fontSize: '0.78rem', color: 'var(--color-muted)' }}>
+                📍 {projectName}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.3rem', color: 'var(--color-muted)', lineHeight: 1 }}
+          >
+            ✕
+          </button>
         </div>
-      </div>
 
-      {/* Mesaj alanı */}
-      <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '1.25rem 1.5rem',
-        background: '#f8fafc',
-      }}>
-        {mesajlar.length === 0 && (
-          <div style={{
-            textAlign: 'center',
-            color: 'var(--color-muted)',
-            fontSize: '0.84rem',
-            paddingTop: '3rem',
-          }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>{ajan.ikon}</div>
-            <div style={{ fontWeight: 600, marginBottom: '0.375rem', color: 'var(--color-text)' }}>
-              {ajan.isim} ile sohbet
-            </div>
-            <div style={{ maxWidth: 320, margin: '0 auto', lineHeight: 1.55 }}>
-              {ajan.aciklama}
-            </div>
-          </div>
-        )}
-        {mesajlar.map((m, i) => (
-          <MesajBalonu key={i} mesaj={m} />
-        ))}
-        {yukleniyor && (
-          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '0.75rem' }}>
-            <div style={{
-              padding: '0.75rem 1rem',
-              borderRadius: '1rem 1rem 1rem 0.25rem',
-              background: '#f1f5f9',
-              color: 'var(--color-muted)',
-              fontSize: '0.82rem',
-              fontStyle: 'italic',
-            }}>
-              Yanıt bekleniyor...
-            </div>
-          </div>
-        )}
-        {hata && (
-          <div style={{
-            margin: '0.5rem 0',
-            padding: '0.75rem 1rem',
-            background: '#fee2e2',
-            borderRadius: '0.5rem',
-            fontSize: '0.82rem',
-            color: '#dc2626',
-          }}>
-            Hata: {hata}
-          </div>
-        )}
-        <div ref={mesajSonuRef} />
-      </div>
+        {/* Arama */}
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Ad veya e-posta ile ara…"
+          style={{ ...inputStyle, fontSize: '0.875rem' }}
+          autoFocus
+        />
 
-      {/* Girdi alanı */}
-      <div style={{
-        padding: '1rem 1.5rem',
-        borderTop: '1px solid var(--color-border)',
-        background: '#fff',
-        flexShrink: 0,
-      }}>
-        {dosya && (
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.375rem',
-            padding: '0.3rem 0.625rem',
-            background: '#eff6ff',
-            border: '1px solid #bfdbfe',
-            borderRadius: '0.375rem',
-            fontSize: '0.75rem',
-            color: '#1d4ed8',
-            marginBottom: '0.625rem',
-            maxWidth: '100%',
-          }}>
-            <span>
-              {(() => {
-                const ext = dosya.name.split('.').pop().toLowerCase()
-                if (ext === 'xlsx' || ext === 'xls') return '📊'
-                if (ext === 'pdf') return '📄'
-                return '📎'
-              })()}
-            </span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
-              {dosya.name} eklendi
-            </span>
-            <button
-              onClick={dosyaKaldir}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: '#6b7280',
-                padding: '0 0.1rem',
-                fontSize: '0.875rem',
-                lineHeight: 1,
-                flexShrink: 0,
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-          <textarea
-            value={girdi}
-            onChange={e => setGirdi(e.target.value)}
-            onKeyDown={klavyeBasildi}
-            placeholder="Bir mesaj yazın... (Shift+Enter yeni satır, Enter gönderir)"
-            rows={2}
-            disabled={yukleniyor}
-            style={{
-              flex: 1,
-              padding: '0.625rem 0.875rem',
-              border: '1px solid var(--color-border)',
-              borderRadius: '0.5rem',
-              fontSize: '0.84rem',
-              fontFamily: 'inherit',
-              resize: 'none',
-              lineHeight: 1.5,
-              color: 'var(--color-text)',
-              outline: 'none',
-              background: yukleniyor ? '#f9fafb' : '#fff',
-              transition: 'border-color 0.15s',
-            }}
-            onFocus={e => { e.target.style.borderColor = 'var(--color-primary)' }}
-            onBlur={e => { e.target.style.borderColor = 'var(--color-border)' }}
-          />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', flexShrink: 0 }}>
-            <input
-              ref={dosyaInputRef}
-              type="file"
-              accept=".txt,.md,.csv,.json,.xlsx,.xls,.pdf"
-              onChange={dosyaSec}
-              style={{ display: 'none' }}
-            />
-            <button
-              onClick={() => dosyaInputRef.current?.click()}
-              disabled={yukleniyor}
-              title="Dosya yükle (.txt, .md, .csv, .json, .xlsx, .pdf)"
-              style={{
-                padding: '0.5rem',
-                background: '#f1f5f9',
-                border: '1px solid var(--color-border)',
-                borderRadius: '0.5rem',
-                cursor: yukleniyor ? 'not-allowed' : 'pointer',
-                fontSize: '1rem',
-                lineHeight: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 38,
-                height: 38,
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => { if (!yukleniyor) e.currentTarget.style.background = '#e2e8f0' }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9' }}
-            >
-              📎
-            </button>
-            <button
-              onClick={gonder}
-              disabled={yukleniyor || (!girdi.trim() && !dosya)}
-              style={{
-                padding: '0.5rem',
-                background: yukleniyor || (!girdi.trim() && !dosya) ? '#e2e8f0' : ajan.renk,
-                color: yukleniyor || (!girdi.trim() && !dosya) ? '#9ca3af' : '#fff',
-                border: 'none',
-                borderRadius: '0.5rem',
-                cursor: yukleniyor || (!girdi.trim() && !dosya) ? 'not-allowed' : 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 38,
-                height: 38,
-                transition: 'background 0.15s',
-              }}
-            >
-              &#9658;
-            </button>
-          </div>
+        {/* Liste */}
+        <div style={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-muted)', fontSize: '0.875rem' }}>Yükleniyor…</div>
+          ) : candidates.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--color-muted)', fontSize: '0.875rem' }}>
+              {profiles.length === 0 ? 'Eklenecek kullanıcı bulunamadı.' : 'Eşleşen kullanıcı yok.'}
+            </div>
+          ) : candidates.map(p => {
+            const cfg = getRoleCfg(p.role_key)
+            const clr = avatarColor(p.full_name)
+            const isAssigning = assigning === p.id
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '0.75rem', borderRadius: '8px',
+                  border: '1px solid var(--color-border-md)',
+                  background: 'var(--color-bg)',
+                }}
+              >
+                {/* Avatar */}
+                <div style={{
+                  width: '38px', height: '38px', borderRadius: '50%',
+                  background: clr, color: 'white',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: '0.82rem', flexShrink: 0,
+                }}>
+                  {initials(p.full_name)}
+                </div>
+
+                {/* Bilgi */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                    {p.full_name || '—'}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {p.email}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
+                    {p.role_key && (
+                      <span style={{ background: cfg.bg, color: cfg.color, padding: '0.05rem 0.45rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 700 }}>
+                        {cfg.label}
+                      </span>
+                    )}
+                    {p.project_id && p.project_id !== currentProjectId && (
+                      <span style={{ background: '#FEF3C7', color: '#92400E', padding: '0.05rem 0.45rem', borderRadius: '999px', fontSize: '0.68rem', fontWeight: 700 }}>
+                        Başka projede
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Ekle Butonu */}
+                <button
+                  onClick={() => handleAssign(p.id)}
+                  disabled={!!assigning}
+                  style={{
+                    padding: '0.4rem 0.875rem',
+                    background: isAssigning ? 'var(--color-muted)' : 'var(--color-primary)',
+                    color: 'white', border: 'none', borderRadius: '6px',
+                    fontSize: '0.78rem', cursor: assigning ? 'not-allowed' : 'pointer',
+                    fontWeight: 700, flexShrink: 0
+                  }}
+                >
+                  {isAssigning ? '…' : 'Ekle'}
+                </button>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>
   )
 }
 
-// ── Ana bileşen ────────────────────────────────────────────────────────────
-export default function TabEkip({ projectId }) {
-  const [seciliKategori, setSeciliKategori] = useState('Tümü')
-  const [seciliAjan, setSeciliAjan] = useState(null)
+// ─── Boş Durum ────────────────────────────────────────────────────────────────
 
-  const gorunenAjanlar = seciliKategori === 'Tümü'
-    ? AGENT_CATALOG
-    : AGENT_CATALOG.filter(a => a.kategori === seciliKategori)
-
-  if (seciliAjan) {
-    return (
-      <div style={{
-        background: '#fff',
-        border: '1px solid var(--color-border)',
-        borderRadius: '0.75rem',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 560,
-      }}>
-        <SohbetPaneli
-          ajan={seciliAjan}
-          onGeri={() => setSeciliAjan(null)}
-          projectId={projectId}
-        />
-      </div>
-    )
-  }
-
+function EmptyState({ isAdmin, selProject, onAdd }) {
   return (
-    <div>
-      {/* Başlık */}
-      <div style={{ marginBottom: '1.25rem' }}>
-        <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text)', margin: '0 0 0.25rem' }}>
-          AI Ajan Kadrosu
-        </h3>
-        <p style={{ fontSize: '0.8rem', color: 'var(--color-muted)', margin: 0 }}>
-          {AGENT_CATALOG.length} ajan — bir ajana tıklayarak sohbet başlatın veya dosya yükleyin
-        </p>
+    <div style={{
+      textAlign: 'center', padding: '4rem 2rem',
+      background: 'var(--color-surface)', borderRadius: '12px',
+      border: '1px solid var(--color-border-md)',
+    }}>
+      <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>👥</div>
+      <div style={{ fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.5rem', color: 'var(--color-text)' }}>
+        {selProject ? 'Bu projede henüz ekip üyesi yok.' : 'Proje seçin'}
       </div>
-
-      {/* Kategori tab bar */}
-      <div style={{
-        display: 'flex',
-        gap: 2,
-        marginBottom: '1.25rem',
-        borderBottom: '1px solid var(--color-border)',
-        overflowX: 'auto',
-      }}>
-        {KATEGORILER.map(k => (
-          <button
-            key={k}
-            onClick={() => setSeciliKategori(k)}
-            style={{
-              padding: '0.5rem 0.875rem',
-              border: 'none',
-              borderBottom: seciliKategori === k ? '2px solid var(--color-primary)' : '2px solid transparent',
-              background: 'none',
-              cursor: 'pointer',
-              fontSize: '0.8rem',
-              fontWeight: seciliKategori === k ? 600 : 400,
-              color: seciliKategori === k ? 'var(--color-primary)' : 'var(--color-muted)',
-              transition: 'all 0.15s',
-              whiteSpace: 'nowrap',
-              marginBottom: -1,
-              fontFamily: 'inherit',
-            }}
-          >
-            {k}
-            {k !== 'Tümü' && (
-              <span style={{
-                marginLeft: '0.35rem',
-                fontSize: '0.68rem',
-                background: seciliKategori === k ? '#eff6ff' : '#f1f5f9',
-                color: seciliKategori === k ? 'var(--color-primary)' : 'var(--color-muted)',
-                padding: '0.1rem 0.4rem',
-                borderRadius: 999,
-                fontWeight: 600,
-              }}>
-                {AGENT_CATALOG.filter(a => a.kategori === k).length}
-              </span>
-            )}
-          </button>
-        ))}
+      <div style={{ color: 'var(--color-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+        {selProject
+          ? 'Ekip üyelerini bu projeye atayabilirsiniz.'
+          : 'Ekip üyelerini görmek için bir proje seçin.'}
       </div>
-
-      {/* Ajan kartları grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-        gap: '1rem',
-      }}>
-        {gorunenAjanlar.map(ajan => (
-          <AjanKart key={ajan.id} ajan={ajan} onSec={setSeciliAjan} />
-        ))}
-      </div>
+      {isAdmin && selProject && (
+        <button onClick={onAdd} style={{ ...btnPrimaryStyle, margin: '0 auto' }}>
+          + Ekip Üyesi Ekle
+        </button>
+      )}
     </div>
   )
+}
+
+// ─── Yükleme ──────────────────────────────────────────────────────────────────
+
+function LoadingGrid() {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))', gap: '1rem' }}>
+      {[1, 2, 3, 4, 5, 6].map(i => (
+        <div key={i} style={{
+          height: '160px', borderRadius: '12px',
+          background: 'linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%)',
+          backgroundSize: '200% 100%',
+          animation: 'shimmer 1.5s infinite',
+          border: '1px solid var(--color-border-md)',
+        }} />
+      ))}
+      <style>{`@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
+    </div>
+  )
+}
+
+// ─── Ortak Stiller ────────────────────────────────────────────────────────────
+
+const inputStyle = {
+  padding: '0.5rem 0.75rem',
+  border: '1px solid var(--color-border-md)',
+  borderRadius: '7px',
+  fontSize: '0.85rem',
+  width: '100%',
+  outline: 'none',
+  fontFamily: 'inherit',
+  color: 'var(--color-text)',
+  background: 'white',
+}
+
+const labelStyle = {
+  fontSize: '0.75rem',
+  fontWeight: 600,
+  color: 'var(--color-muted)',
+  textTransform: 'uppercase',
+  letterSpacing: '0.05em',
+}
+
+const btnPrimaryStyle = {
+  display: 'flex', alignItems: 'center', gap: '0.4rem',
+  padding: '0.5rem 1rem',
+  background: 'var(--color-primary)', color: 'white',
+  border: 'none', borderRadius: '8px',
+  fontSize: '0.85rem', fontWeight: 700,
+  cursor: 'pointer',
+}
+
+const btnSecondaryStyle = {
+  flex: 1, padding: '0.4rem',
+  border: '1px solid var(--color-border-md)',
+  borderRadius: '6px', fontSize: '0.78rem',
+  cursor: 'pointer', background: 'white',
+  color: 'var(--color-text)', fontWeight: 500,
+}
+
+const btnDangerStyle = {
+  flex: 1, padding: '0.4rem',
+  border: '1px solid #FCA5A5',
+  borderRadius: '6px', fontSize: '0.78rem',
+  cursor: 'pointer', background: '#FFF5F5',
+  color: '#DC2626', fontWeight: 500,
+}
+
+const selectStyle = {
+  padding: '0.5rem 0.75rem',
+  border: '1px solid var(--color-border-md)',
+  borderRadius: '8px', fontSize: '0.875rem',
+  background: 'white', cursor: 'pointer',
+  minWidth: '220px', color: 'var(--color-text)',
+  fontFamily: 'inherit',
 }

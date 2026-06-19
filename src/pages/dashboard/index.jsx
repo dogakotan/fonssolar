@@ -7,10 +7,9 @@ import TabGenel from './components/TabGenel'
 import TabProjeler from './components/TabProjeler'
 import TabIsPlan from './components/TabIsPlan'
 import TabSatinAlma from './components/TabSatinAlma'
-import TabEkip from './components/TabEkip'
-import TabRaporlar from './components/TabRaporlar'
 import TabFinans from './components/TabFinans'
 import TabTickets from './components/TabTickets'
+import TabSantiyeSefi from './components/TabSantiyeSefi'
 import ProjeDetay from './components/ProjeDetay'
 import FloatingAgent from '../../components/agent/FloatingAgent'
 import './Dashboard.css'
@@ -20,8 +19,6 @@ const TABS = {
   projeler:     { title: 'Projeler',     subtitle: 'Tüm GES projeleri' },
   'is-plani':   { title: 'İş Planı',     subtitle: 'Görev takip ve zaman çizelgesi' },
   'satin-alma': { title: 'Satın Alma',   subtitle: 'Tedarik talepleri ve siparişler' },
-  ekip:         { title: 'Ekip',         subtitle: 'Proje ekibi ve roller' },
-  raporlar:     { title: 'AI Raporlar',  subtitle: 'Agent raporları ve geçmiş analiz çıktıları' },
   finans:       { title: 'Finans',       subtitle: 'Fatura yönetimi ve maliyet takibi' },
   tickets:      { title: 'Ticket Sistemi', subtitle: 'Sahadan yöneticiye hata bildirimi' },
 }
@@ -38,17 +35,19 @@ const ROLE_DEFAULT = {
 
 export default function Dashboard() {
   const { role } = useAuth()
+  const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [activeTab,           setActiveTab]           = useState('genel')
   const [selectedProjectId,   setSelectedProjectId]   = useState(null)
   const [selectedProjectName, setSelectedProjectName] = useState('')
   const [showProjectDetail,   setShowProjectDetail]   = useState(false)
-  const [selectedDate,        setSelectedDate]        = useState(null)   // null = canlı (bugün)
+  const [selectedDate,        setSelectedDate]        = useState(null)
   const navigate = useNavigate()
 
   // Kısıtlı roller → başlangıç sekmesi
   useEffect(() => {
     if (role && ROLE_DEFAULT[role]) setActiveTab(ROLE_DEFAULT[role])
   }, [role])
+
 
   function handleSelectProject(id, name) {
     setSelectedProjectId(id)
@@ -71,20 +70,36 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard">
+      <div
+        className={`sidebar-backdrop${sidebarOpen ? ' open' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+      />
       <Sidebar
         active={activeTab}
-        onTab={handleTabChange}
+        onTab={(tab) => { handleTabChange(tab); setSidebarOpen(false) }}
         onLogout={async () => { await signOut(); navigate('/login') }}
+        isOpen={sidebarOpen}
       />
       <main className="dash-main">
-        <header className="dash-header">
+        <header className="dash-header" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+          <button
+            className="menu-toggle"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Menüyü aç"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
+          </button>
           <div style={{ flex: 1 }}>
             <h2>{showingDetail ? selectedProjectName : TABS[activeTab].title}</h2>
             <p>
               {showingDetail
                 ? 'Proje detayı ve Gantt görünümü'
                 : TABS[activeTab].subtitle}
-              {!showingDetail && selectedProjectName && ['is-plani', 'satin-alma', 'raporlar'].includes(activeTab) && (
+              {!showingDetail && selectedProjectName && ['is-plani', 'satin-alma'].includes(activeTab) && (
                 <span style={{ marginLeft: '0.5rem', color: 'var(--color-primary)', fontWeight: 600 }}>
                   — {selectedProjectName}
                 </span>
@@ -93,7 +108,8 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {activeTab === 'genel'      && <TabGenel onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
+        {activeTab === 'genel'      && role === 'santiye_sefi' && <TabSantiyeSefi />}
+        {activeTab === 'genel'      && role !== 'santiye_sefi' && <TabGenel onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
         {activeTab === 'projeler'   && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'   && showProjectDetail  && (
           <ProjeDetay
@@ -106,8 +122,6 @@ export default function Dashboard() {
         )}
         {activeTab === 'is-plani'   && <TabIsPlan projectId={selectedProjectId} selectedDate={selectedDate} />}
         {activeTab === 'satin-alma' && <TabSatinAlma projectId={selectedProjectId} selectedDate={selectedDate} />}
-        {activeTab === 'ekip'       && <TabEkip projectId={selectedProjectId} />}
-        {activeTab === 'raporlar'   && <TabRaporlar projectId={selectedProjectId} projectName={selectedProjectName} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
         {activeTab === 'finans'     && <TabFinans selectedDate={selectedDate} />}
         {activeTab === 'tickets'    && <TabTickets selectedDate={selectedDate} />}
       </main>
