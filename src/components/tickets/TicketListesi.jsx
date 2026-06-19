@@ -322,7 +322,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                       key={opt.key}
                       onClick={() => { setSortMode(opt.key); if (!opt.key.startsWith('sev')) setSeverityFilter('all') }}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 8, border: 'none', background: 'none',
+                        display: 'flex', alignItems: 'center', gap: 8, border: 'none',
                         padding: '6px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit',
                         fontSize: 13, fontWeight: sortMode === opt.key ? 600 : 400,
                         color: sortMode === opt.key ? '#185FA5' : '#374151',
