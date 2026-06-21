@@ -500,14 +500,9 @@
 }
 
 @media (max-width: 768px) {
-  .gr-overlay {
-    align-items: flex-end;
-    padding: 0;
-  }
   .gr-drawer {
-    max-width: none;
-    max-height: 95svh;
-    border-radius: 16px 16px 0 0;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100svh - 24px);
   }
 }
 
