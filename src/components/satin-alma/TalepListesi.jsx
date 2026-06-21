@@ -68,17 +68,19 @@ export default function TalepListesi() {
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {/* Aciliyet filtresi */}
-          {[
-            { value: 'all',      label: 'Tümü' },
-            { value: 'normal',   label: 'Normal' },
-            { value: 'acil',     label: 'Acil' },
-            { value: 'çok_acil', label: 'Çok Acil' },
-          ].map(({ value, label }) => (
-            <button key={value} style={filterBtn(urgencyFilter === value)} onClick={() => setUrgencyFilter(value)}>
-              {label}
-            </button>
-          ))}
+          {/* Aciliyet filtresi — mobilde gizlenir */}
+          <div className="sa-filter-urgency">
+            {[
+              { value: 'all',      label: 'Tümü' },
+              { value: 'normal',   label: 'Normal' },
+              { value: 'acil',     label: 'Acil' },
+              { value: 'çok_acil', label: 'Çok Acil' },
+            ].map(({ value, label }) => (
+              <button key={value} style={filterBtn(urgencyFilter === value)} onClick={() => setUrgencyFilter(value)}>
+                {label}
+              </button>
+            ))}
+          </div>
 
           {/* Durum filtresi */}
           <select
@@ -110,50 +112,75 @@ export default function TalepListesi() {
       ) : filtered.length === 0 ? (
         <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>Talep bulunamadı.</div>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-              {['TALEP BAŞLIĞI', 'PROJİ', 'ACİLİYET', 'DURUM', 'KALEM SAYISI', 'TARİH', 'İŞLEM'].map(h => (
-                <th key={h} style={TH}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
+        <>
+          {/* Desktop tablo */}
+          <div className="desk-only" style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
+                  {['TALEP BAŞLIĞI', 'PROJİ', 'ACİLİYET', 'DURUM', 'KALEM SAYISI', 'TARİH', 'İŞLEM'].map(h => (
+                    <th key={h} style={TH}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(r => {
+                  const ub = URGENCY[r.urgency] || URGENCY.normal
+                  const sb = STATUS[r.status]   || STATUS.bekliyor
+                  const itemCount = r.purchase_request_items?.[0]?.count ?? 0
+                  return (
+                    <tr
+                      key={r.id}
+                      onClick={() => setSelected(r)}
+                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#111827' }}>{r.title}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#374151' }}>{r.projects?.name || '—'}</td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: ub.bg, color: ub.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>{ub.label}</span>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: sb.bg, color: sb.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>{sb.label}</span>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280' }}>{itemCount} kalem</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280' }}>{fmtDate(r.created_at)}</td>
+                      <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={() => setSelected(r)}
+                          style={{ background: '#F3F4F6', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}
+                        >
+                          Detay
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobil kart listesi */}
+          <div className="mob-only">
             {filtered.map(r => {
               const ub = URGENCY[r.urgency] || URGENCY.normal
               const sb = STATUS[r.status]   || STATUS.bekliyor
               const itemCount = r.purchase_request_items?.[0]?.count ?? 0
               return (
-                <tr
-                  key={r.id}
-                  onClick={() => setSelected(r)}
-                  style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#111827' }}>{r.title}</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#374151' }}>{r.projects?.name || '—'}</td>
-                  <td style={{ padding: '12px 16px' }}>
+                <div key={r.id} className="sa-card" onClick={() => setSelected(r)}>
+                  <p className="sa-card-title">{r.title}</p>
+                  <p className="sa-card-proj">{r.projects?.name || '—'} · {itemCount} kalem</p>
+                  <div className="sa-card-foot">
                     <span style={{ background: ub.bg, color: ub.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>{ub.label}</span>
-                  </td>
-                  <td style={{ padding: '12px 16px' }}>
                     <span style={{ background: sb.bg, color: sb.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>{sb.label}</span>
-                  </td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280' }}>{itemCount} kalem</td>
-                  <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280' }}>{fmtDate(r.created_at)}</td>
-                  <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => setSelected(r)}
-                      style={{ background: '#F3F4F6', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}
-                    >
-                      Detay
-                    </button>
-                  </td>
-                </tr>
+                    <span className="sa-card-date">{fmtDate(r.created_at)}</span>
+                  </div>
+                </div>
               )
             })}
-          </tbody>
-        </table>
+          </div>
+        </>
       )}
 
       {showNew && (

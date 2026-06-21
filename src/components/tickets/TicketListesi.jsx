@@ -221,7 +221,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12 }}>
 
       {/* Status tabs + toolbar */}
-      <div style={{ padding: '0 20px', borderBottom: '2px solid #E5E7EB', display: 'flex', alignItems: 'center', gap: 0, flexWrap: 'wrap' }}>
+      <div className="tl-tabs-bar">
         {STATUS_TABS.map(t => (
           <button key={t.key} style={tabBtn(statusTab === t.key)} onClick={() => setStatusTab(t.key)}>
             {t.label}
@@ -232,7 +232,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
 
           {/* Severity sub-butonlar — sadece severity sort aktifse */}
           {(sortMode === 'sev_desc' || sortMode === 'sev_asc') && (
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div className="tl-toolbar-sev" style={{ display: 'flex', gap: 4 }}>
               {[{ key: 'all', label: 'Tümü' }, { key: 'düşük', label: 'Düşük' }, { key: 'orta', label: 'Orta' }, { key: 'yüksek', label: 'Yüksek' }].map(s => (
                 <button
                   key={s.key}
@@ -394,103 +394,138 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
       )}
 
       {!loading && tickets.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-                {['#', 'AÇIKLAMA', 'CİNS', 'ACİLİYET', 'DURUM', 'LOKASYON', 'TARİH', 'İŞLEM'].map(h => (
-                  <th key={h} style={TH}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {tickets.map((t, idx) => {
-                const sv = SEVERITY[t.severity] || SEVERITY['orta']
-                const st = STATUS[t.status]     || STATUS['gönderildi']
-                const ca = CATEGORY[t.category] || CATEGORY['genel']
+        <>
+          {/* Desktop tablo */}
+          <div className="desk-only" style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
+                  {['#', 'AÇIKLAMA', 'CİNS', 'ACİLİYET', 'DURUM', 'LOKASYON', 'TARİH', 'İŞLEM'].map(h => (
+                    <th key={h} style={TH}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {tickets.map((t, idx) => {
+                  const sv = SEVERITY[t.severity] || SEVERITY['orta']
+                  const st = STATUS[t.status]     || STATUS['gönderildi']
+                  const ca = CATEGORY[t.category] || CATEGORY['genel']
 
-                const isActive   = t.status === 'gönderildi' || t.status === 'açık' || t.status === 'işlemde'
-                const canProcess = isAdmin && (t.status === 'gönderildi' || t.status === 'açık')
-                const canClose   = isAdmin && isActive
-                const canCancel  = isAdmin
-                  ? isActive
-                  : (t.created_by === user?.id && isActive)
+                  const isActive   = t.status === 'gönderildi' || t.status === 'açık' || t.status === 'işlemde'
+                  const canProcess = isAdmin && (t.status === 'gönderildi' || t.status === 'açık')
+                  const canClose   = isAdmin && isActive
+                  const canCancel  = isAdmin
+                    ? isActive
+                    : (t.created_by === user?.id && isActive)
 
-                return (
-                  <tr
-                    key={t.id}
-                    onClick={() => setSelected(t)}
-                    style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: t.status === 'işlemde' ? '#F3F4F6' : 'transparent' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#E5E7EB'}
-                    onMouseLeave={e => e.currentTarget.style.background = t.status === 'işlemde' ? '#F3F4F6' : 'transparent'}
-                  >
-                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#9CA3AF', fontWeight: 500 }}>#{idx + 1}</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#111827' }}>
-                      <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.45 }}>
-                        {t.description || t.title}
-                      </span>
-                      <span style={{ fontSize: 11, color: '#9CA3AF', display: 'block', marginTop: 2 }}>
-                        {t.creator?.full_name || '—'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: ca.bg, color: ca.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
-                        {t.category?.charAt(0).toUpperCase() + t.category?.slice(1)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: sv.bg, color: sv.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
-                        {sv.label}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: st.bg, color: st.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
-                        {st.label}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>
-                      {t.location || <span style={{ color: '#D1D5DB' }}>—</span>}
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>{fmtDate(t.created_at)}</td>
+                  return (
+                    <tr
+                      key={t.id}
+                      onClick={() => setSelected(t)}
+                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: t.status === 'işlemde' ? '#F3F4F6' : 'transparent' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#E5E7EB'}
+                      onMouseLeave={e => e.currentTarget.style.background = t.status === 'işlemde' ? '#F3F4F6' : 'transparent'}
+                    >
+                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#9CA3AF', fontWeight: 500 }}>#{idx + 1}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#111827' }}>
+                        <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.45 }}>
+                          {t.description || t.title}
+                        </span>
+                        <span style={{ fontSize: 11, color: '#9CA3AF', display: 'block', marginTop: 2 }}>
+                          {t.creator?.full_name || '—'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: ca.bg, color: ca.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                          {t.category?.charAt(0).toUpperCase() + t.category?.slice(1)}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: sv.bg, color: sv.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                          {sv.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px' }}>
+                        <span style={{ background: st.bg, color: st.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                          {st.label}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>
+                        {t.location || <span style={{ color: '#D1D5DB' }}>—</span>}
+                      </td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>{fmtDate(t.created_at)}</td>
 
-                    <td style={{ padding: '10px 16px' }} onClick={e => e.stopPropagation()}>
-                      {(canProcess || canClose || canCancel) ? (
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
-                          {canProcess && (
-                            <button
-                              onClick={() => setQuickAction({ ticket: t, type: 'process' })}
-                              style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-                            >
-                              İşleme Al
-                            </button>
-                          )}
-                          {canClose && (
-                            <button
-                              onClick={() => setQuickAction({ ticket: t, type: 'close' })}
-                              style={{ background: '#F9FAFB', border: '1px solid #D1D5DB', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#374151', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-                            >
-                              Kapat
-                            </button>
-                          )}
-                          {canCancel && (
-                            <button
-                              onClick={() => setQuickAction({ ticket: t, type: 'cancel' })}
-                              style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-                            >
-                              İptal
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: 11, color: '#D1D5DB' }}>—</span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+                      <td style={{ padding: '10px 16px' }} onClick={e => e.stopPropagation()}>
+                        {(canProcess || canClose || canCancel) ? (
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+                            {canProcess && (
+                              <button
+                                onClick={() => setQuickAction({ ticket: t, type: 'process' })}
+                                style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                              >
+                                İşleme Al
+                              </button>
+                            )}
+                            {canClose && (
+                              <button
+                                onClick={() => setQuickAction({ ticket: t, type: 'close' })}
+                                style={{ background: '#F9FAFB', border: '1px solid #D1D5DB', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#374151', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                              >
+                                Kapat
+                              </button>
+                            )}
+                            {canCancel && (
+                              <button
+                                onClick={() => setQuickAction({ ticket: t, type: 'cancel' })}
+                                style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                              >
+                                İptal
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 11, color: '#D1D5DB' }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobil kart listesi */}
+          <div className="mob-only">
+            {tickets.map((t, idx) => {
+              const sv = SEVERITY[t.severity] || SEVERITY['orta']
+              const st = STATUS[t.status]     || STATUS['gönderildi']
+              const ca = CATEGORY[t.category] || CATEGORY['genel']
+              return (
+                <div key={t.id} className="tl-card" onClick={() => setSelected(t)}>
+                  <div className="tl-card-head">
+                    <span className="tl-card-title">{t.description || t.title}</span>
+                    <span className="tl-card-num">#{idx + 1}</span>
+                  </div>
+                  {t.creator?.full_name && (
+                    <div className="tl-card-sub">{t.creator.full_name}</div>
+                  )}
+                  <div className="tl-card-foot">
+                    <span style={{ background: ca.bg, color: ca.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
+                      {t.category?.charAt(0).toUpperCase() + t.category?.slice(1)}
+                    </span>
+                    <span style={{ background: sv.bg, color: sv.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
+                      {sv.label}
+                    </span>
+                    <span style={{ background: st.bg, color: st.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
+                      {st.label}
+                    </span>
+                    <span className="tl-card-date">{fmtDate(t.created_at)}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
       )}
 
       {showNew && (

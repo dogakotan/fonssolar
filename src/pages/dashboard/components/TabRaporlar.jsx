@@ -232,64 +232,105 @@ export default function TabRaporlar({ projectId, projectName, selectedDate, setS
         )}
 
         {!loading && displayReports.length > 0 && (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Tarih</th>
-                <th>Ajan</th>
-                <th>Proje</th>
-                <th>Risk</th>
-                <th>Rapor</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Desktop tablo */}
+            <div className="desk-only" style={{ overflowX: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Tarih</th>
+                    <th>Ajan</th>
+                    <th>Proje</th>
+                    <th>Risk</th>
+                    <th>Rapor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayReports.map(r => {
+                    const meta  = ROLE_META[r.agent_role] || { label: r.agent_role, icon: '🤖', color: '#6b7280' }
+                    const risk  = RISK_BADGE[r.risk_level] || null
+                    const isExp = expanded[r.id]
+                    return (
+                      <tr key={r.id}>
+                        <td style={{ whiteSpace: 'nowrap', fontSize: '0.82rem', color: 'var(--color-muted)' }}>
+                          {formatTarih(r.created_at)}
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <span>{meta.icon}</span>
+                            <span style={{ fontWeight: 600, fontSize: '0.85rem', color: meta.color }}>
+                              {meta.label}
+                            </span>
+                          </div>
+                        </td>
+                        <td style={{ fontSize: '0.82rem', color: 'var(--color-muted)' }}>
+                          {r.project_id}
+                        </td>
+                        <td>
+                          {risk
+                            ? <span className={`badge ${risk.cls}`}>{risk.label}</span>
+                            : <span style={{ color: 'var(--color-muted)', fontSize: '0.8rem' }}>—</span>
+                          }
+                        </td>
+                        <td style={{ maxWidth: 380 }}>
+                          <div style={{ fontSize: '0.82rem', color: '#374151', lineHeight: 1.5 }}>
+                            {isExp
+                              ? <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>{r.report_text}</pre>
+                              : <span>{(r.report_text || '').slice(0, 120)}{(r.report_text || '').length > 120 ? '…' : ''}</span>
+                            }
+                          </div>
+                          {(r.report_text || '').length > 120 && (
+                            <button
+                              onClick={() => toggleExpand(r.id)}
+                              style={{ marginTop: 4, fontSize: '0.75rem', color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+                            >
+                              {isExp ? 'Daralt ▲' : 'Tamamını gör ▼'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobil kart listesi */}
+            <div className="mob-only">
               {displayReports.map(r => {
                 const meta  = ROLE_META[r.agent_role] || { label: r.agent_role, icon: '🤖', color: '#6b7280' }
                 const risk  = RISK_BADGE[r.risk_level] || null
                 const isExp = expanded[r.id]
                 return (
-                  <tr key={r.id}>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: '0.82rem', color: 'var(--color-muted)' }}>
-                      {formatTarih(r.created_at)}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span>{meta.icon}</span>
-                        <span style={{ fontWeight: 600, fontSize: '0.85rem', color: meta.color }}>
-                          {meta.label}
-                        </span>
-                      </div>
-                    </td>
-                    <td style={{ fontSize: '0.82rem', color: 'var(--color-muted)' }}>
-                      {r.project_id}
-                    </td>
-                    <td>
-                      {risk
-                        ? <span className={`badge ${risk.cls}`}>{risk.label}</span>
-                        : <span style={{ color: 'var(--color-muted)', fontSize: '0.8rem' }}>—</span>
+                  <div key={r.id} className="rep-mob-card">
+                    <div className="rep-mob-head">
+                      <span style={{ fontSize: 14 }}>{meta.icon}</span>
+                      <span style={{ fontWeight: 600, fontSize: 13, color: meta.color }}>{meta.label}</span>
+                      {risk && <span className={`badge ${risk.cls}`}>{risk.label}</span>}
+                      <span className="rep-mob-date" style={{ marginLeft: 'auto' }}>{formatTarih(r.created_at)}</span>
+                    </div>
+                    {r.project_id && (
+                      <p style={{ margin: '0 0 6px', fontSize: 12, color: '#6B7280' }}>{r.project_id}</p>
+                    )}
+                    <div className="rep-mob-text">
+                      {isExp
+                        ? <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0, fontSize: 13 }}>{r.report_text}</pre>
+                        : <span>{(r.report_text || '').slice(0, 100)}{(r.report_text || '').length > 100 ? '…' : ''}</span>
                       }
-                    </td>
-                    <td style={{ maxWidth: 380 }}>
-                      <div style={{ fontSize: '0.82rem', color: '#374151', lineHeight: 1.5 }}>
-                        {isExp
-                          ? <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', margin: 0 }}>{r.report_text}</pre>
-                          : <span>{(r.report_text || '').slice(0, 120)}{(r.report_text || '').length > 120 ? '…' : ''}</span>
-                        }
-                      </div>
-                      {(r.report_text || '').length > 120 && (
-                        <button
-                          onClick={() => toggleExpand(r.id)}
-                          style={{ marginTop: 4, fontSize: '0.75rem', color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
-                        >
-                          {isExp ? 'Daralt ▲' : 'Tamamını gör ▼'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                    </div>
+                    {(r.report_text || '').length > 100 && (
+                      <button
+                        onClick={() => toggleExpand(r.id)}
+                        style={{ marginTop: 4, fontSize: 12, color: 'var(--color-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontWeight: 600 }}
+                      >
+                        {isExp ? 'Daralt ▲' : 'Tamamını gör ▼'}
+                      </button>
+                    )}
+                  </div>
                 )
               })}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -657,3 +657,100 @@
     flex: 1 1 100%;
   }
 }
+
+/* ════════════════════════════════════════════
+   Global Responsive Toggle Utilities
+   ════════════════════════════════════════════ */
+.desk-only { display: block; }
+.mob-only  { display: none; }
+@media (max-width: 768px) {
+  .desk-only { display: none !important; }
+  .mob-only  { display: block !important; }
+}
+
+/* ── Hava durumu widget — mobilde gizle ── */
+.weather-widget-wrap {
+  flex-shrink: 0;
+  width: clamp(220px, 25%, 290px);
+  align-self: stretch;
+}
+@media (max-width: 768px) {
+  .weather-widget-wrap { display: none !important; }
+}
+
+/* ── Proje listesi — mobil kart ── */
+.proj-mob-card {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #F3F4F6;
+  cursor: pointer; transition: background 0.1s;
+}
+.proj-mob-card:hover { background: #F9FAFB; }
+.proj-mob-card:last-child { border-bottom: none; }
+.proj-mob-card-title { font-size: 14px; font-weight: 600; color: #111827; }
+.proj-mob-card-sub   { font-size: 12px; color: #6B7280; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.proj-mob-card-prog  { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+
+/* ── Ticket Listesi — status tabs scroll ── */
+.tl-tabs-bar {
+  padding: 0 20px;
+  border-bottom: 2px solid #E5E7EB;
+  display: flex; align-items: center; gap: 0; flex-wrap: wrap;
+}
+@media (max-width: 640px) {
+  .tl-tabs-bar {
+    padding: 0 12px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tl-tabs-bar::-webkit-scrollbar { display: none; }
+  .tl-toolbar-sev { display: none !important; }
+}
+
+/* ── Ticket Listesi — mobil kart ── */
+.tl-card {
+  padding: 13px 16px;
+  border-bottom: 1px solid #F3F4F6;
+  cursor: pointer; transition: background 0.1s;
+}
+.tl-card:hover { background: #F9FAFB; }
+.tl-card:last-child { border-bottom: none; }
+.tl-card-head  { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 5px; }
+.tl-card-title { font-size: 13px; font-weight: 600; color: #111827; line-height: 1.4; flex: 1; }
+.tl-card-num   { font-size: 11px; color: #9CA3AF; font-weight: 500; flex-shrink: 0; padding-top: 2px; }
+.tl-card-sub   { font-size: 11px; color: #9CA3AF; margin-bottom: 8px; }
+.tl-card-foot  { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tl-card-date  { font-size: 11px; color: #9CA3AF; margin-left: auto; white-space: nowrap; }
+
+/* ── Satin Alma — filtreler mobilde gizle ── */
+.sa-filter-urgency { display: flex; gap: 6px; align-items: center; }
+@media (max-width: 640px) {
+  .sa-filter-urgency { display: none !important; }
+}
+
+/* ── Satin Alma — mobil kart ── */
+.sa-card {
+  padding: 13px 16px;
+  border-bottom: 1px solid #F3F4F6;
+  cursor: pointer; transition: background 0.1s;
+}
+.sa-card:hover { background: #F9FAFB; }
+.sa-card:last-child { border-bottom: none; }
+.sa-card-title { font-size: 14px; font-weight: 600; color: #111827; margin: 0 0 3px; }
+.sa-card-proj  { font-size: 12px; color: #6B7280; margin: 0 0 8px; }
+.sa-card-foot  { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.sa-card-date  { font-size: 11px; color: #9CA3AF; margin-left: auto; white-space: nowrap; }
+
+/* ── Gecmis Raporlar — mobil kart ── */
+.rep-mob-card {
+  padding: 12px 16px;
+  border-bottom: 1px solid #F3F4F6;
+  cursor: pointer; transition: background 0.1s;
+}
+.rep-mob-card:hover { background: #F9FAFB; }
+.rep-mob-card:last-child { border-bottom: none; }
+.rep-mob-head  { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
+.rep-mob-date  { font-size: 12px; color: #94a3b8; white-space: nowrap; }
+.rep-mob-text  { font-size: 13px; color: #374151; line-height: 1.5; }

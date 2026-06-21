@@ -101,7 +101,7 @@ export default function TabGenel({ onSelectProject, selectedDate, setSelectedDat
         </div>
 
         {konum && (
-          <div className="stat-card" style={{ flexShrink: 0, width: 'clamp(220px, 25%, 290px)', padding: '1rem 1.25rem', alignSelf: 'stretch', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          <div className="stat-card weather-widget-wrap" style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <p className="stat-label" style={{ margin: 0 }}>Hava Durumu</p>
               <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
@@ -168,7 +168,8 @@ export default function TabGenel({ onSelectProject, selectedDate, setSelectedDat
             />
           </div>
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        {/* Desktop tablo */}
+        <div className="desk-only" style={{ overflowX: 'auto' }}>
           <table className="data-table" style={{ minWidth: 520 }}>
             <thead>
               <tr><th>Proje Adı</th><th>Konum</th><th>kWp</th><th>kWe</th><th>Durum</th><th>İlerleme</th></tr>
@@ -197,6 +198,32 @@ export default function TabGenel({ onSelectProject, selectedDate, setSelectedDat
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobil kart listesi */}
+        <div className="mob-only">
+          {loading && (
+            <p style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--color-muted)', margin: 0 }}>Yükleniyor…</p>
+          )}
+          {!loading && displayProjects.length === 0 && (
+            <p style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--color-muted)', margin: 0 }}>Proje bulunamadı.</p>
+          )}
+          {!loading && displayProjects.map(p => {
+            const s = STATUS_MAP[p.status] || { badge: 'blue', label: 'Aktif' }
+            return (
+              <div key={p.id} className="proj-mob-card" onClick={() => onSelectProject?.(p.id, p.name)}>
+                <div className="proj-mob-card-title">{p.name}</div>
+                <div className="proj-mob-card-sub">
+                  <span>{p.location || '—'}</span>
+                  {p.capacity_kwp && <><span style={{ color: '#D1D5DB' }}>·</span><span>{p.capacity_kwp.toLocaleString('tr-TR')} kWp</span></>}
+                </div>
+                <div className="proj-mob-card-prog">
+                  <span className={`badge ${s.badge}`}>● {s.label}</span>
+                  <ProgBar pct={p.progress || 0} />
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </>
