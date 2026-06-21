@@ -51,7 +51,7 @@ const INPUT = {
   fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff',
 }
 const tabBtn = (active) => ({
-  background: 'none', border: 'none', padding: '9px 12px',
+  background: 'none', border: 'none', padding: '9px 8px',
   fontSize: 13, fontWeight: active ? 600 : 400,
   color: active ? '#185FA5' : '#6B7280',
   cursor: 'pointer', fontFamily: 'inherit',
@@ -243,7 +243,7 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
         </div>
 
         {/* Tab bar */}
-        <div style={{ borderBottom: '2px solid #E5E7EB', display: 'flex', padding: '0 6px', flexShrink: 0, overflowX: 'auto' }}>
+        <div className="gr-tab-bar" style={{ borderBottom: '2px solid #E5E7EB', display: 'flex', padding: '0 4px', flexShrink: 0, overflowX: 'auto' }}>
           {TABS.map((t, i) => (
             <button key={i} onClick={() => setActiveTab(i + 1)} style={tabBtn(activeTab === i + 1)}>
               <span className="gr-tab-full">{t.full}</span>

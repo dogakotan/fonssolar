@@ -519,6 +519,10 @@
   .gr-tasks-grid { grid-template-columns: 1fr; }
 }
 
+/* Tab bar scrollbar gizle */
+.gr-tab-bar { scrollbar-width: none; }
+.gr-tab-bar::-webkit-scrollbar { display: none; }
+
 /* Tab label kısaltma */
 .gr-tab-short { display: none; }
 
