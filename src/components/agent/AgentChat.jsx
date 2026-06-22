@@ -4,7 +4,9 @@ import { AGENTS, getAgentById, getTabConfig } from './agentConfig'
 import { fetchTabContext } from './agentContext'
 import { supabase } from '../../lib/supabase'
 
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
+const GEMINI_KEY   = import.meta.env.VITE_GEMINI_API_KEY
+const GEMINI_MODEL = 'gemini-2.0-flash'
+const GEMINI_URL   = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`
 
 const TAB_LABEL = {
   genel:        'Genel Bakış',
@@ -92,29 +94,39 @@ async function fileToContentBlock(file) {
   }
 }
 
-// ─── Claude API ───────────────────────────────────────────────────────────────
-async function callClaude(systemPrompt, messages) {
-  const res = await fetch('/anthropic/v1/messages', {
+// ─── Claude format → Gemini part dönüşümü ────────────────────────────────────
+function toGeminiPart(block) {
+  if (!block || typeof block === 'string') return { text: block || '' }
+  if (block.type === 'text')     return { text: block.text || '' }
+  if (block.type === 'image')    return { inlineData: { mimeType: block.source.media_type, data: block.source.data } }
+  if (block.type === 'document') return { inlineData: { mimeType: 'application/pdf', data: block.source.data } }
+  return { text: JSON.stringify(block) }
+}
+
+// ─── Gemini API ───────────────────────────────────────────────────────────────
+async function callGemini(systemPrompt, messages) {
+  const contents = messages.map(m => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: Array.isArray(m.content) ? m.content.map(toGeminiPart) : [{ text: m.content || '' }],
+  }))
+
+  const res = await fetch(GEMINI_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1200,
-      system: systemPrompt,
-      messages,
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents,
+      generationConfig: { maxOutputTokens: 1500, temperature: 0.7 },
     }),
   })
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `API hatası: ${res.status}`)
+    throw new Error(err?.error?.message || `Gemini API hatası: ${res.status}`)
   }
+
   const data = await res.json()
-  return data.content[0]?.text || ''
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
 }
 
 function greeting(agent) {
@@ -270,7 +282,7 @@ Yanıtların net ve yapılandırılmış olsun (başlıklar kullanabilirsin).${l
       const newHistory = [...history, historyMsg]
       setHistory(newHistory)
 
-      const reply = await callClaude(systemPrompt, newHistory)
+      const reply = await callGemini(systemPrompt, newHistory)
       lastAssistantRef.current = reply
 
       setMessages(m => [...m, { id: Date.now() + 1, role: 'assistant', content: reply }])
