@@ -52,12 +52,6 @@ export const getOpenTaskCount = () =>
     .select('id', { count: 'exact', head: true })
     .in('status', ['active', 'pending', 'late'])
 
-export const updateWorkPackageStatus = (id, status) =>
-  supabase
-    .from('work_packages')
-    .update({ status, updated_at: new Date().toISOString() })
-    .eq('id', id)
-
 // ── Satın Alma Talepleri ──────────────────────────────────────────────────────
 export const getPendingPurchaseCount = () =>
   supabase
@@ -68,12 +62,6 @@ export const getPendingPurchaseCount = () =>
 // ── Ekip ──────────────────────────────────────────────────────────────────────
 export const getProfile = (userId) =>
   supabase.from('profiles').select('*').eq('id', userId).single()
-
-export const getTeamMembers = () =>
-  supabase
-    .from('profiles')
-    .select('id, full_name, email, role')
-    .order('full_name')
 
 // ── Agent Raporları ───────────────────────────────────────────────────────────
 export const getAgentReports = (projectId) =>
