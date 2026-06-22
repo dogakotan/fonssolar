@@ -130,7 +130,7 @@ export default function SaOnayKuyrugu() {
     setActionLoading(id)
     await supabase
       .from('purchase_requests')
-      .update({ status: 'reddedildi', approval_note: note || null, approved_by: user.id, approved_at: new Date().toISOString() })
+      .update({ status: 'reddedildi', approved_by: user.id, approved_at: new Date().toISOString() })
       .eq('id', id)
     setActionLoading(null)
     fetchData()

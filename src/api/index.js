@@ -15,22 +15,11 @@ export const getActiveProjectCount = () =>
     .select('id', { count: 'exact', head: true })
 
 // ── Günlük İlerleme ───────────────────────────────────────────────────────────
-// Tablo: gunluk_ilerleme_örnek
-// Kolonlar: project_name, category, work_item, quantity, unit,
-//           daily_progress, total_progress, progress_percent, report_date
-export const getGunlukIlerleme = (_projectName) =>
-  supabase
-    .from('gunluk_ilerleme_örnek')
-    .select('*')
-    .order('report_date', { ascending: false })
+// gunluk_ilerleme_örnek tablosu kaldırıldı — boş sonuç döndür
+export const getGunlukIlerleme = async (_projectName) => ({ data: [], error: null })
 
-export const getPersonelMakineRaporu = () =>
-  supabase
-    .from('personel_makine_raporu')
-    .select('*')
-    .order('report_date', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+// personel_makine_raporu tablosu kaldırıldı — null döndür
+export const getPersonelMakineRaporu = async () => ({ data: null, error: null })
 
 // ── Görevler ──────────────────────────────────────────────────────────────────
 export const getWorkPackages = (projectId) =>
@@ -50,7 +39,7 @@ export const getOpenTaskCount = () =>
   supabase
     .from('work_packages')
     .select('id', { count: 'exact', head: true })
-    .in('status', ['active', 'pending', 'late'])
+    .in('status', ['aktif', 'bekliyor', 'gecikmiş'])
 
 // ── Satın Alma Talepleri ──────────────────────────────────────────────────────
 export const getPendingPurchaseCount = () =>

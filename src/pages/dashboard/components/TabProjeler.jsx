@@ -3,10 +3,10 @@ import { getProjects } from '../../../api'
 import ProgBar from '../../../components/ui/ProgBar'
 
 const STATUS_MAP = {
-  active:    { badge: 'green', label: 'Aktif' },
-  completed: { badge: 'blue',  label: 'Tamamlandı' },
-  on_hold:   { badge: 'amber', label: 'Beklemede' },
-  cancelled: { badge: 'red',   label: 'İptal' },
+  aktif:          { badge: 'green', label: 'Aktif' },
+  tamamlandı:     { badge: 'blue',  label: 'Tamamlandı' },
+  beklemede:      { badge: 'amber', label: 'Beklemede' },
+  'iptal edildi': { badge: 'red',   label: 'İptal' },
 }
 
 export default function TabProjeler({ onSelectProject }) {

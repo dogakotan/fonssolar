@@ -364,8 +364,8 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
   }
 
   // ── A — Bugün Yapılan İşler ──────────────────────────────────────────────────
-  const bugun  = workPackages.filter(w => w.status === 'active')
-  const yarin  = workPackages.filter(w => w.status === 'pending')
+  const bugun  = workPackages.filter(w => w.status === 'aktif')
+  const yarin  = workPackages.filter(w => w.status === 'bekliyor')
 
   if (bugun.length || yarin.length) {
     // Yeni sayfa gerekirse
@@ -457,7 +457,7 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
     if (remSpace < 40) { doc.addPage(); y = 20 }
     y = sectionTitle(y, 'D', 'İŞ PAKETLERİ TAM LİSTESİ')
 
-    const STATUS_LABEL = { completed: 'Tamamlandı', done: 'Tamamlandı', active: 'Devam Ediyor', pending: 'Beklemede', late: 'Gecikmiş' }
+    const STATUS_LABEL = { tamamlandı: 'Tamamlandı', aktif: 'Devam Ediyor', bekliyor: 'Beklemede', gecikmiş: 'Gecikmiş' }
 
     const rows = workPackages.map((w, i) => [
       String(i + 1),
@@ -561,10 +561,10 @@ export function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData 
 
   // ── Sheet 1: KPI Özet ────────────────────────────────────────────────────────
   const total     = workPackages.length
-  const completed = workPackages.filter(w => ['completed','done'].includes(w.status)).length
-  const active    = workPackages.filter(w => w.status === 'active').length
-  const late      = workPackages.filter(w => w.status === 'late').length
-  const pending   = workPackages.filter(w => w.status === 'pending').length
+  const completed = workPackages.filter(w => w.status === 'tamamlandı').length
+  const active    = workPackages.filter(w => w.status === 'aktif').length
+  const late      = workPackages.filter(w => w.status === 'gecikmiş').length
+  const pending   = workPackages.filter(w => w.status === 'bekliyor').length
   const avgPct    = total ? Math.round(workPackages.reduce((s,w) => s + (w.progress||0), 0) / total) : 0
 
   const ozet = buildSheet('KPI Özeti', ['Gösterge', 'Değer', 'Açıklama'], [

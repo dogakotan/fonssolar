@@ -75,7 +75,7 @@ export default function TabEkip({ projectId }) {
     setLoading(true)
     let q = supabase
       .from('profiles')
-      .select('id, full_name, email, role, role_key, project_id')
+      .select('id, full_name, email, role_key, project_id')
       .order('full_name')
 
     if (selProject) {
@@ -263,7 +263,7 @@ function MemberCard({ member, isAdmin, projectName, onEdit, onRemove }) {
             padding: '0.15rem 0.6rem', borderRadius: '999px',
             fontSize: '0.7rem', fontWeight: 700
           }}>
-            {member.role || cfg.label}
+            {cfg.label}
           </span>
         </div>
       </div>
@@ -302,7 +302,6 @@ function InfoRow({ icon, text }) {
 
 function EditCard({ member, projects, onSave, onCancel }) {
   const [fullName, setFullName] = useState(member.full_name || '')
-  const [role,     setRole]     = useState(member.role || '')
   const [roleKey,  setRoleKey]  = useState(member.role_key || '')
   const [projId,   setProjId]   = useState(member.project_id || '')
   const [saving,   setSaving]   = useState(false)
@@ -311,7 +310,6 @@ function EditCard({ member, projects, onSave, onCancel }) {
     setSaving(true)
     await onSave(member.id, {
       full_name: fullName.trim(),
-      role: role.trim(),
       role_key: roleKey || null,
       project_id: projId || null,
     })
@@ -333,11 +331,6 @@ function EditCard({ member, projects, onSave, onCancel }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
         <label style={labelStyle}>Ad Soyad</label>
         <input value={fullName} onChange={e => setFullName(e.target.value)} style={inputStyle} placeholder="Ad Soyad" />
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-        <label style={labelStyle}>Görünen Unvan</label>
-        <input value={role} onChange={e => setRole(e.target.value)} style={inputStyle} placeholder="ör: Şantiye Şefi" />
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -379,7 +372,7 @@ function AddMemberModal({ currentProjectId, projectName, onAssign, onClose }) {
   useEffect(() => {
     supabase
       .from('profiles')
-      .select('id, full_name, email, role, role_key, project_id')
+      .select('id, full_name, email, role_key, project_id')
       .order('full_name')
       .then(({ data }) => {
         setProfiles(data || [])

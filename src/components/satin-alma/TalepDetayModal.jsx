@@ -58,17 +58,10 @@ export default function TalepDetayModal({ request, onClose }) {
             ))}
           </div>
 
-          {request.note && (
+          {request.request_note && (
             <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
               <p style={{ fontSize: 10, color: '#9CA3AF', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Açıklama</p>
-              <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{request.note}</p>
-            </div>
-          )}
-
-          {request.approval_note && (
-            <div style={{ background: '#FEF2F2', border: '1px solid #FCA5A5', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
-              <p style={{ fontSize: 10, color: '#991B1B', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Red Gerekçesi</p>
-              <p style={{ margin: 0, fontSize: 13, color: '#7F1D1D', lineHeight: 1.6 }}>{request.approval_note}</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{request.request_note}</p>
             </div>
           )}
 

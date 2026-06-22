@@ -65,9 +65,9 @@ async function ctxGenel(projectId, selectedDate) {
   const pendingPR = procRes.status   === 'fulfilled' ? (procRes.value.count   || 0)  : 0
   const progress = progressRes.status === 'fulfilled' ? (progressRes.value.data || []) : []
 
-  const wpSummary = ['done', 'active', 'late', 'pending'].map(s => {
+  const wpSummary = ['tamamlandı', 'aktif', 'gecikmiş', 'bekliyor'].map(s => {
     const count = wps.filter(w => w.status === s).length
-    const label = { done: 'Tamamlandı', active: 'Devam Ediyor', late: 'Gecikmiş', pending: 'Bekliyor' }[s]
+    const label = { tamamlandı: 'Tamamlandı', aktif: 'Devam Ediyor', gecikmiş: 'Gecikmiş', bekliyor: 'Bekliyor' }[s]
     return `  - ${label}: ${count}`
   })
 

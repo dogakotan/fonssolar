@@ -18,7 +18,7 @@ export default function YeniTalepModal({ onClose, onSaved }) {
   const { user } = useAuth()
   const [projects, setProjects] = useState([])
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ project_id: '', title: '', urgency: 'normal', note: '' })
+  const [form, setForm] = useState({ project_id: '', title: '', urgency: 'normal', request_note: '' })
   const [items, setItems] = useState([{ name: '', quantity: 1, unit: 'Adet', unit_price: '' }])
 
   useEffect(() => {
@@ -41,7 +41,7 @@ export default function YeniTalepModal({ onClose, onSaved }) {
         project_id:   form.project_id || null,
         title:        form.title.trim(),
         urgency:      form.urgency,
-        note:         form.note.trim() || null,
+        request_note: form.request_note.trim() || null,
         status:       'bekliyor',
         requested_by: user.id,
       })
@@ -109,8 +109,8 @@ export default function YeniTalepModal({ onClose, onSaved }) {
             <label style={LABEL}>Açıklama</label>
             <textarea
               placeholder="Talep gerekçesi..."
-              value={form.note}
-              onChange={setF('note')}
+              value={form.request_note}
+              onChange={setF('request_note')}
               rows={3}
               style={{ ...INPUT, resize: 'vertical' }}
             />

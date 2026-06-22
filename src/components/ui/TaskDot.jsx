@@ -1,5 +1,5 @@
 export default function TaskDot({ status }) {
-  if (status === 'done')
+  if (status === 'tamamlandı')
     return (
       <div className="task-dot done-dot">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
@@ -7,9 +7,9 @@ export default function TaskDot({ status }) {
         </svg>
       </div>
     )
-  if (status === 'active')
+  if (status === 'aktif')
     return <div className="task-dot active-dot"><div /></div>
-  if (status === 'late')
+  if (status === 'gecikmiş')
     return <div className="task-dot late-dot" />
   return <div className="task-dot pending-dot" />
 }

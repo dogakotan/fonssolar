@@ -8,10 +8,10 @@ import { supabase } from '../../../lib/supabase'
 import { dateFilter } from '../../../utils/exportUtils'
 
 const STATUS_MAP = {
-  active:    { badge: 'green', label: 'Aktif' },
-  completed: { badge: 'blue',  label: 'Tamamlandı' },
-  on_hold:   { badge: 'amber', label: 'Beklemede' },
-  cancelled: { badge: 'red',   label: 'İptal' },
+  aktif:          { badge: 'green', label: 'Aktif' },
+  tamamlandı:     { badge: 'blue',  label: 'Tamamlandı' },
+  beklemede:      { badge: 'amber', label: 'Beklemede' },
+  'iptal edildi': { badge: 'red',   label: 'İptal' },
 }
 
 export default function TabGenel({ onSelectProject, selectedDate, setSelectedDate }) {
@@ -161,7 +161,7 @@ export default function TabGenel({ onSelectProject, selectedDate, setSelectedDat
                     p.location || '—',
                     p.capacity_kwp || 0,
                     p.capacity_kwe || 0,
-                    { active: 'Aktif', completed: 'Tamamlandı', on_hold: 'Beklemede', cancelled: 'İptal' }[p.status] || '—',
+                    { aktif: 'Aktif', tamamlandı: 'Tamamlandı', beklemede: 'Beklemede', 'iptal edildi': 'İptal' }[p.status] || '—',
                   ]),
                 }
               }}

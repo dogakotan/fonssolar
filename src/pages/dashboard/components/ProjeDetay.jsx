@@ -46,11 +46,10 @@ function getPeriodRange(period, offset) {
 
 // ── Sabitler ──────────────────────────────────────────────────────────────────
 const STATUS_MAP = {
-  completed: { badge: 'blue',  label: 'Tamamlandı',  color: '#22c55e' },
-  done:      { badge: 'blue',  label: 'Tamamlandı',  color: '#22c55e' },
-  active:    { badge: 'green', label: 'Devam Ediyor', color: 'var(--color-primary)' },
-  pending:   { badge: 'amber', label: 'Beklemede',    color: '#f59e0b' },
-  late:      { badge: 'red',   label: 'Gecikmiş',     color: '#ef4444' },
+  tamamlandı: { badge: 'blue',  label: 'Tamamlandı',  color: '#22c55e' },
+  aktif:      { badge: 'green', label: 'Devam Ediyor', color: 'var(--color-primary)' },
+  bekliyor:   { badge: 'amber', label: 'Beklemede',    color: '#f59e0b' },
+  gecikmiş:   { badge: 'red',   label: 'Gecikmiş',     color: '#ef4444' },
 }
 
 const KATEGORI_RENK = {
@@ -517,8 +516,8 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
   })
 
   const total     = workPackages.length
-  const completed = periodWPs.filter(w => w.status === 'completed' || w.status === 'done').length
-  const late      = periodWPs.filter(w => w.status === 'late').length
+  const completed = periodWPs.filter(w => w.status === 'tamamlandı').length
+  const late      = periodWPs.filter(w => w.status === 'gecikmiş').length
   const avgPct    = total ? Math.round(workPackages.reduce((s, w) => s + (w.progress || 0), 0) / total) : 0
 
   // Periyot günlük ilerleme toplamı
@@ -539,7 +538,6 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
     return periodStart && periodEnd ? d >= periodStart && d <= periodEnd : false
   })
 
-  // gunluk_ilerleme_örnek varsa oradan al, yoksa work_packages'tan türet
   const normalize = (r) => ({
     id:             r.id || r.work_item,
     name:           r.work_item || r.name || r.title || '—',
@@ -662,11 +660,10 @@ function GenelDashboard({ project, workPackages, allIlerleme = [], personelRapor
               style={{ border: '1px solid var(--color-border)', borderRadius: 7, padding: '5px 10px', fontSize: 12, fontFamily: 'inherit', color: 'var(--color-text)', background: '#fff', cursor: 'pointer' }}
             >
               <option value="hepsi">Tümü</option>
-              <option value="active">Devam Ediyor</option>
-              <option value="pending">Beklemede</option>
-              <option value="completed">Tamamlandı</option>
-              <option value="done">Tamamlandı (done)</option>
-              <option value="late">Gecikmiş</option>
+              <option value="aktif">Devam Ediyor</option>
+              <option value="bekliyor">Beklemede</option>
+              <option value="tamamlandı">Tamamlandı</option>
+              <option value="gecikmiş">Gecikmiş</option>
             </select>
             <ExportButton
               title="İş Paketleri"
@@ -775,7 +772,7 @@ function EkipListesi({ projectId }) {
     setLoading(true)
     const { data } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role, role_key, project_id')
+      .select('id, full_name, email, role_key, project_id')
       .eq('project_id', projectId)
       .order('full_name')
     setMembers(data || [])
@@ -787,7 +784,7 @@ function EkipListesi({ projectId }) {
   async function openModal() {
     const { data } = await supabase
       .from('profiles')
-      .select('id, full_name, email, role, role_key, project_id')
+      .select('id, full_name, email, role_key, project_id')
       .order('full_name')
     setAllProfiles(data || [])
     setModalTab('assign')

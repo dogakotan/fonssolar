@@ -31,10 +31,10 @@ const PR_URGENCY = {
   çok_acil: { bg: '#FEE2E2', color: '#991B1B', label: 'Çok Acil' },
 }
 const WP_STATUS = {
-  done:    { color: '#10B981', label: 'Tamamlandı' },
-  active:  { color: '#185FA5', label: 'Devam Ediyor' },
-  pending: { color: '#9CA3AF', label: 'Bekliyor' },
-  late:    { color: '#EF4444', label: 'Gecikmiş' },
+  tamamlandı: { color: '#10B981', label: 'Tamamlandı' },
+  aktif:      { color: '#185FA5', label: 'Devam Ediyor' },
+  bekliyor:   { color: '#9CA3AF', label: 'Bekliyor' },
+  gecikmiş:   { color: '#EF4444', label: 'Gecikmiş' },
 }
 
 function Badge({ map, value }) {
@@ -73,7 +73,7 @@ function Donut({ data, size = 108 }) {
 export default function TabSantiyeSefi() {
   const { user, projectId } = useAuth()
   const [project, setProject]         = useState(null)
-  const [wpStats, setWpStats]         = useState({ done: 0, active: 0, pending: 0, late: 0 })
+  const [wpStats, setWpStats]         = useState({ tamamlandı: 0, aktif: 0, bekliyor: 0, gecikmiş: 0 })
   const [tickets, setTickets]         = useState([])
   const [prs, setPrs]                 = useState([])
   const [todayReport, setTodayReport] = useState(null)
@@ -109,7 +109,7 @@ export default function TabSantiyeSefi() {
       ])
       if (projRes.data) setProject(projRes.data)
       if (wpRes.data) {
-        const counts = { done: 0, active: 0, pending: 0, late: 0 }
+        const counts = { tamamlandı: 0, aktif: 0, bekliyor: 0, gecikmiş: 0 }
         wpRes.data.forEach(w => { if (counts[w.status] !== undefined) counts[w.status]++ })
         setWpStats(counts)
       }

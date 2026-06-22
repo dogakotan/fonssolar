@@ -139,8 +139,8 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
     } else { setMachinery(initMachinery()) }
 
     const { data: tasks } = await supabase.from('daily_tasks').select('*').eq('report_id', rep.id).order('order_index')
-    const done = tasks?.filter(t => t.type === 'done').map(t => t.description) || []
-    const plan = tasks?.filter(t => t.type === 'planned').map(t => t.description) || []
+    const done = tasks?.filter(t => t.type === 'tamamlandı').map(t => t.description) || []
+    const plan = tasks?.filter(t => t.type === 'planlandı').map(t => t.description) || []
     setDoneTasks(done.length ? done : [''])
     setPlanned(plan.length ? plan : [''])
 
@@ -164,9 +164,11 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
     if (repErr || !repData) { setSaveMsg({ ok: false, text: 'Rapor kaydedilemedi.' }); setSaving(false); return }
     const rid = repData.id
 
-    await supabase.from('personnel_logs').delete().eq('report_id', rid)
-    await supabase.from('personnel_logs').insert(
-      SHIFTS.map(shift => ({ report_id: rid, shift, idari: personnel[shift].idari || 0, mekanik: personnel[shift].mekanik || 0, elektrik: personnel[shift].elektrik || 0, yevmiyeci: personnel[shift].yevmiyeci || 0 }))
+    await supabase.from('personnel_log_entries').delete().eq('report_id', rid)
+    await supabase.from('personnel_log_entries').insert(
+      SHIFTS.flatMap(shift =>
+        COLS.map(department => ({ report_id: rid, shift, department, count: personnel[shift][department] || 0 }))
+      )
     )
 
     await supabase.from('machinery_logs').delete().eq('report_id', rid)
@@ -176,8 +178,8 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
 
     await supabase.from('daily_tasks').delete().eq('report_id', rid)
     const taskRows = [
-      ...doneTasks.filter(d => d.trim()).map((d, i) => ({ report_id: rid, type: 'done',    description: d, order_index: i })),
-      ...planned.filter(d => d.trim()).map((d, i)    => ({ report_id: rid, type: 'planned', description: d, order_index: i })),
+      ...doneTasks.filter(d => d.trim()).map((d, i) => ({ report_id: rid, type: 'tamamlandı', description: d, order_index: i })),
+      ...planned.filter(d => d.trim()).map((d, i)    => ({ report_id: rid, type: 'planlandı',  description: d, order_index: i })),
     ]
     if (taskRows.length) await supabase.from('daily_tasks').insert(taskRows)
 
