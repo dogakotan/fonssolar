@@ -2,29 +2,78 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 
-const PROJE_BAZLI   = ['santiye_sefi', 'muhendis', 'koordinator']
 const SIRKET_GENELI = ['admin', 'muhasebe', 'satin_alma_uzmani']
-const TUM_ROLLER    = [...SIRKET_GENELI, ...PROJE_BAZLI]
+
+const PROJE_BAZLI = [
+  'santiye_sefi', 'muhendis', 'koordinator',
+  'mekanik_sef', 'elektrik_sefi', 'enh_sorumlusu',
+  'evrak_takip', 'evrak_takip_uzmani',
+  'is_makinesi_operatoru', 'is_makinesi_operator_sefi',
+  'isg_sorumlusu', 'kalite_kontrol_sefi',
+  'lojistik_tedarik_sorumlusu', 'maliyet_kontrolcu',
+  'operasyon_sorumlusu', 'proje_koordinatoru', 'proje_tasarim_sorumlusu',
+]
+
+// Dropdown'da gösterilecek benzersiz proje bazlı roller
+const PROJE_BAZLI_SECENEK = [
+  'santiye_sefi', 'muhendis', 'koordinator',
+  'mekanik_sef', 'elektrik_sefi', 'enh_sorumlusu',
+  'evrak_takip', 'is_makinesi_operatoru',
+  'isg_sorumlusu', 'kalite_kontrol_sefi',
+  'lojistik_tedarik_sorumlusu', 'maliyet_kontrolcu',
+  'operasyon_sorumlusu', 'proje_koordinatoru', 'proje_tasarim_sorumlusu',
+]
 
 const ROL_ETIKET = {
-  admin:             'Yönetici',
-  muhasebe:          'Muhasebe',
-  santiye_sefi:      'Şantiye Şefi',
-  muhendis:          'Mühendis',
-  koordinator:       'Koordinatör',
-  satin_alma_uzmani: 'Satın Alma Uzmanı',
+  admin:                       'Yönetici',
+  muhasebe:                    'Muhasebe',
+  satin_alma_uzmani:           'Satın Alma Uzmanı',
+  santiye_sefi:                'Şantiye Şefi',
+  muhendis:                    'Mühendis',
+  koordinator:                 'Koordinatör',
+  mekanik_sef:                 'Mekanik Şef',
+  elektrik_sefi:               'Elektrik Şefi',
+  enh_sorumlusu:               'ENH Sorumlusu',
+  evrak_takip:                 'Evrak Takip Uzmanı',
+  evrak_takip_uzmani:          'Evrak Takip Uzmanı',
+  is_makinesi_operatoru:       'İş Makinesi Operatörü',
+  is_makinesi_operator_sefi:   'İş Makinesi Op. Şefi',
+  isg_sorumlusu:               'İSG Sorumlusu',
+  kalite_kontrol_sefi:         'Kalite Kontrol Şefi',
+  lojistik_tedarik_sorumlusu:  'Lojistik & Tedarik',
+  maliyet_kontrolcu:           'Maliyet Kontrolcü',
+  operasyon_sorumlusu:         'Operasyon Sorumlusu',
+  proje_koordinatoru:          'Proje Koordinatörü',
+  proje_tasarim_sorumlusu:     'Proje Tasarım Sor.',
 }
 
 const ROL_RENK = {
-  admin:             { bg: '#FEE2E2', color: '#991B1B' },
-  muhasebe:          { bg: '#FEF3C7', color: '#92400E' },
-  santiye_sefi:      { bg: '#D1FAE5', color: '#065F46' },
-  muhendis:          { bg: '#EFF6FF', color: '#185FA5' },
-  koordinator:       { bg: '#F5F3FF', color: '#5B21B6' },
-  satin_alma_uzmani: { bg: '#FCE7F3', color: '#9D174D' },
+  admin:                       { bg: '#FEE2E2', color: '#991B1B' },
+  muhasebe:                    { bg: '#FEF3C7', color: '#92400E' },
+  satin_alma_uzmani:           { bg: '#FCE7F3', color: '#9D174D' },
+  santiye_sefi:                { bg: '#D1FAE5', color: '#065F46' },
+  muhendis:                    { bg: '#EFF6FF', color: '#185FA5' },
+  koordinator:                 { bg: '#F5F3FF', color: '#5B21B6' },
+  mekanik_sef:                 { bg: '#FFF7ED', color: '#C2410C' },
+  elektrik_sefi:               { bg: '#FEF9C3', color: '#854D0E' },
+  enh_sorumlusu:               { bg: '#ECFDF5', color: '#047857' },
+  evrak_takip:                 { bg: '#F0FDF4', color: '#166534' },
+  evrak_takip_uzmani:          { bg: '#F0FDF4', color: '#166534' },
+  is_makinesi_operatoru:       { bg: '#FFF7ED', color: '#9A3412' },
+  is_makinesi_operator_sefi:   { bg: '#FFF7ED', color: '#9A3412' },
+  isg_sorumlusu:               { bg: '#FEF2F2', color: '#B91C1C' },
+  kalite_kontrol_sefi:         { bg: '#EEF2FF', color: '#3730A3' },
+  lojistik_tedarik_sorumlusu:  { bg: '#F0F9FF', color: '#075985' },
+  maliyet_kontrolcu:           { bg: '#FAFAF9', color: '#44403C' },
+  operasyon_sorumlusu:         { bg: '#F8FAFC', color: '#1C1917' },
+  proje_koordinatoru:          { bg: '#FDF2F8', color: '#9D174D' },
+  proje_tasarim_sorumlusu:     { bg: '#F5F3FF', color: '#6D28D9' },
 }
 
 const RESET_REDIRECT = 'https://fonssolar-dq9j5zmfj-fons-solar.vercel.app/dashboard'
+
+function getRenk(role_key)    { return ROL_RENK[role_key] || { bg: '#F3F4F6', color: '#374151' } }
+function getRolEtiket(role_key) { return ROL_ETIKET[role_key] || (role_key || '—').replace(/_/g, ' ') }
 
 async function callEdgeFn(name, body) {
   const { data, error } = await supabase.functions.invoke(name, { body })
@@ -43,18 +92,26 @@ const INP = {
 }
 const LBL = { fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }
 
-function KullaniciModal({ user: editUser, onClose, onSaved }) {
-  const isNew = !editUser
+function KullaniciModal({ user: editUser, projects, onClose, onSaved }) {
+  const isNew   = !editUser
+  const isPBazli = (rk) => PROJE_BAZLI.includes(rk)
+
   const [form, setForm] = useState({
-    full_name: editUser?.full_name || '',
-    email:     editUser?.email     || '',
-    role_key:  editUser?.role_key  || 'muhendis',
-    password:  '',
+    full_name:  editUser?.full_name  || '',
+    email:      editUser?.email      || '',
+    role_key:   editUser?.role_key   || 'muhendis',
+    project_id: editUser?.project_id || '',
+    password:   '',
   })
   const [saving, setSaving] = useState(false)
   const [err,    setErr]    = useState('')
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleRolChange = (v) => {
+    set('role_key', v)
+    if (!isPBazli(v)) set('project_id', '')
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -63,18 +120,27 @@ function KullaniciModal({ user: editUser, onClose, onSaved }) {
     setSaving(true)
     setErr('')
     try {
+      const projId = isPBazli(form.role_key) ? (form.project_id || null) : null
+
       if (isNew) {
         await callEdgeFn('create-user', {
-          email:     form.email.trim(),
-          password:  form.password,
-          full_name: form.full_name.trim(),
-          role_key:  form.role_key,
+          email:      form.email.trim(),
+          password:   form.password,
+          full_name:  form.full_name.trim(),
+          role_key:   form.role_key,
+          project_id: projId,
         })
+        // project_id'yi doğrudan profiles'a yaz (edge fn desteklemese de çalışır)
+        if (projId) {
+          await supabase.from('profiles').update({ project_id: projId }).eq('email', form.email.trim())
+        }
       } else {
         await callManageFn('update', editUser.id, {
-          full_name: form.full_name.trim(),
-          role_key:  form.role_key,
+          full_name:  form.full_name.trim(),
+          role_key:   form.role_key,
+          project_id: projId,
         })
+        await supabase.from('profiles').update({ project_id: projId }).eq('id', editUser.id)
       }
       onSaved()
       onClose()
@@ -87,7 +153,7 @@ function KullaniciModal({ user: editUser, onClose, onSaved }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480 }}>
+      <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#111827' }}>
             {isNew ? 'Yeni Kullanıcı Ekle' : 'Kullanıcıyı Düzenle'}
@@ -98,13 +164,7 @@ function KullaniciModal({ user: editUser, onClose, onSaved }) {
         <form onSubmit={handleSubmit} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
             <label style={LBL}>Ad Soyad *</label>
-            <input
-              style={INP}
-              value={form.full_name}
-              onChange={e => set('full_name', e.target.value)}
-              placeholder="Örn: Ahmet Yılmaz"
-              required
-            />
+            <input style={INP} value={form.full_name} onChange={e => set('full_name', e.target.value)} placeholder="Örn: Ahmet Yılmaz" required />
           </div>
 
           <div>
@@ -122,15 +182,28 @@ function KullaniciModal({ user: editUser, onClose, onSaved }) {
 
           <div>
             <label style={LBL}>Rol</label>
-            <select style={INP} value={form.role_key} onChange={e => set('role_key', e.target.value)}>
+            <select style={INP} value={form.role_key} onChange={e => handleRolChange(e.target.value)}>
               <optgroup label="Şirket Geneli">
-                {SIRKET_GENELI.map(r => <option key={r} value={r}>{ROL_ETIKET[r]}</option>)}
+                {SIRKET_GENELI.map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
               </optgroup>
               <optgroup label="Proje Bazlı">
-                {PROJE_BAZLI.map(r => <option key={r} value={r}>{ROL_ETIKET[r]}</option>)}
+                {PROJE_BAZLI_SECENEK.map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
               </optgroup>
             </select>
           </div>
+
+          {isPBazli(form.role_key) && (
+            <div>
+              <label style={LBL}>Proje</label>
+              <select style={INP} value={form.project_id} onChange={e => set('project_id', e.target.value)}>
+                <option value="">— Proje seçin —</option>
+                {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 3 }}>
+                Kullanıcı yalnızca seçilen projenin verilerini görür.
+              </p>
+            </div>
+          )}
 
           {isNew && (
             <div>
@@ -177,9 +250,7 @@ function SifreSifirlaModal({ user: targetUser, onClose }) {
     setLoading(true)
     setErr('')
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(targetUser.email, {
-        redirectTo: RESET_REDIRECT,
-      })
+      const { error } = await supabase.auth.resetPasswordForEmail(targetUser.email, { redirectTo: RESET_REDIRECT })
       if (error) throw error
       setSent(true)
     } catch (err) {
@@ -271,47 +342,54 @@ function SilModal({ user: targetUser, onClose, onDeleted }) {
 
 export default function TabKullanicilar() {
   const { user: me } = useAuth()
-  const [users,     setUsers]     = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [search,    setSearch]    = useState('')
-  const [rolFilter, setRolFilter] = useState('hepsi')
-  const [modal,     setModal]     = useState(null)
-  const [editUser,  setEditUser]  = useState(null)
-  const [resetUser, setResetUser] = useState(null)
-  const [silUser,   setSilUser]   = useState(null)
+  const [users,       setUsers]       = useState([])
+  const [projects,    setProjects]    = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [search,      setSearch]      = useState('')
+  const [rolFilter,   setRolFilter]   = useState('hepsi')
+  const [projeFilter, setProjeFilter] = useState('hepsi')
+  const [modal,       setModal]       = useState(null)
+  const [editUser,    setEditUser]    = useState(null)
+  const [resetUser,   setResetUser]   = useState(null)
+  const [silUser,     setSilUser]     = useState(null)
 
-  async function fetchUsers() {
+  async function fetchData() {
     setLoading(true)
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, full_name, email, role_key, created_at')
-      .order('full_name', { ascending: true })
-    setUsers(data || [])
+    const [{ data: u }, { data: p }] = await Promise.all([
+      supabase.from('profiles').select('id, full_name, email, role_key, project_id, created_at').order('full_name'),
+      supabase.from('projects').select('id, name').order('name'),
+    ])
+    setUsers(u || [])
+    setProjects(p || [])
     setLoading(false)
   }
 
-  useEffect(() => { fetchUsers() }, [])
+  useEffect(() => { fetchData() }, [])
+
+  const projMap = Object.fromEntries(projects.map(p => [p.id, p.name]))
 
   const filtered = users.filter(u => {
-    const matchRol    = rolFilter === 'hepsi' || u.role_key === rolFilter
+    const matchRol    = rolFilter   === 'hepsi' || u.role_key   === rolFilter
+    const matchProje  = projeFilter === 'hepsi' || u.project_id === projeFilter
     const term        = search.toLowerCase()
     const matchSearch = !term ||
       (u.full_name || '').toLowerCase().includes(term) ||
       (u.email     || '').toLowerCase().includes(term)
-    return matchRol && matchSearch
+    return matchRol && matchProje && matchSearch
   })
 
-  const totalKullanici = users.length
-  const adminSayisi    = users.filter(u => u.role_key === 'admin').length
-  const projeBazli     = users.filter(u => PROJE_BAZLI.includes(u.role_key)).length
-  const sirketGeneli   = users.filter(u => SIRKET_GENELI.includes(u.role_key)).length
-
   const KPI = [
-    { label: 'Toplam Kullanıcı', value: totalKullanici, color: '#185FA5' },
-    { label: 'Yönetici',         value: adminSayisi,    color: '#991B1B' },
-    { label: 'Şirket Geneli',    value: sirketGeneli,   color: '#92400E' },
-    { label: 'Proje Bazlı',      value: projeBazli,     color: '#065F46' },
+    { label: 'Toplam Kullanıcı', value: users.length,                                             color: '#185FA5' },
+    { label: 'Yönetici',         value: users.filter(u => u.role_key === 'admin').length,          color: '#991B1B' },
+    { label: 'Şirket Geneli',    value: users.filter(u => SIRKET_GENELI.includes(u.role_key)).length, color: '#92400E' },
+    { label: 'Proje Bazlı',      value: users.filter(u => PROJE_BAZLI.includes(u.role_key)).length,  color: '#065F46' },
   ]
+
+  const BTN = (bg, color) => ({
+    background: bg, color, border: 'none', borderRadius: 6,
+    padding: '5px 12px', fontSize: 12, fontWeight: 500,
+    cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -326,7 +404,7 @@ export default function TabKullanicilar() {
         ))}
       </div>
 
-      {/* Tablo */}
+      {/* Liste Kartı */}
       <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
 
         {/* Toolbar */}
@@ -336,20 +414,28 @@ export default function TabKullanicilar() {
             placeholder="Ad veya e-posta ara…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            style={{ flex: 1, minWidth: 180, border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+            style={{ flex: 1, minWidth: 160, border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
           />
           <select
             value={rolFilter}
             onChange={e => setRolFilter(e.target.value)}
-            style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#374151', cursor: 'pointer', fontFamily: 'inherit', background: 'transparent' }}
+            style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#374151', cursor: 'pointer', fontFamily: 'inherit', background: '#fff' }}
           >
             <option value="hepsi">Tüm Roller</option>
             <optgroup label="Şirket Geneli">
-              {SIRKET_GENELI.map(r => <option key={r} value={r}>{ROL_ETIKET[r]}</option>)}
+              {SIRKET_GENELI.map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
             </optgroup>
             <optgroup label="Proje Bazlı">
-              {PROJE_BAZLI.map(r => <option key={r} value={r}>{ROL_ETIKET[r]}</option>)}
+              {PROJE_BAZLI_SECENEK.map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
             </optgroup>
+          </select>
+          <select
+            value={projeFilter}
+            onChange={e => setProjeFilter(e.target.value)}
+            style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#374151', cursor: 'pointer', fontFamily: 'inherit', background: '#fff' }}
+          >
+            <option value="hepsi">Tüm Projeler</option>
+            {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <button
             onClick={() => { setEditUser(null); setModal('kullanici') }}
@@ -359,121 +445,76 @@ export default function TabKullanicilar() {
           </button>
         </div>
 
+        {/* Liste */}
         {loading ? (
           <div style={{ padding: 60, textAlign: 'center', color: '#6B7280', fontSize: 14 }}>Yükleniyor…</div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: 60, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>Kullanıcı bulunamadı.</div>
-        ) : (
-          <>
-            {/* Masaüstü Tablo */}
-            <div style={{ overflowX: 'auto', display: 'none' }} className="desktop-table">
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-                    {['AD SOYAD', 'E-POSTA', 'ROL', 'KATEGORİ', 'İŞLEMLER'].map(h => (
-                      <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(u => {
-                    const renk = ROL_RENK[u.role_key] || { bg: '#F3F4F6', color: '#374151' }
-                    const isMe = u.id === me?.id
-                    return (
-                      <tr key={u.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                        <td style={{ padding: '14px 16px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <div style={{ width: 34, height: 34, borderRadius: '50%', background: renk.bg, color: renk.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, flexShrink: 0 }}>
-                              {(u.full_name || u.email || '?')[0].toUpperCase()}
-                            </div>
-                            <div>
-                              <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: '#111827' }}>{u.full_name || '—'}</p>
-                              {isMe && <span style={{ fontSize: 11, color: '#185FA5', fontWeight: 500 }}>Hesabınız</span>}
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ padding: '14px 16px', fontSize: 13, color: '#6B7280' }}>{u.email || '—'}</td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <span style={{ background: renk.bg, color: renk.color, fontSize: 12, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>
-                            {ROL_ETIKET[u.role_key] || u.role_key || '—'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '14px 16px', fontSize: 12, color: '#6B7280' }}>
-                          {PROJE_BAZLI.includes(u.role_key) ? 'Proje Bazlı' : SIRKET_GENELI.includes(u.role_key) ? 'Şirket Geneli' : '—'}
-                        </td>
-                        <td style={{ padding: '14px 16px' }}>
-                          <div style={{ display: 'flex', gap: 6 }}>
-                            <button onClick={() => { setEditUser(u); setModal('kullanici') }}
-                              style={{ background: '#EFF6FF', color: '#185FA5', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                              Düzenle
-                            </button>
-                            <button onClick={() => setResetUser(u)}
-                              style={{ background: '#FEF3C7', color: '#92400E', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                              Şifre
-                            </button>
-                            {!isMe && (
-                              <button onClick={() => setSilUser(u)}
-                                style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                                Sil
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+        ) : filtered.map(u => {
+          const renk   = getRenk(u.role_key)
+          const isMe   = u.id === me?.id
+          const projAdi = u.project_id ? projMap[u.project_id] : null
 
-            {/* Kart Listesi (tüm ekranlarda — overflow ile yönetiliyor) */}
-            <div>
-              {filtered.map(u => {
-                const renk = ROL_RENK[u.role_key] || { bg: '#F3F4F6', color: '#374151' }
-                const isMe = u.id === me?.id
-                return (
-                  <div key={u.id} style={{ padding: '14px 20px', borderBottom: '1px solid #F3F4F6' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                      <div style={{ display: 'flex', gap: 12, alignItems: 'center', minWidth: 0 }}>
-                        <div style={{ width: 38, height: 38, borderRadius: '50%', background: renk.bg, color: renk.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
-                          {(u.full_name || u.email || '?')[0].toUpperCase()}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: '#111827' }}>
-                            {u.full_name || '—'}
-                            {isMe && <span style={{ marginLeft: 6, fontSize: 11, color: '#185FA5', fontWeight: 500 }}>Hesabınız</span>}
-                          </p>
-                          <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email || '—'}</p>
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                        <span style={{ background: renk.bg, color: renk.color, fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
-                          {ROL_ETIKET[u.role_key] || u.role_key || '—'}
-                        </span>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
-                      <button onClick={() => { setEditUser(u); setModal('kullanici') }}
-                        style={{ flex: 1, background: '#EFF6FF', color: '#185FA5', border: 'none', borderRadius: 6, padding: '7px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        Düzenle
-                      </button>
-                      <button onClick={() => setResetUser(u)}
-                        style={{ flex: 1, background: '#FEF3C7', color: '#92400E', border: 'none', borderRadius: 6, padding: '7px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                        Şifre Sıfırla
-                      </button>
-                      {!isMe && (
-                        <button onClick={() => setSilUser(u)}
-                          style={{ flex: 1, background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '7px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
-                          Sil
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+          return (
+            <div key={u.id} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '10px 20px', borderBottom: '1px solid #F3F4F6', flexWrap: 'wrap',
+            }}>
+              {/* Avatar + İsim + Mail */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 200px', minWidth: 0 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: '50%',
+                  background: renk.bg, color: renk.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 700, flexShrink: 0,
+                }}>
+                  {(u.full_name || u.email || '?')[0].toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 500, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {u.full_name || '—'}
+                    {isMe && <span style={{ marginLeft: 6, fontSize: 11, color: '#185FA5', fontWeight: 500 }}>Hesabınız</span>}
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: '#9CA3AF', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {u.email || '—'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Rol + Proje Rozetleri */}
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
+                <span style={{ background: renk.bg, color: renk.color, fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                  {getRolEtiket(u.role_key)}
+                </span>
+                {projAdi && (
+                  <span style={{ background: '#F0F9FF', color: '#0369A1', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                    {projAdi}
+                  </span>
+                )}
+                {PROJE_BAZLI.includes(u.role_key) && !projAdi && (
+                  <span style={{ background: '#FEF9C3', color: '#B45309', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                    Proje Atanmadı
+                  </span>
+                )}
+              </div>
+
+              {/* İşlem Butonları */}
+              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                <button onClick={() => { setEditUser(u); setModal('kullanici') }} style={BTN('#EFF6FF', '#185FA5')}>
+                  Düzenle
+                </button>
+                <button onClick={() => setResetUser(u)} style={BTN('#FEF3C7', '#92400E')}>
+                  Şifre
+                </button>
+                {!isMe && (
+                  <button onClick={() => setSilUser(u)} style={BTN('#FEE2E2', '#991B1B')}>
+                    Sil
+                  </button>
+                )}
+              </div>
             </div>
-          </>
-        )}
+          )
+        })}
 
         <div style={{ padding: '10px 20px', borderTop: '1px solid #E5E7EB', fontSize: 12, color: '#9CA3AF' }}>
           {filtered.length} kullanıcı gösteriliyor{filtered.length !== users.length ? ` (toplam ${users.length})` : ''}
@@ -483,23 +524,13 @@ export default function TabKullanicilar() {
       {modal === 'kullanici' && (
         <KullaniciModal
           user={editUser}
+          projects={projects}
           onClose={() => { setModal(null); setEditUser(null) }}
-          onSaved={fetchUsers}
+          onSaved={fetchData}
         />
       )}
-      {resetUser && (
-        <SifreSifirlaModal
-          user={resetUser}
-          onClose={() => setResetUser(null)}
-        />
-      )}
-      {silUser && (
-        <SilModal
-          user={silUser}
-          onClose={() => setSilUser(null)}
-          onDeleted={fetchUsers}
-        />
-      )}
+      {resetUser && <SifreSifirlaModal user={resetUser} onClose={() => setResetUser(null)} />}
+      {silUser   && <SilModal user={silUser} onClose={() => setSilUser(null)} onDeleted={fetchData} />}
     </div>
   )
 }
