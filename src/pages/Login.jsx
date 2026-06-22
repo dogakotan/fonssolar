@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signIn } from '../lib/supabase'
+import { signIn, supabase } from '../lib/supabase'
 import './Login.css'
+
+const RESET_REDIRECT = 'https://fonssolar-dq9j5zmfj-fons-solar.vercel.app/dashboard'
 
 export default function Login() {
   const [email, setEmail]               = useState('')
@@ -9,6 +11,13 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState('')
+
+  const [mode, setMode]                 = useState('login')
+  const [resetEmail, setResetEmail]     = useState('')
+  const [resetSent, setResetSent]       = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [resetErr, setResetErr]         = useState('')
+
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -25,6 +34,86 @@ export default function Login() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleReset = async (e) => {
+    e.preventDefault()
+    setResetLoading(true)
+    setResetErr('')
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: RESET_REDIRECT,
+      })
+      if (resetError) throw resetError
+      setResetSent(true)
+    } catch (err) {
+      setResetErr(err.message || 'Bir hata oluştu, lütfen tekrar deneyin.')
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
+  if (mode === 'reset') {
+    return (
+      <div className="login-page">
+        <div className="login-overlay" />
+        <div className="login-wrap">
+          <div className="login-card">
+            <div className="login-logo">
+              <img src="/images/fons-logo.jpeg" alt="Fons Solar" />
+            </div>
+            <div className="login-title">
+              <h1>Fons Solar</h1>
+              <span>Şifre Sıfırlama</span>
+            </div>
+
+            {resetSent ? (
+              <div style={{ textAlign: 'center', padding: '4px 0 16px' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>✉️</div>
+                <p style={{ color: '#065F46', fontWeight: 600, marginBottom: 6 }}>E-posta Gönderildi</p>
+                <p style={{ color: '#6B7280', fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
+                  <strong>{resetEmail}</strong> adresine şifre sıfırlama bağlantısı gönderildi. Gelen kutunuzu kontrol edin.
+                </p>
+                <button
+                  onClick={() => { setMode('login'); setResetSent(false); setResetEmail('') }}
+                  className="login-btn"
+                >
+                  Giriş Sayfasına Dön
+                </button>
+              </div>
+            ) : (
+              <form className="login-form" onSubmit={handleReset}>
+                <p style={{ color: '#6B7280', fontSize: 13, margin: '0 0 14px', lineHeight: 1.6 }}>
+                  Kayıtlı e-posta adresinizi girin. Şifre sıfırlama bağlantısı göndereceğiz.
+                </p>
+                <input
+                  type="email"
+                  value={resetEmail}
+                  onChange={e => setResetEmail(e.target.value)}
+                  placeholder="E-posta adresinizi giriniz"
+                  autoComplete="email"
+                  required
+                />
+                {resetErr && <p className="login-error">{resetErr}</p>}
+                <button type="submit" className="login-btn" disabled={resetLoading}>
+                  {resetLoading ? <><Spinner /> Gönderiliyor...</> : 'Sıfırlama Bağlantısı Gönder'}
+                </button>
+                <div style={{ textAlign: 'center', marginTop: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => { setMode('login'); setResetErr('') }}
+                    style={{ background: 'none', border: 'none', color: '#6B7280', fontSize: 13, cursor: 'pointer' }}
+                  >
+                    ← Geri Dön
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+          <p className="login-copyright">© 2026 Fons Solar. Tüm hakları saklıdır.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -77,6 +166,16 @@ export default function Login() {
             <button type="submit" className="login-btn" disabled={loading}>
               {loading ? <><Spinner /> Giriş yapılıyor...</> : 'Giriş Yap'}
             </button>
+
+            <div style={{ textAlign: 'center', marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => { setMode('reset'); setError('') }}
+                style={{ background: 'none', border: 'none', color: '#185FA5', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                Şifremi Unuttum
+              </button>
+            </div>
           </form>
         </div>
 

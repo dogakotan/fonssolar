@@ -6,6 +6,8 @@ import ExportButton from '../../../components/ui/ExportButton'
 import DateNavigator from '../../../components/ui/DateNavigator'
 import { exportGunlukRaporPdf, exportGunlukRaporExcel } from '../../../utils/exportUtils'
 import TicketListesi from '../../../components/tickets/TicketListesi'
+import ProjeTabSatinAlma from './ProjeTabSatinAlma'
+import ProjeTabFinans from './ProjeTabFinans'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 
@@ -1394,10 +1396,16 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           <button onClick={() => setTab('ekip')} style={tab === 'ekip' ? tabBtnActive : tabBtn}>
             Ekip
           </button>
+          <button onClick={() => setTab('satin-alma')} style={tab === 'satin-alma' ? tabBtnActive : tabBtn}>
+            Satın Alma
+          </button>
+          <button onClick={() => setTab('finans')} style={tab === 'finans' ? tabBtnActive : tabBtn}>
+            Finans
+          </button>
         </div>
 
-        {/* ── Sağ grup: Tarih Seç + Dışa Aktar (ticket sekmesinde gizli) ── */}
-        {tab !== 'tickets' && <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {/* ── Sağ grup: Tarih Seç + Dışa Aktar (ticket / satın-alma / finans sekmelerinde gizli) ── */}
+        {!['tickets', 'satin-alma', 'finans'].includes(tab) && <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
 
           {/* Tarih Seç */}
           {setSelectedDate && (
@@ -1568,6 +1576,10 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         <EkipListesi projectId={projectId} />
       ) : tab === 'tickets' ? (
         <TicketListesi projectId={projectId} />
+      ) : tab === 'satin-alma' ? (
+        <ProjeTabSatinAlma projectId={projectId} />
+      ) : tab === 'finans' ? (
+        <ProjeTabFinans projectId={projectId} />
       ) : loading ? (
         <p style={{ color: 'var(--color-muted)', padding: '2rem' }}>Yükleniyor…</p>
       ) : tab === 'genel' ? (

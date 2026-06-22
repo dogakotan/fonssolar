@@ -10,17 +10,19 @@ import TabSatinAlma from './components/TabSatinAlma'
 import TabFinans from './components/TabFinans'
 import TabTickets from './components/TabTickets'
 import TabSantiyeSefi from './components/TabSantiyeSefi'
+import TabKullanicilar from './components/TabKullanicilar'
 import ProjeDetay from './components/ProjeDetay'
 import FloatingAgent from '../../components/agent/FloatingAgent'
 import './Dashboard.css'
 
 const TABS = {
-  genel:        { title: 'Genel Bakış',  subtitle: 'Proje özeti ve aktif görevler' },
-  projeler:     { title: 'Projeler',     subtitle: 'Tüm GES projeleri' },
-  'is-plani':   { title: 'İş Planı',     subtitle: 'Görev takip ve zaman çizelgesi' },
-  'satin-alma': { title: 'Satın Alma',   subtitle: 'Tedarik talepleri ve siparişler' },
-  finans:       { title: 'Finans',       subtitle: 'Fatura yönetimi ve maliyet takibi' },
-  tickets:      { title: 'Ticket Sistemi', subtitle: 'Sahadan yöneticiye hata bildirimi' },
+  genel:          { title: 'Genel Bakış',      subtitle: 'Proje özeti ve aktif görevler' },
+  projeler:       { title: 'Projeler',          subtitle: 'Tüm GES projeleri' },
+  'is-plani':     { title: 'İş Planı',          subtitle: 'Görev takip ve zaman çizelgesi' },
+  'satin-alma':   { title: 'Satın Alma',        subtitle: 'Tedarik talepleri ve siparişler' },
+  finans:         { title: 'Finans',            subtitle: 'Fatura yönetimi ve maliyet takibi' },
+  tickets:        { title: 'Ticket Sistemi',    subtitle: 'Sahadan yöneticiye hata bildirimi' },
+  kullanicilar:   { title: 'Kullanıcı Yönetimi', subtitle: 'Sistem kullanıcıları ve rol atamaları' },
 }
 
 const ROLE_TABS = {
@@ -34,7 +36,7 @@ const ROLE_DEFAULT = {
 }
 
 export default function Dashboard() {
-  const { role } = useAuth()
+  const { role, isAdmin } = useAuth()
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [activeTab,           setActiveTab]           = useState('genel')
   const [selectedProjectId,   setSelectedProjectId]   = useState(null)
@@ -108,10 +110,10 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {activeTab === 'genel'      && role === 'santiye_sefi' && <TabSantiyeSefi />}
-        {activeTab === 'genel'      && role !== 'santiye_sefi' && <TabGenel onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
-        {activeTab === 'projeler'   && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
-        {activeTab === 'projeler'   && showProjectDetail  && (
+        {activeTab === 'genel'        && role === 'santiye_sefi' && <TabSantiyeSefi />}
+        {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
+        {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
+        {activeTab === 'projeler'     && showProjectDetail  && (
           <ProjeDetay
             projectId={selectedProjectId}
             projectName={selectedProjectName}
@@ -120,10 +122,11 @@ export default function Dashboard() {
             setSelectedDate={setSelectedDate}
           />
         )}
-        {activeTab === 'is-plani'   && <TabIsPlan projectId={selectedProjectId} selectedDate={selectedDate} />}
-        {activeTab === 'satin-alma' && <TabSatinAlma projectId={selectedProjectId} selectedDate={selectedDate} />}
-        {activeTab === 'finans'     && <TabFinans selectedDate={selectedDate} />}
-        {activeTab === 'tickets'    && <TabTickets selectedDate={selectedDate} />}
+        {activeTab === 'is-plani'     && <TabIsPlan projectId={selectedProjectId} selectedDate={selectedDate} />}
+        {activeTab === 'satin-alma'   && <TabSatinAlma projectId={selectedProjectId} selectedDate={selectedDate} />}
+        {activeTab === 'finans'       && <TabFinans selectedDate={selectedDate} />}
+        {activeTab === 'tickets'      && <TabTickets selectedDate={selectedDate} />}
+        {activeTab === 'kullanicilar' && isAdmin && <TabKullanicilar />}
       </main>
 
       <FloatingAgent activeTab={activeTab} projectId={selectedProjectId} selectedDate={selectedDate} />

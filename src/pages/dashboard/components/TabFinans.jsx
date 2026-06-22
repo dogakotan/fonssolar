@@ -1,19 +1,17 @@
 import { useState } from 'react'
 import { useAuth } from '../../../context/AuthContext'
-import FinansStats       from '../../../components/finans/FinansStats'
-import FaturaListesi     from '../../../components/finans/FaturaListesi'
-import OnayKuyrugu      from '../../../components/finans/OnayKuyrugu'
-import MaliyetTablosu   from '../../../components/finans/MaliyetTablosu'
-import FaturaKesilecekler from '../../../components/satin-alma/FaturaKesilecekler'
+import FinansStats     from '../../../components/finans/FinansStats'
+import FaturaListesi   from '../../../components/finans/FaturaListesi'
+import OnayKuyrugu    from '../../../components/finans/OnayKuyrugu'
+import MaliyetTablosu from '../../../components/finans/MaliyetTablosu'
 
 export default function TabFinans() {
   const { isAdmin } = useAuth()
   const [tab, setTab] = useState('faturalar')
 
   const TABS = [
-    { key: 'faturalar',        label: 'Faturalar' },
-    { key: 'onay',             label: 'Onay Kuyruğu' },
-    { key: 'fatura_kesilecek', label: 'Fatura Kesilecekler' },
+    { key: 'faturalar', label: 'Faturalar' },
+    { key: 'onay',      label: 'Onay Kuyruğu' },
     ...(isAdmin ? [{ key: 'maliyet', label: 'Maliyet Tablosu' }] : []),
   ]
 
@@ -40,10 +38,9 @@ export default function TabFinans() {
         ))}
       </div>
 
-      {tab === 'faturalar'        && <FaturaListesi />}
-      {tab === 'onay'             && <OnayKuyrugu />}
-      {tab === 'fatura_kesilecek' && <FaturaKesilecekler />}
-      {tab === 'maliyet'          && <MaliyetTablosu />}
+      {tab === 'faturalar' && <FaturaListesi />}
+      {tab === 'onay'      && <OnayKuyrugu />}
+      {tab === 'maliyet'   && <MaliyetTablosu />}
     </div>
   )
 }

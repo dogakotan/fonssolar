@@ -14,11 +14,11 @@ const LABEL = {
   letterSpacing: '0.4px', display: 'block', marginBottom: 4,
 }
 
-export default function YeniTalepModal({ onClose, onSaved }) {
+export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
   const { user } = useAuth()
   const [projects, setProjects] = useState([])
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ project_id: '', title: '', urgency: 'normal', request_note: '' })
+  const [form, setForm] = useState({ project_id: defaultProjectId || '', title: '', urgency: 'normal', request_note: '' })
   const [items, setItems] = useState([{ name: '', quantity: 1, unit: 'Adet', unit_price: '' }])
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function YeniTalepModal({ onClose, onSaved }) {
 
           <div>
             <label style={LABEL}>Proje</label>
-            <select value={form.project_id} onChange={setF('project_id')} style={INPUT}>
+            <select value={form.project_id} onChange={setF('project_id')} style={INPUT} disabled={!!defaultProjectId}>
               <option value="">— Proje seçin —</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>

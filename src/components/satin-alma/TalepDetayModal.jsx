@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 
 const URGENCY = {
   normal:    { bg: '#F3F4F6', color: '#374151', label: 'Normal' },
@@ -22,29 +23,68 @@ function Badge({ map, value }) {
 }
 
 export default function TalepDetayModal({ request, onClose }) {
+  const { isAdmin, user } = useAuth()
+  const [data, setData] = useState(null)
   const [items, setItems] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [showReject, setShowReject] = useState(false)
+  const [rejectNote, setRejectNote] = useState('')
 
   useEffect(() => {
-    supabase.from('purchase_request_items').select('*').eq('request_id', request.id).then(({ data }) => setItems(data || []))
+    async function load() {
+      const { data: req } = await supabase
+        .from('purchase_requests')
+        .select('*, projects(name), profiles!requested_by(full_name), purchase_request_items(*)')
+        .eq('id', request.id)
+        .single()
+      if (req) {
+        setData(req)
+        setItems(req.purchase_request_items || [])
+      }
+    }
+    load()
   }, [request.id])
 
+  const req = data || request
   const total = items.reduce((sum, i) => sum + (i.total_price ?? (i.quantity * (i.unit_price || 0))), 0)
 
   const meta = [
-    { label: 'Proje',       value: request.projects?.name || '—' },
-    { label: 'Aciliyet',    value: <Badge map={URGENCY} value={request.urgency} /> },
-    { label: 'Durum',       value: <Badge map={STATUS}  value={request.status}  /> },
-    { label: 'Talep Eden',  value: request.profiles?.full_name || '—' },
-    { label: 'Tarih',       value: fmtDate(request.created_at) },
+    { label: 'Proje',        value: req.projects?.name || '—' },
+    { label: 'Aciliyet',     value: <Badge map={URGENCY} value={req.urgency} /> },
+    { label: 'Durum',        value: <Badge map={STATUS}  value={req.status}  /> },
+    { label: 'Talep Eden',   value: req.profiles?.full_name || '—' },
+    { label: 'Tarih',        value: fmtDate(req.created_at) },
     { label: 'Toplam Tutar', value: <strong style={{ color: '#185FA5' }}>{fmt(total)}</strong> },
   ]
+
+  async function handleApprove() {
+    setSaving(true)
+    await supabase
+      .from('purchase_requests')
+      .update({ status: 'onaylandı', approved_by: user.id, approved_at: new Date().toISOString() })
+      .eq('id', req.id)
+    setSaving(false)
+    onClose()
+  }
+
+  async function handleReject() {
+    setSaving(true)
+    await supabase
+      .from('purchase_requests')
+      .update({ status: 'reddedildi', approved_by: user.id, approved_at: new Date().toISOString() })
+      .eq('id', req.id)
+    setSaving(false)
+    onClose()
+  }
+
+  const showActions = isAdmin && req.status === 'bekliyor'
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ background: '#fff', borderRadius: 16, width: 560, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
 
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#111827' }}>{request.title}</h2>
+          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#111827' }}>{req.title}</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9CA3AF' }}>×</button>
         </div>
 
@@ -58,10 +98,10 @@ export default function TalepDetayModal({ request, onClose }) {
             ))}
           </div>
 
-          {request.request_note && (
+          {req.request_note && (
             <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
               <p style={{ fontSize: 10, color: '#9CA3AF', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Açıklama</p>
-              <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{request.request_note}</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{req.request_note}</p>
             </div>
           )}
 
@@ -101,10 +141,54 @@ export default function TalepDetayModal({ request, onClose }) {
           </div>
         </div>
 
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ padding: '16px 24px', borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
+            {showActions && !showReject && (
+              <>
+                <button
+                  onClick={handleApprove}
+                  disabled={saving}
+                  style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}
+                >
+                  {saving ? '…' : '✓ Onayla'}
+                </button>
+                <button
+                  onClick={() => setShowReject(true)}
+                  disabled={saving}
+                  style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  ✗ Reddet
+                </button>
+              </>
+            )}
+            {showActions && showReject && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Red gerekçesi (opsiyonel)"
+                  value={rejectNote}
+                  onChange={e => setRejectNote(e.target.value)}
+                  style={{ flex: 1, border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+                />
+                <button
+                  onClick={handleReject}
+                  disabled={saving}
+                  style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1, whiteSpace: 'nowrap' }}
+                >
+                  {saving ? '…' : 'Reddi Onayla'}
+                </button>
+                <button
+                  onClick={() => { setShowReject(false); setRejectNote('') }}
+                  style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '9px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                >
+                  İptal
+                </button>
+              </>
+            )}
+          </div>
           <button
             onClick={onClose}
-            style={{ background: '#F3F4F6', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}
+            style={{ background: '#F3F4F6', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, color: '#374151', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
           >
             Kapat
           </button>

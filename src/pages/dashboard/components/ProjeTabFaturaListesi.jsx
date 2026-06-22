@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
-import { getProjects } from '../../api'
+import { supabase } from '../../../lib/supabase'
+import { getProjects } from '../../../api'
 
 const formatCurrency = (amount) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
@@ -18,10 +18,9 @@ const STATUS_BADGE = {
 
 const PAGE_SIZE = 10
 
-// ── Fatura Ekle Modal ─────────────────────────────────────────────────────────
-function FaturaEkleModal({ onClose, onSaved }) {
+function FaturaEkleModal({ onClose, onSaved, defaultProjectId }) {
   const [form, setForm] = useState({
-    supplier_id: '', project_id: '', invoice_no: '', invoice_date: '',
+    supplier_id: '', project_id: defaultProjectId || '', invoice_no: '', invoice_date: '',
     due_date: '', amount: '', vat_rate: '20', category: 'malzeme', description: '',
   })
   const [suppliers, setSuppliers] = useState([])
@@ -62,10 +61,7 @@ function FaturaEkleModal({ onClose, onSaved }) {
     if (error) { setErr(error.message); return }
     if (newInv) {
       await supabase.from('invoice_approvals').insert({
-        invoice_id: newInv.id,
-        step: 1,
-        step_label: 'Muhasebe Onayı',
-        status: 'bekliyor',
+        invoice_id: newInv.id, step: 1, step_label: 'Muhasebe Onayı', status: 'bekliyor',
       })
     }
     onSaved()
@@ -97,7 +93,7 @@ function FaturaEkleModal({ onClose, onSaved }) {
             </div>
             <div>
               <label style={lbl}>Proje</label>
-              <select style={inp} value={form.project_id} onChange={e => set('project_id', e.target.value)}>
+              <select style={inp} value={form.project_id} onChange={e => set('project_id', e.target.value)} disabled={!!defaultProjectId}>
                 <option value="">Seçiniz</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -168,140 +164,36 @@ function FaturaEkleModal({ onClose, onSaved }) {
   )
 }
 
-// ── Fatura Detay Modal ────────────────────────────────────────────────────────
-function FaturaDetayModal({ invoice, onClose }) {
-  const [approvals, setApprovals] = useState([])
-
-  useEffect(() => {
-    if (!invoice) return
-    supabase
-      .from('invoice_approvals')
-      .select('*')
-      .eq('invoice_id', invoice.id)
-      .order('step')
-      .then(({ data }) => setApprovals(data || []))
-  }, [invoice?.id])
-
-  if (!invoice) return null
-  const st = STATUS_BADGE[invoice.status] || { bg: '#F3F4F6', color: '#111827', label: invoice.status }
-
-  const STEP_STYLE = {
-    onaylandı:  { bg: '#D1FAE5', color: '#065F46', icon: '✓' },
-    reddedildi: { bg: '#FEE2E2', color: '#991B1B', icon: '✕' },
-    bekliyor:   { bg: '#F3F4F6', color: '#9CA3AF', icon: '⏳' },
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 32, width: 620, maxHeight: '90vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
-          <div>
-            <h3 style={{ fontSize: 18, fontWeight: 600, color: '#111827', margin: '0 0 8px' }}>{invoice.invoice_no || '—'}</h3>
-            <span style={{ background: st.bg, color: st.color, fontSize: 12, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>{st.label}</span>
-          </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-          {[
-            ['Tedarikçi',    invoice.suppliers?.name || '—'],
-            ['Kategori',     invoice.category || '—'],
-            ['Fatura Tarihi', formatDate(invoice.invoice_date)],
-            ['Vade Tarihi',  formatDate(invoice.due_date)],
-            ['KDV Hariç',    formatCurrency(invoice.amount)],
-            ['KDV Oranı',    `%${invoice.vat_rate || 0}`],
-            ['KDV Tutarı',   formatCurrency(invoice.vat_amount)],
-            ['Toplam',       formatCurrency(invoice.total_amount)],
-          ].map(([k, v]) => (
-            <div key={k} style={{ background: '#F8F9FA', borderRadius: 8, padding: '10px 14px' }}>
-              <p style={{ fontSize: 11, color: '#6B7280', fontWeight: 500, textTransform: 'uppercase', margin: '0 0 3px', letterSpacing: '0.3px' }}>{k}</p>
-              <p style={{ fontSize: 14, fontWeight: 600, color: '#111827', margin: 0 }}>{v}</p>
-            </div>
-          ))}
-        </div>
-
-        {invoice.description && (
-          <div style={{ background: '#F8F9FA', borderRadius: 8, padding: '12px 14px', marginBottom: 20 }}>
-            <p style={{ fontSize: 11, color: '#6B7280', fontWeight: 500, textTransform: 'uppercase', margin: '0 0 4px' }}>Açıklama</p>
-            <p style={{ fontSize: 14, color: '#111827', margin: 0 }}>{invoice.description}</p>
-          </div>
-        )}
-
-        {/* Onay zinciri */}
-        <div>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 14 }}>Onay Zinciri</p>
-          {approvals.length === 0 ? (
-            <p style={{ color: '#6B7280', fontSize: 13 }}>Onay kaydı bulunamadı.</p>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              {approvals.map((a, i) => {
-                const sc = STEP_STYLE[a.status] || STEP_STYLE.bekliyor
-                return (
-                  <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{
-                        width: 44, height: 44, borderRadius: '50%', background: sc.bg, color: sc.color,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 18, fontWeight: 700, margin: '0 auto 4px',
-                      }}>{sc.icon}</div>
-                      <p style={{ fontSize: 11, color: '#6B7280', margin: 0, fontWeight: 500, maxWidth: 80, textAlign: 'center' }}>
-                        {a.step_label || `Adım ${a.step}`}
-                      </p>
-                      {a.reviewed_at && (
-                        <p style={{ fontSize: 10, color: '#9CA3AF', margin: 0 }}>{formatDate(a.reviewed_at)}</p>
-                      )}
-                    </div>
-                    {i < approvals.length - 1 && (
-                      <div style={{ width: 36, height: 2, background: '#E5E7EB', flexShrink: 0 }} />
-                    )}
-                  </div>
-                )
-              })}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div style={{ width: 36, height: 2, background: '#E5E7EB' }} />
-                <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#E5E7EB' }} />
-                <p style={{ fontSize: 11, color: '#9CA3AF', margin: 0 }}>Tamamlandı</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function FaturaListesi() {
+export default function ProjeTabFaturaListesi({ projectId }) {
   const [invoices,     setInvoices]     = useState([])
   const [loading,      setLoading]      = useState(true)
   const [page,         setPage]         = useState(0)
   const [filterStatus, setFilterStatus] = useState('hepsi')
   const [showAdd,      setShowAdd]      = useState(false)
-  const [detayFatura,  setDetayFatura]  = useState(null)
 
   async function fetchInvoices() {
     setLoading(true)
     const { data, error } = await supabase
       .from('invoices')
       .select('*, suppliers(name)')
+      .eq('project_id', projectId)
       .order('invoice_date', { ascending: false })
     if (error) console.error('invoices fetch error:', error)
     setInvoices(data || [])
     setLoading(false)
   }
 
-  useEffect(() => { fetchInvoices() }, [])
+  useEffect(() => { if (projectId) fetchInvoices() }, [projectId])
 
   const filtered   = filterStatus === 'hepsi' ? invoices : invoices.filter(i => i.status === filterStatus)
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged      = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
-  const TH = ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM', 'İŞLEMLER']
+  const TH = ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM']
 
   return (
     <>
       <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
-        {/* Başlık */}
         <div style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E5E7EB' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <h3 style={{ fontSize: 15, fontWeight: 600, color: '#111827', margin: 0 }}>Faturalar</h3>
@@ -331,18 +223,15 @@ export default function FaturaListesi() {
           </div>
         </div>
 
-        {/* Tablo */}
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}>
             <p style={{ color: '#6B7280', fontSize: 14 }}>Yükleniyor…</p>
           </div>
         ) : paged.length === 0 ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#6B7280', fontSize: 14 }}>
-            Fatura bulunamadı.
-          </div>
+          <div style={{ padding: 40, textAlign: 'center', color: '#6B7280', fontSize: 14 }}>Fatura bulunamadı.</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 960 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
                   {TH.map(h => (
@@ -367,14 +256,6 @@ export default function FaturaListesi() {
                       <td style={{ padding: '14px 16px' }}>
                         <span style={{ background: b.bg, color: b.color, fontSize: 12, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>{b.label}</span>
                       </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <button
-                          onClick={() => setDetayFatura(inv)}
-                          style={{ background: 'transparent', color: '#185FA5', border: '1px solid #185FA5', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
-                        >
-                          Detay
-                        </button>
-                      </td>
                     </tr>
                   )
                 })}
@@ -383,7 +264,6 @@ export default function FaturaListesi() {
           </div>
         )}
 
-        {/* Pagination */}
         {totalPages > 1 && (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '12px 24px', borderTop: '1px solid #E5E7EB' }}>
             <button
@@ -405,8 +285,7 @@ export default function FaturaListesi() {
         )}
       </div>
 
-      {showAdd    && <FaturaEkleModal  onClose={() => setShowAdd(false)}      onSaved={fetchInvoices} />}
-      {detayFatura && <FaturaDetayModal invoice={detayFatura} onClose={() => setDetayFatura(null)} />}
+      {showAdd && <FaturaEkleModal onClose={() => setShowAdd(false)} onSaved={fetchInvoices} defaultProjectId={projectId} />}
     </>
   )
 }

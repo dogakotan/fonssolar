@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase } from '../../../lib/supabase'
 
 const formatCurrency = (amount) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
@@ -7,23 +7,24 @@ const formatCurrency = (amount) =>
 const formatDate = (d) =>
   d ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—'
 
-export default function MaliyetTablosu() {
+export default function ProjeTabMaliyetTablosu({ projectId }) {
   const [invoices,    setInvoices]    = useState([])
   const [budgetLines, setBudgetLines] = useState([])
   const [loading,     setLoading]     = useState(true)
 
   useEffect(() => {
+    if (!projectId) return
     async function load() {
       const [invRes, budRes] = await Promise.all([
-        supabase.from('invoices').select('*, suppliers(name)').eq('status', 'onaylandı').order('invoice_date', { ascending: false }),
-        supabase.from('budget_lines').select('*').order('order_index', { ascending: true }),
+        supabase.from('invoices').select('*, suppliers(name)').eq('status', 'onaylandı').eq('project_id', projectId).order('invoice_date', { ascending: false }),
+        supabase.from('budget_lines').select('*').eq('project_id', projectId).order('order_index', { ascending: true }),
       ])
       setInvoices(invRes.data || [])
       setBudgetLines(budRes.data || [])
       setLoading(false)
     }
     load()
-  }, [])
+  }, [projectId])
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
@@ -52,11 +53,10 @@ export default function MaliyetTablosu() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {/* Özet kartları */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
         {[
-          { label: 'Planlanan Bütçe', value: formatCurrency(totalPlanned), color: '#185FA5' },
-          { label: 'Gerçekleşen',     value: formatCurrency(totalActual),  color: '#6B7280' },
+          { label: 'Planlanan Bütçe', value: formatCurrency(totalPlanned),  color: '#185FA5' },
+          { label: 'Gerçekleşen',     value: formatCurrency(totalActual),   color: '#6B7280' },
           { label: 'Kalan Bütçe',     value: formatCurrency(totalVariance), color: totalVariance >= 0 ? '#10B981' : '#EF4444' },
           { label: 'Harcama Oranı',   value: `%${avgSpendPct}`,            color: pColor },
         ].map(c => (
@@ -72,7 +72,6 @@ export default function MaliyetTablosu() {
         ))}
       </div>
 
-      {/* Kategori tablosu */}
       {catRows.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
@@ -113,7 +112,6 @@ export default function MaliyetTablosu() {
         </div>
       )}
 
-      {/* Onaylanmış fatura geçmişi */}
       {invoices.length > 0 && (
         <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ padding: '16px 24px', borderBottom: '1px solid #E5E7EB' }}>
@@ -144,7 +142,7 @@ export default function MaliyetTablosu() {
 
       {catRows.length === 0 && invoices.length === 0 && (
         <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 40, textAlign: 'center', color: '#6B7280', fontSize: 14 }}>
-          Maliyet verisi bulunamadı. Supabase'de budget_lines tablosunu doldurun.
+          Bu proje için maliyet verisi bulunamadı.
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, Fragment } from 'react'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../context/AuthContext'
+import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../context/AuthContext'
 
 const formatCurrency = (amount) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
@@ -23,14 +23,14 @@ function EmptyState({ text }) {
 }
 
 function DetailPanel({ inv }) {
-  const kdvTutar   = inv.vat_amount  ?? ((inv.amount || 0) * (inv.vat_rate || 20) / 100)
+  const kdvTutar    = inv.vat_amount  ?? ((inv.amount || 0) * (inv.vat_rate || 20) / 100)
   const toplamTutar = inv.total_amount ?? ((inv.amount || 0) + kdvTutar)
 
   const items = [
-    { label: 'Proje',       value: inv.projects?.name || '—' },
-    { label: 'Kategori',    value: inv.category ? inv.category.charAt(0).toUpperCase() + inv.category.slice(1) : '—' },
-    { label: 'Vade Tarihi', value: formatDate(inv.due_date) },
-    { label: 'KDV Hariç',  value: formatCurrency(inv.amount) },
+    { label: 'Proje',        value: inv.projects?.name || '—' },
+    { label: 'Kategori',     value: inv.category ? inv.category.charAt(0).toUpperCase() + inv.category.slice(1) : '—' },
+    { label: 'Vade Tarihi',  value: formatDate(inv.due_date) },
+    { label: 'KDV Hariç',   value: formatCurrency(inv.amount) },
     { label: `KDV (%${inv.vat_rate || 20})`, value: formatCurrency(kdvTutar) },
     { label: 'Genel Toplam', value: formatCurrency(toplamTutar), bold: true, color: '#185FA5' },
   ]
@@ -38,8 +38,7 @@ function DetailPanel({ inv }) {
   return (
     <tr>
       <td colSpan={6} style={{ padding: 0, background: '#F8FAFC', borderBottom: '2px solid #E5E7EB' }}>
-        <div style={{ padding: '16px 24px', display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-          {/* Sol: kırılım */}
+        <div style={{ padding: '16px 24px', display: 'flex', gap: 32, flexWrap: 'wrap' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', gap: '8px 28px' }}>
             {items.map(({ label, value, bold, color }) => (
               <div key={label}>
@@ -48,8 +47,6 @@ function DetailPanel({ inv }) {
               </div>
             ))}
           </div>
-
-          {/* Sağ: açıklama */}
           {inv.description && (
             <div style={{ flex: 1, minWidth: 180 }}>
               <p style={{ fontSize: 10, color: '#9CA3AF', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Açıklama</p>
@@ -77,17 +74,13 @@ function ActionButtons({ inv, onAction, actionLoading }) {
           onChange={e => setNote(e.target.value)}
           style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontFamily: 'inherit', outline: 'none', width: 180 }}
         />
-        <button
-          onClick={() => { onAction(inv.id, 'reddedildi', note); setShowReject(false); setNote('') }}
+        <button onClick={() => { onAction(inv.id, 'reddedildi', note); setShowReject(false); setNote('') }}
           disabled={busy}
-          style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-        >
+          style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
           {busy ? '…' : 'Reddi Onayla'}
         </button>
-        <button
-          onClick={() => { setShowReject(false); setNote('') }}
-          style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-        >
+        <button onClick={() => { setShowReject(false); setNote('') }}
+          style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
           İptal
         </button>
       </div>
@@ -96,18 +89,12 @@ function ActionButtons({ inv, onAction, actionLoading }) {
 
   return (
     <div style={{ display: 'flex', gap: 6 }}>
-      <button
-        onClick={() => onAction(inv.id, 'onaylandı')}
-        disabled={busy}
-        style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-      >
+      <button onClick={() => onAction(inv.id, 'onaylandı')} disabled={busy}
+        style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
         {busy ? '…' : '✓ Onayla'}
       </button>
-      <button
-        onClick={() => setShowReject(true)}
-        disabled={busy}
-        style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-      >
+      <button onClick={() => setShowReject(true)} disabled={busy}
+        style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
         ✗ Reddet
       </button>
     </div>
@@ -116,14 +103,13 @@ function ActionButtons({ inv, onAction, actionLoading }) {
 
 function InvoiceTable({ invoices, onAction, actionLoading, readonly }) {
   const [expanded, setExpanded] = useState(null)
-
   const toggle = (id) => setExpanded(e => e === id ? null : id)
 
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
         <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-          {['', 'FATURA NO', 'TEDARİKÇİ', 'TUTAR (KDV\'Lİ)', 'FATURA TARİHİ', readonly ? 'DURUM' : 'İŞLEM'].map(h => (
+          {['', 'FATURA NO', 'TEDARİKÇİ', "TUTAR (KDV'Lİ)", 'FATURA TARİHİ', readonly ? 'DURUM' : 'İŞLEM'].map(h => (
             <th key={h} style={TH_STYLE}>{h}</th>
           ))}
         </tr>
@@ -133,56 +119,22 @@ function InvoiceTable({ invoices, onAction, actionLoading, readonly }) {
           const isOpen = expanded === inv.id
           return (
             <Fragment key={inv.id}>
-              <tr
-                style={{
-                  borderBottom: isOpen ? 'none' : '1px solid #F3F4F6',
-                  background: isOpen ? '#F8FAFC' : 'transparent',
-                  cursor: 'pointer',
-                }}
-              >
-                {/* Genişlet/kapat */}
-                <td
-                  onClick={() => toggle(inv.id)}
-                  style={{ padding: '14px 8px 14px 20px', width: 28, color: '#9CA3AF', fontSize: 12, userSelect: 'none' }}
-                >
+              <tr style={{ borderBottom: isOpen ? 'none' : '1px solid #F3F4F6', background: isOpen ? '#F8FAFC' : 'transparent', cursor: 'pointer' }}>
+                <td onClick={() => toggle(inv.id)} style={{ padding: '14px 8px 14px 20px', width: 28, color: '#9CA3AF', fontSize: 12, userSelect: 'none' }}>
                   {isOpen ? '▲' : '▼'}
                 </td>
-                <td
-                  onClick={() => toggle(inv.id)}
-                  style={{ padding: '14px 20px', fontSize: 13, fontWeight: 500, color: '#111827' }}
-                >
-                  {inv.invoice_no || '—'}
-                </td>
-                <td
-                  onClick={() => toggle(inv.id)}
-                  style={{ padding: '14px 20px', fontSize: 13, color: '#374151' }}
-                >
-                  {inv.suppliers?.name || '—'}
-                </td>
-                <td
-                  onClick={() => toggle(inv.id)}
-                  style={{ padding: '14px 20px', fontSize: 13, fontWeight: 700, color: '#185FA5' }}
-                >
-                  {formatCurrency(inv.total_amount)}
-                </td>
-                <td
-                  onClick={() => toggle(inv.id)}
-                  style={{ padding: '14px 20px', fontSize: 13, color: '#6B7280' }}
-                >
-                  {formatDate(inv.invoice_date)}
-                </td>
+                <td onClick={() => toggle(inv.id)} style={{ padding: '14px 20px', fontSize: 13, fontWeight: 500, color: '#111827' }}>{inv.invoice_no || '—'}</td>
+                <td onClick={() => toggle(inv.id)} style={{ padding: '14px 20px', fontSize: 13, color: '#374151' }}>{inv.suppliers?.name || '—'}</td>
+                <td onClick={() => toggle(inv.id)} style={{ padding: '14px 20px', fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{formatCurrency(inv.total_amount)}</td>
+                <td onClick={() => toggle(inv.id)} style={{ padding: '14px 20px', fontSize: 13, color: '#6B7280' }}>{formatDate(inv.invoice_date)}</td>
                 <td style={{ padding: '14px 20px' }} onClick={e => e.stopPropagation()}>
                   {readonly ? (
-                    <span style={{ background: '#EFF6FF', color: '#185FA5', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>
-                      Yönetici Onayında
-                    </span>
+                    <span style={{ background: '#EFF6FF', color: '#185FA5', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>Yönetici Onayında</span>
                   ) : (
                     <ActionButtons inv={inv} onAction={onAction} actionLoading={actionLoading} />
                   )}
                 </td>
               </tr>
-
-              {/* Detay paneli */}
               {isOpen && <DetailPanel inv={inv} />}
             </Fragment>
           )
@@ -206,14 +158,14 @@ function Section({ title, badge, badgeBg, badgeColor, children }) {
   )
 }
 
-export default function OnayKuyrugu() {
+export default function ProjeTabOnayKuyrugu({ projectId }) {
   const { isAdmin, isMuhasebe, user } = useAuth()
   const [muhasebeKuyrugu, setMuhasebeKuyrugu] = useState([])
   const [yoneticiKuyrugu, setYoneticiKuyrugu] = useState([])
   const [loading,         setLoading]         = useState(true)
   const [actionLoading,   setActionLoading]   = useState(null)
 
-  useEffect(() => { fetchData() }, [isAdmin, isMuhasebe])
+  useEffect(() => { if (projectId) fetchData() }, [projectId, isAdmin, isMuhasebe])
 
   async function fetchData() {
     setLoading(true)
@@ -221,19 +173,13 @@ export default function OnayKuyrugu() {
 
     if (isMuhasebe) {
       const [mRes, yRes] = await Promise.all([
-        supabase.from('invoices').select(sel)
-          .in('status', ['bekliyor', 'muhasebe_onayında'])
-          .order('invoice_date', { ascending: true }),
-        supabase.from('invoices').select(sel)
-          .eq('status', 'yönetici_onayında')
-          .order('invoice_date', { ascending: true }),
+        supabase.from('invoices').select(sel).in('status', ['bekliyor', 'muhasebe_onayında']).eq('project_id', projectId).order('invoice_date', { ascending: true }),
+        supabase.from('invoices').select(sel).eq('status', 'yönetici_onayında').eq('project_id', projectId).order('invoice_date', { ascending: true }),
       ])
       setMuhasebeKuyrugu(mRes.data || [])
       setYoneticiKuyrugu(yRes.data || [])
     } else if (isAdmin) {
-      const { data } = await supabase.from('invoices').select(sel)
-        .eq('status', 'yönetici_onayında')
-        .order('invoice_date', { ascending: true })
+      const { data } = await supabase.from('invoices').select(sel).eq('status', 'yönetici_onayında').eq('project_id', projectId).order('invoice_date', { ascending: true })
       setYoneticiKuyrugu(data || [])
     }
 
@@ -243,45 +189,25 @@ export default function OnayKuyrugu() {
   async function handleAction(invoiceId, action, note, step) {
     setActionLoading(invoiceId)
 
-    await supabase
-      .from('invoice_approvals')
-      .update({
-        status: action,
-        note: note || null,
-        reviewed_at: new Date().toISOString(),
-        reviewer_id: user.id,
-      })
-      .eq('invoice_id', invoiceId)
-      .eq('step', step)
+    await supabase.from('invoice_approvals')
+      .update({ status: action, note: note || null, reviewed_at: new Date().toISOString(), reviewer_id: user.id })
+      .eq('invoice_id', invoiceId).eq('step', step)
 
     let newStatus
     if (action === 'reddedildi') {
       newStatus = 'reddedildi'
     } else if (step === 1) {
       newStatus = 'yönetici_onayında'
-      const { data: existing } = await supabase
-        .from('invoice_approvals')
-        .select('id')
-        .eq('invoice_id', invoiceId)
-        .eq('step', 2)
-        .single()
+      const { data: existing } = await supabase.from('invoice_approvals').select('id').eq('invoice_id', invoiceId).eq('step', 2).single()
       if (!existing) {
-        await supabase.from('invoice_approvals').insert({
-          invoice_id: invoiceId,
-          step: 2,
-          step_label: 'Yönetici Onayı',
-          status: 'bekliyor',
-        })
+        await supabase.from('invoice_approvals').insert({ invoice_id: invoiceId, step: 2, step_label: 'Yönetici Onayı', status: 'bekliyor' })
       }
     } else if (step === 2) {
       newStatus = 'onaylandı'
     }
 
     if (newStatus) {
-      await supabase
-        .from('invoices')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', invoiceId)
+      await supabase.from('invoices').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', invoiceId)
     }
 
     setActionLoading(null)
@@ -296,21 +222,11 @@ export default function OnayKuyrugu() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
       {isMuhasebe && (
-        <Section
-          title="Muhasebe Onay Kuyruğu"
-          badge={`${muhasebeKuyrugu.length} bekliyor`}
-          badgeBg="#FEF3C7" badgeColor="#92400E"
-        >
+        <Section title="Muhasebe Onay Kuyruğu" badge={`${muhasebeKuyrugu.length} bekliyor`} badgeBg="#FEF3C7" badgeColor="#92400E">
           {muhasebeKuyrugu.length === 0
             ? <EmptyState text="Onay bekleyen fatura yok" />
-            : <InvoiceTable
-                invoices={muhasebeKuyrugu}
-                onAction={(id, action, note) => handleAction(id, action, note, 1)}
-                actionLoading={actionLoading}
-                readonly={false}
-              />
+            : <InvoiceTable invoices={muhasebeKuyrugu} onAction={(id, action, note) => handleAction(id, action, note, 1)} actionLoading={actionLoading} readonly={false} />
           }
         </Section>
       )}
@@ -322,15 +238,9 @@ export default function OnayKuyrugu() {
       >
         {yoneticiKuyrugu.length === 0
           ? <EmptyState text={isAdmin ? 'Onay bekleyen fatura yok' : 'Yönetici onayında fatura yok'} />
-          : <InvoiceTable
-              invoices={yoneticiKuyrugu}
-              onAction={(id, action, note) => handleAction(id, action, note, 2)}
-              actionLoading={actionLoading}
-              readonly={isMuhasebe}
-            />
+          : <InvoiceTable invoices={yoneticiKuyrugu} onAction={(id, action, note) => handleAction(id, action, note, 2)} actionLoading={actionLoading} readonly={isMuhasebe} />
         }
       </Section>
-
     </div>
   )
 }
