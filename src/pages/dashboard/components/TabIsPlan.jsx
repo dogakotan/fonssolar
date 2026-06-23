@@ -93,8 +93,8 @@ export default function TabIsPlan({ projectId }) {
         <div className="card-header"><h3>Gantt İş Planı</h3></div>
         <p style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-muted)' }}>
           {tasks.length === 0
-            ? 'İş paketi bulunamadı. Supabase work_packages tablosuna veri eklediğinizden emin olun.'
-            : 'Tarih bilgisi (start_date) olan iş paketi bulunamadı.'}
+            ? 'Henüz iş kalemi eklenmemiş. Proje Yönetimi → Düzenle → Adım 2 ile iş kalemleri ekleyebilirsiniz.'
+            : 'Tarih bilgisi (Başlangıç/Bitiş tarihi) olan iş kalemi bulunamadı.'}
         </p>
       </div>
     )

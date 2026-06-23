@@ -43,7 +43,7 @@ async function ctxGenel(projectId, selectedDate) {
 
   const [wpRes, ticketRes, procRes, progressRes] = await Promise.allSettled([
     withDateFilter(
-      supabase.from('work_packages').select('status, progress').match(pid ? { project_id: pid } : {}),
+      supabase.from('project_tasks').select('status, progress_pct').match(pid ? { project_id: pid } : {}),
       ceiling
     ),
     withDateFilter(
@@ -65,9 +65,9 @@ async function ctxGenel(projectId, selectedDate) {
   const pendingPR = procRes.status   === 'fulfilled' ? (procRes.value.count   || 0)  : 0
   const progress = progressRes.status === 'fulfilled' ? (progressRes.value.data || []) : []
 
-  const wpSummary = ['tamamlandı', 'aktif', 'gecikmiş', 'bekliyor'].map(s => {
+  const wpSummary = ['tamamlandi', 'devam_ediyor', 'askida', 'beklemede'].map(s => {
     const count = wps.filter(w => w.status === s).length
-    const label = { tamamlandı: 'Tamamlandı', aktif: 'Devam Ediyor', gecikmiş: 'Gecikmiş', bekliyor: 'Bekliyor' }[s]
+    const label = { tamamlandi: 'Tamamlandı', devam_ediyor: 'Devam Ediyor', askida: 'Askıda', beklemede: 'Beklemede' }[s]
     return `  - ${label}: ${count}`
   })
 
@@ -94,10 +94,10 @@ async function ctxIsPlan(projectId, selectedDate) {
 
   const [wpRes, schedRes, progRes] = await Promise.allSettled([
     withDateFilter(
-      supabase.from('work_packages')
-        .select('name, status, progress, due_date, category')
+      supabase.from('project_tasks')
+        .select('task_name, status, progress_pct, planned_end, category')
         .match(pid ? { project_id: pid } : {})
-        .order('due_date', { ascending: true })
+        .order('planned_end', { ascending: true })
         .limit(30),
       ceiling
     ),
@@ -119,7 +119,7 @@ async function ctxIsPlan(projectId, selectedDate) {
   const progs = progRes.status === 'fulfilled' ? (progRes.value.data  || []) : []
 
   const wpLines = wps.map(w =>
-    `  - [${w.status}] ${w.name} | İlerleme: %${fmt(w.progress)} | Bitiş: ${fmt(w.due_date)}`
+    `  - [${w.status}] ${w.task_name} | İlerleme: %${fmt(w.progress_pct)} | Bitiş: ${fmt(w.planned_end)}`
   )
 
   const actLines = acts.map(a =>

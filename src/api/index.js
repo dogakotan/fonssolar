@@ -1,12 +1,10 @@
 import { supabase } from '../lib/supabase'
 
 // ── Projeler ──────────────────────────────────────────────────────────────────
-// Gerçek kolon yapısı: id(text), name, capacity_kwp, capacity_kwe,
-//                      location, total_days, start_date, target_date, created_at
 export const getProjects = () =>
   supabase
     .from('projects')
-    .select('id, name, capacity_kwp, capacity_kwe, location, total_days, start_date, target_date, created_at')
+    .select('id, name, capacity_kwp, capacity_kwe, location, total_days, start_date, target_date, status, progress, created_at')
     .order('created_at', { ascending: false })
 
 export const getActiveProjectCount = () =>
@@ -22,24 +20,46 @@ export const getGunlukIlerleme = async (_projectName) => ({ data: [], error: nul
 export const getPersonelMakineRaporu = async () => ({ data: null, error: null })
 
 // ── Görevler ──────────────────────────────────────────────────────────────────
-export const getWorkPackages = (projectId) =>
-  supabase
-    .from('work_packages')
-    .select('*')
+export const getWorkPackages = async (projectId) => {
+  const { data, error } = await supabase
+    .from('project_tasks')
+    .select('id, task_name, task_code, category, sub_category, planned_start, planned_end, progress_pct, status, responsible, team_size, notes, project_id')
     .eq('project_id', projectId)
-    .order('due_date', { ascending: true })
+    .order('planned_start', { ascending: true })
+  return {
+    error,
+    data: data?.map(r => ({
+      ...r,
+      name:       r.task_name,
+      start_date: r.planned_start,
+      due_date:   r.planned_end,
+      progress:   r.progress_pct ?? 0,
+    })) ?? [],
+  }
+}
 
-export const getAllWorkPackages = () =>
-  supabase
-    .from('work_packages')
-    .select('*')
-    .order('due_date', { ascending: true })
+export const getAllWorkPackages = async () => {
+  const { data, error } = await supabase
+    .from('project_tasks')
+    .select('id, task_name, task_code, category, planned_start, planned_end, progress_pct, status, project_id')
+    .order('planned_start', { ascending: true })
+  return {
+    error,
+    data: data?.map(r => ({
+      ...r,
+      name:       r.task_name,
+      start_date: r.planned_start,
+      due_date:   r.planned_end,
+      progress:   r.progress_pct ?? 0,
+    })) ?? [],
+  }
+}
 
 export const getOpenTaskCount = () =>
   supabase
-    .from('work_packages')
+    .from('project_tasks')
     .select('id', { count: 'exact', head: true })
-    .in('status', ['aktif', 'bekliyor', 'gecikmiş'])
+    .in('status', ['devam_ediyor', 'beklemede', 'askida'])
 
 // ── Satın Alma Talepleri ──────────────────────────────────────────────────────
 export const getPendingPurchaseCount = () =>

@@ -12,6 +12,7 @@ import TabTickets from './components/TabTickets'
 import TabSantiyeSefi from './components/TabSantiyeSefi'
 import TabKullanicilar from './components/TabKullanicilar'
 import ProjeDetay from './components/ProjeDetay'
+import TabProjeYonetimi from './components/TabProjeYonetimi'
 import FloatingAgent from '../../components/agent/FloatingAgent'
 import './Dashboard.css'
 
@@ -23,6 +24,7 @@ const TABS = {
   finans:         { title: 'Finans',            subtitle: 'Fatura yönetimi ve maliyet takibi' },
   tickets:        { title: 'Ticket Sistemi',    subtitle: 'Sahadan yöneticiye hata bildirimi' },
   kullanicilar:   { title: 'Kullanıcı Yönetimi', subtitle: 'Sistem kullanıcıları ve rol atamaları' },
+  'proje-ekle':   { title: 'Proje Yönetimi',     subtitle: 'Projeleri görüntüle, ekle ve düzenle' },
 }
 
 const ROLE_TABS = {
@@ -127,6 +129,16 @@ export default function Dashboard() {
         {activeTab === 'finans'       && <TabFinans selectedDate={selectedDate} />}
         {activeTab === 'tickets'      && <TabTickets selectedDate={selectedDate} />}
         {activeTab === 'kullanicilar' && isAdmin && <TabKullanicilar />}
+        {activeTab === 'proje-ekle'  && isAdmin && (
+          <TabProjeYonetimi
+            onViewProject={(id, name) => {
+              setSelectedProjectId(id)
+              setSelectedProjectName(name)
+              setShowProjectDetail(true)
+              setActiveTab('projeler')
+            }}
+          />
+        )}
       </main>
 
       <FloatingAgent activeTab={activeTab} projectId={selectedProjectId} selectedDate={selectedDate} />

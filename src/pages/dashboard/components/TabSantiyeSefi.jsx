@@ -31,10 +31,10 @@ const PR_URGENCY = {
   çok_acil: { bg: '#FEE2E2', color: '#991B1B', label: 'Çok Acil' },
 }
 const WP_STATUS = {
-  tamamlandı: { color: '#10B981', label: 'Tamamlandı' },
-  aktif:      { color: '#185FA5', label: 'Devam Ediyor' },
-  bekliyor:   { color: '#9CA3AF', label: 'Bekliyor' },
-  gecikmiş:   { color: '#EF4444', label: 'Gecikmiş' },
+  tamamlandi:   { color: '#10B981', label: 'Tamamlandı' },
+  devam_ediyor: { color: '#185FA5', label: 'Devam Ediyor' },
+  beklemede:    { color: '#9CA3AF', label: 'Beklemede' },
+  askida:       { color: '#EF4444', label: 'Askıda' },
 }
 
 function Badge({ map, value }) {
@@ -92,7 +92,7 @@ export default function TabSantiyeSefi() {
     async function load() {
       const [projRes, wpRes, tickRes, prRes, reportRes] = await Promise.all([
         supabase.from('projects').select('id, name, location, progress, target_date').eq('id', projectId).single(),
-        supabase.from('work_packages').select('status').eq('project_id', projectId),
+        supabase.from('project_tasks').select('status').eq('project_id', projectId),
         supabase.from('tickets')
           .select('id, title, category, severity, status, created_at, created_by')
           .eq('created_by', user.id)
@@ -109,7 +109,7 @@ export default function TabSantiyeSefi() {
       ])
       if (projRes.data) setProject(projRes.data)
       if (wpRes.data) {
-        const counts = { tamamlandı: 0, aktif: 0, bekliyor: 0, gecikmiş: 0 }
+        const counts = { tamamlandi: 0, devam_ediyor: 0, beklemede: 0, askida: 0 }
         wpRes.data.forEach(w => { if (counts[w.status] !== undefined) counts[w.status]++ })
         setWpStats(counts)
       }
