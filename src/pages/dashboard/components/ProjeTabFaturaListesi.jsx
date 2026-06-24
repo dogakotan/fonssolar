@@ -164,7 +164,7 @@ function FaturaEkleModal({ onClose, onSaved, defaultProjectId }) {
   )
 }
 
-export default function ProjeTabFaturaListesi({ projectId }) {
+export default function ProjeTabFaturaListesi({ projectId, filterDate }) {
   const [invoices,     setInvoices]     = useState([])
   const [loading,      setLoading]      = useState(true)
   const [page,         setPage]         = useState(0)
@@ -177,13 +177,14 @@ export default function ProjeTabFaturaListesi({ projectId }) {
       .from('invoices')
       .select('*, suppliers(name)')
       .eq('project_id', projectId)
+      .lte('invoice_date', filterDate || new Date().toISOString().split('T')[0])
       .order('invoice_date', { ascending: false })
     if (error) console.error('invoices fetch error:', error)
     setInvoices(data || [])
     setLoading(false)
   }
 
-  useEffect(() => { if (projectId) fetchInvoices() }, [projectId])
+  useEffect(() => { if (projectId) fetchInvoices() }, [projectId, filterDate])
 
   const filtered   = filterStatus === 'hepsi' ? invoices : invoices.filter(i => i.status === filterStatus)
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)

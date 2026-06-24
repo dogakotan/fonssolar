@@ -5,7 +5,6 @@ import { useAuth } from '../../context/AuthContext'
 import Sidebar from '../../components/layouts/Sidebar'
 import TabGenel from './components/TabGenel'
 import TabProjeler from './components/TabProjeler'
-import TabIsPlan from './components/TabIsPlan'
 import TabSatinAlma from './components/TabSatinAlma'
 import TabFinans from './components/TabFinans'
 import TabTickets from './components/TabTickets'
@@ -19,7 +18,6 @@ import './Dashboard.css'
 const TABS = {
   genel:          { title: 'Genel Bakış',      subtitle: 'Proje özeti ve aktif görevler' },
   projeler:       { title: 'Projeler',          subtitle: 'Tüm GES projeleri' },
-  'is-plani':     { title: 'İş Planı',          subtitle: 'Görev takip ve zaman çizelgesi' },
   'satin-alma':   { title: 'Satın Alma',        subtitle: 'Tedarik talepleri ve siparişler' },
   finans:         { title: 'Finans',            subtitle: 'Fatura yönetimi ve maliyet takibi' },
   tickets:        { title: 'Ticket Sistemi',    subtitle: 'Sahadan yöneticiye hata bildirimi' },
@@ -56,11 +54,8 @@ export default function Dashboard() {
   function handleSelectProject(id, name) {
     setSelectedProjectId(id)
     setSelectedProjectName(name)
-    if (activeTab === 'projeler') {
-      setShowProjectDetail(true)
-    } else {
-      setActiveTab('is-plani')
-    }
+    setShowProjectDetail(true)
+    setActiveTab('projeler')
   }
 
   function handleTabChange(tab) {
@@ -103,7 +98,7 @@ export default function Dashboard() {
               {showingDetail
                 ? 'Proje detayı ve Gantt görünümü'
                 : TABS[activeTab].subtitle}
-              {!showingDetail && selectedProjectName && ['is-plani', 'satin-alma'].includes(activeTab) && (
+              {!showingDetail && selectedProjectName && activeTab === 'satin-alma' && (
                 <span style={{ marginLeft: '0.5rem', color: 'var(--color-primary)', fontWeight: 600 }}>
                   — {selectedProjectName}
                 </span>
@@ -124,7 +119,6 @@ export default function Dashboard() {
             setSelectedDate={setSelectedDate}
           />
         )}
-        {activeTab === 'is-plani'     && <TabIsPlan projectId={selectedProjectId} selectedDate={selectedDate} />}
         {activeTab === 'satin-alma'   && <TabSatinAlma projectId={selectedProjectId} selectedDate={selectedDate} />}
         {activeTab === 'finans'       && <TabFinans selectedDate={selectedDate} />}
         {activeTab === 'tickets'      && <TabTickets selectedDate={selectedDate} />}

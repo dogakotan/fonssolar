@@ -763,3 +763,61 @@
 .rep-mob-head  { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
 .rep-mob-date  { font-size: 12px; color: #94a3b8; white-space: nowrap; }
 .rep-mob-text  { font-size: 13px; color: #374151; line-height: 1.5; }
+
+/* ── Proje Dashboard — yeni layout ── */
+.proj-dash-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+.proj-dash-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.kpi-card-compact {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 0.875rem 1rem;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.kpi-card-compact-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0;
+}
+.kpi-card-ring-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+/* ── Gantt KPI şeridi ── */
+.gantt-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1024px) {
+  .proj-dash-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .gantt-kpi-strip    { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+  .proj-dash-grid-2 { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .proj-dash-kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .gantt-kpi-strip    { grid-template-columns: repeat(2, 1fr); }
+}

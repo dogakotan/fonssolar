@@ -77,7 +77,19 @@ function getRolEtiket(role_key) { return ROL_ETIKET[role_key] || (role_key || '�
 
 async function callEdgeFn(name, body) {
   const { data, error } = await supabase.functions.invoke(name, { body })
-  if (error) throw new Error(error.message || 'Sunucu hatası')
+  if (error) {
+    let msg = error.message || 'Sunucu hatası'
+    if (error.context) {
+      try {
+        const errBody = await error.context.json()
+        console.error('Edge function hata detayı:', name, errBody)
+        if (errBody?.error) msg = errBody.error
+        else if (errBody?.message) msg = errBody.message
+      } catch {}
+    }
+    console.error('Edge function hatası:', name, error.status, msg)
+    throw new Error(msg)
+  }
   if (data?.error) throw new Error(data.error)
   return data
 }
@@ -117,19 +129,22 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved }) {
     e.preventDefault()
     if (!form.full_name.trim() || !form.email.trim()) return
     if (isNew && !form.password.trim()) { setErr('Şifre zorunludur.'); return }
+    if (isNew && form.password.length < 6) { setErr('Şifre en az 6 karakter olmalıdır.'); return }
     setSaving(true)
     setErr('')
     try {
       const projId = isPBazli(form.role_key) ? (form.project_id || null) : null
 
       if (isNew) {
-        await callEdgeFn('create-user', {
+        const payload = {
           email:      form.email.trim(),
           password:   form.password,
           full_name:  form.full_name.trim(),
           role_key:   form.role_key,
           project_id: projId,
-        })
+        }
+        console.log('Gönderilen veri:', { ...payload, password: '[GİZLİ]' })
+        await callEdgeFn('create-user', payload)
         // project_id'yi doğrudan profiles'a yaz (edge fn desteklemese de çalışır)
         if (projId) {
           await supabase.from('profiles').update({ project_id: projId }).eq('email', form.email.trim())
@@ -213,8 +228,8 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved }) {
                 style={INP}
                 value={form.password}
                 onChange={e => set('password', e.target.value)}
-                placeholder="En az 8 karakter"
-                minLength={8}
+                placeholder="En az 6 karakter"
+                minLength={6}
                 required
               />
               <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
@@ -458,7 +473,7 @@ export default function TabKullanicilar() {
           return (
             <div key={u.id} style={{
               display: 'flex', alignItems: 'center', gap: 12,
-              padding: '10px 20px', borderBottom: '1px solid #F3F4F6', flexWrap: 'wrap',
+              padding: '10px 20px', borderBottom: '1px solid #F3F4F6', flexWrap: 'wrap', position: 'relative',
             }}>
               {/* Avatar + İsim + Mail */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 200px', minWidth: 0 }}>
@@ -482,17 +497,17 @@ export default function TabKullanicilar() {
               </div>
 
               {/* Rol + Proje Rozetleri */}
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0, flexWrap: 'wrap' }}>
-                <span style={{ background: renk.bg, color: renk.color, fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center', position: 'absolute', left: '50%', transform: 'translateX(-50%)', maxWidth: '36%', textAlign: 'center', flexWrap: 'wrap' }}>
+                <span style={{ color: '#64748B', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap' }}>
                   {getRolEtiket(u.role_key)}
                 </span>
                 {projAdi && (
-                  <span style={{ background: '#F0F9FF', color: '#0369A1', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
-                    {projAdi}
+                  <span style={{ color: '#94A3B8', fontSize: 12, whiteSpace: 'nowrap' }}>
+                    · {projAdi}
                   </span>
                 )}
                 {PROJE_BAZLI.includes(u.role_key) && !projAdi && (
-                  <span style={{ background: '#FEF9C3', color: '#B45309', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                  <span style={{ color: '#94A3B8', fontSize: 12, whiteSpace: 'nowrap' }}>
                     Proje Atanmadı
                   </span>
                 )}

@@ -20,7 +20,7 @@ async function fetchDoviz() {
   }
 }
 
-export default function ProjeTabFinansStats({ projectId }) {
+export default function ProjeTabFinansStats({ projectId, filterDate }) {
   const [stats,   setStats]   = useState({ toplamFatura: 0, onayBekleyen: 0, buAyOnaylanan: 0, spendPct: 0 })
   const [doviz,   setDoviz]   = useState({ usd: null, eur: null })
   const [loading, setLoading] = useState(true)
@@ -32,7 +32,8 @@ export default function ProjeTabFinansStats({ projectId }) {
       const ayBaslangic = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
       const [invRes, budRes, kurData] = await Promise.all([
-        supabase.from('invoices').select('total_amount, status, created_at').eq('project_id', projectId),
+        supabase.from('invoices').select('total_amount, status, created_at').eq('project_id', projectId)
+          .lte('created_at', (filterDate || new Date().toISOString().split('T')[0]) + 'T23:59:59'),
         supabase.from('budget_lines').select('planned_amount').eq('project_id', projectId),
         fetchDoviz(),
       ])
@@ -57,7 +58,7 @@ export default function ProjeTabFinansStats({ projectId }) {
       setLoading(false)
     }
     load()
-  }, [projectId])
+  }, [projectId, filterDate])
 
   const pc     = stats.spendPct
   const pColor = pc < 70 ? '#10B981' : pc < 90 ? '#F59E0B' : '#EF4444'

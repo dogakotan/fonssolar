@@ -10,17 +10,18 @@ import ProjeTabSatinAlma from './ProjeTabSatinAlma'
 import ProjeTabFinans from './ProjeTabFinans'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
+import TabGenel from './TabGenel'
+import TabIsPlan from './TabIsPlan'
 
 // ── Periyot yardımcıları ──────────────────────────────────────────────────────
 const PERIODS = [
   { key: 'haftalik', label: 'Haftalık' },
   { key: 'aylik',    label: 'Aylık'   },
-  { key: 'yillik',   label: 'Yıllık'  },
 ]
 
-function getPeriodRange(period, offset) {
+function getPeriodRange(period, offset, anchorDate) {
   if (!period) return null
-  const now = new Date()
+  const now = anchorDate instanceof Date ? new Date(anchorDate) : new Date()
   let start, end, label
 
   if (period === 'haftalik') {
@@ -36,14 +37,9 @@ function getPeriodRange(period, offset) {
     start = new Date(d); start.setHours(0,0,0,0)
     end   = new Date(d.getFullYear(), d.getMonth() + 1, 0); end.setHours(23,59,59,999)
     label = d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
-  } else {
-    const y = now.getFullYear() + offset
-    start = new Date(y, 0, 1,  0,  0,  0,  0)
-    end   = new Date(y, 11, 31, 23, 59, 59, 999)
-    label = `${y}`
   }
 
-  return { start, end, label }
+  return start ? { start, end, label } : null
 }
 
 // ── Sabitler ──────────────────────────────────────────────────────────────────
@@ -1297,6 +1293,20 @@ const tabBtnActive = {
   ...tabBtn, background: 'var(--color-primary)', color: '#fff',
   borderColor: 'var(--color-primary)', fontWeight: 600,
 }
+const periodBtn = {
+  padding: '5px 14px', borderRadius: 20, border: '1px solid var(--color-border)',
+  background: '#fff', color: 'var(--color-muted)', fontSize: 12, fontWeight: 500,
+  cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
+}
+const periodBtnActive = {
+  ...periodBtn, background: 'var(--color-primary)', color: '#fff',
+  borderColor: 'var(--color-primary)',
+}
+const periodNavBtn = {
+  padding: '3px 9px', borderRadius: 6, border: '1px solid var(--color-border)',
+  background: '#fff', color: 'var(--color-text)', fontSize: 13, fontWeight: 600,
+  cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.4,
+}
 const backBtn = {
   padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)',
   background: 'transparent', color: 'var(--color-muted)', fontSize: 13,
@@ -1311,13 +1321,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const [project, setProject]        = useState(null)
   const [wps, setWPs]                = useState([])
   const [allIlerleme, setAllIlerleme] = useState([])
-  const [period, setPeriod]          = useState(null)   // null = günlük (Tarih Seç ile)
-  const [periodOffset, setPeriodOffset] = useState(0)
+  const [filterMode, setFilterMode]  = useState('tum')   // 'tum' | 'haftalik' | 'aylik'
   const [personelRaporu, setPersonelRaporu] = useState(null)
   const [loading, setLoading]        = useState(true)
   const [showCal, setShowCal]        = useState(false)
   const [calPos, setCalPos]          = useState({ top: 0, right: 0 })
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [filterDate, setFilterDate]  = useState(new Date().toISOString().split('T')[0])
   const calRef    = useRef(null)
   const calBtnRef = useRef(null)
   const exportRef = useRef(null)
@@ -1339,18 +1349,39 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     setShowCal(v => !v)
   }
 
+  function handleFilter(mode) {
+    const now = new Date()
+    if (mode === 'haftalik') {
+      const day  = now.getDay()
+      const diff = day === 0 ? 0 : 7 - day
+      const sun  = new Date(now)
+      sun.setDate(now.getDate() + diff)
+      setFilterDate(sun.toISOString().split('T')[0])
+      setFilterMode('haftalik')
+    } else if (mode === 'aylik') {
+      const last = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      setFilterDate(last.toISOString().split('T')[0])
+      setFilterMode('aylik')
+    } else {
+      setFilterDate(new Date().toISOString().split('T')[0])
+      setFilterMode('tum')
+    }
+  }
+
   function handleExport(type) {
     setShowExportMenu(false)
     // Export için en güncel ilerleme satırlarını kullan
     const latestDate = allIlerleme[0]?.report_date
     const exportIlerleme = latestDate ? allIlerleme.filter(r => r.report_date === latestDate) : []
-    const opts = { selectedDate, projectName }
+    const filterDateObj = new Date(filterDate + 'T00:00:00')
+    const opts = { selectedDate: filterDateObj, projectName }
     if (type === 'pdf') {
       exportGunlukRaporPdf(project, wps, exportIlerleme, personelRaporu, opts)
     } else {
       exportGunlukRaporExcel(project, wps, exportIlerleme, personelRaporu, opts)
     }
   }
+
 
   useEffect(() => {
     if (!projectId) return
@@ -1404,195 +1435,168 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           </button>
         </div>
 
-        {/* ── Sağ grup: Tarih Seç + Dışa Aktar (ticket / satın-alma / finans sekmelerinde gizli) ── */}
-        {!['tickets', 'satin-alma', 'finans'].includes(tab) && <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {/* ── Sağ grup: Tarih Seç + Dışa Aktar ── */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
 
-          {/* Tarih Seç */}
-          {setSelectedDate && (
-            <div style={{ position: 'relative' }}>
-              <button
-                ref={calBtnRef}
-                onClick={openCal}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '7px 14px',
-                  background: selectedDate ? '#185FA5' : '#fff',
-                  color: selectedDate ? '#fff' : 'var(--color-text)',
-                  border: selectedDate ? 'none' : '1px solid var(--color-border)',
-                  borderRadius: 8,
-                  fontSize: 13, fontWeight: 500,
-                  cursor: 'pointer', fontFamily: 'inherit',
-                  boxShadow: selectedDate ? '0 2px 8px rgba(24,95,165,0.22)' : 'none',
-                  transition: 'all 0.15s', whiteSpace: 'nowrap',
-                }}
-              >
-                {selectedDate ? selectedDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Tarih Seç'}
-              </button>
-              {showCal && (
-                <div ref={calRef} style={{ position: 'fixed', top: calPos.top, right: calPos.right, zIndex: 9999 }}>
-                  <DateNavigator
-                    selectedDate={selectedDate}
-                    onChange={d => { setSelectedDate(d); setShowCal(false) }}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Dışa Aktar */}
-          <div ref={exportRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => setShowExportMenu(v => !v)}
-              disabled={!wps.length}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '7px 14px',
-                background: '#fff',
-                color: !wps.length ? '#9ca3af' : 'var(--color-text)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 8,
-                fontSize: 13, fontWeight: 500,
-                cursor: !wps.length ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-                transition: 'background 0.15s',
-                whiteSpace: 'nowrap',
-              }}
-              onMouseEnter={e => { if (wps.length) e.currentTarget.style.background = '#f8fafc' }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              Dışa Aktar
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-            </button>
-
-            {showExportMenu && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 300,
-                background: '#fff', border: '1px solid var(--color-border)',
-                borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,.10)',
-                padding: '0.875rem', minWidth: 220,
-              }}>
-                {selectedDate && (
-                  <div style={{ marginBottom: '0.625rem', padding: '6px 10px', background: '#FEF3C7', borderRadius: 6, fontSize: 11, color: '#92400E', fontWeight: 600 }}>
-                    {selectedDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })} raporu
-                  </div>
-                )}
-                <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 0.5rem' }}>
-                  Kapsamlı Günlük Rapor
-                </p>
-                <p style={{ fontSize: 10, color: 'var(--color-muted)', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
-                  KPI, personel, ilerleme durumu,<br/>iş paketleri — tam Fons Solar teması
-                </p>
-                <div style={{ display: 'flex', gap: '0.5rem', borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
-                  <button
-                    onClick={() => handleExport('excel')}
-                    style={{ flex: 1, padding: '8px 0', background: '#166534', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
-                    onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
-                    onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/>
-                    </svg>
-                    Excel
-                  </button>
-                  <button
-                    onClick={() => handleExport('pdf')}
-                    style={{ flex: 1, padding: '8px 0', background: '#991b1b', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
-                    onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
-                    onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                    </svg>
-                    PDF
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>}
-      </div>
-
-      {/* ── Periyot Seçici ─────────────────────────────────────────── */}
-      {tab === 'genel' && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '0.75rem',
-          marginBottom: '1.25rem', flexWrap: 'wrap',
-        }}>
-          {/* Period tabs */}
-          <div style={{ display: 'flex', background: '#F3F4F6', borderRadius: 10, padding: 3, gap: 2 }}>
-            {PERIODS.map(p => (
-              <button
-                key={p.key}
-                onClick={() => { setPeriod(prev => prev === p.key ? null : p.key); setPeriodOffset(0) }}
-                style={{
-                  all: 'unset', cursor: 'pointer',
-                  padding: '5px 14px', borderRadius: 8, fontSize: 13, fontWeight: 500,
-                  background: period === p.key ? '#fff' : 'transparent',
-                  color: period === p.key ? '#185FA5' : '#6B7280',
-                  boxShadow: period === p.key ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
-                  transition: 'all 0.15s', fontFamily: 'inherit',
-                }}
-              >{p.label}</button>
-            ))}
-          </div>
-
-          {/* Period navigator — sadece aktif period varsa */}
-          {period && (() => {
-            const { label } = getPeriodRange(period, periodOffset) || {}
-            const isNow = periodOffset === 0
+          {/* Tarih Seç — tüm sekmelerde görünür */}
+          {(() => {
+            const todayStr = new Date().toISOString().split('T')[0]
+            const isModified = filterDate !== todayStr
             return (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <button
-                  onClick={() => setPeriodOffset(o => o - 1)}
-                  style={{ all: 'unset', cursor: 'pointer', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 15, color: '#374151', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                >‹</button>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#111827', minWidth: 160, textAlign: 'center' }}>
-                  {label}
-                </span>
-                <button
-                  onClick={() => setPeriodOffset(o => o + 1)}
-                  disabled={isNow}
-                  style={{ all: 'unset', cursor: isNow ? 'default' : 'pointer', opacity: isNow ? 0.3 : 1, width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 7, border: '1px solid #E5E7EB', fontSize: 15, color: '#374151', boxSizing: 'border-box', fontFamily: 'inherit' }}
-                >›</button>
-                {periodOffset !== 0 && (
+                  ref={calBtnRef}
+                  onClick={openCal}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '7px 14px',
+                    background: isModified ? '#185FA5' : '#fff',
+                    color: isModified ? '#fff' : 'var(--color-text)',
+                    border: isModified ? 'none' : '1px solid var(--color-border)',
+                    borderRadius: 8,
+                    fontSize: 13, fontWeight: 500,
+                    cursor: 'pointer', fontFamily: 'inherit',
+                    boxShadow: isModified ? '0 2px 8px rgba(24,95,165,0.22)' : 'none',
+                    transition: 'all 0.15s', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {new Date(filterDate + 'T00:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </button>
+                {isModified && (
                   <button
-                    onClick={() => setPeriodOffset(0)}
-                    style={{ all: 'unset', cursor: 'pointer', fontSize: 11, color: '#185FA5', fontWeight: 600, padding: '3px 8px', borderRadius: 6, background: '#EFF6FF', fontFamily: 'inherit', boxSizing: 'border-box' }}
-                  >Şimdiye Dön</button>
+                    onClick={() => { setFilterDate(new Date().toISOString().split('T')[0]); setFilterMode('tum') }}
+                    title="Bugüne dön"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 22, height: 22, borderRadius: '50%', border: '1px solid var(--color-border)',
+                      background: '#fff', color: 'var(--color-muted)', fontSize: 13, fontWeight: 700,
+                      cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1, padding: 0,
+                    }}
+                  >×</button>
+                )}
+                {showCal && (
+                  <div ref={calRef} style={{ position: 'fixed', top: calPos.top, right: calPos.right, zIndex: 9999 }}>
+                    <DateNavigator
+                      selectedDate={new Date(filterDate + 'T00:00:00')}
+                      onChange={d => { setFilterDate(d.toISOString().split('T')[0]); setFilterMode('tum'); setShowCal(false) }}
+                    />
+                  </div>
                 )}
               </div>
             )
           })()}
+
+          {/* Dışa Aktar — sadece genel/gantt/ekip sekmelerinde */}
+          {!['tickets', 'satin-alma', 'finans'].includes(tab) && (
+            <div ref={exportRef} style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowExportMenu(v => !v)}
+                disabled={!wps.length}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '7px 14px',
+                  background: '#fff',
+                  color: !wps.length ? '#9ca3af' : 'var(--color-text)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: 8,
+                  fontSize: 13, fontWeight: 500,
+                  cursor: !wps.length ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                  transition: 'background 0.15s',
+                  whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={e => { if (wps.length) e.currentTarget.style.background = '#f8fafc' }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Dışa Aktar
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+
+              {showExportMenu && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 300,
+                  background: '#fff', border: '1px solid var(--color-border)',
+                  borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,.10)',
+                  padding: '0.875rem', minWidth: 220,
+                }}>
+                  <div style={{ marginBottom: '0.625rem', padding: '6px 10px', background: '#FEF3C7', borderRadius: 6, fontSize: 11, color: '#92400E', fontWeight: 600 }}>
+                    {new Date(filterDate + 'T00:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })} raporu
+                  </div>
+                  <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 0.5rem' }}>
+                    Kapsamlı Günlük Rapor
+                  </p>
+                  <p style={{ fontSize: 10, color: 'var(--color-muted)', margin: '0 0 0.75rem', lineHeight: 1.5 }}>
+                    KPI, personel, ilerleme durumu,<br/>iş paketleri — tam Fons Solar teması
+                  </p>
+                  <div style={{ display: 'flex', gap: '0.5rem', borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
+                    <button
+                      onClick={() => handleExport('excel')}
+                      style={{ flex: 1, padding: '8px 0', background: '#166534', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+                      onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
+                      onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/>
+                      </svg>
+                      Excel
+                    </button>
+                    <button
+                      onClick={() => handleExport('pdf')}
+                      style={{ flex: 1, padding: '8px 0', background: '#991b1b', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+                      onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
+                      onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                      </svg>
+                      PDF
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-      )}
+      </div>
+
+      {/* Dönem filtresi — tüm sekmelerde görünür */}
+      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
+        {PERIODS.map(p => (
+          <button
+            key={p.key}
+            onClick={() => handleFilter(filterMode === p.key ? 'tum' : p.key)}
+            style={filterMode === p.key ? periodBtnActive : periodBtn}
+          >
+            {p.label}
+          </button>
+        ))}
+        {filterMode !== 'tum' && (
+          <span style={{ fontSize: 12, color: 'var(--color-muted)', paddingLeft: 6 }}>
+            {filterMode === 'haftalik'
+              ? '📅 Bu Hafta görünümü'
+              : `📅 ${new Date(filterDate + 'T00:00:00').toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })} görünümü`}
+          </span>
+        )}
+      </div>
 
       {tab === 'ekip' ? (
         <EkipListesi projectId={projectId} />
       ) : tab === 'tickets' ? (
-        <TicketListesi projectId={projectId} />
+        <TicketListesi projectId={projectId} filterDate={filterDate} />
       ) : tab === 'satin-alma' ? (
-        <ProjeTabSatinAlma projectId={projectId} />
+        <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
       ) : tab === 'finans' ? (
-        <ProjeTabFinans projectId={projectId} />
-      ) : loading ? (
-        <p style={{ color: 'var(--color-muted)', padding: '2rem' }}>Yükleniyor…</p>
+        <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'genel' ? (
-        <GenelDashboard
-          project={project}
-          workPackages={wps}
-          allIlerleme={allIlerleme}
-          personelRaporu={personelRaporu}
-          period={period}
-          periodRange={period ? getPeriodRange(period, periodOffset) : null}
-        />
+        <TabGenel projectId={projectId} filterDate={filterDate} />
       ) : (
-        <IsPlanPanel workPackages={wps} project={project} />
+        <TabIsPlan projectId={projectId} filterDate={filterDate} />
       )}
     </div>
   )

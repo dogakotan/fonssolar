@@ -118,7 +118,7 @@ function QuickActionModal({ ticket, action, onClose, onDone }) {
   )
 }
 
-export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId, filterStatus, filterSeverity }) {
+export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId, filterStatus, filterSeverity, filterDate: filterDateProp }) {
   const { user, isAdmin, role, projectId: authProjectId } = useAuth()
   const [tickets, setTickets]               = useState([])
   const [loading, setLoading]               = useState(true)
@@ -135,6 +135,10 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   const [showNew, setShowNew]               = useState(false)
   const [selected, setSelected]             = useState(null)
   const [quickAction, setQuickAction]       = useState(null)
+
+  useEffect(() => {
+    if (filterDateProp) setDateFilter(filterDateProp)
+  }, [filterDateProp])
 
   useEffect(() => { fetchTickets() }, [statusTab, sortMode, severityFilter, categoryFilter, dateFilter, refreshKey, propProjectId, filterStatus, filterSeverity, isAdmin, role, authProjectId, user?.id])
 

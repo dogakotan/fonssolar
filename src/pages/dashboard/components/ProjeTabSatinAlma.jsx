@@ -5,7 +5,7 @@ import ProjeTabTalepListesi from './ProjeTabTalepListesi'
 import ProjeTabSaOnayKuyrugu from './ProjeTabSaOnayKuyrugu'
 import ProjeTabFaturaKesilecekler from './ProjeTabFaturaKesilecekler'
 
-export default function ProjeTabSatinAlma({ projectId }) {
+export default function ProjeTabSatinAlma({ projectId, filterDate }) {
   const { isAdmin, isMuhasebe } = useAuth()
   const [tab, setTab] = useState('talepler')
 
@@ -32,7 +32,7 @@ export default function ProjeTabSatinAlma({ projectId }) {
           </button>
         ))}
       </div>
-      {tab === 'talepler'         && <ProjeTabTalepListesi projectId={projectId} />}
+      {tab === 'talepler'         && <ProjeTabTalepListesi projectId={projectId} filterDate={filterDate} />}
       {tab === 'onay'             && isAdmin && <ProjeTabSaOnayKuyrugu projectId={projectId} />}
       {tab === 'fatura_kesilecek' && (isAdmin || isMuhasebe) && <ProjeTabFaturaKesilecekler projectId={projectId} />}
     </div>

@@ -5,7 +5,7 @@ import ProjeTabFaturaListesi from './ProjeTabFaturaListesi'
 import ProjeTabOnayKuyrugu from './ProjeTabOnayKuyrugu'
 import ProjeTabMaliyetTablosu from './ProjeTabMaliyetTablosu'
 
-export default function ProjeTabFinans({ projectId }) {
+export default function ProjeTabFinans({ projectId, filterDate }) {
   const { isAdmin } = useAuth()
   const [tab, setTab] = useState('faturalar')
 
@@ -17,7 +17,7 @@ export default function ProjeTabFinans({ projectId }) {
 
   return (
     <div>
-      <ProjeTabFinansStats projectId={projectId} />
+      <ProjeTabFinansStats projectId={projectId} filterDate={filterDate} />
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid #E5E7EB' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
@@ -32,9 +32,9 @@ export default function ProjeTabFinans({ projectId }) {
           </button>
         ))}
       </div>
-      {tab === 'faturalar' && <ProjeTabFaturaListesi projectId={projectId} />}
-      {tab === 'onay'      && <ProjeTabOnayKuyrugu projectId={projectId} />}
-      {tab === 'maliyet'   && <ProjeTabMaliyetTablosu projectId={projectId} />}
+      {tab === 'faturalar' && <ProjeTabFaturaListesi projectId={projectId} filterDate={filterDate} />}
+      {tab === 'onay'      && <ProjeTabOnayKuyrugu projectId={projectId} filterDate={filterDate} />}
+      {tab === 'maliyet'   && <ProjeTabMaliyetTablosu projectId={projectId} filterDate={filterDate} />}
     </div>
   )
 }

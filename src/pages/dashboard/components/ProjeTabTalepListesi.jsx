@@ -28,7 +28,7 @@ function filterBtn(active) {
   }
 }
 
-export default function ProjeTabTalepListesi({ projectId }) {
+export default function ProjeTabTalepListesi({ projectId, filterDate }) {
   const { role } = useAuth()
   const [requests, setRequests]           = useState([])
   const [loading, setLoading]             = useState(true)
@@ -39,7 +39,7 @@ export default function ProjeTabTalepListesi({ projectId }) {
 
   const canCreate = role !== 'muhasebe'
 
-  useEffect(() => { if (projectId) fetchData() }, [projectId])
+  useEffect(() => { if (projectId) fetchData() }, [projectId, filterDate])
 
   async function fetchData() {
     setLoading(true)
@@ -47,6 +47,7 @@ export default function ProjeTabTalepListesi({ projectId }) {
       .from('purchase_requests')
       .select('*, purchase_request_items(count), projects(name)')
       .eq('project_id', projectId)
+      .lte('created_at', (filterDate || new Date().toISOString().split('T')[0]) + 'T23:59:59')
       .order('created_at', { ascending: false })
     setRequests(data || [])
     setLoading(false)
