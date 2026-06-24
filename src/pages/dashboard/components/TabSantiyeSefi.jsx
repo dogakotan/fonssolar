@@ -319,6 +319,7 @@ export default function TabSantiyeSefi() {
       )}
       {showTalep && (
         <YeniTalepModal
+          defaultProjectId={projectId}
           onClose={() => setShowTalep(false)}
           onSaved={() => { setShowTalep(false); refresh() }}
         />

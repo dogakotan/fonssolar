@@ -150,12 +150,14 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved }) {
           await supabase.from('profiles').update({ project_id: projId }).eq('email', form.email.trim())
         }
       } else {
-        await callManageFn('update', editUser.id, {
+        // Bu ekranda e-posta/şifre değiştirilmediği için Edge Function'a gerek yok.
+        // Proje ve rol doğrudan profiles tablosundaki kullanıcı profiline kaydedilir.
+        const { error: profileError } = await supabase.from('profiles').update({
           full_name:  form.full_name.trim(),
           role_key:   form.role_key,
           project_id: projId,
-        })
-        await supabase.from('profiles').update({ project_id: projId }).eq('id', editUser.id)
+        }).eq('id', editUser.id)
+        if (profileError) throw new Error(profileError.message)
       }
       onSaved()
       onClose()

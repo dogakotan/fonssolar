@@ -29,7 +29,7 @@ function filterBtn(active) {
 }
 
 export default function TalepListesi() {
-  const { role } = useAuth()
+  const { role, projectId } = useAuth()
   const [requests, setRequests]         = useState([])
   const [loading, setLoading]           = useState(true)
   const [urgencyFilter, setUrgencyFilter] = useState('all')
@@ -39,14 +39,16 @@ export default function TalepListesi() {
 
   const canCreate = role !== 'muhasebe'
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [projectId, role])
 
   async function fetchData() {
     setLoading(true)
-    const { data } = await supabase
+    let query = supabase
       .from('purchase_requests')
       .select('*, purchase_request_items(count), projects(name)')
       .order('created_at', { ascending: false })
+    if (role === 'santiye_sefi' && projectId) query = query.eq('project_id', projectId)
+    const { data } = await query
     setRequests(data || [])
     setLoading(false)
   }
@@ -185,6 +187,7 @@ export default function TalepListesi() {
 
       {showNew && (
         <YeniTalepModal
+          defaultProjectId={role === 'santiye_sefi' ? projectId : undefined}
           onClose={() => setShowNew(false)}
           onSaved={() => { setShowNew(false); fetchData() }}
         />

@@ -77,15 +77,29 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
   const [doneTasks, setDoneTasks] = useState([''])
   const [planned,   setPlanned]   = useState([''])
   const [progItems, setProgItems] = useState([])
+  const [progItemsError, setProgItemsError] = useState(null)
+  const [progressQuery, setProgressQuery] = useState('')
+  const [progressCategory, setProgressCategory] = useState('all')
+  const [progressLimit, setProgressLimit] = useState(24)
 
   useEffect(() => {
-    if (!projectId) return
+    if (!projectId) {
+      setProgItems([])
+      setProgItemsError('Bu kullanıcıya bağlı bir proje bulunamadı.')
+      return
+    }
+    setProgItemsError(null)
     supabase.from('progress_items')
       .select('*')
       .eq('project_id', projectId)
       .order('order_index')
-      .then(({ data }) => {
-        if (data) setProgItems(data.map(item => ({ item, qty_added: '', note: '' })))
+      .then(({ data, error }) => {
+        if (error) {
+          setProgItems([])
+          setProgItemsError(`İş kalemleri yüklenemedi: ${error.message}`)
+          return
+        }
+        setProgItems(data.map(item => ({ item, qty_added: '', note: '' })))
       })
   }, [projectId])
 
@@ -225,6 +239,19 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
     { full: 'İş Kalemi', short: 'Kal.' },
     { full: 'Geçmiş',   short: 'Geç.' },
   ]
+
+  const progressCategories = [...new Set(progItems.map(p => p.item.category).filter(Boolean))]
+  const filteredProgItems = progItems
+    .map((entry, originalIndex) => ({ ...entry, originalIndex }))
+    .filter(({ item }) => {
+      const needle = progressQuery.trim().toLocaleLowerCase('tr-TR')
+      const matchesSearch = !needle || [item.name, item.category, item.unit]
+        .filter(Boolean)
+        .some(value => String(value).toLocaleLowerCase('tr-TR').includes(needle))
+      return matchesSearch && (progressCategory === 'all' || item.category === progressCategory)
+    })
+  const visibleProgItems = filteredProgItems.slice(0, progressLimit)
+  const enteredProgressCount = progItems.filter(p => Number(p.qty_added) > 0).length
 
   return (
     <div className="gr-overlay" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -475,11 +502,63 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
 
           {/* ── Tab 5: İş Kalemi İlerlemesi ── */}
           {activeTab === 5 && (
-            <div>
-              {progItems.length === 0 && (
+            <div className="gr-progress-tab">
+              {progItemsError && (
+                <p style={{ color: '#B42318', fontSize: 13, lineHeight: 1.45 }}>{progItemsError}</p>
+              )}
+              {!progItemsError && progItems.length === 0 && (
                 <p style={{ color: '#9CA3AF', fontSize: 13 }}>Bu proje için iş kalemi tanımlanmamış.</p>
               )}
-              {progItems.map((p, idx) => {
+              {!progItemsError && progItems.length > 0 && <>
+                <div className="gr-progress-summary">
+                  <div><strong>{progItems.length}</strong><span>iş kalemi</span></div>
+                  <div><strong>{filteredProgItems.length}</strong><span>eşleşen</span></div>
+                  <div><strong>{enteredProgressCount}</strong><span>bugün girişli</span></div>
+                </div>
+                <div className="gr-progress-tools">
+                  <div className="gr-progress-search">
+                    <span aria-hidden="true">⌕</span>
+                    <input value={progressQuery} onChange={e => { setProgressQuery(e.target.value); setProgressLimit(24) }} placeholder="İş kalemi ara..." aria-label="İş kalemi ara" />
+                  </div>
+                  <div className="gr-progress-filters">
+                    <button className={`gr-progress-filter${progressCategory === 'all' ? ' active' : ''}`} onClick={() => { setProgressCategory('all'); setProgressLimit(24) }}>Tümü</button>
+                    {progressCategories.map(category => (
+                      <button key={category} className={`gr-progress-filter${progressCategory === category ? ' active' : ''}`} onClick={() => { setProgressCategory(category); setProgressLimit(24) }}>{category}</button>
+                    ))}
+                  </div>
+                </div>
+                {filteredProgItems.length === 0 && <p className="gr-progress-empty">Aramanızla eşleşen iş kalemi bulunamadı.</p>}
+                <div className="gr-progress-list">
+                  {visibleProgItems.map((p) => {
+                    const cb = CAT_BADGE[p.item.category] || CAT_BADGE['diğer']
+                    const pct = p.item.target_qty > 0 ? Math.min(100, Math.round(p.item.total_progress / p.item.target_qty * 100)) : 0
+                    return (
+                      <div key={p.item.id} className="gr-progress-card">
+                        <div className="gr-progress-card-head">
+                          <span style={{ background: cb.bg, color: cb.color, fontSize: 11, fontWeight: 500, padding: '2px 9px', borderRadius: 20 }}>{p.item.category}</span>
+                          <span className="gr-progress-name">{p.item.name}</span>
+                          <span className="gr-progress-percent">{pct}%</span>
+                        </div>
+                        <div className="gr-progress-meta">
+                          <span>{p.item.total_progress} / {p.item.target_qty} {p.item.unit}</span>
+                          <div className="gr-progress-bar"><i style={{ width: `${pct}%` }} /></div>
+                        </div>
+                        <div className="gr-progress-entry">
+                          <label>Bugün <span>({p.item.unit})</span></label>
+                          <input type="number" min="0" value={p.qty_added} onChange={e => setProgField(p.originalIndex, 'qty_added', e.target.value)} className="gr-progress-qty" />
+                          <input type="text" value={p.note} onChange={e => setProgField(p.originalIndex, 'note', e.target.value)} placeholder="Kısa not (opsiyonel)" className="gr-progress-note" />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                {visibleProgItems.length < filteredProgItems.length && (
+                  <button className="gr-progress-more" onClick={() => setProgressLimit(limit => limit + 24)}>
+                    24 iş kalemi daha göster ({filteredProgItems.length - visibleProgItems.length} kaldı)
+                  </button>
+                )}
+              </>}
+              {false && progItems.map((p, idx) => {
                 const cb = CAT_BADGE[p.item.category] || CAT_BADGE['diğer']
                 const pct = p.item.target_qty > 0 ? Math.min(100, Math.round(p.item.total_progress / p.item.target_qty * 100)) : 0
                 return (

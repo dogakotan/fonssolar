@@ -28,7 +28,7 @@ export default function Login() {
     try {
       const { data, error: authError } = await signIn(email, password)
       if (authError) throw authError
-      if (data.user) navigate('/dashboard')
+      if (data.user) navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(err.message || 'E-posta veya şifre hatalı.')
     } finally {

@@ -13,7 +13,7 @@ const STEPS = [
 const btnP = { padding: '0.5rem 1.25rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const btnS = { padding: '0.5rem 1.25rem', background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }
 
-export default function Adim8Tamamlandi({ stepsResult, mode = 'new', project, onBack, onSuccess, onViewProject }) {
+export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new', project, onBack, onSuccess, onViewProject }) {
   const [status,    setStatus]    = useState('idle') // 'idle' | 'saving' | 'done' | 'error'
   const [errorMsg,  setErrorMsg]  = useState(null)
   const [savedId,   setSavedId]   = useState(null)
@@ -29,16 +29,26 @@ export default function Adim8Tamamlandi({ stepsResult, mode = 'new', project, on
     setStatus('saving')
     setErrorMsg(null)
 
+    const n = (v) => (v !== '' && v != null ? Number(v) : null)
     const projectPayload = {
-      name:         step1.name,
-      location:     step1.location                               || null,
-      capacity_kwp: step1.capacity_kwp !== '' && step1.capacity_kwp != null ? Number(step1.capacity_kwp) : null,
-      capacity_kwe: step1.capacity_kwe !== '' && step1.capacity_kwe != null ? Number(step1.capacity_kwe) : null,
-      start_date:   step1.start_date                            || null,
-      target_date:  step1.target_date                           || null,
-      total_days:   step1.total_days   !== '' ? Number(step1.total_days) : 180,
-      status:       step1.status,
-      progress:     Number(step1.progress) || 0,
+      name:             step1.name,
+      location:         step1.location         || null,
+      capacity_kwp:     n(step1.capacity_kwp),
+      capacity_kwe:     n(step1.capacity_kwe),
+      storage_kwh:      n(step1.storage_kwh),
+      start_date:       step1.start_date       || null,
+      target_date:      step1.target_date      || null,
+      total_days:       step1.total_days !== '' ? Number(step1.total_days) : 180,
+      status:           step1.status,
+      progress:         Number(step1.progress) || 0,
+      project_type:     projectType            || null,
+      panel_brand:      step1.panel_brand      || null,
+      panel_count:      n(step1.panel_count),
+      inverter_brand:   step1.inverter_brand   || null,
+      inverter_count:   n(step1.inverter_count),
+      battery_brand:    step1.battery_brand    || null,
+      battery_power_kw: n(step1.battery_power_kw),
+      battery_count:    n(step1.battery_count),
     }
 
     let projectId
@@ -193,7 +203,7 @@ export default function Adim8Tamamlandi({ stepsResult, mode = 'new', project, on
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', padding: '1rem 1.5rem', borderTop: '1px solid #f1f5f9' }}>
+      <div style={{ display: 'none' }}>
         <button
           style={{ ...btnS, opacity: isSaving ? 0.5 : 1, cursor: isSaving ? 'not-allowed' : 'pointer' }}
           onClick={onBack}
@@ -203,6 +213,7 @@ export default function Adim8Tamamlandi({ stepsResult, mode = 'new', project, on
         </button>
         <button
           style={{ ...btnP, opacity: (isSaving || !stepsResult?.[1]) ? 0.7 : 1, cursor: (isSaving || !stepsResult?.[1]) ? 'not-allowed' : 'pointer' }}
+          data-wizard-submit="save"
           onClick={handleSave}
           disabled={isSaving || !stepsResult?.[1]}
         >

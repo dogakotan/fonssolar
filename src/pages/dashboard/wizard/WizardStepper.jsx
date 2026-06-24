@@ -9,7 +9,7 @@ const STEP_LABELS = [
   'Tamamlandı',
 ]
 
-export default function WizardStepper({ current }) {
+export default function WizardStepper({ current, completedSteps = [], availableUntil = 1, onSelect }) {
   return (
     <div>
       <div style={{ padding: '0.875rem 1rem 0.75rem', borderBottom: '1px solid var(--color-border-md)' }}>
@@ -19,16 +19,22 @@ export default function WizardStepper({ current }) {
       </div>
       {STEP_LABELS.map((label, i) => {
         const no     = i + 1
-        const done   = no < current
+        const done   = completedSteps.includes(no)
         const active = no === current
+        const enabled = no <= availableUntil && typeof onSelect === 'function'
         return (
-          <div
+          <button
             key={no}
+            type="button"
+            onClick={() => enabled && onSelect(no)}
+            disabled={!enabled}
             style={{
               display: 'flex', alignItems: 'center', gap: '0.75rem',
+              width: '100%', border: 'none', textAlign: 'left', fontFamily: 'inherit',
               padding: '0.65rem 1rem',
               background: active ? '#eff6ff' : 'transparent',
               borderLeft: `3px solid ${active ? 'var(--color-primary)' : 'transparent'}`,
+              cursor: enabled ? 'pointer' : 'default',
             }}
           >
             <div style={{
@@ -50,7 +56,7 @@ export default function WizardStepper({ current }) {
             }}>
               {label}
             </span>
-          </div>
+          </button>
         )
       })}
     </div>

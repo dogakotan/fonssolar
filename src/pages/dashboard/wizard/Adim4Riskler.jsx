@@ -12,7 +12,18 @@ const btnP = { padding: '0.5rem 1.1rem', background: 'var(--color-primary)', col
 const btnS = { padding: '0.5rem 1.1rem', background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }
 
 export default function Adim4Riskler({ projectId, result, onDone, onBack, mode = 'new' }) {
-  const [rows,  setRows]  = useState(mode === 'new' ? [{ ...DEF, _id: 1 }] : [])
+  const [rows,  setRows]  = useState(() => {
+    if (mode === 'edit') return []
+    if (result?.rows?.length) {
+      return result.rows.map((r, i) => ({
+        ...DEF, ...r,
+        _id: Date.now() + i,
+        probability: String(r.probability ?? 3),
+        impact: String(r.impact ?? 3),
+      }))
+    }
+    return [{ ...DEF, _id: 1 }]
+  })
   const [error, setError] = useState(null)
   const loadedRef = useRef(false)
 
@@ -26,23 +37,6 @@ export default function Adim4Riskler({ projectId, result, onDone, onBack, mode =
           : [])
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (result !== undefined) {
-    return (
-      <div className="card">
-        <div className="card-header"><h3>Adım 4 — Riskler</h3></div>
-        <div style={{ padding: '1.5rem' }}>
-          <p style={{ color: result.skipped ? 'var(--color-muted)' : 'var(--color-success)', margin: '0 0 1rem', fontSize: 14 }}>
-            {result.skipped ? '⊘ Bu adım atlandı.' : `✓ ${result.count} risk hazırlandı.`}
-          </p>
-          <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-            <button style={btnS} onClick={onBack}>← Geri</button>
-            <button style={btnP} onClick={() => onDone(result)}>Devam Et →</button>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   function addRow() { setRows(r => [...r, { ...DEF, _id: Date.now() }]) }
   function upd(_id, k, v) { setRows(r => r.map(row => row._id === _id ? { ...row, [k]: v } : row)) }
@@ -73,7 +67,7 @@ export default function Adim4Riskler({ projectId, result, onDone, onBack, mode =
         <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>Opsiyonel — project_risks</span>
       </div>
 
-      <div style={{ padding: '1rem 1.5rem' }}>
+      <div style={{ padding: '1rem 1.5rem', maxHeight: '62vh', overflowY: 'auto' }}>
         {error && (
           <div style={{ padding: '0.625rem 1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-md)', color: 'var(--color-danger)', fontSize: 13, marginBottom: '1rem' }}>
             {error}
@@ -136,10 +130,10 @@ export default function Adim4Riskler({ projectId, result, onDone, onBack, mode =
         </button>
       </div>
 
-      <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', padding: '1rem 1.5rem', borderTop: '1px solid #f1f5f9' }}>
+      <div style={{ display: 'none' }}>
         <button style={btnS} onClick={onBack}>← Geri</button>
         <button style={btnS} onClick={() => onDone({ skipped: true, count: 0 })}>Bu Adımı Atla</button>
-        <button style={btnP} onClick={handleSave}>Devam →</button>
+        <button data-wizard-submit="next" style={btnP} onClick={handleSave}>Devam →</button>
       </div>
     </div>
   )

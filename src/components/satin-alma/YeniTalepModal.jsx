@@ -18,6 +18,7 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
   const { user } = useAuth()
   const [projects, setProjects] = useState([])
   const [saving, setSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState(null)
   const [form, setForm] = useState({ project_id: defaultProjectId || '', title: '', urgency: 'normal', request_note: '' })
   const [items, setItems] = useState([{ name: '', quantity: 1, unit: 'Adet', unit_price: '' }])
 
@@ -32,8 +33,9 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
   const setF = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }))
 
   async function handleSubmit() {
-    if (!form.title.trim()) return
+    if (!form.title.trim() || !form.project_id) return
     setSaving(true)
+    setErrorMessage(null)
 
     const { data: pr, error } = await supabase
       .from('purchase_requests')
@@ -62,6 +64,8 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
         )
       }
       onSaved()
+    } else {
+      setErrorMessage(error?.message || 'Talep kaydedilemedi.')
     }
     setSaving(false)
   }
@@ -84,6 +88,10 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
+
+          {errorMessage && (
+            <p style={{ margin: '-6px 0 0', color: '#B42318', fontSize: 13 }}>{errorMessage}</p>
+          )}
 
           <div>
             <label style={LABEL}>Talep Başlığı *</label>
@@ -176,8 +184,8 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !form.title.trim()}
-            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: !form.title.trim() ? 0.5 : 1 }}
+            disabled={saving || !form.title.trim() || !form.project_id}
+            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: !form.title.trim() || !form.project_id ? 0.5 : 1 }}
           >
             {saving ? 'Kaydediliyor…' : 'Talep Oluştur'}
           </button>

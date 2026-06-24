@@ -38,7 +38,10 @@ const ROLE_DEFAULT = {
 export default function Dashboard() {
   const { role, isAdmin } = useAuth()
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
-  const [activeTab,           setActiveTab]           = useState('genel')
+  const [activeTab,           setActiveTab]           = useState(() => {
+    const saved = window.localStorage.getItem('dashboard-active-tab')
+    return saved && TABS[saved] ? saved : 'genel'
+  })
   const [selectedProjectId,   setSelectedProjectId]   = useState(null)
   const [selectedProjectName, setSelectedProjectName] = useState('')
   const [showProjectDetail,   setShowProjectDetail]   = useState(false)
@@ -49,6 +52,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (role && ROLE_DEFAULT[role]) setActiveTab(ROLE_DEFAULT[role])
   }, [role])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-active-tab', activeTab)
+  }, [activeTab])
 
 
   function handleSelectProject(id, name) {
