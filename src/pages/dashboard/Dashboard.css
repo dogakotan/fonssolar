@@ -251,6 +251,139 @@
 .team-card h4 { font-size: .875rem; font-weight: 700; color: #0f172a; margin: 0 0 .2rem; }
 .team-card p  { font-size: .72rem; color: #64748b; margin: 0 0 .5rem; }
 
+/* ── Proje içi genel bakış ── */
+.project-overview { display: flex; flex-direction: column; gap: 1rem; max-width: 100%; min-width: 0; }
+.project-top-grid { display: grid; grid-template-columns: minmax(390px, 1.45fr) minmax(0, .78fr) minmax(0, .92fr) minmax(0, 1.15fr); gap: 1rem; align-items: stretch; min-width: 0; }
+.project-overview-card { padding: 1.1rem 1.25rem; min-width: 0; }
+.project-card-title { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: .85rem; }
+.project-card-title h3 { font-size: .9rem; font-weight: 750; color: var(--color-text); margin: 0; }
+.project-card-title span { font-size: .75rem; color: var(--color-muted); text-align: right; }
+.project-detail-row { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; padding: .42rem 0; border-bottom: 1px solid #f1f5f9; }
+.project-detail-row:last-child { border-bottom: 0; }
+.project-detail-row span { font-size: .75rem; color: var(--color-muted); }
+.project-detail-row strong { font-size: .76rem; font-weight: 700; color: var(--color-text); text-align: right; }
+.project-detail-row .tone-primary { color: var(--color-primary); }
+.project-detail-row .tone-success { color: var(--color-success); }
+.project-detail-row .tone-danger { color: var(--color-danger); }
+.project-detail-columns { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, .95fr); gap: 1.1rem; align-items: start; }
+.project-detail-columns > div:first-child { padding-right: .2rem; border-right: 1px solid #f1f5f9; }
+.project-progress-card { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; min-height: 236px; }
+.project-progress-card .project-card-title { align-self: stretch; }
+.project-progress-card p { max-width: 180px; margin: .85rem auto 0; color: var(--color-muted); font-size: .82rem; line-height: 1.45; }
+.project-ring { width: 142px; height: 142px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at center, #fff 0 56%, transparent 57%), conic-gradient(var(--color-primary) calc(var(--pct) * 1%), #e8eef7 0); box-shadow: inset 0 0 0 1px #eef2f7; }
+.project-ring span { color: var(--color-primary); font-size: 1.75rem; font-weight: 800; }
+.project-summary-line { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: .55rem; padding: .72rem 0; border-bottom: 1px solid #eef2f7; }
+.project-summary-line:last-child { border-bottom: 0; }
+.project-summary-icon { font-size: 1rem; }
+.project-summary-line span:not(.project-summary-icon) { color: var(--color-text-sub); font-size: .78rem; }
+.project-summary-line strong { color: var(--color-text); font-size: .78rem; text-align: right; }
+.project-weather-card { display: flex; flex-direction: column; }
+.project-weather-main { display: flex; align-items: center; gap: .85rem; padding: .9rem 0 1rem; min-width: 0; }
+.project-weather-emoji { font-size: 2.75rem; line-height: 1; flex-shrink: 0; }
+.project-weather-main strong { font-size: 2rem; line-height: 1; color: var(--color-text); }
+.project-weather-main p { margin: .25rem 0 0; color: var(--color-muted); font-size: .95rem; }
+.project-weather-meta { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: .25rem; color: var(--color-muted); font-size: .78rem; flex-shrink: 0; }
+.project-weather-tomorrow { display: grid; grid-template-columns: auto auto 1fr; gap: .45rem; align-items: center; padding: .75rem 0; border-top: 1px solid #eef2f7; border-bottom: 1px solid #eef2f7; }
+.project-weather-tomorrow span { color: var(--color-muted); font-size: .75rem; font-weight: 700; text-transform: uppercase; }
+.project-weather-tomorrow strong { font-size: .95rem; color: var(--color-text); }
+.project-weather-tomorrow small { color: var(--color-muted); font-size: .75rem; text-align: right; }
+.project-weather-lost { margin-top: auto; padding-top: .8rem; color: var(--color-muted); font-size: .82rem; }
+.project-weather-lost strong { color: var(--color-danger); }
+.project-weather-empty { padding: 2.2rem 0; color: var(--color-muted); font-size: .85rem; text-align: center; }
+.project-timeline-card { padding: 1rem 1.25rem 1.1rem; overflow: visible; }
+.project-timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: .45rem; position: relative; }
+.project-milestone { display: flex; flex-direction: column; align-items: center; gap: .35rem; text-align: center; min-width: 0; cursor: help; position: relative; }
+.project-milestone span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: #e2e8f0; color: #94a3b8; font-size: .7rem; font-weight: 800; border: 2px solid #e2e8f0; }
+.project-milestone.done span { background: #22c55e; border-color: #22c55e; color: #fff; }
+.project-milestone.active span { background: #fff; border-color: #2563eb; color: #2563eb; box-shadow: 0 0 0 4px #dbeafe; }
+.project-milestone p { margin: 0; color: var(--color-text-sub); font-size: .64rem; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70px; }
+.project-milestone::after {
+  content: attr(data-label);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%) translateY(4px);
+  min-width: 150px;
+  max-width: 260px;
+  padding: .45rem .6rem;
+  border-radius: .55rem;
+  background: #0f172a;
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 650;
+  line-height: 1.35;
+  white-space: normal;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .18);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease;
+  z-index: 30;
+}
+.project-milestone::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #0f172a;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+  z-index: 31;
+}
+.project-milestone:hover::after,
+.project-milestone:hover::before {
+  opacity: 1;
+}
+.project-milestone:hover::after {
+  transform: translateX(-50%) translateY(0);
+}
+.project-bottom-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1rem; min-width: 0; }
+.project-mini-card { padding: 1rem 1.1rem; min-height: 250px; min-width: 0; }
+.project-card-link { border: 0; background: transparent; color: #2563eb; font: inherit; font-size: .7rem; font-weight: 700; cursor: pointer; padding: 0; white-space: nowrap; }
+.project-progress-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 34px; align-items: center; gap: .55rem; padding: .45rem 0; border-bottom: 1px solid #f1f5f9; }
+.project-progress-row:last-child { border-bottom: 0; }
+.project-progress-row strong { display: block; color: var(--color-text); font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-progress-row span { color: var(--color-muted); font-size: .68rem; }
+.project-progress-row b { color: var(--color-text); font-size: .7rem; text-align: right; }
+.project-mini-progress { height: 5px; border-radius: 99px; overflow: hidden; background: #e2e8f0; }
+.project-mini-progress i { display: block; height: 100%; border-radius: inherit; }
+.project-list-row, .project-risk-row { display: grid; align-items: center; gap: .5rem; padding: .55rem 0; border-bottom: 1px solid #f1f5f9; }
+.project-list-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+.project-risk-row { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.project-list-row:last-child, .project-risk-row:last-child { border-bottom: 0; }
+.project-list-row strong, .project-risk-row strong { color: var(--color-text); font-size: .74rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-list-row small, .project-risk-row small { color: var(--color-muted); font-size: .68rem; white-space: nowrap; }
+.project-risk-row > span { color: var(--color-danger); font-size: .8rem; }
+.project-empty, .project-overview-loading { color: var(--color-muted); font-size: .82rem; margin: 0; padding: 1rem 0; }
+
+@media (max-width: 1439px) {
+  .project-top-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .project-bottom-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1024px) {
+  .project-bottom-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 768px) {
+  .project-top-grid, .project-bottom-grid { grid-template-columns: 1fr; }
+  .project-detail-columns { grid-template-columns: 1fr; gap: 0; }
+  .project-detail-columns > div:first-child { padding-right: 0; border-right: 0; }
+  .project-overview-card, .project-mini-card, .project-timeline-card { padding: .95rem 1rem; }
+  .project-weather-main { align-items: flex-start; }
+  .project-weather-meta { margin-left: 0; align-items: flex-start; }
+  .project-weather-tomorrow { grid-template-columns: 1fr; }
+  .project-weather-tomorrow small { text-align: left; }
+  .project-timeline { display: flex; overflow-x: auto; padding: .25rem .1rem .45rem; }
+  .project-milestone { min-width: 64px; }
+  .project-list-row { grid-template-columns: 1fr auto; }
+  .project-list-row small { grid-column: 1 / -1; }
+  .project-risk-row { grid-template-columns: auto 1fr auto; }
+  .project-risk-row small { grid-column: 2 / -1; }
+}
+
 /* ── Hamburger + Backdrop ── */
 .menu-toggle {
   display: none;
