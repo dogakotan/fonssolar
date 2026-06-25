@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { unzipSync, strFromU8, strToU8 } from 'fflate'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import { useWeather } from '../../../hooks/useWeather'
@@ -6,6 +7,13 @@ import YeniTicketModal from '../../../components/tickets/YeniTicketModal'
 import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TicketDetayModal from '../../../components/tickets/TicketDetayModal'
 import GunlukRaporDrawer from '../../../components/daily-report/GunlukRaporDrawer'
+import {
+  downloadXlsxZip,
+  fetchXlsxTemplate,
+  fillTemplateSheet,
+  formatExcelDate,
+  setTemplateCell,
+} from '../../../utils/excelUtils'
 
 const TICKET_STATUS = {
   'gönderildi':   { bg: '#DBEAFE', color: '#1D4ED8', label: 'Gönderildi' },
@@ -37,6 +45,15 @@ const WP_STATUS = {
   askida:       { color: '#EF4444', label: 'Askıda' },
 }
 
+const DAILY_REPORT_MACHINE_ROWS = [
+  { row: 22, keys: ['ekskavatör', 'ekskavator'] },
+  { row: 23, keys: ['rok_delim', 'rok', 'delgi'] },
+  { row: 24, keys: ['kolon', 'çakım', 'cakim', 'gayk_delici'] },
+  { row: 25, keys: ['forklift', 'loader', 'jcb'] },
+  { row: 26, keys: ['vinç', 'vinc'] },
+  { row: 27, keys: ['kamyon', 'nakliye', 'traktör', 'traktor'] },
+]
+
 function Badge({ map, value }) {
   const b = map[value] || { bg: '#F3F4F6', color: '#374151', label: value || '—' }
   return (
@@ -44,6 +61,14 @@ function Badge({ map, value }) {
       {b.label}
     </span>
   )
+}
+
+function todayStr() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
 }
 
 function Donut({ data, size = 108 }) {
@@ -83,12 +108,14 @@ export default function TabSantiyeSefi() {
   const [showTalep, setShowTalep]     = useState(false)
   const [detayTicket, setDetayTicket] = useState(null)
   const [refreshKey, setRefreshKey]   = useState(0)
+  const [exportingReport, setExportingReport] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   const refresh = () => setRefreshKey(k => k + 1)
 
   useEffect(() => {
     if (!projectId || !user) return
-    const today = new Date().toISOString().split('T')[0]
+    const today = todayStr()
     async function load() {
       const [projRes, wpRes, tickRes, prRes, reportRes] = await Promise.all([
         supabase.from('projects').select('id, name, location, progress, target_date').eq('id', projectId).single(),
@@ -136,6 +163,140 @@ export default function TabSantiyeSefi() {
     boxShadow: '0 1px 3px rgba(0,0,0,.06)', transition: 'box-shadow 0.15s',
   }
 
+  async function getProgressTotalsByDate(date) {
+    const { data: reports } = await supabase
+      .from('daily_reports')
+      .select('id')
+      .eq('project_id', projectId)
+      .lte('report_date', date)
+
+    const reportIds = (reports || []).map(r => r.id)
+    if (!reportIds.length) return new Map()
+
+    const { data: rows } = await supabase
+      .from('progress_daily')
+      .select('item_id, qty_added')
+      .in('report_id', reportIds)
+
+    const totals = new Map()
+    ;(rows || []).forEach(row => {
+      totals.set(row.item_id, (totals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+    })
+    return totals
+  }
+
+  const normalize = value => String(value || '').toLowerCase()
+  const sumCount = (rows, predicate) => (rows || []).filter(predicate).reduce((sum, row) => sum + Number(row.count || 0), 0)
+
+  async function handleDailyReportExport(event) {
+    event?.stopPropagation?.()
+    if (!projectId) return
+
+    const today = todayStr()
+    setExportingReport(true)
+    setExportError('')
+
+    try {
+      const templateBuffer = await fetchXlsxTemplate([
+        '/fons-solar-gunluk-rapor-sablonu.xlsx',
+        '/excel/fons-solar-gunluk-rapor-sablonu.xlsx',
+      ])
+      const files = unzipSync(new Uint8Array(templateBuffer))
+
+      const [{ data: todayReportRow }, { data: latestReportRow }] = await Promise.all([
+        supabase
+          .from('daily_reports')
+          .select('*')
+          .eq('project_id', projectId)
+          .eq('report_date', today)
+          .maybeSingle(),
+        supabase
+          .from('daily_reports')
+          .select('*')
+          .eq('project_id', projectId)
+          .order('report_date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ])
+      const report = todayReportRow || latestReportRow
+      const exportDate = report?.report_date || today
+
+      const reportId = report?.id
+      const [
+        { data: profile },
+        { data: progressItems },
+        { data: tasks },
+        personnelRes,
+        machineryRes,
+        progressTotals,
+      ] = await Promise.all([
+        supabase.from('profiles').select('full_name, email').eq('id', report?.created_by || user?.id).maybeSingle(),
+        supabase.from('progress_items').select('*').eq('project_id', projectId).order('order_index'),
+        supabase.from('project_tasks').select('*').eq('project_id', projectId).in('status', ['devam_ediyor', 'tamamlandi']).order('task_code'),
+        reportId ? supabase.from('personnel_log_entries').select('*').eq('report_id', reportId) : Promise.resolve({ data: [] }),
+        reportId ? supabase.from('machinery_logs').select('*').eq('report_id', reportId) : Promise.resolve({ data: [] }),
+        getProgressTotalsByDate(exportDate),
+      ])
+
+      const personnel = personnelRes.data || []
+      const machinery = machineryRes.data || []
+      const personelCount = (departmentKeys, shiftKeys = []) => sumCount(personnel, row => {
+        const department = normalize(row.department)
+        const shift = normalize(row.shift)
+        return departmentKeys.some(key => department.includes(key))
+          && (!shiftKeys.length || shiftKeys.some(key => shift.includes(key)))
+      })
+
+      let reportXml = strFromU8(files['xl/worksheets/sheet1.xml'])
+      reportXml = setTemplateCell(reportXml, 'E4', projectId)
+      reportXml = setTemplateCell(reportXml, 'E5', formatExcelDate(exportDate))
+      reportXml = setTemplateCell(reportXml, 'E6', profile?.full_name || profile?.email || user?.email || '')
+      reportXml = setTemplateCell(reportXml, 'E7', report?.weather || '')
+      reportXml = setTemplateCell(reportXml, 'E8', report?.notes || '')
+      reportXml = setTemplateCell(reportXml, 'D12', personelCount(['mekanik']))
+      reportXml = setTemplateCell(reportXml, 'D13', 0)
+      reportXml = setTemplateCell(reportXml, 'D14', personelCount(['elektrik']))
+      reportXml = setTemplateCell(reportXml, 'D15', 0)
+      reportXml = setTemplateCell(reportXml, 'D16', personelCount(['yevmiyeci']))
+      reportXml = setTemplateCell(reportXml, 'D17', personelCount(['idari', 'teknik']))
+
+      DAILY_REPORT_MACHINE_ROWS.forEach(({ row, keys }) => {
+        const matching = machinery.filter(machine => keys.some(key => normalize(machine.machine_type).includes(key)))
+        const count = matching.reduce((sum, machine) => sum + Number(machine.count || 0), 0)
+        const status = matching.find(machine => machine.status)?.status || ''
+        const notes = matching.map(machine => machine.notes).filter(Boolean).join(' / ')
+        reportXml = setTemplateCell(reportXml, `C${row}`, count)
+        reportXml = setTemplateCell(reportXml, `D${row}`, status)
+        reportXml = setTemplateCell(reportXml, `E${row}`, notes)
+      })
+      files['xl/worksheets/sheet1.xml'] = strToU8(reportXml)
+
+      fillTemplateSheet(files, 2, (progressItems || []).map(item => [
+        undefined,
+        item.name || '',
+        item.unit || '',
+        item.target_qty || 0,
+        progressTotals.get(item.id) || 0,
+        '',
+      ]), 5)
+
+      fillTemplateSheet(files, 3, (tasks || []).map(task => [
+        undefined,
+        task.task_code || '',
+        task.task_name || '',
+        task.status || '',
+        Number(task.progress_pct || 0) / 100,
+        '',
+      ]), 5)
+
+      downloadXlsxZip(files, `gunluk-rapor-${projectId}-${exportDate}.xlsx`)
+    } catch (err) {
+      setExportError(err.message || 'Günlük rapor indirilemedi')
+    } finally {
+      setExportingReport(false)
+    }
+  }
+
   return (
     <div>
 
@@ -143,6 +304,27 @@ export default function TabSantiyeSefi() {
       {project && (
         <div className="ss-project-bar">
           <span className="ss-project-bar-name">{project.name}</span>
+          <button
+            type="button"
+            onClick={handleDailyReportExport}
+            disabled={exportingReport}
+            style={{
+              order: 99,
+              marginLeft: 'auto',
+              padding: '7px 11px',
+              borderRadius: 8,
+              border: '1px solid #bfdbfe',
+              background: exportingReport ? '#f8fafc' : '#eff6ff',
+              color: '#185FA5',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: exportingReport ? 'wait' : 'pointer',
+              fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {exportingReport ? 'Hazırlanıyor…' : '📋 Günlük Rapor İndir'}
+          </button>
           {project.location && (
             <><span className="ss-project-bar-sep">·</span><span className="ss-project-bar-loc">{project.location}</span></>
           )}
@@ -153,6 +335,12 @@ export default function TabSantiyeSefi() {
       )}
 
       {/* ── Hızlı Eylemler + Hava Durumu ── */}
+      {exportError && (
+        <p style={{ margin: '-0.5rem 0 0.75rem', color: '#ef4444', fontSize: 12, fontWeight: 600 }}>
+          ❌ {exportError}
+        </p>
+      )}
+
       <div className="ss-kpi-grid">
 
         {/* Günlük Rapor */}

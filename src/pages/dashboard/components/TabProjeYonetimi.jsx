@@ -87,6 +87,8 @@ const xmlEscape = value => String(value ?? '')
 // Şablonun ZIP içeriğinde yalnızca veri hücrelerini değiştirir. Böylece tema,
 // renk, koşullu biçimlendirme, sütun genişliği ve veri doğrulamaları korunur.
 function setTemplateCell(xmlStr, address, value) {
+  if (address === 'A1') return xmlStr
+
   const col = address.match(/^[A-Z]+/)[0]
   const row = address.match(/\d+$/)[0]
 
@@ -98,8 +100,8 @@ function setTemplateCell(xmlStr, address, value) {
     ? `<c r="${address}"${styleAttr} t="n"><v>${value}</v></c>`
     : `<c r="${address}"${styleAttr} t="inlineStr"><is><t>${String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</t></is></c>`
 
-  const selfClosingRe = new RegExp(`<c r="${address}"[^/]*/\\s*>`)
-  const fullCellRe = new RegExp(`<c r="${address}"[^>]*>.*?</c>`)
+  const selfClosingRe = new RegExp(`<c r="${address}"[^>]*\\/\\s*>`)
+  const fullCellRe = new RegExp(`<c r="${address}"[^>]*>[\\s\\S]*?<\\/c>`)
 
   if (selfClosingRe.test(xmlStr)) return xmlStr.replace(selfClosingRe, newCell)
   if (fullCellRe.test(xmlStr)) return xmlStr.replace(fullCellRe, newCell)
@@ -121,6 +123,23 @@ function fillTemplateSheet(files, sheetNumber, rows) {
     if (value !== undefined) xml = setTemplateCell(xml, `${XLSX.utils.encode_col(columnIndex)}${rowIndex + 5}`, value)
   }))
   files[path] = strToU8(xml)
+}
+
+async function fetchTemplate(paths) {
+  for (const path of paths) {
+    const resp = await fetch(path, { cache: 'no-store' })
+    if (!resp.ok) continue
+    const buffer = await resp.arrayBuffer()
+    const bytes = new Uint8Array(buffer)
+    if (bytes[0] === 0x50 && bytes[1] === 0x4B) return buffer
+  }
+  throw new Error('Excel şablonu yüklenemedi')
+}
+
+function excelDate(value) {
+  if (!value) return ''
+  const [y, m, d] = String(value).split('T')[0].split('-')
+  return y && m && d ? `${d}.${m}.${y}` : String(value)
 }
 
 export default function TabProjeYonetimi({ onViewProject }) {
@@ -151,7 +170,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
     setError(null)
     const { data, error: err } = await supabase
       .from('projects')
-      .select('id, name, location, status, progress, capacity_kwp, capacity_kwe, start_date, target_date, total_days')
+      .select('id, name, location, status, progress, capacity_kwp, capacity_kwe, storage_kwh, start_date, target_date, total_days')
       .order('created_at', { ascending: false })
     setLoading(false)
     if (err) { setError(err.message); return }
@@ -222,11 +241,44 @@ export default function TabProjeYonetimi({ onViewProject }) {
   async function handleExport(project) {
     setExportLoadingId(project.id)
     try {
+      const templateBuffer = await fetchTemplate(['/fons-solar-proje-sablonu.xlsx', '/excel/fons-solar-proje-sablonu.xlsx'])
+      const files = unzipSync(new Uint8Array(templateBuffer))
+      const [{ data: exportProj }, { data: exportTasks }, { data: exportProgressItems }, { data: exportRisks }, { data: exportProcurement }, { data: exportBudget }, { data: exportCriticalPath }] = await Promise.all([
+        supabase.from('projects').select('*').eq('id', project.id).single(),
+        supabase.from('project_tasks').select('*').eq('project_id', project.id).order('task_code'),
+        supabase.from('progress_items').select('*').eq('project_id', project.id).order('order_index'),
+        supabase.from('project_risks').select('*').eq('project_id', project.id),
+        supabase.from('procurement_items').select('*').eq('project_id', project.id).order('item_no'),
+        supabase.from('budget_lines').select('*').eq('project_id', project.id).order('order_index'),
+        supabase.from('critical_path_items').select('*').eq('project_id', project.id).order('path_code'),
+      ])
+      const exportProject = exportProj || project
+      const cats = { mobilizasyon: 'Mobilizasyon', mekanik: 'Mekanik', elektrik_dc: 'Elektrik DC', elektrik_ac: 'Elektrik AC', elektrik_og: 'Elektrik OG', topraklama: 'Topraklama', enh: 'ENH', devreye_alma: 'Devreye Alma', evrak_sureci: 'Evrak SÃ¼reci', satin_alma: 'SatÄ±n Alma' }
+      let infoXml = strFromU8(files['xl/worksheets/sheet1.xml'])
+      const put = (addr, value) => { infoXml = setTemplateCell(infoXml, addr, value) }
+      ;[['E5', exportProject.id], ['E6', exportProject.name], ['E7', exportProject.location], ['E8', exportProject.project_type], ['E9', exportProject.status], ['E10', excelDate(exportProject.start_date)], ['E11', excelDate(exportProject.target_date)], ['E15', exportProject.capacity_kwp], ['E16', exportProject.capacity_kwe], ['E17', exportProject.storage_kwh]].forEach(([addr, value]) => put(addr, value))
+      files['xl/worksheets/sheet1.xml'] = strToU8(infoXml)
+      fillTemplateSheet(files, 2, (exportTasks || []).map(t => [t.task_code, t.task_name, cats[t.category] || t.category, t.related_institution || t.sub_category || '', excelDate(t.planned_start), excelDate(t.planned_end), undefined, Number(t.progress_pct || 0) / 100, t.status || '', t.responsible || '', t.team_size || '', t.notes || '']))
+      fillTemplateSheet(files, 3, (exportProgressItems || []).map(x => [cats[x.category] || x.category, x.name, x.unit || '', x.target_qty || 0, x.total_progress || 0, undefined, x.order_index || x.dashboard_order || '', x.dashboard_visible ? 'Evet' : 'HayÄ±r']))
+      fillTemplateSheet(files, 4, (exportRisks || []).map((r, i) => [i + 1, r.title || '', r.category || r.severity || '', r.probability || '', r.impact || '', undefined, r.status || '', r.mitigation || '', r.responsible || '', excelDate(r.due_date)]))
+      fillTemplateSheet(files, 5, (exportProcurement || []).map((x, i) => [x.item_no || i + 1, x.equipment || '', x.quantity || '', x.unit || '', x.supplier || '', undefined, undefined, x.status || '', excelDate(x.order_date), excelDate(x.expected_delivery)]))
+      fillTemplateSheet(files, 6, (exportBudget || []).map(x => [x.category || '', x.name || '', x.planned_amount || 0]))
+      fillTemplateSheet(files, 7, (exportCriticalPath || []).map(x => [x.path_code || '', x.activity_name || '', excelDate(x.planned_start), excelDate(x.planned_end), excelDate(x.late_start), excelDate(x.late_finish), undefined, undefined, x.is_critical ? 'Evet' : 'HayÄ±r', Number(x.progress_pct || 0) / 100, x.predecessors || '']))
+      const blob = new Blob([zipSync(files, { level: 6 })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${project.id}-${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      showToast('Åablon formatÄ±nda Excel indirildi')
+      return
       {
       // Şablonun mevcut biçimlerini koruyarak sadece veri hücrelerini doldur.
-      const templateRes = await fetch('/fons-solar-proje-sablonu.xlsx', { cache: 'no-store' })
-      if (!templateRes.ok) throw new Error('Excel şablonu yüklenemedi')
-      const files = unzipSync(new Uint8Array(await templateRes.arrayBuffer()))
+      const templateBuffer = await fetchTemplate(['/fons-solar-proje-sablonu.xlsx', '/excel/fons-solar-proje-sablonu.xlsx'])
+      const files = unzipSync(new Uint8Array(templateBuffer))
       const [{ data: proj }, { data: tasks }, { data: progressItems }, { data: risks }, { data: procurement }, { data: budget }, { data: criticalPath }] = await Promise.all([
         supabase.from('projects').select('*').eq('id', project.id).single(),
         supabase.from('project_tasks').select('*').eq('project_id', project.id).order('task_code'),
@@ -723,7 +775,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
   // ── Template ────────────────────────────────────────────────────────────────
   function handleDownloadTemplate() {
     const a = document.createElement('a')
-    a.href = '/fons-solar-proje-sablonu.xlsx'
+    a.href = '/excel/fons-solar-proje-sablonu.xlsx'
     a.download = 'fons-solar-proje-sablonu.xlsx'
     document.body.appendChild(a)
     a.click()
@@ -987,7 +1039,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="card-header">
-        <h3>Proje Yönetimi</h3>
+        <div style={{ flex: 1 }} />
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
           <button
             onClick={handleDownloadTemplate}

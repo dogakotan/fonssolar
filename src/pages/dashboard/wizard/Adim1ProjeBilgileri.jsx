@@ -23,6 +23,7 @@ export default function Adim1ProjeBilgileri({
   const [form, setForm] = useState({
     id:               mode === 'edit' ? (src.id ?? '') : (src.id ?? ''),
     name:             src.name             ?? '',
+    project_type:     src.project_type     ?? '',
     location:         src.location         ?? '',
     capacity_kwp:     src.capacity_kwp     != null ? String(src.capacity_kwp)     : '',
     capacity_kwe:     src.capacity_kwe     != null ? String(src.capacity_kwe)     : '',
@@ -102,6 +103,41 @@ export default function Adim1ProjeBilgileri({
             <div style={F.group}>
               <label style={F.label}>Proje Adı <span style={{ color: 'var(--color-danger)' }}>*</span></label>
               <input style={F.input} value={form.name} onChange={set('name')} required placeholder="Kayseri GES Projesi" />
+            </div>
+
+            {/* Proje Türü */}
+            <div style={{ ...F.group, gridColumn: 'span 2' }}>
+              <label style={F.label}>Proje Türü</label>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                {[
+                  { v: 'arazi_ges',            l: 'Arazi GES',            icon: '🌄' },
+                  { v: 'endustriyel_cati_ges', l: 'Endüstriyel Çatı GES', icon: '🏭' },
+                  { v: 'evsel_ges',            l: 'Evsel GES',            icon: '🏠' },
+                ].map(opt => {
+                  const active = form.project_type === opt.v
+                  return (
+                    <button
+                      key={opt.v}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, project_type: opt.v }))}
+                      style={{
+                        flex: 1, padding: '0.6rem 1rem',
+                        border: `1.5px solid ${active ? 'var(--color-primary)' : 'var(--color-border-md)'}`,
+                        borderRadius: 'var(--radius-md)',
+                        background: active ? '#eff6ff' : 'var(--color-surface)',
+                        color: active ? 'var(--color-primary)' : 'var(--color-text)',
+                        cursor: 'pointer', fontFamily: 'inherit',
+                        fontSize: 13, fontWeight: active ? 700 : 500,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      <span>{opt.icon}</span>
+                      <span>{opt.l}</span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             <div style={F.group}>

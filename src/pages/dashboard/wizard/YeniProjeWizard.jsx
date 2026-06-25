@@ -9,14 +9,8 @@ import Adim6Butce               from './Adim6Butce'
 import Adim7KritikYol           from './Adim7KritikYol'
 import Adim8Tamamlandi          from './Adim8Tamamlandi'
 
-const PROJECT_TYPES = [
-  { value: 'arazi_ges',            label: 'Arazi GES',            icon: '🌄', desc: 'Açık arazi güneş enerji santrali' },
-  { value: 'endustriyel_cati_ges', label: 'Endüstriyel Çatı GES', icon: '🏭', desc: 'Fabrika, depo, sanayi binası çatısı' },
-  { value: 'evsel_ges',            label: 'Evsel GES',            icon: '🏠', desc: 'Konut ve küçük ticari çatı' },
-]
 
 export default function YeniProjeWizard({ onSuccess, onViewProject }) {
-  const [projectType, setProjectType] = useState(null)
   const [step,        setStep]        = useState(1)
   const [stepsResult, setStepsResult] = useState({})
   const actionRef = useRef('next')
@@ -30,7 +24,9 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
 
   function handleStepDone(stepNo, result) {
     setStepsResult(r => ({ ...r, [stepNo]: result }))
-    if (actionRef.current === 'next') {
+    if (actionRef.current === 'save') {
+      setStep(8)
+    } else if (actionRef.current === 'next') {
       setStep(current => Math.min(8, Math.max(current + 1, stepNo + 1)))
     }
   }
@@ -40,10 +36,6 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
     if (step === 1) document.querySelector('[data-wizard-form="project"]')?.requestSubmit()
     else if (step < 8) document.querySelector('[data-wizard-submit="next"]')?.click()
     else document.querySelector('[data-wizard-submit="save"]')?.click()
-  }
-
-  if (!projectType) {
-    return <TypeSelector onConfirm={setProjectType} onCancel={onSuccess} />
   }
 
   return (
@@ -141,7 +133,7 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
         {step === 8 && (
           <Adim8Tamamlandi
             stepsResult={stepsResult}
-            projectType={projectType}
+            projectType={stepsResult[1]?.project_type ?? null}
             onBack={goBack}
             onSuccess={onSuccess}
             onViewProject={onViewProject}
@@ -152,65 +144,3 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
   )
 }
 
-function TypeSelector({ onConfirm, onCancel }) {
-  const [selected, setSelected] = useState(null)
-
-  return (
-    <div className="card">
-      <div className="card-header">
-        <h3>Proje Türü Seç</h3>
-        <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>Devam etmek için proje türünü belirleyin</span>
-      </div>
-      <div style={{ padding: '1.5rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-          {PROJECT_TYPES.map(pt => {
-            const active = selected === pt.value
-            return (
-              <button
-                key={pt.value}
-                onClick={() => setSelected(pt.value)}
-                style={{
-                  padding: '1.5rem 1rem',
-                  border: `2px solid ${active ? 'var(--color-primary)' : 'var(--color-border-md)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  background: active ? '#eff6ff' : 'var(--color-surface)',
-                  cursor: 'pointer',
-                  textAlign: 'center',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  fontFamily: 'inherit',
-                  transition: 'border-color 0.15s, background 0.15s',
-                }}
-              >
-                <span style={{ fontSize: 36 }}>{pt.icon}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: active ? 'var(--color-primary)' : 'var(--color-text)' }}>
-                  {pt.label}
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.4 }}>
-                  {pt.desc}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-          <button
-            style={{ padding: '0.5rem 1.25rem', background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-            onClick={onCancel}
-          >
-            İptal
-          </button>
-          <button
-            disabled={!selected}
-            onClick={() => selected && onConfirm(selected)}
-            style={{ padding: '0.5rem 1.25rem', background: selected ? 'var(--color-primary)' : '#94a3b8', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600, cursor: selected ? 'pointer' : 'not-allowed', fontFamily: 'inherit' }}
-          >
-            Devam →
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}

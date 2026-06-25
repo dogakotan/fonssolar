@@ -1314,6 +1314,22 @@ const backBtn = {
   gap: '0.3rem', transition: 'all 0.15s',
 }
 
+function todayStr() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function todayStrFromDate(date) {
+  const d = new Date(date)
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
 export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate }) {
   const [tab, setTab]                = useState('genel')
@@ -1327,7 +1343,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const [showCal, setShowCal]        = useState(false)
   const [calPos, setCalPos]          = useState({ top: 0, right: 0 })
   const [showExportMenu, setShowExportMenu] = useState(false)
-  const [filterDate, setFilterDate]  = useState(new Date().toISOString().split('T')[0])
+  const [filterDate, setFilterDate]  = useState(todayStr())
   const calRef    = useRef(null)
   const calBtnRef = useRef(null)
   const exportRef = useRef(null)
@@ -1356,29 +1372,96 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       const diff = day === 0 ? 0 : 7 - day
       const sun  = new Date(now)
       sun.setDate(now.getDate() + diff)
-      setFilterDate(sun.toISOString().split('T')[0])
+      setFilterDate(todayStrFromDate(sun))
       setFilterMode('haftalik')
     } else if (mode === 'aylik') {
       const last = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      setFilterDate(last.toISOString().split('T')[0])
+      setFilterDate(todayStrFromDate(last))
       setFilterMode('aylik')
     } else {
-      setFilterDate(new Date().toISOString().split('T')[0])
+      setFilterDate(todayStr())
       setFilterMode('tum')
     }
   }
 
-  function handleExport(type) {
+  async function handleExport(type) {
     setShowExportMenu(false)
-    // Export için en güncel ilerleme satırlarını kullan
-    const latestDate = allIlerleme[0]?.report_date
-    const exportIlerleme = latestDate ? allIlerleme.filter(r => r.report_date === latestDate) : []
-    const filterDateObj = new Date(filterDate + 'T00:00:00')
-    const opts = { selectedDate: filterDateObj, projectName }
+
+    const [{ data: dr }, { data: latestDr }] = await Promise.all([
+      supabase
+        .from('daily_reports')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('report_date', filterDate)
+        .maybeSingle(),
+      supabase
+        .from('daily_reports')
+        .select('id')
+        .eq('project_id', projectId)
+        .order('report_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+    const reportRow = dr || latestDr
+
+    let personelData = null
+    let ilerlemeData = []
+    let doneTasks    = []
+    let plannedTasks = []
+
+    if (reportRow) {
+      const rid = reportRow.id
+      const [persRes, machRes, taskRes, pdRes] = await Promise.all([
+        supabase.from('personnel_log_entries').select('shift, department, count').eq('report_id', rid),
+        supabase.from('machinery_logs').select('machine_type, count').eq('report_id', rid),
+        supabase.from('daily_tasks').select('type, description').eq('report_id', rid).order('order_index'),
+        supabase.from('progress_daily').select('qty_added, progress_items(name, category, target_qty, unit, total_progress)').eq('report_id', rid),
+      ])
+
+      const SHIFT_KEY = { 'mühendis': 'muhendis', 'usta': 'usta', 'işçi': 'isci' }
+      const MACH_KEY  = { 'vinç': 'vinc', 'traktör': 'traktor' }
+
+      const p = {}
+      ;(persRes.data || []).forEach(r => {
+        const sk = SHIFT_KEY[r.shift] || r.shift
+        p[`${r.department}_${sk}`] = r.count
+      })
+      ;(machRes.data || []).forEach(m => {
+        p[MACH_KEY[m.machine_type] || m.machine_type] = m.count
+      })
+      if (Object.keys(p).length) personelData = p
+
+      const tasks = taskRes.data || []
+      doneTasks    = tasks.filter(t => t.type === 'tamamlandı').map(t => t.description)
+      plannedTasks = tasks.filter(t => t.type === 'planlandı').map(t => t.description)
+
+      ilerlemeData = (pdRes.data || []).map(r => {
+        const item = r.progress_items || {}
+        const pct  = item.target_qty > 0
+          ? Math.round((item.total_progress || 0) / item.target_qty * 100)
+          : 0
+        return {
+          work_item:        item.name,
+          category:         item.category,
+          quantity:         item.target_qty,
+          unit:             item.unit,
+          daily_progress:   r.qty_added,
+          total_progress:   item.total_progress,
+          progress_percent: pct,
+        }
+      })
+    }
+
+    const opts = {
+      selectedDate: new Date(filterDate + 'T00:00:00'),
+      projectName,
+      doneTasks,
+      plannedTasks,
+    }
     if (type === 'pdf') {
-      exportGunlukRaporPdf(project, wps, exportIlerleme, personelRaporu, opts)
+      exportGunlukRaporPdf(project, wps, ilerlemeData, personelData, opts)
     } else {
-      exportGunlukRaporExcel(project, wps, exportIlerleme, personelRaporu, opts)
+      exportGunlukRaporExcel(project, wps, ilerlemeData, personelData, opts)
     }
   }
 

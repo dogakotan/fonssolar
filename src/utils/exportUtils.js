@@ -364,21 +364,25 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
   }
 
   // ── A — Bugün Yapılan İşler ──────────────────────────────────────────────────
-  const bugun  = workPackages.filter(w => w.status === 'aktif')
-  const yarin  = workPackages.filter(w => w.status === 'bekliyor')
+  const bugunRows = opts.doneTasks?.length
+    ? opts.doneTasks.map((desc, i) => [String(i + 1), desc, '—', '—'])
+    : workPackages.filter(w => w.status === 'aktif').map((w, i) => [String(i + 1), w.name || w.title || '—', w.category || '—', `%${w.progress || 0}`])
 
-  if (bugun.length || yarin.length) {
+  const yarinRows = opts.plannedTasks?.length
+    ? opts.plannedTasks.map((desc, i) => [String(i + 1), desc, '—', '—'])
+    : workPackages.filter(w => w.status === 'bekliyor').map((w, i) => [String(i + 1), w.name || w.title || '—', w.category || '—', `%${w.progress || 0}`])
+
+  if (bugunRows.length || yarinRows.length) {
     // Yeni sayfa gerekirse
     const remSpace = doc.internal.pageSize.getHeight() - y - 20
     if (remSpace < 40) { doc.addPage(); y = 20 }
 
-    if (bugun.length) {
+    if (bugunRows.length) {
       y = sectionTitle(y, 'A', 'BUGÜN YAPILAN İŞLER')
-      const rows = bugun.map((w, i) => [String(i + 1), w.name || w.title || '—', w.category || '—', `%${w.progress || 0}`])
       autoTable(doc, {
         startY: y,
         head: [['#', 'İş Kalemi', 'Kategori', 'İlerleme']],
-        body: rows,
+        body: bugunRows,
         styles: { fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
         headStyles: { fillColor: BRAND.secondary, textColor: BRAND.white, fontStyle: 'bold' },
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { cellWidth: 20, halign: 'center' } },
@@ -389,15 +393,14 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
       y = doc.lastAutoTable.finalY + 4
     }
 
-    if (yarin.length) {
+    if (yarinRows.length) {
       const remSpace2 = doc.internal.pageSize.getHeight() - y - 20
       if (remSpace2 < 30) { doc.addPage(); y = 20 }
       y = sectionTitle(y, 'B', 'YARIN YAPILACAK İŞLER')
-      const rows = yarin.map((w, i) => [String(i + 1), w.name || w.title || '—', w.category || '—', `%${w.progress || 0}`])
       autoTable(doc, {
         startY: y,
         head: [['#', 'İş Kalemi', 'Kategori', 'İlerleme']],
-        body: rows,
+        body: yarinRows,
         styles: { fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
         headStyles: { fillColor: [245, 158, 11], textColor: BRAND.white, fontStyle: 'bold' },
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { cellWidth: 20, halign: 'center' } },

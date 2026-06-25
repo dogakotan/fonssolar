@@ -9,6 +9,7 @@ html, body, #root {
   height: 100%;
   font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
   background: #0f172a;
+  overflow-x: hidden;
 }
 
 /* ── Scrollbar ── */

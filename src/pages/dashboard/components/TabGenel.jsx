@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
+import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
 import { supabase } from '../../../lib/supabase'
-import { getProjects, getDashboardKpis } from '../../../api'
+import { getProjects } from '../../../api'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer,
@@ -10,6 +11,157 @@ import ExportButton from '../../../components/ui/ExportButton'
 import WeatherWidget from '../../../components/ui/WeatherWidget'
 import DateNavigator from '../../../components/ui/DateNavigator'
 import { dateFilter } from '../../../utils/exportUtils'
+import {
+  fetchXlsxTemplate,
+  fillTemplateSheet as fillExcelTemplateSheet,
+  setTemplateCell as setExcelTemplateCell,
+  downloadXlsxZip,
+  formatExcelDate,
+} from '../../../utils/excelUtils'
+
+const xmlEscape = value => String(value ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+
+function setTemplateCell(xmlStr, address, value) {
+  if (address === 'A1') return xmlStr
+
+  const row = address.match(/\d+$/)[0]
+  const isNum = typeof value === 'number' && Number.isFinite(value)
+  const styleMatch = xmlStr.match(new RegExp(`<c r="${address}"[^>]*s="(\\d+)"`))
+  const styleAttr = styleMatch ? ` s="${styleMatch[1]}"` : ''
+  const newCell = isNum
+    ? `<c r="${address}"${styleAttr} t="n"><v>${value}</v></c>`
+    : `<c r="${address}"${styleAttr} t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`
+  const selfClosingRe = new RegExp(`<c r="${address}"[^>]*\\/\\s*>`)
+  const fullCellRe = new RegExp(`<c r="${address}"[^>]*>[\\s\\S]*?<\\/c>`)
+
+  if (selfClosingRe.test(xmlStr)) return xmlStr.replace(selfClosingRe, newCell)
+  if (fullCellRe.test(xmlStr)) return xmlStr.replace(fullCellRe, newCell)
+
+  const rowRe = new RegExp(`(<row[^>]*r="${row}"[^>]*>)(.*?)(</row>)`, 's')
+  if (rowRe.test(xmlStr)) {
+    return xmlStr.replace(rowRe, (_, open, inner, close) => `${open}${inner}${newCell}${close}`)
+  }
+
+  return xmlStr.replace('</sheetData>', `<row r="${row}">${newCell}</row></sheetData>`)
+}
+
+function fillTemplateSheet(files, sheetNumber, rows) {
+  const path = `xl/worksheets/sheet${sheetNumber}.xml`
+  let xml = strFromU8(files[path])
+  rows.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
+    if (value !== undefined) {
+      const column = String.fromCharCode(65 + columnIndex)
+      xml = setTemplateCell(xml, `${column}${rowIndex + 5}`, value)
+    }
+  }))
+  files[path] = strToU8(xml)
+}
+
+async function fetchTemplate(paths) {
+  for (const path of paths) {
+    const resp = await fetch(path, { cache: 'no-store' })
+    if (!resp.ok) continue
+    const buffer = await resp.arrayBuffer()
+    const bytes = new Uint8Array(buffer)
+    if (bytes[0] === 0x50 && bytes[1] === 0x4B) return buffer
+  }
+  throw new Error('Excel şablonu yüklenemedi')
+}
+
+function downloadXlsx(files, filename) {
+  const blob = new Blob([zipSync(files, { level: 6 })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+
+function todayIso() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function dateTr(iso) {
+  if (!iso) return ''
+  const [y, m, d] = String(iso).split('T')[0].split('-')
+  return y && m && d ? `${d}.${m}.${y}` : String(iso)
+}
+
+function toIsoDate(date) {
+  const d = new Date(date)
+  d.setHours(12, 0, 0, 0)
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function parseIsoDate(iso) {
+  const [y, m, d] = String(iso).split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1)
+}
+
+function getPeriodRange(type, filterDate) {
+  const base = filterDate ? parseIsoDate(filterDate) : new Date()
+  base.setHours(12, 0, 0, 0)
+
+  if (type === 'gunluk') {
+    const day = filterDate || toIsoDate(base)
+    return { start: day, end: day, label: 'GÜNLÜK' }
+  }
+
+  if (type === 'haftalik') {
+    if (filterDate) {
+      const day = base.getDay() || 7
+      const start = new Date(base)
+      start.setDate(base.getDate() - day + 1)
+      const end = new Date(start)
+      end.setDate(start.getDate() + 6)
+      return { start: toIsoDate(start), end: toIsoDate(end), label: 'HAFTALIK' }
+    }
+    const end = new Date(base)
+    end.setDate(base.getDate() - 1)
+    const start = new Date(base)
+    start.setDate(base.getDate() - 7)
+    return { start: toIsoDate(start), end: toIsoDate(end), label: 'HAFTALIK' }
+  }
+
+  if (filterDate) {
+    const start = new Date(base.getFullYear(), base.getMonth(), 1, 12)
+    const end = new Date(base.getFullYear(), base.getMonth() + 1, 0, 12)
+    return { start: toIsoDate(start), end: toIsoDate(end), label: 'AYLIK' }
+  }
+
+  const prev = new Date(base.getFullYear(), base.getMonth() - 1, 1, 12)
+  const start = new Date(prev.getFullYear(), prev.getMonth(), 1, 12)
+  const end = new Date(prev.getFullYear(), prev.getMonth() + 1, 0, 12)
+  return { start: toIsoDate(start), end: toIsoDate(end), label: 'AYLIK' }
+}
+
+function sumBy(rows, predicate) {
+  return (rows || []).filter(predicate).reduce((sum, row) => sum + Number(row.count || 0), 0)
+}
+
+function norm(value) {
+  return String(value || '').toLowerCase()
+}
+
+function isBadWeather(weatherValue) {
+  return ['yağmurlu', 'yagmurlu', 'karlı', 'karli', 'fırtınalı', 'firtinali'].includes(norm(weatherValue))
+}
+
+function shortId(id) {
+  return String(id || '').slice(0, 8)
+}
 
 // ─────────────────────────────────────────────────────────
 //  Yardımcı
@@ -19,6 +171,12 @@ const STATUS_MAP = {
   tamamlandı:     { badge: 'blue',  label: 'Tamamlandı' },
   beklemede:      { badge: 'amber', label: 'Beklemede' },
   'iptal edildi': { badge: 'red',   label: 'İptal' },
+}
+
+const TYPE_LABEL = {
+  arazi_ges:            'Arazi GES',
+  endustriyel_cati_ges: 'Endüstriyel Çatı GES',
+  evsel_ges:            'Evsel GES',
 }
 
 function fmt(n) { return Number(n || 0).toLocaleString('tr-TR') }
@@ -106,7 +264,6 @@ function buildScurve(tasks, startDate, endDate, actualPct) {
 //  Proje Listesi (projectId yokken)
 // ─────────────────────────────────────────────────────────
 function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
-  const [kpis, setKpis]         = useState({ activeProjects: '—', openTasks: '—', pendingPurchases: '—' })
   const [projects, setProjects] = useState([])
   const [loading, setLoading]   = useState(true)
   const [konum, setKonum]       = useState(null)
@@ -114,6 +271,9 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
   const [calPos, setCalPos]     = useState({ top: 0, right: 0 })
   const [openTickets, setOpenTickets]         = useState(null)
   const [criticalTickets, setCriticalTickets] = useState(null)
+  // Filtre-bağımlı KPI state'leri (null = henüz hesaplanmadı)
+  const [filteredTasks,     setFilteredTasks]     = useState(null)
+  const [filteredPurchases, setFilteredPurchases] = useState(null)
   const calRef    = useRef(null)
   const calBtnRef = useRef(null)
 
@@ -134,22 +294,50 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
     setShowCal(v => !v)
   }
 
+  // Başlangıç yüklemesi — projeler + biletler
   useEffect(() => {
     async function load() {
-      const [kpiData, { data: projData }, tOpen, tCrit] = await Promise.all([
-        getDashboardKpis(),
+      const [{ data: projData }, tOpen, tCrit] = await Promise.all([
         getProjects(),
         supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'açık'),
         supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('severity', 'kritik').neq('status', 'kapatıldı'),
       ])
       if (projData) setProjects(projData)
-      setKpis(kpiData)
       if (!tOpen.error)  setOpenTickets(tOpen.count  ?? 0)
       if (!tCrit.error)  setCriticalTickets(tCrit.count ?? 0)
       setLoading(false)
     }
     load().catch(() => setLoading(false))
   }, [])
+
+  // selectedDate değiştiğinde filtreli proje ID'lerine göre görev + satın alma say
+  useEffect(() => {
+    if (loading || projects.length === 0) return
+
+    const ids = selectedDate
+      ? projects.filter(p => p.created_at && new Date(p.created_at) <= new Date(selectedDate)).map(p => p.id)
+      : projects.map(p => p.id)
+
+    if (ids.length === 0) {
+      setFilteredTasks(0)
+      setFilteredPurchases(0)
+      return
+    }
+
+    Promise.all([
+      supabase.from('project_tasks')
+        .select('id', { count: 'exact', head: true })
+        .in('project_id', ids)
+        .in('status', ['devam_ediyor', 'beklemede', 'askida']),
+      supabase.from('purchase_requests')
+        .select('id', { count: 'exact', head: true })
+        .in('project_id', ids)
+        .eq('status', 'bekliyor'),
+    ]).then(([tasks, purchases]) => {
+      setFilteredTasks(tasks.error  ? 0 : (tasks.count    ?? 0))
+      setFilteredPurchases(purchases.error ? 0 : (purchases.count ?? 0))
+    })
+  }, [selectedDate, projects, loading])
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -165,23 +353,23 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
   const displayProjects = selectedDate
     ? projects.filter(p => p.created_at && new Date(p.created_at) <= new Date(selectedDate))
     : projects
-  const totalMwp = displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000
+  const totalMwp    = displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000
   const ticketVal   = loading || openTickets === null ? '…' : openTickets
   const ticketClass = criticalTickets ? 'red-text' : ''
   const ticketNote  = criticalTickets ? `${criticalTickets} kritik` : 'Açık bildirim'
 
   const stats = [
-    { label: 'Toplam Proje',     value: loading ? '…' : kpis.activeProjects,          note: 'Kayıtlı proje sayısı' },
-    { label: 'Toplam Kapasite',  value: loading ? '…' : `${totalMwp.toFixed(2)} MWp`, note: 'Kurulu güç' },
-    { label: 'Açık Görev',       value: loading ? '…' : kpis.openTasks,               note: 'Aktif + gecikmiş', valueClass: 'amber-text' },
-    { label: 'Bekleyen Sipariş', value: loading ? '…' : kpis.pendingPurchases,        note: 'Onay bekliyor',    valueClass: 'red-text' },
-    { label: 'Açık Ticket',      value: ticketVal,                                     note: ticketNote,          valueClass: ticketClass },
+    { label: 'Toplam Proje',     value: loading ? '…' : displayProjects.length,           note: selectedDate ? 'Filtrelenmiş' : 'Kayıtlı proje sayısı' },
+    { label: 'Toplam Kapasite',  value: loading ? '…' : `${totalMwp.toFixed(2)} MWp`,     note: 'Kurulu güç' },
+    { label: 'Açık Görev',       value: filteredTasks    === null ? '…' : filteredTasks,   note: 'Aktif + gecikmiş', valueClass: 'amber-text' },
+    { label: 'Bekleyen Sipariş', value: filteredPurchases === null ? '…' : filteredPurchases, note: 'Onay bekliyor', valueClass: 'red-text' },
+    { label: 'Açık Ticket',      value: ticketVal,                                          note: ticketNote,         valueClass: ticketClass },
   ]
 
   return (
     <>
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', marginBottom: '1.75rem', flexWrap: 'wrap' }}>
-        <div className="stats-grid" style={{ flex: 1, minWidth: 0, marginBottom: 0, gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', marginBottom: '1.75rem', flexWrap: 'wrap' }}>
+        <div className="stats-grid" style={{ flex: 1, minWidth: 0, marginBottom: 0, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', alignItems: 'stretch' }}>
           {stats.map(s => (
             <div className="stat-card" key={s.label}>
               <p className="stat-label">{s.label}</p>
@@ -306,9 +494,12 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
 // ─────────────────────────────────────────────────────────
 //  Proje Dashboard'u (projectId varken)
 // ─────────────────────────────────────────────────────────
-function ProjectDashboard({ projectId, filterDate = new Date().toISOString().split('T')[0] }) {
+function ProjectDashboard({ projectId, filterDate }) {
+  const effectiveDate = filterDate || new Date().toISOString().split('T')[0]
+
   const [project, setProject]           = useState(null)
   const [tasks, setTasks]               = useState([])
+  const [avgProgress, setAvgProgress]   = useState(0)
   const [progressItems, setProgressItems] = useState([])
   const [critical, setCritical]         = useState([])
   const [budgetLines, setBudgetLines]   = useState([])
@@ -322,6 +513,11 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
   const [personnel, setPersonnel]       = useState([])
   const [machinery, setMachinery]       = useState([])
   const [loading, setLoading]           = useState(true)
+  const [openTickets, setOpenTickets]   = useState(null)
+  const [pendingPR, setPendingPR]       = useState(null)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [reportExporting, setReportExporting] = useState(null)
+  const [reportExportError, setReportExportError] = useState('')
 
   useEffect(() => {
     if (!projectId) return
@@ -341,17 +537,22 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
         { data: elecData, error: elecErr },
         { data: inspData, error: inspErr },
         { count: lostCount },
+        { count: ticketCount },
+        { count: prCount },
       ] = await Promise.all([
         supabase.from('projects').select('*').eq('id', projectId).single(),
         supabase.from('project_tasks')
           .select('task_code, task_name, group_label, planned_start, planned_end, progress_pct, status')
-          .eq('project_id', projectId),
+          .eq('project_id', projectId)
+          .lte('planned_start', effectiveDate),
         supabase.from('progress_items')
           .select('name, unit, target_qty, total_progress, dashboard_visible, dashboard_order')
           .eq('project_id', projectId).eq('dashboard_visible', true).order('dashboard_order'),
         supabase.from('critical_path_items')
           .select('path_code, activity_name, planned_start, planned_end, status, progress_pct, is_critical')
-          .eq('project_id', projectId).order('planned_start'),
+          .eq('project_id', projectId)
+          .lte('planned_start', effectiveDate)
+          .order('planned_start'),
         supabase.from('budget_lines')
           .select('name, planned_amount').eq('project_id', projectId),
         supabase.from('invoices')
@@ -362,7 +563,7 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
         supabase.from('daily_reports')
           .select('id, report_date, weather')
           .eq('project_id', projectId)
-          .lte('report_date', filterDate)
+          .lte('report_date', effectiveDate)
           .order('report_date', { ascending: false }).limit(1),
         supabase.from('mechanical_checklist')
           .select('id, is_completed').eq('project_id', projectId),
@@ -373,8 +574,16 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
         supabase.from('daily_reports')
           .select('id', { count: 'exact', head: true })
           .eq('project_id', projectId)
-          .lte('report_date', filterDate)
+          .lte('report_date', effectiveDate)
           .in('weather', ['yağmurlu', 'karlı', 'fırtınalı']),
+        supabase.from('tickets')
+          .select('id', { count: 'exact', head: true })
+          .eq('project_id', projectId)
+          .neq('status', 'kapatıldı'),
+        supabase.from('purchase_requests')
+          .select('id', { count: 'exact', head: true })
+          .eq('project_id', projectId)
+          .eq('status', 'bekliyor'),
       ])
 
       setProject(proj || null)
@@ -385,6 +594,8 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
       setInvoices(invErr ? [] : (invData || []))
       setRisks(riskErr ? [] : (riskData || []))
       setLostDays(lostCount || 0)
+      setOpenTickets(ticketCount ?? 0)
+      setPendingPR(prCount ?? 0)
 
       const latestReport = (dailyData || [])[0] || null
       setWeather(latestReport?.weather || null)
@@ -405,7 +616,398 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
     }
 
     load().catch(() => setLoading(false))
-  }, [projectId, filterDate])
+  }, [projectId, effectiveDate])
+
+  useEffect(() => {
+    if (!projectId) return
+
+    if (!filterDate) {
+      setAvgProgress(
+        tasks.length
+          ? tasks.reduce((s, t) => s + Number(t.progress_pct || 0), 0) / tasks.length
+          : 0
+      )
+      return
+    }
+
+    let cancelled = false
+    async function calcFiltered() {
+      const { data, error } = await supabase
+        .from('progress_items')
+        .select(`
+          id,
+          target_qty,
+          progress_daily (
+            qty_added,
+            report:daily_reports!report_id (report_date)
+          )
+        `)
+        .eq('project_id', projectId)
+
+      if (cancelled) return
+
+      if (error || !data?.length) {
+        setAvgProgress(
+          tasks.length
+            ? tasks.reduce((s, t) => s + Number(t.progress_pct || 0), 0) / tasks.length
+            : 0
+        )
+        return
+      }
+
+      const itemProgresses = data.map(item => {
+        const filteredSum = (item.progress_daily || [])
+          .filter(pd => pd.report?.report_date <= filterDate)
+          .reduce((sum, pd) => sum + Number(pd.qty_added || 0), 0)
+        return Math.min(filteredSum / (item.target_qty || 1), 1.0)
+      })
+
+      const avg = itemProgresses.length
+        ? (itemProgresses.reduce((s, v) => s + v, 0) / itemProgresses.length) * 100
+        : 0
+      setAvgProgress(avg)
+    }
+
+    calcFiltered()
+    return () => { cancelled = true }
+  }, [projectId, filterDate, tasks])
+
+  async function getReportsBetween(start, end) {
+    const { data } = await supabase
+      .from('daily_reports')
+      .select('*')
+      .eq('project_id', projectId)
+      .gte('report_date', start)
+      .lte('report_date', end)
+      .order('report_date')
+    return data || []
+  }
+
+  async function getProgressTotalsByDate(endDate) {
+    const { data: reports } = await supabase
+      .from('daily_reports')
+      .select('id, report_date')
+      .eq('project_id', projectId)
+      .lte('report_date', endDate)
+
+    const reportIds = (reports || []).map(r => r.id)
+    if (!reportIds.length) return new Map()
+
+    const { data: dailyRows } = await supabase
+      .from('progress_daily')
+      .select('item_id, qty_added, report_id')
+      .in('report_id', reportIds)
+
+    const totals = new Map()
+    ;(dailyRows || []).forEach(row => {
+      totals.set(row.item_id, (totals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+    })
+    return totals
+  }
+
+  async function getDailyReportData(selectedDate) {
+    const fallbackDate = selectedDate || effectiveDate
+    const [{ data: dailyReport }, { data: latestDailyReport }] = await Promise.all([
+      supabase
+        .from('daily_reports')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('report_date', fallbackDate)
+        .maybeSingle(),
+      supabase
+        .from('daily_reports')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('report_date', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    const resolvedReport = dailyReport || latestDailyReport
+    const reportId = resolvedReport?.id
+    const [
+      { data: proj },
+      { data: progItems },
+      { data: taskRows },
+      personnelRes,
+      machineryRes,
+      progressTotals,
+    ] = await Promise.all([
+      supabase.from('projects').select('*').eq('id', projectId).single(),
+      supabase.from('progress_items').select('*').eq('project_id', projectId).order('order_index'),
+      supabase.from('project_tasks').select('*').eq('project_id', projectId).in('status', ['devam_ediyor', 'tamamlandi']).order('task_code'),
+      reportId ? supabase.from('personnel_log_entries').select('*').eq('report_id', reportId) : Promise.resolve({ data: [] }),
+      reportId ? supabase.from('machinery_logs').select('*').eq('report_id', reportId) : Promise.resolve({ data: [] }),
+      getProgressTotalsByDate(fallbackDate),
+    ])
+
+    return {
+      project: proj || project,
+      dailyReport: resolvedReport,
+      progressItems: progItems || [],
+      tasks: taskRows || [],
+      personnel: personnelRes.data || [],
+      machinery: machineryRes.data || [],
+      progressTotals,
+    }
+  }
+
+  async function exportDailyReport(period) {
+    const templateBuffer = await fetchXlsxTemplate(['/fons-solar-gunluk-rapor-sablonu.xlsx', '/excel/fons-solar-gunluk-rapor-sablonu.xlsx'])
+    const files = unzipSync(new Uint8Array(templateBuffer))
+    const data = await getDailyReportData(period.start)
+
+    let reportXml = strFromU8(files['xl/worksheets/sheet1.xml'])
+    reportXml = setExcelTemplateCell(reportXml, 'E4', data.project?.id || projectId)
+    reportXml = setExcelTemplateCell(reportXml, 'E5', formatExcelDate(data.dailyReport?.report_date || period.start))
+    reportXml = setExcelTemplateCell(reportXml, 'E6', data.project?.name || '')
+    reportXml = setExcelTemplateCell(reportXml, 'E7', data.dailyReport?.weather || '')
+    reportXml = setExcelTemplateCell(reportXml, 'E8', data.dailyReport?.notes || '')
+
+    const personel = data.personnel
+    const p = (departmentIncludes, shiftIncludes) => sumBy(personel, row => {
+      const dep = norm(row.department)
+      const sh = norm(row.shift)
+      return departmentIncludes.some(key => dep.includes(key)) && (!shiftIncludes?.length || shiftIncludes.some(key => sh.includes(key)))
+    })
+    reportXml = setExcelTemplateCell(reportXml, 'D12', p(['mekanik'], ['gündüz', 'gunduz']))
+    reportXml = setExcelTemplateCell(reportXml, 'H12', p(['mekanik'], ['gece']))
+    reportXml = setExcelTemplateCell(reportXml, 'D13', p(['elektrik'], ['gündüz', 'gunduz']))
+    reportXml = setExcelTemplateCell(reportXml, 'H13', p(['elektrik'], ['gece']))
+    reportXml = setExcelTemplateCell(reportXml, 'D14', p(['yevmiyeci'], []))
+    reportXml = setExcelTemplateCell(reportXml, 'D15', p(['idari', 'teknik'], []))
+
+    ;(data.machinery || []).slice(0, 4).forEach((machine, index) => {
+      reportXml = setExcelTemplateCell(reportXml, `C${20 + index}`, Number(machine.count || 0))
+      reportXml = setExcelTemplateCell(reportXml, `D${20 + index}`, machine.status || '')
+    })
+    files['xl/worksheets/sheet1.xml'] = strToU8(reportXml)
+
+    fillExcelTemplateSheet(files, 2, data.progressItems.map(item => [
+      undefined,
+      item.name || '',
+      item.unit || '',
+      item.target_qty || 0,
+      data.progressTotals.get(item.id) || 0,
+      '',
+    ]), 5)
+
+    fillExcelTemplateSheet(files, 3, data.tasks.map(task => [
+      undefined,
+      task.task_code || '',
+      task.task_name || '',
+      task.status || '',
+      Number(task.progress_pct || 0) / 100,
+      '',
+    ]), 5)
+
+    downloadXlsxZip(files, `gunluk-rapor-${projectId}-${period.start}.xlsx`)
+  }
+
+  async function exportPeriodicReport(type, period) {
+    const templateBuffer = await fetchXlsxTemplate(['/fons-solar-periyodik-rapor-sablonu.xlsx', '/excel/fons-solar-periyodik-rapor-sablonu.xlsx'])
+    const files = unzipSync(new Uint8Array(templateBuffer))
+
+    const reportsInPeriod = await getReportsBetween(period.start, period.end)
+    const reportIds = reportsInPeriod.map(r => r.id)
+    const reportById = new Map(reportsInPeriod.map(r => [r.id, r]))
+
+    const [
+      { data: proj },
+      { data: progItems },
+      { data: risksData },
+      { data: budgetData },
+      { data: invoicesData },
+      { data: requestsData },
+      { data: ticketsData },
+      personnelRes,
+      machineryRes,
+      progressBefore,
+      progressEnd,
+    ] = await Promise.all([
+      supabase.from('projects').select('*').eq('id', projectId).single(),
+      supabase.from('progress_items').select('*').eq('project_id', projectId).order('order_index'),
+      supabase.from('project_risks').select('*').eq('project_id', projectId).eq('status', 'açık'),
+      supabase.from('budget_lines').select('*').eq('project_id', projectId).order('order_index'),
+      supabase.from('invoices').select('*').eq('project_id', projectId).lte('invoice_date', period.end),
+      supabase.from('purchase_requests').select('*').eq('project_id', projectId).gte('created_at', `${period.start}T00:00:00`).lte('created_at', `${period.end}T23:59:59`),
+      supabase.from('tickets').select('*').eq('project_id', projectId).gte('created_at', `${period.start}T00:00:00`).lte('created_at', `${period.end}T23:59:59`),
+      reportIds.length ? supabase.from('personnel_log_entries').select('*').in('report_id', reportIds) : Promise.resolve({ data: [] }),
+      reportIds.length ? supabase.from('machinery_logs').select('*').in('report_id', reportIds) : Promise.resolve({ data: [] }),
+      getProgressTotalsByDate(toIsoDate(new Date(parseIsoDate(period.start).getTime() - 86400000))),
+      getProgressTotalsByDate(period.end),
+    ])
+
+    const requestIds = (requestsData || []).map(r => r.id)
+    const { data: requestItems } = requestIds.length
+      ? await supabase.from('purchase_request_items').select('*').in('request_id', requestIds)
+      : { data: [] }
+
+    const projectData = proj || project
+    const progressRows = (progItems || []).map(item => {
+      const before = progressBefore.get(item.id) || 0
+      const end = progressEnd.get(item.id) || 0
+      return [undefined, item.name || '', item.unit || '', before, end, undefined, item.target_qty || 0]
+    })
+
+    let summaryXml = strFromU8(files['xl/worksheets/sheet1.xml'])
+    summaryXml = setExcelTemplateCell(summaryXml, 'A3', `${projectData.name || projectId}   |   ${formatExcelDate(period.start)} – ${formatExcelDate(period.end)}   |   ${period.label}`)
+    const avgProgressPct = (progItems || []).length
+      ? ((progItems || []).reduce((sum, item) => {
+          const target = Number(item.target_qty || 0)
+          return sum + (target > 0 ? Math.min((progressEnd.get(item.id) || 0) / target, 1) : 0)
+        }, 0) / (progItems || []).length) * 100
+      : 0
+    const planned = calcPlannedAt(tasks, parseIsoDate(period.end))
+    const totalBudgetAmount = (budgetData || []).reduce((sum, item) => sum + Number(item.planned_amount || 0), 0)
+    const paidUntilEnd = (invoicesData || []).filter(inv => !inv.invoice_date || inv.invoice_date <= period.end).filter(inv => inv.status === 'ödendi').reduce((sum, inv) => sum + Number(inv.amount || 0), 0)
+    const totalPersonnelDays = (personnelRes.data || []).reduce((sum, row) => sum + Number(row.count || 0), 0)
+    const activeMachineAvg = reportsInPeriod.length
+      ? Math.round((machineryRes.data || []).filter(m => norm(m.status).includes('çalış') || norm(m.status).includes('calis')).reduce((sum, m) => sum + Number(m.count || 0), 0) / reportsInPeriod.length)
+      : 0
+
+    summaryXml = setExcelTemplateCell(summaryXml, 'G7', projectData.target_date ? Math.round((parseIsoDate(projectData.target_date) - new Date()) / 86400000) : '')
+    summaryXml = setExcelTemplateCell(summaryXml, 'G11', avgProgressPct / 100)
+    summaryXml = setExcelTemplateCell(summaryXml, 'G15', (avgProgressPct - planned) / 100)
+    summaryXml = setExcelTemplateCell(summaryXml, 'K7', reportsInPeriod.filter(r => isBadWeather(r.weather)).length)
+    summaryXml = setExcelTemplateCell(summaryXml, 'K11', totalPersonnelDays)
+    summaryXml = setExcelTemplateCell(summaryXml, 'K15', activeMachineAvg)
+    summaryXml = setExcelTemplateCell(summaryXml, 'O7', totalBudgetAmount > 0 ? paidUntilEnd / totalBudgetAmount : 0)
+    summaryXml = setExcelTemplateCell(summaryXml, 'O11', (risksData || []).length)
+    files['xl/worksheets/sheet1.xml'] = strToU8(summaryXml)
+    fillExcelTemplateSheet(files, 1, progressRows, 16)
+
+    const personnelByReport = reportIds.reduce((acc, id) => ({ ...acc, [id]: (personnelRes.data || []).filter(row => row.report_id === id) }), {})
+    const machineryByReport = reportIds.reduce((acc, id) => ({ ...acc, [id]: (machineryRes.data || []).filter(row => row.report_id === id) }), {})
+    fillExcelTemplateSheet(files, 2, reportsInPeriod.map(report => {
+      const pr = personnelByReport[report.id] || []
+      const mr = machineryByReport[report.id] || []
+      return [
+        undefined,
+        formatExcelDate(report.report_date),
+        report.weather || '',
+        pr.reduce((sum, row) => sum + Number(row.count || 0), 0),
+        sumBy(pr, row => norm(row.department).includes('mekanik')),
+        sumBy(pr, row => norm(row.department).includes('elektrik')),
+        sumBy(pr, row => norm(row.department).includes('yevmiyeci')),
+        sumBy(mr, row => norm(row.status).includes('çalış') || norm(row.status).includes('calis')),
+        sumBy(mr, row => !(norm(row.status).includes('çalış') || norm(row.status).includes('calis'))),
+        isBadWeather(report.weather) ? 1 : 0,
+        undefined,
+        undefined,
+        report.notes || '',
+      ]
+    }), 6)
+
+    fillExcelTemplateSheet(files, 3, (progItems || []).map(item => [
+      undefined,
+      item.name || '',
+      item.unit || '',
+      item.target_qty || 0,
+      progressBefore.get(item.id) || 0,
+      progressEnd.get(item.id) || 0,
+    ]), 6)
+
+    fillExcelTemplateSheet(files, 4, reportsInPeriod.map(report => {
+      const pr = personnelByReport[report.id] || []
+      const mr = machineryByReport[report.id] || []
+      const count = (depKeys, shiftKeys) => sumBy(pr, row => depKeys.some(dep => norm(row.department).includes(dep)) && shiftKeys.some(shift => norm(row.shift).includes(shift)))
+      return [
+        undefined,
+        formatExcelDate(report.report_date),
+        undefined,
+        count(['mekanik'], ['gündüz', 'gunduz']),
+        count(['mekanik'], ['gece']),
+        count(['elektrik'], ['gündüz', 'gunduz']),
+        count(['elektrik'], ['gece']),
+        sumBy(pr, row => norm(row.department).includes('yevmiyeci')),
+        sumBy(pr, row => norm(row.department).includes('idari') || norm(row.department).includes('teknik')),
+        sumBy(mr, row => norm(row.status).includes('çalış') || norm(row.status).includes('calis')),
+        sumBy(mr, row => !(norm(row.status).includes('çalış') || norm(row.status).includes('calis'))),
+      ]
+    }), 6)
+
+    fillExcelTemplateSheet(files, 5, (budgetData || []).map(line => [
+      undefined,
+      line.category || '',
+      line.name || '',
+      line.planned_amount || 0,
+      undefined,
+      paidUntilEnd,
+    ]), 6)
+    const requestTotals = new Map()
+    ;(requestItems || []).forEach(item => {
+      const total = Number(item.total_amount ?? item.amount ?? (Number(item.quantity || 0) * Number(item.unit_price || 0)))
+      requestTotals.set(item.request_id, (requestTotals.get(item.request_id) || 0) + total)
+    })
+    fillExcelTemplateSheet(files, 5, (requestsData || []).map(req => [
+      undefined,
+      formatExcelDate(req.created_at),
+      shortId(req.id),
+      req.title || '',
+      undefined,
+      undefined,
+      requestTotals.get(req.id) || 0,
+      req.status || '',
+    ]), 26)
+    fillExcelTemplateSheet(files, 5, (invoicesData || []).filter(inv => inv.invoice_date >= period.start && inv.invoice_date <= period.end).map(inv => [
+      undefined,
+      formatExcelDate(inv.invoice_date),
+      inv.invoice_no || '',
+      inv.description || '',
+      undefined,
+      inv.amount || 0,
+      undefined,
+      inv.status || '',
+    ]), 50)
+
+    fillExcelTemplateSheet(files, 6, (risksData || []).map((risk, index) => [
+      undefined,
+      index + 1,
+      risk.title || '',
+      risk.category || risk.severity || '',
+      risk.probability || '',
+      risk.impact || '',
+      undefined,
+      risk.status || '',
+      risk.mitigation || '',
+      risk.responsible || '',
+    ]), 6)
+    fillExcelTemplateSheet(files, 6, (ticketsData || []).map(ticket => [
+      undefined,
+      formatExcelDate(ticket.created_at),
+      shortId(ticket.id),
+      ticket.title || '',
+      ticket.category || '',
+      ticket.severity || '',
+      ticket.status || '',
+      ticket.assigned_to || '',
+    ]), 36)
+
+    const fileName = type === 'haftalik'
+      ? `haftalik-rapor-${projectId}-${period.start}-${period.end}.xlsx`
+      : `aylik-rapor-${projectId}-${period.start.slice(0, 7)}.xlsx`
+    downloadXlsxZip(files, fileName)
+  }
+
+  async function handleReportExport(type) {
+    setReportExportError('')
+    setReportExporting(type)
+    setExportMenuOpen(false)
+    try {
+      const period = getPeriodRange(type, filterDate)
+      if (type === 'gunluk') {
+        await exportDailyReport(period)
+      } else {
+        await exportPeriodicReport(type, period)
+      }
+    } catch (err) {
+      const msg = err.message || 'Rapor dışa aktarılamadı'
+      setReportExportError(`❌ ${msg}`)
+    } finally {
+      setReportExporting(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -426,18 +1028,13 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
   }
 
   // ── Hesaplamalar ─────────────────────────────────────
-  const today = filterDate ? new Date(filterDate + 'T00:00:00') : new Date(); today.setHours(0, 0, 0, 0)
+  const today = new Date(effectiveDate + 'T00:00:00')
 
   // KPI 1 – Kalan gün
   const targetD   = project.target_date ? new Date(project.target_date) : null
   const kalanGun  = targetD ? Math.round((targetD - today) / 86400000) : null
   const gunColor  = kalanGun === null ? '#64748b' : kalanGun > 30 ? '#16a34a' : kalanGun >= 0 ? '#f59e0b' : '#ef4444'
   const gunLabel  = kalanGun === null ? '—' : kalanGun < 0 ? `${Math.abs(kalanGun)} gün gecikti` : `${kalanGun} gün kaldı`
-
-  // KPI 2 – Genel ilerleme
-  const avgProgress = tasks.length
-    ? tasks.reduce((s, t) => s + Number(t.progress_pct || 0), 0) / tasks.length
-    : 0
 
   // KPI 3 – Plan/Gerçek sapma
   const planPct  = calcPlannedAt(tasks, today)
@@ -532,9 +1129,91 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
         border: '1px solid var(--color-border)',
         marginBottom: '1.25rem',
       }}>
-        <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-text)', margin: '0 0 0.3rem' }}>
-          {project.name}
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.3rem', flexWrap: 'wrap', position: 'relative' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
+            {project.name}
+          </h2>
+          {project.project_type && (
+            <span style={{
+              fontSize: 11, fontWeight: 700, padding: '2px 8px',
+              borderRadius: 999, background: '#eff6ff', color: '#1d4ed8',
+              border: '1px solid #bfdbfe', letterSpacing: '0.02em', whiteSpace: 'nowrap',
+            }}>
+              {TYPE_LABEL[project.project_type] ?? project.project_type}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => setExportMenuOpen(open => !open)}
+            disabled={!!reportExporting}
+            style={{
+              marginLeft: 'auto',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 12px',
+              borderRadius: 10,
+              border: '1px solid #bfdbfe',
+              background: reportExporting ? '#f8fafc' : '#eff6ff',
+              color: '#1d4ed8',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: reportExporting ? 'wait' : 'pointer',
+              fontFamily: 'inherit',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {reportExporting ? 'Hazırlanıyor…' : 'Dışa Aktar'} <span style={{ fontSize: 10 }}>▾</span>
+          </button>
+          {exportMenuOpen && (
+            <div style={{
+              position: 'absolute',
+              right: 0,
+              top: 'calc(100% + 8px)',
+              zIndex: 20,
+              width: 190,
+              background: '#fff',
+              border: '1px solid var(--color-border)',
+              borderRadius: 10,
+              boxShadow: '0 12px 30px rgba(15,23,42,.14)',
+              padding: 6,
+            }}>
+              {[
+                ['gunluk', '📋 Günlük Rapor'],
+                ['haftalik', '📊 Haftalık Rapor'],
+                ['aylik', '📈 Aylık Rapor'],
+              ].map(([type, label]) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => handleReportExport(type)}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '9px 10px',
+                    border: 0,
+                    borderRadius: 8,
+                    background: 'transparent',
+                    color: 'var(--color-text)',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {reportExportError && (
+          <p style={{ margin: '0 0 0.75rem', color: '#ef4444', fontSize: 12, fontWeight: 600 }}>
+            {reportExportError}
+          </p>
+        )}
         <p style={{ fontSize: 13, color: 'var(--color-muted)', margin: '0 0 0.75rem' }}>
           {[
             project.location,
@@ -550,10 +1229,11 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
       </div>
 
 
-      {/* ─── 8 KPI KART ─────────────────────────────────── */}
-      <div className="proj-dash-kpi-grid">
+      {/* ─── SATIR 1 — Saha Durumu ──────────────────────── */}
+      <p style={{ fontSize: 10, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 0.5rem' }}>SAHA DURUMU</p>
+      <div className="proj-dash-kpi-grid" style={{ marginBottom: '0.75rem' }}>
 
-        {/* KPI 1: Kalan Gün */}
+        {/* Kalan Gün */}
         <div className="kpi-card-compact">
           <p className="kpi-card-compact-label">Kalan Gün</p>
           <p style={{ fontSize: '1.875rem', fontWeight: 700, color: gunColor, margin: 0, lineHeight: 1 }}>
@@ -562,9 +1242,16 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
           <p style={{ fontSize: 11, color: gunColor, margin: 0 }}>{gunLabel}</p>
         </div>
 
-        {/* KPI 2: Genel İlerleme */}
+        {/* Genel İlerleme */}
         <div className="kpi-card-compact">
-          <p className="kpi-card-compact-label">Genel İlerleme</p>
+          <p className="kpi-card-compact-label">
+            Genel İlerleme
+            {tasks.length > 0 && (
+              <span style={{ fontSize: 9, color: 'var(--color-muted)', fontWeight: 400, marginLeft: 4 }}>
+                ({tasks.length} görev)
+              </span>
+            )}
+          </p>
           <div className="kpi-card-ring-row">
             <div style={{ position: 'relative', width: 68, height: 68 }}>
               <Ring pct={avgProgress} size={68} sw={7} color="#003B8E" />
@@ -572,11 +1259,13 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
                 {Math.round(avgProgress)}%
               </div>
             </div>
-            <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>Ortalama<br />ilerleme</p>
+            <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>
+              Başlamış<br />görev ortalaması
+            </p>
           </div>
         </div>
 
-        {/* KPI 3: Plan / Gerçek Sapma */}
+        {/* Plan / Gerçek Sapma */}
         <div className="kpi-card-compact">
           <p className="kpi-card-compact-label">Plan / Gerçek Sapma</p>
           <div className="kpi-card-ring-row">
@@ -591,49 +1280,59 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
           </div>
         </div>
 
-        {/* KPI 4: Kritik Yol */}
+        {/* Hava / Kayıp Gün */}
         <div className="kpi-card-compact">
-          <p className="kpi-card-compact-label">Kritik Yol</p>
-          <p style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--color-text)', margin: '0 0 4px', lineHeight: 1 }}>
-            {critTotal}
+          <p className="kpi-card-compact-label">Hava / Kayıp Gün</p>
+          <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 4px' }}>
+            {weather ? (WEATHER_LABEL[weather] || weather) : '—'}
           </p>
-          <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: '0 0 4px' }}>
-            kritik iş kalemi
+          <p style={{ fontSize: 11, color: lostDays > 0 ? '#ef4444' : 'var(--color-muted)', margin: 0 }}>
+            Kayıp Gün: <strong>{lostDays}</strong>
           </p>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <span className="badge green" style={{ fontSize: 10 }}>{critDone} tamam</span>
-            <span className="badge blue" style={{ fontSize: 10 }}>{critOngoing} devam</span>
-          </div>
         </div>
+      </div>
 
-        {/* KPI 5: Bütçe Kullanımı */}
-        <div className="kpi-card-compact">
-          <p className="kpi-card-compact-label">Bütçe Kullanımı</p>
-          <div className="kpi-card-ring-row">
-            <div style={{ position: 'relative', width: 68, height: 68 }}>
-              <Ring pct={budgetPct} size={68} sw={7} color="#f59e0b" />
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>
-                {Math.round(budgetPct)}%
-              </div>
-            </div>
-            <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>Toplam bütçe<br />kullanımı</p>
-          </div>
-        </div>
+      {/* ─── SATIR 2 — Saha Kaynakları ──────────────────── */}
+      <p style={{ fontSize: 10, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 0.5rem' }}>SAHA KAYNAKLARI</p>
+      <div className="proj-dash-kpi-grid" style={{ marginBottom: '0.75rem' }}>
 
-        {/* KPI 6: Ödenen / Kalan */}
+        {/* Aktif Personel */}
         <div className="kpi-card-compact">
-          <p className="kpi-card-compact-label">Ödenen / Kalan</p>
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#16a34a', margin: '0 0 4px' }}>
-            Ödenen: {fmtMoney(paid)} USD
+          <p className="kpi-card-compact-label">Aktif Personel</p>
+          <p style={{ fontSize: '1.875rem', fontWeight: 700, color: 'var(--color-text)', margin: 0, lineHeight: 1 }}>
+            {totalPersonnel > 0 ? fmt(totalPersonnel) : '—'}
           </p>
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#ef4444', margin: 0 }}>
-            Kalan: {fmtMoney(remaining)} USD
+          <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>
+            Son rapor{weather ? ` · ${WEATHER_LABEL[weather] || weather}` : ''}
           </p>
         </div>
 
-        {/* KPI 7: Açık Riskler */}
+        {/* Çalışan Makine */}
         <div className="kpi-card-compact">
-          <p className="kpi-card-compact-label">Açık Riskler</p>
+          <p className="kpi-card-compact-label">Çalışan Makine</p>
+          <p style={{ fontSize: '1.875rem', fontWeight: 700, color: '#16a34a', margin: 0, lineHeight: 1 }}>
+            {activeMachines}
+          </p>
+          <p style={{ fontSize: 11, color: '#f59e0b', margin: 0 }}>
+            Bekleyen: <strong>{waitingMachines}</strong>
+          </p>
+        </div>
+
+        {/* Açık Ticket */}
+        <div className="kpi-card-compact">
+          <p className="kpi-card-compact-label">Açık Ticket</p>
+          <p style={{ fontSize: '1.875rem', fontWeight: 700, color: openTickets > 0 ? '#ef4444' : '#16a34a', margin: 0, lineHeight: 1 }}>
+            {openTickets === null ? '…' : openTickets}
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>Açık bildirim</p>
+        </div>
+
+        {/* Açık Riskler */}
+        <div className="kpi-card-compact">
+          <p className="kpi-card-compact-label">
+            Açık Riskler
+            <span style={{ fontSize: 9, color: 'var(--color-muted)', fontWeight: 400, marginLeft: 4 }}>(güncel)</span>
+          </p>
           <p style={{ fontSize: '1.75rem', fontWeight: 700, color: risks.length > 0 ? '#ef4444' : '#16a34a', margin: '0 0 6px', lineHeight: 1 }}>
             {risks.length}
           </p>
@@ -646,16 +1345,67 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
             {risks.length === 0 && <span className="badge green" style={{ fontSize: 10 }}>Açık risk yok</span>}
           </div>
         </div>
+      </div>
 
-        {/* KPI 8: Hava / Kayıp Gün */}
+      {/* ─── SATIR 3 — Mali Durum ───────────────────────── */}
+      <p style={{ fontSize: 10, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 0.5rem' }}>MALİ DURUM</p>
+      <div className="proj-dash-kpi-grid" style={{ marginBottom: '0.75rem' }}>
+
+        {/* Toplam Bütçe */}
         <div className="kpi-card-compact">
-          <p className="kpi-card-compact-label">Hava / Kayıp Gün</p>
-          <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--color-text)', margin: '0 0 4px' }}>
-            {weather ? (WEATHER_LABEL[weather] || weather) : '—'}
+          <p className="kpi-card-compact-label">Toplam Bütçe</p>
+          <div className="kpi-card-ring-row">
+            <div style={{ position: 'relative', width: 68, height: 68 }}>
+              <Ring pct={budgetPct} size={68} sw={7} color="#f59e0b" />
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#f59e0b' }}>
+                {Math.round(budgetPct)}%
+              </div>
+            </div>
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', margin: '0 0 2px' }}>
+                {fmtMoney(totalBudget)} ₺
+              </p>
+              <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>Planlanan bütçe</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Ödenen / Kalan */}
+        <div className="kpi-card-compact">
+          <p className="kpi-card-compact-label">
+            Ödenen / Kalan
+            <span style={{ fontSize: 9, color: 'var(--color-muted)', fontWeight: 400, marginLeft: 4 }}>(güncel)</span>
           </p>
-          <p style={{ fontSize: 11, color: lostDays > 0 ? '#ef4444' : 'var(--color-muted)', margin: 0 }}>
-            Kayıp Gün: <strong>{lostDays}</strong>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#16a34a', margin: '0 0 4px' }}>
+            Ödenen: {fmtMoney(paid)} ₺
           </p>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#ef4444', margin: 0 }}>
+            Kalan: {fmtMoney(remaining)} ₺
+          </p>
+        </div>
+
+        {/* Bekleyen Satın Alma */}
+        <div className="kpi-card-compact">
+          <p className="kpi-card-compact-label">Bekleyen Satın Alma</p>
+          <p style={{ fontSize: '1.875rem', fontWeight: 700, color: pendingPR > 0 ? '#ef4444' : '#16a34a', margin: 0, lineHeight: 1 }}>
+            {pendingPR === null ? '…' : pendingPR}
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>Onay bekleyen talep</p>
+        </div>
+
+        {/* Kritik Yol */}
+        <div className="kpi-card-compact">
+          <p className="kpi-card-compact-label">Kritik Yol</p>
+          <p style={{ fontSize: '1.75rem', fontWeight: 700, color: 'var(--color-text)', margin: '0 0 4px', lineHeight: 1 }}>
+            {critTotal}
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: '0 0 4px' }}>
+            başlamış aktivite
+          </p>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <span className="badge green" style={{ fontSize: 10 }}>{critDone} tamam</span>
+            <span className="badge blue" style={{ fontSize: 10 }}>{critOngoing} devam</span>
+          </div>
         </div>
       </div>
 
@@ -665,9 +1415,14 @@ function ProjectDashboard({ projectId, filterDate = new Date().toISOString().spl
         {/* Sol: Teknik Özet */}
         <div className="card" style={{ padding: '1.25rem 1.5rem' }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', margin: '0 0 1rem' }}>Proje Teknik Özeti</h3>
-          <InfoRow label="DC Güç"      value={`${fmt(project.capacity_kwp)} kWp  (${(project.capacity_kwp / 1000).toLocaleString('tr-TR', { minimumFractionDigits: 3 })} MWp)`} />
+          {project.project_type && (
+            <InfoRow label="Proje Türü" value={TYPE_LABEL[project.project_type] ?? project.project_type} />
+          )}
+          <InfoRow label="DC Güç"      value={`${fmt(project.capacity_kwp)} kWp`} />
           <InfoRow label="AC Güç"      value={`${fmt(project.capacity_kwe)} kWe`} />
-          <InfoRow label="DC/AC Oranı" value={dcAcRatio} />
+          {project.storage_kwh ? (
+            <InfoRow label="Depolama" value={`${fmt(project.storage_kwh)} kWh`} />
+          ) : null}
           {progressItems.filter(p => p.name?.toLowerCase().includes('panel')).slice(0, 1).map(p => (
             <InfoRow key={p.name} label="Panel" value={`${fmt(p.target_qty)} ${p.unit || 'adet'}`} />
           ))}

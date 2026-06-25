@@ -31,7 +31,11 @@ const MACH_STATUS = [
 ]
 
 function todayStr() {
-  return new Date().toISOString().split('T')[0]
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
 }
 function initPersonnel() {
   return SHIFTS.reduce((acc, s) => ({
@@ -103,14 +107,16 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
       })
   }, [projectId])
 
-  useEffect(() => { loadReport(date) }, [])
+  useEffect(() => {
+    loadReport(date)
+  }, [projectId, date])
 
   useEffect(() => {
     if (!projectId) return
     setHistLoading(true)
     supabase
       .from('daily_reports')
-      .select(`id, report_date, weather, notes, personnel_logs(total)`)
+      .select(`id, report_date, weather, notes, personnel_log_entries(count)`)
       .eq('project_id', projectId)
       .order('report_date', { ascending: false })
       .limit(10)
@@ -136,7 +142,7 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
     setWeather(rep.weather || 'açık')
     setNotes(rep.notes || '')
 
-    const { data: pLogs } = await supabase.from('personnel_logs').select('*').eq('report_id', rep.id)
+    const { data: pLogs } = await supabase.from('personnel_log_entries').select('*').eq('report_id', rep.id)
     if (pLogs?.length) {
       const newP = initPersonnel()
       pLogs.forEach(row => { if (newP[row.shift]) COLS.forEach(c => { newP[row.shift][c] = row[c] || 0 }) })
@@ -601,7 +607,7 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
               {histLoading && <p style={{ color: '#9CA3AF', fontSize: 13 }}>Yükleniyor…</p>}
               {!histLoading && history.length === 0 && <p style={{ color: '#9CA3AF', fontSize: 13 }}>Rapor yok.</p>}
               {history.map(h => {
-                const pTotal = (h.personnel_logs || []).reduce((s, r) => s + (r.total || 0), 0)
+                const pTotal = (h.personnel_log_entries || []).reduce((s, r) => s + (r.count || 0), 0)
                 const isCurrent = h.report_date === date
                 return (
                   <div
