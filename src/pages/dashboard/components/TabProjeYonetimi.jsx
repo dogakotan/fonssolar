@@ -86,20 +86,32 @@ const xmlEscape = value => String(value ?? '')
 
 // Şablonun ZIP içeriğinde yalnızca veri hücrelerini değiştirir. Böylece tema,
 // renk, koşullu biçimlendirme, sütun genişliği ve veri doğrulamaları korunur.
-function setTemplateCell(xml, address, value) {
-  const escapedAddress = address.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const selfClosing = new RegExp(`<c\\b[^>]*\\br="${escapedAddress}"[^>]*/>`, 'i')
-  const fullCell = new RegExp(`<c\\b[^>]*\\br="${escapedAddress}"[^>]*>[\\s\\S]*?<\\/c>`, 'i')
-  const existing = xml.match(fullCell)?.[0] || xml.match(selfClosing)?.[0]
-  if (!existing) throw new Error(`Şablonda ${address} hücresi bulunamadı`)
+function setTemplateCell(xmlStr, address, value) {
+  const col = address.match(/^[A-Z]+/)[0]
+  const row = address.match(/\d+$/)[0]
 
-  const style = existing.match(/\bs="(\d+)"/)?.[1]
-  const styleAttr = style ? ` s="${style}"` : ''
-  const numeric = typeof value === 'number' && Number.isFinite(value)
-  const replacement = numeric
-    ? `<c r="${address}"${styleAttr}><v>${value}</v></c>`
-    : `<c r="${address}"${styleAttr} t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`
-  return xml.replace(fullCell, replacement).replace(selfClosing, replacement)
+  const isNum = typeof value === 'number'
+  const styleMatch = xmlStr.match(new RegExp(`<c r="${address}"[^>]*s="(\\d+)"`))
+  const styleAttr = styleMatch ? ` s="${styleMatch[1]}"` : ''
+
+  const newCell = isNum
+    ? `<c r="${address}"${styleAttr} t="n"><v>${value}</v></c>`
+    : `<c r="${address}"${styleAttr} t="inlineStr"><is><t>${String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</t></is></c>`
+
+  const selfClosingRe = new RegExp(`<c r="${address}"[^/]*/\\s*>`)
+  const fullCellRe = new RegExp(`<c r="${address}"[^>]*>.*?</c>`)
+
+  if (selfClosingRe.test(xmlStr)) return xmlStr.replace(selfClosingRe, newCell)
+  if (fullCellRe.test(xmlStr)) return xmlStr.replace(fullCellRe, newCell)
+
+  const rowRe = new RegExp(`(<row[^>]*r="${row}"[^>]*>)(.*?)(</row>)`, 's')
+  if (rowRe.test(xmlStr)) {
+    return xmlStr.replace(rowRe, (_, open, inner, close) => {
+      return `${open}${inner}${newCell}${close}`
+    })
+  }
+
+  return xmlStr.replace('</sheetData>', `<row r="${row}">${newCell}</row></sheetData>`)
 }
 
 function fillTemplateSheet(files, sheetNumber, rows) {
@@ -362,6 +374,8 @@ export default function TabProjeYonetimi({ onViewProject }) {
       XLSX.writeFile(wb, `${project.id}-rapor-${tarih}.xlsx`)
       showToast('Excel indirildi')
     } catch (err) {
+      console.error('EXPORT HATA DETAYI:', err)
+      console.error('EXPORT HATA MESAJI:', err?.message)
       setError(`Excel oluşturulurken hata: ${err.message}`)
     } finally {
       setExportLoadingId(null)
