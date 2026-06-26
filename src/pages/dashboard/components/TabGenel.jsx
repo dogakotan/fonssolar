@@ -10,6 +10,7 @@ import ProgBar from '../../../components/ui/ProgBar'
 import ExportButton from '../../../components/ui/ExportButton'
 import WeatherWidget from '../../../components/ui/WeatherWidget'
 import DateNavigator from '../../../components/ui/DateNavigator'
+import { useWeather } from '../../../hooks/useWeather'
 import { dateFilter } from '../../../utils/exportUtils'
 import {
   fetchXlsxTemplate,
@@ -192,7 +193,7 @@ function buildScurve(tasks, startDate, endDate, actualPct) {
 // ─────────────────────────────────────────────────────────
 //  Proje Listesi (projectId yokken)
 // ─────────────────────────────────────────────────────────
-function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
+function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTabChange }) {
   const [projects, setProjects] = useState([])
   const [loading, setLoading]   = useState(true)
   const [konum, setKonum]       = useState(null)
@@ -200,11 +201,15 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
   const [calPos, setCalPos]     = useState({ top: 0, right: 0 })
   const [openTickets, setOpenTickets]         = useState(null)
   const [criticalTickets, setCriticalTickets] = useState(null)
-  // Filtre-bağımlı KPI state'leri (null = henüz hesaplanmadı)
-  const [filteredTasks,     setFilteredTasks]     = useState(null)
   const [filteredPurchases, setFilteredPurchases] = useState(null)
-  const calRef    = useRef(null)
-  const calBtnRef = useRef(null)
+  const [totalBudget, setTotalBudget]             = useState(null)
+  const [spentAmount, setSpentAmount]             = useState(null)
+  const [pendingInvoices, setPendingInvoices]     = useState(null)
+  const [recentNotifications, setRecentNotifications] = useState([])
+  const [showApprovalMenu, setShowApprovalMenu] = useState(false)
+  const approvalRef = useRef(null)
+  const calRef      = useRef(null)
+  const calBtnRef   = useRef(null)
 
   useEffect(() => {
     function h(e) {
@@ -214,6 +219,15 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
     if (showCal) document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
   }, [showCal])
+
+  useEffect(() => {
+    function h(e) {
+      if (approvalRef.current && !approvalRef.current.contains(e.target))
+        setShowApprovalMenu(false)
+    }
+    if (showApprovalMenu) document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [showApprovalMenu])
 
   function openCal() {
     if (calBtnRef.current) {
@@ -226,14 +240,22 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
   // Başlangıç yüklemesi — projeler + biletler
   useEffect(() => {
     async function load() {
-      const [{ data: projData }, tOpen, tCrit] = await Promise.all([
+      const [{ data: projData }, tOpen, tCrit, budgRes, invRes, pendInvRes, notifRes] = await Promise.all([
         getProjects(),
         supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'açık'),
         supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('severity', 'kritik').neq('status', 'kapatıldı'),
+        supabase.from('budget_lines').select('planned_amount'),
+        supabase.from('invoices').select('amount, status').in('status', ['ödendi', 'yönetici_onayında', 'muhasebe_onayında']),
+        supabase.from('invoices').select('id', { count: 'exact', head: true }).in('status', ['yönetici_onayında', 'muhasebe_onayında']),
+        supabase.from('tickets').select('id, title, severity, status, created_at').neq('status', 'kapatıldı').order('created_at', { ascending: false }).limit(5),
       ])
       if (projData) setProjects(projData)
-      if (!tOpen.error)  setOpenTickets(tOpen.count  ?? 0)
-      if (!tCrit.error)  setCriticalTickets(tCrit.count ?? 0)
+      if (!tOpen.error)   setOpenTickets(tOpen.count ?? 0)
+      if (!tCrit.error)   setCriticalTickets(tCrit.count ?? 0)
+      if (!budgRes.error) setTotalBudget(budgRes.data?.reduce((s, b) => s + Number(b.planned_amount || 0), 0) ?? 0)
+      if (!invRes.error)  setSpentAmount(invRes.data?.reduce((s, i) => s + Number(i.amount || 0), 0) ?? 0)
+      if (!pendInvRes.error) setPendingInvoices(pendInvRes.count ?? 0)
+      if (!notifRes.error)   setRecentNotifications(notifRes.data || [])
       setLoading(false)
     }
     load().catch(() => setLoading(false))
@@ -248,76 +270,197 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
       : projects.map(p => p.id)
 
     if (ids.length === 0) {
-      setFilteredTasks(0)
       setFilteredPurchases(0)
       return
     }
 
-    Promise.all([
-      supabase.from('project_tasks')
-        .select('id', { count: 'exact', head: true })
-        .in('project_id', ids)
-        .in('status', ['devam_ediyor', 'beklemede', 'askida']),
-      supabase.from('purchase_requests')
-        .select('id', { count: 'exact', head: true })
-        .in('project_id', ids)
-        .eq('status', 'bekliyor'),
-    ]).then(([tasks, purchases]) => {
-      setFilteredTasks(tasks.error  ? 0 : (tasks.count    ?? 0))
-      setFilteredPurchases(purchases.error ? 0 : (purchases.count ?? 0))
-    })
+    supabase.from('purchase_requests')
+      .select('id', { count: 'exact', head: true })
+      .in('project_id', ids)
+      .eq('status', 'bekliyor')
+      .then(({ count, error }) => {
+        if (!error) setFilteredPurchases(count ?? 0)
+      })
   }, [selectedDate, projects, loading])
 
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         p => setKonum({ lat: p.coords.latitude, lon: p.coords.longitude }),
-        () => setKonum('İstanbul')
+        () => setKonum('İstanbul'),
+        { timeout: 5000 }
       )
     } else {
       setKonum('İstanbul')
     }
   }, [])
 
+  const { loading: weatherLoading, error: weatherError, current: weatherCurrent, tomorrow: weatherTomorrow } = useWeather(konum)
+
   const displayProjects = selectedDate
     ? projects.filter(p => p.created_at && new Date(p.created_at) <= new Date(selectedDate))
     : projects
-  const totalMwp    = displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000
-  const ticketVal   = loading || openTickets === null ? '…' : openTickets
-  const ticketClass = criticalTickets ? 'red-text' : ''
-  const ticketNote  = criticalTickets ? `${criticalTickets} kritik` : 'Açık bildirim'
-
-  const stats = [
-    { label: 'Toplam Proje',     value: loading ? '…' : displayProjects.length,           note: selectedDate ? 'Filtrelenmiş' : 'Kayıtlı proje sayısı' },
-    { label: 'Toplam Kapasite',  value: loading ? '…' : `${totalMwp.toFixed(2)} MWp`,     note: 'Kurulu güç' },
-    { label: 'Açık Görev',       value: filteredTasks    === null ? '…' : filteredTasks,   note: 'Aktif + gecikmiş', valueClass: 'amber-text' },
-    { label: 'Bekleyen Sipariş', value: filteredPurchases === null ? '…' : filteredPurchases, note: 'Onay bekliyor', valueClass: 'red-text' },
-    { label: 'Açık Ticket',      value: ticketVal,                                          note: ticketNote,         valueClass: ticketClass },
-  ]
 
   return (
     <>
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'stretch', marginBottom: '1.75rem', flexWrap: 'wrap' }}>
-        <div className="stats-grid" style={{ flex: 1, minWidth: 0, marginBottom: 0, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', alignItems: 'stretch' }}>
-          {stats.map(s => (
-            <div className="stat-card" key={s.label}>
-              <p className="stat-label">{s.label}</p>
-              <p className={`stat-value ${s.valueClass || ''}`}>{s.value}</p>
-              <p className="stat-note">{s.note}</p>
+      <div className="stats-grid" style={{ marginBottom: '1.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+
+        {/* KPI 1: Proje Özeti */}
+        <div className="stat-card" style={{ borderTop: '3px solid #003B8E', cursor: 'pointer' }} onClick={() => onTabChange?.('projeler')}>
+          <p className="stat-label">📁 Proje Özeti</p>
+          <p className="stat-value">{loading ? '…' : displayProjects.length}</p>
+          <p className="stat-note">Toplam Proje</p>
+          <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+              <span style={{ color: 'var(--color-muted)' }}>Toplam Güç</span>
+              <strong>{loading ? '…' : `${(displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000).toFixed(2)} MWp`}</strong>
             </div>
-          ))}
-        </div>
-        {konum && (
-          <div className="stat-card weather-widget-wrap" style={{ padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <p className="stat-label" style={{ margin: 0 }}>Hava Durumu</p>
-              <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
-                {typeof konum === 'string' ? konum : 'Mevcut Konum'}
-              </span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+              <span style={{ color: 'var(--color-muted)' }}>Kritik Risk</span>
+              <strong style={{ color: (criticalTickets ?? 0) > 0 ? '#ef4444' : 'var(--color-text)' }}>
+                {loading ? '…' : (criticalTickets ?? 0)} proje
+              </strong>
             </div>
-            <WeatherWidget location={konum} size="full" />
           </div>
-        )}
+        </div>
+
+        {/* KPI 2: Finans Özeti */}
+        <div className="stat-card" style={{ borderTop: '3px solid #16a34a', cursor: 'pointer' }} onClick={() => onTabChange?.('finans')}>
+          <p className="stat-label">💰 Finans Özeti</p>
+          <p className="stat-value" style={{ fontSize: '1.1rem' }}>
+            {totalBudget === null ? '…' : `${Number(totalBudget).toLocaleString('tr-TR', { maximumFractionDigits: 0 })} ₺`}
+          </p>
+          <p className="stat-note">Toplam Bütçe</p>
+          <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+              <span style={{ color: 'var(--color-muted)' }}>Gerçekleşen</span>
+              <strong style={{ color: '#16a34a' }}>
+                {spentAmount === null ? '…' : `${Number(spentAmount).toLocaleString('tr-TR', { maximumFractionDigits: 0 })} ₺`}
+              </strong>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+              <span style={{ color: 'var(--color-muted)' }}>Kalan</span>
+              <strong style={{ color: '#ef4444' }}>
+                {totalBudget === null || spentAmount === null ? '…' : `${Number(Math.max(0, totalBudget - spentAmount)).toLocaleString('tr-TR', { maximumFractionDigits: 0 })} ₺`}
+              </strong>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI 3: Bekleyen Onaylar */}
+        <div
+          ref={approvalRef}
+          className="stat-card"
+          style={{ borderTop: '3px solid #f59e0b', cursor: 'pointer' }}
+          onClick={() => setShowApprovalMenu(v => !v)}
+        >
+          <p className="stat-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>⏳ Bekleyen Onaylar</span>
+            {showApprovalMenu && <span style={{ fontSize: 16, lineHeight: 1, color: '#94a3b8' }}>×</span>}
+          </p>
+
+          {showApprovalMenu ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+              {[
+                { label: 'Satın Alma', tab: 'satin-alma', count: filteredPurchases, color: '#f59e0b' },
+                { label: 'Fatura',     tab: 'finans',     count: pendingInvoices,   color: '#f59e0b' },
+                { label: 'Ticket',     tab: 'tickets',    count: openTickets,       color: '#ef4444' },
+              ].map(item => (
+                <button
+                  key={item.tab}
+                  onClick={e => { e.stopPropagation(); onTabChange?.(item.tab); setShowApprovalMenu(false) }}
+                  style={{
+                    width: '100%', textAlign: 'left', border: '1px solid #e2e8f0', borderRadius: 8,
+                    padding: '10px 14px', background: '#f8fafc',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    cursor: 'pointer', fontFamily: 'inherit', color: 'var(--color-text)',
+                    fontSize: 13, fontWeight: 600,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#93c5fd' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#e2e8f0' }}
+                >
+                  {item.label}
+                  <strong style={{ color: item.color, fontSize: 17 }}>{item.count ?? '…'}</strong>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
+              <p className="stat-value amber-text">
+                {(filteredPurchases ?? 0) + (pendingInvoices ?? 0) + (openTickets ?? 0)}
+              </p>
+              <p className="stat-note">Toplam bekleyen · tıkla</p>
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                  <span style={{ color: 'var(--color-muted)' }}>Satın Alma</span>
+                  <strong style={{ color: '#f59e0b' }}>{filteredPurchases ?? '…'}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                  <span style={{ color: 'var(--color-muted)' }}>Fatura</span>
+                  <strong style={{ color: '#f59e0b' }}>{pendingInvoices ?? '…'}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                  <span style={{ color: 'var(--color-muted)' }}>Ticket</span>
+                  <strong style={{ color: (openTickets ?? 0) > 0 ? '#ef4444' : '#16a34a' }}>{openTickets ?? '…'}</strong>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* KPI 4: Son Bildirimler */}
+        <div className="stat-card" style={{ borderTop: '3px solid #8b5cf6' }}>
+          <p className="stat-label">🔔 Son Bildirimler</p>
+          <div style={{ maxHeight: 120, overflowY: 'auto', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {recentNotifications.length === 0
+              ? <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>Yeni bildirim yok</p>
+              : recentNotifications.map(n => (
+                <div key={n.id} style={{
+                  fontSize: 10, padding: '4px 6px', borderRadius: 6,
+                  background: '#f8fafc',
+                  borderLeft: `3px solid ${n.severity === 'kritik' ? '#ef4444' : n.severity === 'yüksek' ? '#f59e0b' : '#94a3b8'}`,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  color: 'var(--color-text)', fontWeight: 500,
+                }}>
+                  {n.title}
+                </div>
+              ))
+            }
+          </div>
+        </div>
+
+        {/* KPI 5: Hava Durumu */}
+        <div className="stat-card" style={{ borderTop: '3px solid #0ea5e9' }}>
+          <p className="stat-label">🌤 Hava Durumu</p>
+          {!konum || weatherLoading ? (
+            <p className="stat-value" style={{ fontSize: '1.5rem' }}>…</p>
+          ) : weatherError || !weatherCurrent ? (
+            <p className="stat-note">Veri alınamadı</p>
+          ) : (
+            <>
+              <p className="stat-value" style={{ fontSize: '1.85rem' }}>
+                {weatherCurrent.emoji} {weatherCurrent.temp}°
+              </p>
+              <p className="stat-note">{weatherCurrent.label}</p>
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                  <span style={{ color: 'var(--color-muted)' }}>Rüzgar</span>
+                  <strong>{weatherCurrent.wind} km/h</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                  <span style={{ color: 'var(--color-muted)' }}>Nem</span>
+                  <strong>%{weatherCurrent.humidity}</strong>
+                </div>
+                {weatherTomorrow && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                    <span style={{ color: 'var(--color-muted)' }}>Yarın</span>
+                    <strong>{weatherTomorrow.emoji} {weatherTomorrow.max}°/{weatherTomorrow.min}°</strong>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="card">
@@ -1686,7 +1829,7 @@ function ProjectDashboard({ projectId, filterDate }) {
 // ─────────────────────────────────────────────────────────
 //  Ana Export
 // ─────────────────────────────────────────────────────────
-export default function TabGenel({ projectId, onSelectProject, selectedDate, setSelectedDate, filterDate }) {
+export default function TabGenel({ projectId, onSelectProject, selectedDate, setSelectedDate, filterDate, onTabChange }) {
   if (projectId) {
     return <ProjectDashboard projectId={projectId} filterDate={filterDate} />
   }
@@ -1695,6 +1838,7 @@ export default function TabGenel({ projectId, onSelectProject, selectedDate, set
       onSelectProject={onSelectProject}
       selectedDate={selectedDate}
       setSelectedDate={setSelectedDate}
+      onTabChange={onTabChange}
     />
   )
 }

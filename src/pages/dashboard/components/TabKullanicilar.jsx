@@ -143,7 +143,6 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved }) {
           role_key:   form.role_key,
           project_id: projId,
         }
-        console.log('Gönderilen veri:', { ...payload, password: '[GİZLİ]' })
         await callEdgeFn('create-user', payload)
         // project_id'yi doğrudan profiles'a yaz (edge fn desteklemese de çalışır)
         if (projId) {

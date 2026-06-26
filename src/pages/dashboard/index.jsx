@@ -28,11 +28,13 @@ const TABS = {
 const ROLE_TABS = {
   muhasebe:          ['finans'],
   satin_alma_uzmani: ['satin-alma'],
+  santiye_sefi:      ['genel', 'satin-alma', 'tickets'],
 }
 
 const ROLE_DEFAULT = {
   muhasebe:          'finans',
   satin_alma_uzmani: 'satin-alma',
+  santiye_sefi:      'genel',
 }
 
 const ROLE_LABEL = {
@@ -177,7 +179,7 @@ export default function Dashboard() {
 
         <div className="dash-content">
         {activeTab === 'genel'        && role === 'santiye_sefi' && <TabSantiyeSefi />}
-        {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />}
+        {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
         {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'     && showProjectDetail  && (
           <ProjeDetay
