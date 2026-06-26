@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { getProjects } from '../../../api'
-import ProgBar from '../../../components/ui/ProgBar'
 
 const STATUS_MAP = {
-  aktif:          { badge: 'green', label: 'Aktif' },
-  tamamlandı:     { badge: 'blue',  label: 'Tamamlandı' },
-  beklemede:      { badge: 'amber', label: 'Beklemede' },
-  'iptal edildi': { badge: 'red',   label: 'İptal' },
+  aktif:          { bg: '#dcfce7', color: '#166534', label: 'Aktif' },
+  tamamlandı:     { bg: '#dbeafe', color: '#1e40af', label: 'Tamamlandı' },
+  beklemede:      { bg: '#fef9c3', color: '#854d0e', label: 'Beklemede' },
+  'iptal edildi': { bg: '#fee2e2', color: '#991b1b', label: 'İptal' },
 }
 
 const TYPE_OPTIONS = [
@@ -32,6 +31,13 @@ const DROP_STYLE = {
   padding: '0.4rem 0.625rem', border: '1px solid #e2e8f0', borderRadius: 8,
   background: '#fff', color: '#374151', fontSize: 12, fontFamily: 'inherit',
   cursor: 'pointer', outline: 'none',
+}
+
+const COL_STYLE = {
+  padding: '8px 10px', textAlign: 'left', color: '#64748b',
+  fontWeight: 600, fontSize: 10.5, textTransform: 'uppercase',
+  letterSpacing: '.04em', whiteSpace: 'nowrap',
+  borderBottom: '1px solid #e2e8f0',
 }
 
 export default function TabProjeler({ onSelectProject }) {
@@ -88,85 +94,104 @@ export default function TabProjeler({ onSelectProject }) {
           </div>
         )}
         {!loading && filtered.length > 0 && (
-          <div style={{ padding: '0 0.25rem' }}>
-            {/* Başlık satırı */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '2.5fr 1fr 1fr 1fr 1fr 1.4fr 28px',
-              padding: '0.625rem 1.25rem',
-              background: '#f8fafc',
-              borderRadius: 8,
-              marginBottom: '0.5rem',
-            }}>
-              {['PROJE ADI', 'TÜR', 'KAPASİTE', 'HEDEF TARİH', 'DURUM', 'İLERLEME', ''].map(h => (
-                <span key={h} style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.05em' }}>{h}</span>
-              ))}
-            </div>
-
-            {/* Proje satırları */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: '#f8fafc' }}>
+                <th style={COL_STYLE}>Proje Adı</th>
+                <th style={COL_STYLE}>Tür</th>
+                <th style={COL_STYLE}>Kapasite</th>
+                <th style={COL_STYLE}>Hedef Tarih</th>
+                <th style={COL_STYLE}>Durum</th>
+                <th style={{ ...COL_STYLE, minWidth: 120 }}>İlerleme</th>
+                <th style={{ ...COL_STYLE, width: 32 }}></th>
+              </tr>
+            </thead>
+            <tbody>
               {filtered.map(p => {
-                const s     = STATUS_MAP[p.status] || { badge: 'green', label: 'Aktif' }
-                const cap   = p.capacity_kwp ? `${p.capacity_kwp} kWp` : '—'
+                const sc      = STATUS_MAP[p.status] || { bg: '#f1f5f9', color: '#475569', label: 'Aktif' }
+                const cap     = p.capacity_kwp ? `${Number(p.capacity_kwp).toLocaleString('tr-TR')} kWp` : '—'
                 const end     = dateTr(p.target_date)
                 const typeLbl = TYPE_LABEL[p.project_type] || '—'
                 const pct     = p.progress || 0
                 const isHov   = hoveredId === p.id
 
                 return (
-                  <div
+                  <tr
                     key={p.id}
                     onMouseEnter={() => setHoveredId(p.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     onClick={() => onSelectProject?.(p.id, p.name)}
                     style={{
-                      display: 'grid',
-                      gridTemplateColumns: '2.5fr 1fr 1fr 1fr 1fr 1.4fr 28px',
-                      alignItems: 'center',
-                      padding: '0.875rem 1.25rem',
-                      background: '#fff',
-                      border: `1px solid ${isHov ? '#003B8E' : '#e2e8f0'}`,
-                      borderRadius: 12,
+                      borderBottom: '1px solid #f1f5f9',
+                      background: isHov ? '#f8fafc' : '#fff',
                       cursor: 'pointer',
-                      transition: 'border-color 0.15s, box-shadow 0.15s',
-                      boxShadow: isHov ? '0 2px 12px rgba(0,59,142,0.09)' : '0 1px 3px rgba(0,0,0,0.04)',
-                      fontSize: 13,
+                      transition: 'background 0.1s',
                     }}
                   >
                     {/* Proje adı + konum */}
-                    <div style={{ minWidth: 0, paddingRight: '0.75rem' }}>
-                      <div style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '10px 10px', verticalAlign: 'middle' }}>
+                      <div style={{ fontWeight: 600, color: 'var(--color-text)', fontSize: 13 }}>
                         {p.name}
                       </div>
-                      <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        📍 {p.location || '—'}
-                      </div>
-                    </div>
+                      {p.location && (
+                        <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                          📍 {p.location}
+                        </div>
+                      )}
+                    </td>
+
                     {/* Tür */}
-                    <div style={{ color: '#64748b', fontSize: 12, paddingRight: '0.5rem' }}>{typeLbl}</div>
+                    <td style={{ padding: '10px 10px', color: '#64748b', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                      {typeLbl}
+                    </td>
+
                     {/* Kapasite */}
-                    <div style={{ color: '#475569', whiteSpace: 'nowrap' }}>{cap}</div>
+                    <td style={{ padding: '10px 10px', color: '#475569', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                      {cap}
+                    </td>
+
                     {/* Hedef tarih */}
-                    <div style={{ color: '#475569', whiteSpace: 'nowrap' }}>{end}</div>
+                    <td style={{ padding: '10px 10px', color: '#475569', whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                      {end}
+                    </td>
+
                     {/* Durum */}
-                    <div>
-                      <span className={`badge ${s.badge}`}>● {s.label}</span>
-                    </div>
+                    <td style={{ padding: '10px 10px', verticalAlign: 'middle' }}>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 12,
+                        fontSize: 11, fontWeight: 600,
+                        background: sc.bg, color: sc.color,
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {sc.label}
+                      </span>
+                    </td>
+
                     {/* İlerleme */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <ProgBar pct={pct} />
-                    </div>
+                    <td style={{ padding: '10px 10px', minWidth: 120, verticalAlign: 'middle' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 3 }}>
+                          <div style={{ width: `${pct}%`, height: '100%', background: '#003B8E', borderRadius: 3 }} />
+                        </div>
+                        <span style={{ fontSize: 11, color: '#64748b', minWidth: 28 }}>{pct}%</span>
+                      </div>
+                    </td>
+
                     {/* Ok */}
-                    <div>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isHov ? '#003B8E' : '#cbd5e1'} strokeWidth="2.5" style={{ transition: 'stroke 0.12s', display: 'block' }}>
+                    <td style={{ padding: '10px 10px', textAlign: 'right', verticalAlign: 'middle' }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke={isHov ? '#003B8E' : '#cbd5e1'}
+                        strokeWidth="2.5"
+                        style={{ display: 'block', transition: 'stroke 0.12s' }}
+                      >
                         <path d="m9 18 6-6-6-6"/>
                       </svg>
-                    </div>
-                  </div>
+                    </td>
+                  </tr>
                 )
               })}
-            </div>
-          </div>
+            </tbody>
+          </table>
         )}
       </div>
     </div>

@@ -110,6 +110,9 @@ export default function TabSantiyeSefi() {
   const [refreshKey, setRefreshKey]   = useState(0)
   const [exportingReport, setExportingReport] = useState(false)
   const [exportError, setExportError] = useState('')
+  const [sahaPhotos,     setSahaPhotos]     = useState([])
+  const [photoPending,   setPhotoPending]   = useState([])
+  const [photoUploading, setPhotoUploading] = useState(false)
 
   const refresh = () => setRefreshKey(k => k + 1)
 
@@ -148,11 +151,63 @@ export default function TabSantiyeSefi() {
     load()
   }, [projectId, user, refreshKey])
 
+  useEffect(() => {
+    if (!projectId) return
+    const today = todayStr()
+    supabase.from('daily_report_photos')
+      .select('id, storage_path, created_at')
+      .eq('project_id', projectId)
+      .eq('report_date', today)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setSahaPhotos(data || []))
+  }, [projectId, refreshKey])
+
   const cityName = project?.location?.split('/')?.[0]?.trim() || project?.location || null
   const { current: wx, tomorrow: wxTmr } = useWeather(cityName)
 
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' }) : '—'
   const fmtLong = (d) => d ? new Date(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' }) : null
+
+  function getPhotoUrl(path) {
+    return supabase.storage.from('saha-fotolari').getPublicUrl(path).data.publicUrl
+  }
+  function pickPhotoFiles(e) {
+    const files = Array.from(e.target.files || [])
+    setPhotoPending(prev => [...prev, ...files.map(f => ({ file: f, preview: URL.createObjectURL(f) }))])
+    e.target.value = ''
+  }
+  async function handlePhotoUpload() {
+    if (!projectId || !user || !photoPending.length) return
+    setPhotoUploading(true)
+    const today = todayStr()
+    const { data: repData } = await supabase.from('daily_reports')
+      .upsert({ project_id: projectId, report_date: today, created_by: user.id }, { onConflict: 'project_id,report_date' })
+      .select('id').single()
+    const rid = repData?.id || null
+    for (const { file } of photoPending) {
+      const ext = file.name.split('.').pop().toLowerCase()
+      const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`
+      const path = `${projectId}/${today}/${uid}.${ext}`
+      const { error: upErr } = await supabase.storage.from('saha-fotolari').upload(path, file)
+      if (upErr) continue
+      await supabase.from('daily_report_photos').insert({
+        report_id: rid, project_id: projectId,
+        report_date: today, storage_path: path, uploaded_by: user.id,
+      })
+    }
+    setPhotoPending([])
+    setPhotoUploading(false)
+    const { data } = await supabase.from('daily_report_photos')
+      .select('id, storage_path, created_at')
+      .eq('project_id', projectId).eq('report_date', today)
+      .order('created_at', { ascending: false })
+    setSahaPhotos(data || [])
+  }
+  async function handlePhotoDelete(photo) {
+    await supabase.storage.from('saha-fotolari').remove([photo.storage_path])
+    await supabase.from('daily_report_photos').delete().eq('id', photo.id)
+    setSahaPhotos(prev => prev.filter(p => p.id !== photo.id))
+  }
 
   const donutData = Object.entries(WP_STATUS).map(([k, v]) => ({ color: v.color, value: wpStats[k] || 0 }))
 
@@ -489,6 +544,70 @@ export default function TabSantiyeSefi() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* ── Saha Fotoğrafları ── */}
+      <div style={{ marginTop: 16, background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <span style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>Saha Fotoğrafları</span>
+            <span style={{ fontSize: 11, color: '#9CA3AF', marginLeft: 8 }}>Bugün · Yönetici paneline yansır</span>
+          </div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#185FA5', color: '#fff', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            + Fotoğraf Ekle
+            <input type="file" accept="image/*" multiple onChange={pickPhotoFiles} style={{ display: 'none' }} />
+          </label>
+        </div>
+        <div style={{ padding: '14px 18px' }}>
+          {photoPending.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <p style={{ fontSize: 11, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 8px' }}>
+                Seçilen ({photoPending.length} dosya)
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6 }}>
+                {photoPending.map((f, i) => (
+                  <div key={i} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', aspectRatio: '1', background: '#F3F4F6' }}>
+                    <img src={f.preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <button
+                      onClick={() => setPhotoPending(prev => prev.filter((_, j) => j !== i))}
+                      style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', borderRadius: '50%', width: 20, height: 20, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={handlePhotoUpload}
+                disabled={photoUploading}
+                style={{ marginTop: 10, background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 22px', fontSize: 13, fontWeight: 500, cursor: photoUploading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: photoUploading ? 0.7 : 1 }}
+              >
+                {photoUploading ? 'Yükleniyor…' : `${photoPending.length} Fotoğrafı Yükle`}
+              </button>
+            </div>
+          )}
+          {sahaPhotos.length > 0 ? (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 6 }}>
+                {sahaPhotos.map(photo => (
+                  <div key={photo.id} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', aspectRatio: '1', background: '#F3F4F6' }}>
+                    <a href={getPhotoUrl(photo.storage_path)} target="_blank" rel="noopener noreferrer">
+                      <img src={getPhotoUrl(photo.storage_path)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+                    </a>
+                    <button
+                      onClick={() => handlePhotoDelete(photo)}
+                      title="Sil"
+                      style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(239,68,68,0.85)', color: '#fff', border: 'none', borderRadius: '50%', width: 20, height: 20, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 11, color: '#9CA3AF', margin: '8px 0 0', textAlign: 'right' }}>{sahaPhotos.length} fotoğraf</p>
+            </>
+          ) : photoPending.length === 0 ? (
+            <p style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', margin: '8px 0' }}>
+              Bugün için henüz fotoğraf yüklenmedi.
+            </p>
+          ) : null}
         </div>
       </div>
 

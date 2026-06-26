@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { unzipSync, zipSync, strFromU8, strToU8 } from 'fflate'
+import { unzipSync, strFromU8, strToU8 } from 'fflate'
 import { supabase } from '../../../lib/supabase'
 import { getProjects } from '../../../api'
 import {
@@ -18,77 +18,6 @@ import {
   downloadXlsxZip,
   formatExcelDate,
 } from '../../../utils/excelUtils'
-
-const xmlEscape = value => String(value ?? '')
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
-
-function setTemplateCell(xmlStr, address, value) {
-  if (address === 'A1') return xmlStr
-
-  const row = address.match(/\d+$/)[0]
-  const isNum = typeof value === 'number' && Number.isFinite(value)
-  const styleMatch = xmlStr.match(new RegExp(`<c r="${address}"[^>]*s="(\\d+)"`))
-  const styleAttr = styleMatch ? ` s="${styleMatch[1]}"` : ''
-  const newCell = isNum
-    ? `<c r="${address}"${styleAttr} t="n"><v>${value}</v></c>`
-    : `<c r="${address}"${styleAttr} t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`
-  const selfClosingRe = new RegExp(`<c r="${address}"[^>]*\\/\\s*>`)
-  const fullCellRe = new RegExp(`<c r="${address}"[^>]*>[\\s\\S]*?<\\/c>`)
-
-  if (selfClosingRe.test(xmlStr)) return xmlStr.replace(selfClosingRe, newCell)
-  if (fullCellRe.test(xmlStr)) return xmlStr.replace(fullCellRe, newCell)
-
-  const rowRe = new RegExp(`(<row[^>]*r="${row}"[^>]*>)(.*?)(</row>)`, 's')
-  if (rowRe.test(xmlStr)) {
-    return xmlStr.replace(rowRe, (_, open, inner, close) => `${open}${inner}${newCell}${close}`)
-  }
-
-  return xmlStr.replace('</sheetData>', `<row r="${row}">${newCell}</row></sheetData>`)
-}
-
-function fillTemplateSheet(files, sheetNumber, rows) {
-  const path = `xl/worksheets/sheet${sheetNumber}.xml`
-  let xml = strFromU8(files[path])
-  rows.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
-    if (value !== undefined) {
-      const column = String.fromCharCode(65 + columnIndex)
-      xml = setTemplateCell(xml, `${column}${rowIndex + 5}`, value)
-    }
-  }))
-  files[path] = strToU8(xml)
-}
-
-async function fetchTemplate(paths) {
-  for (const path of paths) {
-    const resp = await fetch(path, { cache: 'no-store' })
-    if (!resp.ok) continue
-    const buffer = await resp.arrayBuffer()
-    const bytes = new Uint8Array(buffer)
-    if (bytes[0] === 0x50 && bytes[1] === 0x4B) return buffer
-  }
-  throw new Error('Excel şablonu yüklenemedi')
-}
-
-function downloadXlsx(files, filename) {
-  const blob = new Blob([zipSync(files, { level: 6 })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  URL.revokeObjectURL(url)
-}
-
-function todayIso() {
-  const d = new Date()
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
 
 function dateTr(iso) {
   if (!iso) return ''
@@ -492,6 +421,83 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate }) {
 }
 
 // ─────────────────────────────────────────────────────────
+//  Yatay Timeline (hover tooltip + scroll)
+// ─────────────────────────────────────────────────────────
+function TimelineStrip({ steps, fmtDate }) {
+  const [hovered, setHovered] = useState(null)
+  return (
+    <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
+      <div style={{
+        display: 'flex', alignItems: 'flex-start',
+        minWidth: `${Math.max(steps.length * 88, 300)}px`,
+        padding: '28px 16px 12px',
+        position: 'relative',
+      }}>
+        {steps.map((item, i) => {
+          const done    = item.status === 'tamamlandi'
+          const active  = item.status === 'devam_ediyor'
+          const dotColor  = done ? '#16a34a' : active ? '#003B8E' : '#cbd5e1'
+          const lineColor = done && i < steps.length - 1 ? '#16a34a' : '#e2e8f0'
+          const shortName = (item.activity_name || '').slice(0, 12) + ((item.activity_name || '').length > 12 ? '…' : '')
+          return (
+            <div key={item.path_code || i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+              {/* connecting line */}
+              {i < steps.length - 1 && (
+                <div style={{
+                  position: 'absolute', top: 13, left: '50%', right: '-50%',
+                  height: 2, background: lineColor, zIndex: 0,
+                }} />
+              )}
+              {/* dot */}
+              <div
+                onMouseEnter={() => setHovered(i)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  position: 'relative', zIndex: 1,
+                  width: 26, height: 26, borderRadius: '50%',
+                  background: done ? '#16a34a' : active ? '#fff' : '#f1f5f9',
+                  border: active ? `2.5px solid #003B8E` : `2px solid ${dotColor}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'default',
+                  boxShadow: active ? '0 0 0 3px rgba(0,59,142,0.15)' : 'none',
+                  flexShrink: 0,
+                }}
+              >
+                {done && (
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+                {active && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#003B8E' }} />}
+
+                {/* tooltip */}
+                {hovered === i && (
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
+                    transform: 'translateX(-50%)',
+                    background: '#1e293b', color: '#fff', padding: '6px 10px',
+                    borderRadius: 8, fontSize: 11, whiteSpace: 'nowrap', zIndex: 20,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.18)', pointerEvents: 'none',
+                  }}>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{item.activity_name}</div>
+                    <div style={{ opacity: 0.8 }}>İlerleme: %{item.progress_pct || 0}</div>
+                    <div style={{ opacity: 0.8 }}>{fmtDate(item.planned_start)} → {fmtDate(item.planned_end)}</div>
+                  </div>
+                )}
+              </div>
+              {/* label */}
+              <div style={{ fontSize: 9.5, color: done ? '#16a34a' : active ? '#003B8E' : '#94a3b8', marginTop: 5, textAlign: 'center', fontWeight: active ? 700 : 400, whiteSpace: 'nowrap' }}>
+                {shortName}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────
 //  Proje Dashboard'u (projectId varken)
 // ─────────────────────────────────────────────────────────
 function ProjectDashboard({ projectId, filterDate }) {
@@ -515,6 +521,7 @@ function ProjectDashboard({ projectId, filterDate }) {
   const [loading, setLoading]           = useState(true)
   const [openTickets, setOpenTickets]   = useState(null)
   const [pendingPR, setPendingPR]       = useState(null)
+  const [recentTickets, setRecentTickets] = useState([])
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const [reportExporting, setReportExporting] = useState(null)
   const [reportExportError, setReportExportError] = useState('')
@@ -539,6 +546,7 @@ function ProjectDashboard({ projectId, filterDate }) {
         { count: lostCount },
         { count: ticketCount },
         { count: prCount },
+        { data: ticketsData },
       ] = await Promise.all([
         supabase.from('projects').select('*').eq('id', projectId).single(),
         supabase.from('project_tasks')
@@ -584,6 +592,11 @@ function ProjectDashboard({ projectId, filterDate }) {
           .select('id', { count: 'exact', head: true })
           .eq('project_id', projectId)
           .eq('status', 'bekliyor'),
+        supabase.from('tickets')
+          .select('id, title, severity, status, created_at, category')
+          .eq('project_id', projectId)
+          .order('created_at', { ascending: false })
+          .limit(8),
       ])
 
       setProject(proj || null)
@@ -596,6 +609,7 @@ function ProjectDashboard({ projectId, filterDate }) {
       setLostDays(lostCount || 0)
       setOpenTickets(ticketCount ?? 0)
       setPendingPR(prCount ?? 0)
+      setRecentTickets(ticketsData || [])
 
       const latestReport = (dailyData || [])[0] || null
       setWeather(latestReport?.weather || null)
@@ -1011,9 +1025,17 @@ function ProjectDashboard({ projectId, filterDate }) {
 
   if (loading) {
     return (
-      <div className="card">
-        <div className="card-header"><h3>Genel Bakış</h3></div>
-        <p style={{ padding: '2rem', color: 'var(--color-muted)' }}>Yükleniyor…</p>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        minHeight: 400, flexDirection: 'column', gap: 12,
+      }}>
+        <div className="spin" style={{
+          width: 32, height: 32, border: '3px solid #e2e8f0',
+          borderTop: '3px solid #003B8E', borderRadius: '50%',
+        }} />
+        <p style={{ color: 'var(--color-muted)', fontSize: 13, margin: 0 }}>
+          Proje verisi yükleniyor…
+        </p>
       </div>
     )
   }
@@ -1434,7 +1456,7 @@ function ProjectDashboard({ projectId, filterDate }) {
           <InfoRow label="Hedef Bitiş"  value={fmtDate(project.target_date)} />
         </div>
 
-        {/* Sağ: Milestone Şeridi + S-Eğrisi */}
+        {/* Sağ: Kritik Yol Timeline + S-Eğrisi */}
         <div className="card" style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>S-Eğrisi</h3>
 
@@ -1504,50 +1526,19 @@ function ProjectDashboard({ projectId, filterDate }) {
           </div>
         </div>
 
-        {/* Sağ: Kritik Yol Timeline */}
+        {/* Sağ: Kritik Yol Timeline (yatay) */}
         <div className="card">
-          <div className="card-header"><h3>Kritik Yol (İlk 5)</h3></div>
-          <div style={{ padding: '0.75rem 1.5rem' }}>
-            {critical.length === 0 && (
-              <p style={{ color: 'var(--color-muted)', fontSize: 13 }}>Kritik yol verisi bulunamadı.</p>
-            )}
-            {critical.slice(0, 5).map((item, i) => {
-              const sTs   = item.planned_start ? new Date(item.planned_start).getTime() : projStart
-              const eTs   = item.planned_end   ? new Date(item.planned_end).getTime()   : projEnd
-              const barL  = projSpan > 0 ? Math.max(0, (sTs - projStart) / projSpan * 100) : 0
-              const barW  = projSpan > 0 ? Math.max(2, (eTs - sTs) / projSpan * 100) : 10
-              const barColor = item.status === 'tamamlandi' ? '#16a34a' : item.status === 'devam_ediyor' ? '#3b82f6' : '#94a3b8'
-              const statBadge = item.status === 'tamamlandi' ? 'green' : item.status === 'devam_ediyor' ? 'blue' : 'gray'
-              const statLabel = item.status === 'tamamlandi' ? 'Tamamlandı' : item.status === 'devam_ediyor' ? 'Devam Ediyor' : 'Beklemede'
-              return (
-                <div key={item.path_code || i} style={{ marginBottom: '0.875rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {item.activity_name}
-                    </span>
-                    <span className={`badge ${statBadge}`} style={{ fontSize: 10, flexShrink: 0, marginLeft: 8 }}>{statLabel}</span>
-                  </div>
-                  <div style={{ fontSize: 10, color: 'var(--color-muted)', marginBottom: 4 }}>
-                    {fmtDate(item.planned_start)} → {fmtDate(item.planned_end)}
-                  </div>
-                  <div style={{ position: 'relative', height: 8, background: '#f1f5f9', borderRadius: 999 }}>
-                    <div style={{
-                      position: 'absolute', left: `${barL}%`, width: `${barW}%`,
-                      height: '100%', background: barColor, borderRadius: 999, opacity: 0.75,
-                    }} />
-                    {todayPos !== null && (
-                      <div style={{ position: 'absolute', left: `${todayPos}%`, top: -2, bottom: -2, width: 2, background: '#ef4444', borderRadius: 1 }} />
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <div style={{ padding: '0.75rem 1.5rem', borderTop: '1px solid #f1f5f9' }}>
-            <span style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600, cursor: 'pointer' }}>
-              Tüm Kritik Yolu Gör →
+          <div className="card-header">
+            <h3>Projenin Gidişatı</h3>
+            <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+              Plan %{Math.round(planPct)} / Gerçek %{Math.round(avgProgress)}
             </span>
           </div>
+          {critical.length === 0 ? (
+            <p style={{ color: 'var(--color-muted)', fontSize: 13, padding: '1rem 1.5rem' }}>Kritik yol verisi bulunamadı.</p>
+          ) : (
+            <TimelineStrip steps={critical} fmtDate={fmtDate} />
+          )}
         </div>
       </div>
 
@@ -1560,9 +1551,9 @@ function ProjectDashboard({ projectId, filterDate }) {
           <div style={{ padding: '1rem 1.5rem' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '1rem' }}>
               {[
-                { label: 'Toplam Bütçe', value: `${fmtMoney(totalBudget)} USD`, color: 'var(--color-text)' },
-                { label: 'Ödenen',       value: `${fmtMoney(paid)} USD`,        color: '#16a34a' },
-                { label: 'Kalan',        value: `${fmtMoney(remaining)} USD`,   color: '#ef4444' },
+                { label: 'Toplam Bütçe', value: `${fmtMoney(totalBudget)} ₺`, color: 'var(--color-text)' },
+                { label: 'Ödenen',       value: `${fmtMoney(paid)} ₺`,        color: '#16a34a' },
+                { label: 'Kalan',        value: `${fmtMoney(remaining)} ₺`,   color: '#ef4444' },
               ].map(c => (
                 <div key={c.label} style={{ textAlign: 'center', padding: '0.75rem', background: '#f8fafc', borderRadius: '0.5rem' }}>
                   <p style={{ fontSize: 10, color: 'var(--color-muted)', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{c.label}</p>
@@ -1583,44 +1574,49 @@ function ProjectDashboard({ projectId, filterDate }) {
             {top5Budget.map((b, i) => (
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.375rem 0', borderBottom: '1px solid #f1f5f9' }}>
                 <span style={{ fontSize: 12, color: 'var(--color-text)' }}>{b.name}</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>{fmtMoney(b.planned_amount)} USD</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>{fmtMoney(b.planned_amount)} ₺</span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Sağ: Risk Özeti */}
+        {/* Sağ: Ticket Özeti */}
         <div className="card">
-          <div className="card-header"><h3>Risk Özeti</h3></div>
-          <div style={{ padding: '1rem 1.5rem' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
-              {[
-                { sev: 'kritik', color: 'red',   label: 'Kritik' },
-                { sev: 'yüksek', color: 'amber', label: 'Yüksek' },
-                { sev: 'orta',   color: 'amber', label: 'Orta' },
-                { sev: 'düşük',  color: 'blue',  label: 'Düşük' },
-              ].map(s => (
-                <span key={s.sev} className={`badge ${s.color}`} style={{ fontSize: 12, padding: '0.3rem 0.75rem' }}>
-                  {riskCounts[s.sev] || 0} {s.label}
-                </span>
-              ))}
-            </div>
-            {top3Risks.length === 0 && (
-              <p style={{ color: 'var(--color-muted)', fontSize: 13 }}>Açık risk bulunmuyor.</p>
+          <div className="card-header">
+            <h3>Güncel Ticketlar</h3>
+            <button
+              type="button"
+              style={{ fontSize: 12, color: 'var(--color-primary)', fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              onClick={() => alert('Ticket sekmesine gidin')}
+            >
+              Tümünü Gör →
+            </button>
+          </div>
+          <div style={{ padding: '0.75rem 1.5rem', maxHeight: 260, overflowY: 'auto' }}>
+            {recentTickets.length === 0 && (
+              <p style={{ color: 'var(--color-muted)', fontSize: 13, textAlign: 'center', padding: '1rem 0' }}>Açık ticket bulunmuyor.</p>
             )}
-            {top3Risks.map(r => (
-              <div key={r.id} style={{ padding: '0.75rem', background: '#f8fafc', borderRadius: '0.5rem', marginBottom: '0.5rem', borderLeft: `3px solid ${r.severity === 'kritik' ? '#ef4444' : r.severity === 'yüksek' ? '#f59e0b' : '#94a3b8'}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text)', flex: 1 }}>{r.title}</span>
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    <span className={`badge ${SEV_COLOR[r.severity] || 'gray'}`} style={{ fontSize: 10 }}>{r.severity}</span>
-                    <span style={{ fontSize: 10, color: 'var(--color-muted)', padding: '2px 6px', background: '#fff', borderRadius: 999 }}>
-                      Skor: {(Number(r.probability || 0) * Number(r.impact || 0)).toFixed(0)}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {recentTickets.map(ticket => (
+                <div key={ticket.id} style={{
+                  padding: '8px 10px', background: '#f8fafc',
+                  borderRadius: 8, border: '1px solid #e2e8f0',
+                  borderLeft: `3px solid ${ticket.severity === 'kritik' ? '#ef4444' : ticket.severity === 'yüksek' ? '#f59e0b' : '#94a3b8'}`,
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {ticket.title}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span className={`badge ${ticket.severity === 'kritik' ? 'red' : ticket.severity === 'yüksek' ? 'amber' : 'gray'}`} style={{ fontSize: 9 }}>
+                      {ticket.severity || '—'}
+                    </span>
+                    <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
+                      {new Date(ticket.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                     </span>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>

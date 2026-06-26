@@ -209,6 +209,9 @@ export default function ProjectOverviewDashboard({
   const [budgetLines, setBudgetLines] = useState([])
   const [invoices, setInvoices] = useState([])
   const [risks, setRisks] = useState([])
+  const [tickets, setTickets] = useState([])
+  const [sahaPhotos, setSahaPhotos] = useState([])
+  const [tooltipInfo, setTooltipInfo] = useState(null)
 
   const range = useMemo(() => getRange(filterDate, reportPeriod), [filterDate, reportPeriod])
 
@@ -240,6 +243,8 @@ export default function ProjectOverviewDashboard({
         invoiceRes,
         riskRes,
         projectRes,
+        ticketRes,
+        photoRes,
       ] = await Promise.all([
         reportIds.length
           ? supabase.from('personnel_log_entries').select('report_id, shift, department, count').in('report_id', reportIds)
@@ -271,6 +276,8 @@ export default function ProjectOverviewDashboard({
         supabase.from('invoices').select('id, total_amount, amount, status, created_at, invoice_date').eq('project_id', projectId),
         supabase.from('project_risks').select('*').eq('project_id', projectId).neq('status', 'kapandi').limit(6),
         supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
+        supabase.from('tickets').select('id, title, severity, status, created_at').eq('project_id', projectId).neq('status', 'kapatıldı').order('created_at', { ascending: false }).limit(8),
+        supabase.from('daily_report_photos').select('id, storage_path, report_date, created_at').eq('project_id', projectId).order('created_at', { ascending: false }).limit(9),
       ])
 
       if (!alive) return
@@ -284,6 +291,8 @@ export default function ProjectOverviewDashboard({
       setBudgetLines(budgetRes.data || [])
       setInvoices(invoiceRes.data || [])
       setRisks(riskRes.data || [])
+      setTickets(ticketRes.data || [])
+      setSahaPhotos(photoRes.data || [])
       setLoading(false)
     }
 
@@ -366,9 +375,9 @@ export default function ProjectOverviewDashboard({
 
   if (loading) {
     return (
-      <div className="card">
-        <div className="card-header"><h3>Genel Proje</h3></div>
-        <p className="project-overview-loading">Yükleniyor…</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400, flexDirection: 'column', gap: 12 }}>
+        <div className="spin" style={{ width: 32, height: 32, border: '3px solid #e2e8f0', borderTop: '3px solid #003B8E', borderRadius: '50%' }} />
+        <p style={{ color: 'var(--color-muted)', fontSize: 13, margin: 0 }}>Proje verisi yükleniyor…</p>
       </div>
     )
   }
@@ -406,31 +415,115 @@ export default function ProjectOverviewDashboard({
 
         <div className="card project-overview-card">
           <div className="project-card-title"><h3>Özet Durum</h3></div>
-          <SummaryLine icon="📅" label="Kalan Gün" value={remainingDays === null ? '—' : remainingDays < 0 ? `${Math.abs(remainingDays)} gün gecikti` : `${remainingDays} gün`} />
-          <SummaryLine icon="📈" label="Planlanan / Gerçek" value={`Plan %${plannedPct} · Gerçek %${avgReportProgress}`} />
-          <SummaryLine icon="💰" label="Bütçe Kullanımı" value={totalBudget > 0 ? `%${budgetPct}` : '—'} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+            {[
+              {
+                label: 'Kalan Gün',
+                value: remainingDays === null ? '—' : remainingDays < 0 ? `${Math.abs(remainingDays)} gün gecikti` : `${remainingDays} gün`,
+                color: remainingDays === null ? '#64748b' : remainingDays > 30 ? '#16a34a' : remainingDays >= 0 ? '#f59e0b' : '#ef4444',
+              },
+              {
+                label: 'Plan / Gerçek',
+                value: `%${plannedPct} / %${avgReportProgress}`,
+                color: avgReportProgress >= plannedPct ? '#16a34a' : '#ef4444',
+              },
+              {
+                label: 'Bütçe Kullanımı',
+                value: totalBudget > 0 ? `%${budgetPct}` : '—',
+                color: '#f59e0b',
+              },
+              {
+                label: 'Satın Alma Talebi',
+                value: purchases.filter(p => (p.status || '').toLowerCase() === 'bekliyor').length,
+                color: purchases.filter(p => (p.status || '').toLowerCase() === 'bekliyor').length > 0 ? '#ef4444' : '#16a34a',
+              },
+              {
+                label: 'Açık Ticket',
+                value: tickets.length,
+                color: tickets.length > 0 ? '#ef4444' : '#16a34a',
+              },
+            ].map(item => (
+              <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <span style={{ fontSize: 12, color: 'var(--color-text)', fontWeight: 500 }}>{item.label}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: item.color }}>{item.value}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         <ProjectWeatherCard location={currentProject?.location} lostDays={lostDays} />
       </div>
 
+      {tooltipInfo && (
+        <div style={{
+          position: 'fixed',
+          left: tooltipInfo.x,
+          top: tooltipInfo.y - 8,
+          transform: 'translateX(-50%) translateY(-100%)',
+          background: '#1e293b', color: '#fff', padding: '6px 10px', borderRadius: 7,
+          fontSize: 11.5, whiteSpace: 'nowrap', zIndex: 9999,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)', pointerEvents: 'none',
+        }}>
+          {tooltipInfo.label}
+          <div style={{ color: '#94a3b8', fontSize: 10, marginTop: 2 }}>%{Math.round(tooltipInfo.pct)}</div>
+        </div>
+      )}
+
       <div className="card project-timeline-card">
         <div className="project-card-title">
-          <h3>Projenin Gidişatı (Planlanan & Gerçek)</h3>
-          <span>Planlanan vs Gerçek: {Math.round(avgReportProgress - plannedPct)}% · Gecikme: {avgReportProgress < plannedPct ? `${plannedPct - avgReportProgress} puan` : 'yok'}</span>
+          <h3>Projenin Gidişatı</h3>
+          <span style={{ fontSize: 12 }}>
+            Planlanan vs Gerçek:
+            <strong style={{ color: avgReportProgress >= plannedPct ? '#16a34a' : '#ef4444', marginLeft: 4 }}>
+              {avgReportProgress >= plannedPct ? '+' : ''}{Math.round(avgReportProgress - plannedPct)}%
+            </strong>
+            {avgReportProgress < plannedPct && (
+              <span style={{ color: '#ef4444', marginLeft: 8 }}>· Gecikme: {plannedPct - avgReportProgress} puan</span>
+            )}
+          </span>
         </div>
-        <div className="project-timeline">
-          {milestones.map((m, index) => {
-            const pct = clamp(m.progress || m.progress_pct)
-            const state = pct >= 100 ? 'done' : pct > 0 ? 'active' : 'pending'
-            const label = m.name || m.task_name || m.title || 'Milestone'
-            return (
-              <div className={`project-milestone ${state}`} key={m.id || `${label}-${index}`} data-label={label}>
-                <span>{state === 'done' ? '✓' : index + 1}</span>
-                <p>{label}</p>
-              </div>
-            )
-          })}
+        <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', minWidth: milestones.length * 90, padding: '8px 16px 4px' }}>
+            {milestones.map((m, index) => {
+              const pct = clamp(m.progress || m.progress_pct)
+              const isDone = pct >= 100
+              const isActive = pct > 0 && pct < 100
+              const label = m.name || m.task_name || m.title || 'Milestone'
+              const prevPct = index > 0 ? clamp(milestones[index - 1].progress || milestones[index - 1].progress_pct) : 100
+              return (
+                <div
+                  key={m.id || `${label}-${index}`}
+                  style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', cursor: 'default' }}
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    setTooltipInfo({ x: rect.left + rect.width / 2, y: rect.top, label, pct })
+                  }}
+                  onMouseLeave={() => setTooltipInfo(null)}
+                >
+                  {index > 0 && (
+                    <div style={{ position: 'absolute', left: 0, top: 14, width: '50%', height: 2, background: prevPct >= 100 ? '#16a34a' : '#e2e8f0', zIndex: 0 }} />
+                  )}
+                  {index < milestones.length - 1 && (
+                    <div style={{ position: 'absolute', left: '50%', top: 14, width: '50%', height: 2, background: isDone ? '#16a34a' : '#e2e8f0', zIndex: 0 }} />
+                  )}
+                  <div style={{
+                    position: 'relative', zIndex: 1,
+                    width: 28, height: 28, borderRadius: '50%',
+                    background: isDone ? '#16a34a' : isActive ? '#003B8E' : '#e2e8f0',
+                    color: isDone || isActive ? '#fff' : '#64748b',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontWeight: 700, fontSize: 11,
+                    border: `2px solid ${isDone ? '#16a34a' : isActive ? '#003B8E' : '#cbd5e1'}`,
+                  }}>
+                    {isDone ? '✓' : index + 1}
+                  </div>
+                  <p style={{ fontSize: 9.5, color: '#64748b', textAlign: 'center', marginTop: 5, maxWidth: 72, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 2px' }}>
+                    {label}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
 
@@ -440,12 +533,17 @@ export default function ProjectOverviewDashboard({
             <h3>Günlük Rapor Özeti</h3>
             <LinkButton onClick={() => onGoTab?.('genel')}>Tüm Raporlar</LinkButton>
           </div>
-          <SummaryLine icon="☀️" label="Hava Durumu" value={latestReport?.weather || '—'} />
-          <SummaryLine icon="👷" label="Aktif Personel" value={totalPersonnel ? `${totalPersonnel} kişi` : '—'} />
-          <SummaryLine icon="🚜" label="Çalışan Makine" value={activeMachines ? `${activeMachines} adet` : '—'} />
-          <SummaryLine icon="✅" label="Bugün Yapılan İş" value={todayDone || '—'} />
-          <SummaryLine icon="📌" label="Yarınki Plan" value={tomorrowPlan || '—'} />
-          <SummaryLine icon="🕓" label="Rapor Zamanı" value={latestReport ? `${fmtDate(latestReport.report_date)} 17:00` : '—'} />
+          {[
+            { label: 'Aktif Personel', value: totalPersonnel ? `${totalPersonnel} kişi` : '—' },
+            { label: 'Çalışan Makine', value: activeMachines ? `${activeMachines} adet` : '—' },
+            { label: 'İlerleme Yapılan Kalem', value: progressItems.filter(i => i.periodAdded > 0).length ? `${progressItems.filter(i => i.periodAdded > 0).length} kalem` : '—' },
+            { label: 'Rapor / Gönderen', value: latestReport ? `${fmtDate(latestReport.report_date)}${latestReport.prepared_by ? ` · ${latestReport.prepared_by}` : ''}` : '—' },
+          ].map(item => (
+            <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ fontSize: 12, color: 'var(--color-text)', fontWeight: 500 }}>{item.label}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', textAlign: 'right', maxWidth: '55%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.value}</span>
+            </div>
+          ))}
         </div>
 
         <div className="card project-mini-card">
@@ -453,16 +551,20 @@ export default function ProjectOverviewDashboard({
             <h3>İş Kalemleri Takibi</h3>
             <LinkButton onClick={() => onGoTab?.('gantt')}>Detayı Gör</LinkButton>
           </div>
-          {progressRows.length ? progressRows.map(item => (
-            <div className="project-progress-row" key={item.name}>
-              <div>
-                <strong>{item.name}</strong>
-                <span>{item.done || 0} / {item.target || '—'} {item.unit}{item.periodAdded ? ` · dönem +${item.periodAdded}` : ''}</span>
+          {(() => {
+            const active = progressRows.filter(i => i.periodAdded > 0).slice(0, 4)
+            const rows = active.length ? active : progressRows.slice(0, 4)
+            return rows.length ? rows.map(item => (
+              <div className="project-progress-row" key={item.name}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>{item.done || 0} / {item.target || '—'} {item.unit}{item.periodAdded ? ` +${item.periodAdded}` : ''}</span>
+                </div>
+                <MiniProgress value={item.pct} />
+                <b>{Math.round(item.pct)}%</b>
               </div>
-              <MiniProgress value={item.pct} />
-              <b>{Math.round(item.pct)}%</b>
-            </div>
-          )) : <p className="project-empty">İş kalemi verisi yok.</p>}
+            )) : <p className="project-empty">İş kalemi verisi yok.</p>
+          })()}
         </div>
 
         <div className="card project-mini-card">
@@ -470,7 +572,7 @@ export default function ProjectOverviewDashboard({
             <h3>Malzeme Kalemleri / Satın Alma</h3>
             <LinkButton onClick={() => onGoTab?.('satin-alma')}>Tüm Satın Almalar</LinkButton>
           </div>
-          {purchaseRows.length ? purchaseRows.slice(0, 5).map((row, idx) => (
+          {purchaseRows.length ? purchaseRows.slice(0, 4).map((row, idx) => (
             <div className="project-list-row" key={`${row.material}-${idx}`}>
               <strong>{row.material}</strong>
               <span className={`badge ${getStatusBadge(row.status)}`}>{row.status}</span>
@@ -484,26 +586,74 @@ export default function ProjectOverviewDashboard({
             <h3>Maliyet Durumu</h3>
             <LinkButton onClick={() => onGoTab?.('finans')}>Detayı Gör</LinkButton>
           </div>
-          <DetailRow label="Hedef Maliyet" value={totalBudget ? `${fmtMoney(totalBudget)} USD` : '—'} />
-          <DetailRow label="Harcanan Tutar" value={spent ? `${fmtMoney(spent)} USD` : '—'} tone="success" />
+          <DetailRow label="Hedef Maliyet" value={totalBudget ? `${fmtMoney(totalBudget)} ₺` : '—'} />
+          <DetailRow label="Harcanan Tutar" value={spent ? `${fmtMoney(spent)} ₺` : '—'} tone="success" />
           <DetailRow label="Kullanım Oranı" value={totalBudget ? `%${budgetPct}` : '—'} tone={budgetPct > 90 ? 'danger' : 'primary'} />
           <MiniProgress value={budgetPct} color={budgetPct > 90 ? '#ef4444' : '#185FA5'} />
-          <DetailRow label="Öngörülen Toplam Maliyet" value={totalBudget ? `${fmtMoney(Math.max(totalBudget, spent))} USD` : '—'} tone="danger" />
+          <DetailRow label="Öngörülen Toplam Maliyet" value={totalBudget ? `${fmtMoney(Math.max(totalBudget, spent))} ₺` : '—'} tone="danger" />
         </div>
 
         <div className="card project-mini-card">
           <div className="project-card-title">
-            <h3>Risk Özeti</h3>
-            <LinkButton onClick={() => onGoTab?.('tickets')}>Tüm Riskler</LinkButton>
+            <h3>Güncel Ticketlar</h3>
+            <LinkButton onClick={() => onGoTab?.('tickets')}>Tümünü Gör</LinkButton>
           </div>
-          {riskRows.length ? riskRows.slice(0, 4).map((risk, idx) => (
-            <div className="project-risk-row" key={`${risk.title}-${idx}`}>
-              <span>⚠</span>
-              <strong>{risk.title}</strong>
-              <b className={`badge ${RISK_BADGE[risk.severity] || 'gray'}`}>{risk.severity}</b>
-              <small>{fmtDate(risk.date)}</small>
-            </div>
-          )) : <p className="project-empty">Açık risk kaydı yok.</p>}
+          {tickets.length === 0
+            ? <p className="project-empty">Açık ticket bulunmuyor.</p>
+            : (
+              <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {tickets.map(ticket => (
+                  <div key={ticket.id} style={{
+                    padding: '8px 10px', background: '#f8fafc',
+                    borderRadius: 8, border: '1px solid #e2e8f0',
+                    borderLeft: `3px solid ${ticket.severity === 'kritik' ? '#ef4444' : ticket.severity === 'yüksek' ? '#f59e0b' : '#94a3b8'}`,
+                    flexShrink: 0,
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {ticket.title}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                      <span className={`badge ${ticket.severity === 'kritik' ? 'red' : ticket.severity === 'yüksek' ? 'amber' : 'gray'}`} style={{ fontSize: 9 }}>
+                        {ticket.severity || '—'}
+                      </span>
+                      <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
+                        {new Date(ticket.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          }
+        </div>
+
+        <div className="card project-mini-card">
+          <div className="project-card-title">
+            <h3>Saha Fotoğrafları</h3>
+            <LinkButton onClick={() => onGoTab?.('genel')}>Tümünü Gör</LinkButton>
+          </div>
+          {sahaPhotos.length === 0
+            ? <p className="project-empty">Henüz fotoğraf yüklenmemiş.</p>
+            : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+                {sahaPhotos.slice(0, 9).map(photo => {
+                  const url = supabase.storage.from('saha-fotolari').getPublicUrl(photo.storage_path).data.publicUrl
+                  return (
+                    <a key={photo.id} href={url} target="_blank" rel="noopener noreferrer"
+                      style={{ display: 'block', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: '#f1f5f9' }}
+                    >
+                      <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
+                    </a>
+                  )
+                })}
+              </div>
+            )
+          }
+          {sahaPhotos.length > 0 && (
+            <p style={{ fontSize: 10, color: 'var(--color-muted)', margin: '6px 0 0', textAlign: 'right' }}>
+              {sahaPhotos.length} fotoğraf
+            </p>
+          )}
         </div>
       </div>
     </div>

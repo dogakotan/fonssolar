@@ -4,20 +4,13 @@ import { supabase } from '../lib/supabase'
 export const getProjects = () =>
   supabase
     .from('projects')
-    .select('id, name, capacity_kwp, capacity_kwe, location, total_days, start_date, target_date, status, progress, created_at')
+    .select('id, name, capacity_kwp, capacity_kwe, location, total_days, start_date, target_date, status, progress, project_type, created_at')
     .order('created_at', { ascending: false })
 
 export const getActiveProjectCount = () =>
   supabase
     .from('projects')
     .select('id', { count: 'exact', head: true })
-
-// ── Günlük İlerleme ───────────────────────────────────────────────────────────
-// gunluk_ilerleme_örnek tablosu kaldırıldı — boş sonuç döndür
-export const getGunlukIlerleme = async (_projectName) => ({ data: [], error: null })
-
-// personel_makine_raporu tablosu kaldırıldı — null döndür
-export const getPersonelMakineRaporu = async () => ({ data: null, error: null })
 
 // ── Görevler ──────────────────────────────────────────────────────────────────
 export const getWorkPackages = async (projectId) => {

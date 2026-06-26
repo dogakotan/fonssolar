@@ -86,6 +86,10 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
   const [progressCategory, setProgressCategory] = useState('all')
   const [progressLimit, setProgressLimit] = useState(24)
 
+  const [photos,         setPhotos]         = useState([])
+  const [pendingFiles,   setPendingFiles]    = useState([])
+  const [photoUploading, setPhotoUploading] = useState(false)
+
   useEffect(() => {
     if (!projectId) {
       setProgItems([])
@@ -109,6 +113,7 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
 
   useEffect(() => {
     loadReport(date)
+    loadPhotos(date)
   }, [projectId, date])
 
   useEffect(() => {
@@ -171,6 +176,58 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
         return found ? { ...p, qty_added: found.qty_added || '', note: found.note || '' } : { ...p, qty_added: '', note: '' }
       }))
     }
+  }
+
+  async function loadPhotos(reportDate) {
+    if (!projectId) return
+    const { data } = await supabase
+      .from('daily_report_photos')
+      .select('id, storage_path, caption, created_at')
+      .eq('project_id', projectId)
+      .eq('report_date', reportDate)
+      .order('created_at', { ascending: true })
+    setPhotos(data || [])
+  }
+
+  function getPhotoUrl(path) {
+    return supabase.storage.from('saha-fotolari').getPublicUrl(path).data.publicUrl
+  }
+
+  function pickFiles(e) {
+    const files = Array.from(e.target.files || [])
+    const entries = files.map(file => ({ file, previewUrl: URL.createObjectURL(file) }))
+    setPendingFiles(prev => [...prev, ...entries])
+    e.target.value = ''
+  }
+
+  async function handlePhotoUpload() {
+    if (!projectId || !user || !pendingFiles.length) return
+    setPhotoUploading(true)
+    const { data: repData } = await supabase
+      .from('daily_reports')
+      .upsert({ project_id: projectId, report_date: date, created_by: user.id, weather, notes }, { onConflict: 'project_id,report_date' })
+      .select('id').single()
+    const rid = repData?.id || null
+    for (const { file } of pendingFiles) {
+      const ext = file.name.split('.').pop().toLowerCase()
+      const uid = `${Date.now()}_${Math.random().toString(36).slice(2)}`
+      const path = `${projectId}/${date}/${uid}.${ext}`
+      const { error: upErr } = await supabase.storage.from('saha-fotolari').upload(path, file)
+      if (upErr) continue
+      await supabase.from('daily_report_photos').insert({
+        report_id: rid, project_id: projectId,
+        report_date: date, storage_path: path, uploaded_by: user.id,
+      })
+    }
+    setPendingFiles([])
+    setPhotoUploading(false)
+    await loadPhotos(date)
+  }
+
+  async function handlePhotoDelete(photo) {
+    await supabase.storage.from('saha-fotolari').remove([photo.storage_path])
+    await supabase.from('daily_report_photos').delete().eq('id', photo.id)
+    setPhotos(prev => prev.filter(p => p.id !== photo.id))
   }
 
   async function handleSave() {
@@ -238,12 +295,13 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
   }
 
   const TABS = [
-    { full: 'Genel',     short: 'Genel' },
-    { full: 'Personel',  short: 'Pers.' },
-    { full: 'Makineler', short: 'Mak.' },
-    { full: 'İşler',     short: 'İşler' },
-    { full: 'İş Kalemi', short: 'Kal.' },
-    { full: 'Geçmiş',   short: 'Geç.' },
+    { full: 'Genel',       short: 'Genel' },
+    { full: 'Personel',    short: 'Pers.' },
+    { full: 'Makineler',   short: 'Mak.' },
+    { full: 'İşler',       short: 'İşler' },
+    { full: 'İş Kalemi',   short: 'Kal.' },
+    { full: 'Fotoğraflar', short: 'Foto.' },
+    { full: 'Geçmiş',      short: 'Geç.' },
   ]
 
   const progressCategories = [...new Set(progItems.map(p => p.item.category).filter(Boolean))]
@@ -601,8 +659,77 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
             </div>
           )}
 
-          {/* ── Tab 6: Geçmiş Raporlar ── */}
+          {/* ── Tab 6: Fotoğraflar ── */}
           {activeTab === 6 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Yükleme alanı */}
+              <div style={{ border: '2px dashed #D1D5DB', borderRadius: 10, padding: '18px 14px', textAlign: 'center', background: '#F9FAFB' }}>
+                <p style={{ margin: '0 0 8px', fontSize: 13, color: '#6B7280' }}>
+                  Saha fotoğrafı ekle (JPG, PNG, WEBP · max 10 MB)
+                </p>
+                <label style={{ display: 'inline-block', background: '#185FA5', color: '#fff', borderRadius: 8, padding: '8px 18px', fontSize: 13, fontWeight: 500, cursor: 'pointer' }}>
+                  Dosya Seç
+                  <input type="file" accept="image/*" multiple onChange={pickFiles} style={{ display: 'none' }} />
+                </label>
+              </div>
+
+              {/* Seçilen dosyalar (önizleme) */}
+              {pendingFiles.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 8px' }}>
+                    Seçilen ({pendingFiles.length} dosya)
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    {pendingFiles.map((f, i) => (
+                      <div key={i} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', aspectRatio: '1', background: '#F3F4F6' }}>
+                        <img src={f.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <button
+                          onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
+                          style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', borderRadius: '50%', width: 20, height: 20, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    onClick={handlePhotoUpload}
+                    disabled={photoUploading}
+                    style={{ marginTop: 10, width: '100%', background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 0', fontSize: 13, fontWeight: 500, cursor: photoUploading ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: photoUploading ? 0.7 : 1 }}
+                  >
+                    {photoUploading ? 'Yükleniyor…' : `${pendingFiles.length} Fotoğrafı Yükle`}
+                  </button>
+                </div>
+              )}
+
+              {/* Mevcut fotoğraflar */}
+              {photos.length > 0 && (
+                <div>
+                  <p style={{ fontSize: 11, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 8px' }}>
+                    Bu güne ait fotoğraflar ({photos.length})
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+                    {photos.map(photo => (
+                      <div key={photo.id} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', aspectRatio: '1', background: '#F3F4F6' }}>
+                        <a href={getPhotoUrl(photo.storage_path)} target="_blank" rel="noopener noreferrer">
+                          <img src={getPhotoUrl(photo.storage_path)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </a>
+                        <button
+                          onClick={() => handlePhotoDelete(photo)}
+                          title="Sil"
+                          style={{ position: 'absolute', top: 3, right: 3, background: 'rgba(239,68,68,0.85)', color: '#fff', border: 'none', borderRadius: '50%', width: 20, height: 20, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                        >×</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {photos.length === 0 && pendingFiles.length === 0 && (
+                <p style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center' }}>Bu tarih için henüz fotoğraf yok.</p>
+              )}
+            </div>
+          )}
+
+          {/* ── Tab 7: Geçmiş Raporlar ── */}
+          {activeTab === 7 && (
             <div>
               {histLoading && <p style={{ color: '#9CA3AF', fontSize: 13 }}>Yükleniyor…</p>}
               {!histLoading && history.length === 0 && <p style={{ color: '#9CA3AF', fontSize: 13 }}>Rapor yok.</p>}
@@ -635,26 +762,28 @@ export default function GunlukRaporDrawer({ projectId, onClose }) {
           )}
         </div>
 
-        {/* Footer: Kaydet */}
-        <div style={{ padding: '12px 18px', borderTop: '1px solid #E5E7EB', flexShrink: 0 }}>
-          {saveMsg && (
-            <p style={{ fontSize: 13, color: saveMsg.ok ? '#10B981' : '#EF4444', margin: '0 0 8px' }}>
-              {saveMsg.text}
-            </p>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              width: '100%', background: '#185FA5', color: '#fff', border: 'none',
-              borderRadius: 8, padding: '10px 0', fontSize: 14, fontWeight: 500,
-              cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
-              opacity: saving ? 0.7 : 1,
-            }}
-          >
-            {saving ? 'Kaydediliyor…' : 'Kaydet'}
-          </button>
-        </div>
+        {/* Footer: Kaydet (fotoğraf ve geçmiş sekmelerinde gizli) */}
+        {activeTab !== 6 && activeTab !== 7 && (
+          <div style={{ padding: '12px 18px', borderTop: '1px solid #E5E7EB', flexShrink: 0 }}>
+            {saveMsg && (
+              <p style={{ fontSize: 13, color: saveMsg.ok ? '#10B981' : '#EF4444', margin: '0 0 8px' }}>
+                {saveMsg.text}
+              </p>
+            )}
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{
+                width: '100%', background: '#185FA5', color: '#fff', border: 'none',
+                borderRadius: 8, padding: '10px 0', fontSize: 14, fontWeight: 500,
+                cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                opacity: saving ? 0.7 : 1,
+              }}
+            >
+              {saving ? 'Kaydediliyor…' : 'Kaydet'}
+            </button>
+          </div>
+        )}
 
       </div>
     </div>
