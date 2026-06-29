@@ -1,25 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useWeather } from '../hooks/useWeather'
 import { useSantiyeData } from '../hooks/useSantiyeData'
-import DailyReportModal from '../components/santiye/modals/DailyReportModal'
-import SahaFotograflari from '../components/santiye/SahaFotograflari'
 import YeniTicketModal from '../components/tickets/YeniTicketModal'
 import YeniTalepModal from '../components/satin-alma/YeniTalepModal'
 import TicketDetayModal from '../components/tickets/TicketDetayModal'
 import TalepDetayModal from '../components/satin-alma/TalepDetayModal'
 import { supabase } from '../lib/supabase'
 
-const WEATHER_EMOJI = {
-  açık: '☀️', 'az bulutlu': '🌤️', 'parçalı bulutlu': '⛅', bulutlu: '☁️',
-  kapalı: '☁️', yağmurlu: '🌧️', karlı: '🌨️', fırtınalı: '⛈️',
-  sisli: '🌫️', çiseleyen: '🌦️', sağanak: '🌦️',
-}
-const STATUS_STYLES = {
-  normal: { bg: '#D1FAE5', color: '#065F46', label: 'Normal' },
-  dikkat: { bg: '#FEF3C7', color: '#92400E', label: 'Dikkat' },
-  kritik: { bg: '#FEE2E2', color: '#991B1B', label: 'Kritik' },
-}
 const PR_STATUS = {
   bekliyor:     { label: 'Bekliyor',     bg: '#DBEAFE', color: '#1D4ED8' },
   onaylandı:    { label: 'Onaylandı',    bg: '#D1FAE5', color: '#065F46' },
@@ -59,47 +47,111 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
 }
 
+const TURKEY_CITIES = [
+  'adana', 'adıyaman', 'afyonkarahisar', 'ağrı', 'amasya', 'ankara', 'antalya', 'artvin',
+  'aydın', 'balıkesir', 'bilecik', 'bingöl', 'bitlis', 'bolu', 'burdur', 'bursa',
+  'çanakkale', 'çankırı', 'çorum', 'denizli', 'diyarbakır', 'edirne', 'elazığ', 'erzincan',
+  'erzurum', 'eskişehir', 'gaziantep', 'giresun', 'gümüşhane', 'hakkari', 'hatay', 'ısparta',
+  'mersin', 'istanbul', 'izmir', 'kars', 'kastamonu', 'kayseri', 'kırklareli', 'kırşehir',
+  'kocaeli', 'konya', 'kütahya', 'malatya', 'manisa', 'kahramanmaraş', 'mardin', 'muğla',
+  'muş', 'nevşehir', 'niğde', 'ordu', 'rize', 'sakarya', 'samsun', 'siirt', 'sinop',
+  'sivas', 'tekirdağ', 'tokat', 'trabzon', 'tunceli', 'şanlıurfa', 'uşak', 'van', 'yozgat',
+  'zonguldak', 'aksaray', 'bayburt', 'karaman', 'kırıkkale', 'batman', 'şırnak', 'bartın',
+  'ardahan', 'ığdır', 'yalova', 'karabük', 'kilis', 'osmaniye', 'düzce',
+]
+
+function normalizeTR(value) {
+  return String(value || '')
+    .toLocaleLowerCase('tr-TR')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function titleCity(value) {
+  if (!value) return null
+  return value.charAt(0).toLocaleUpperCase('tr-TR') + value.slice(1)
+}
+
+function projectIdLabel(projectId) {
+  if (!projectId || /^[0-9a-f-]{24,}$/i.test(String(projectId))) return ''
+  return String(projectId)
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
+}
+
+function extractWeatherCity(project) {
+  if (!project) return null
+
+  const candidates = [
+    project.weather_city,
+    project.city,
+    project.province,
+    project.il,
+    project.location,
+    project.name,
+  ].filter(Boolean)
+
+  for (const candidate of candidates) {
+    const firstPart = String(candidate).split(/[\/,;-]/)[0]?.trim()
+    if (firstPart) {
+      const exactCity = TURKEY_CITIES.find(city => normalizeTR(city) === normalizeTR(firstPart))
+      if (exactCity) return titleCity(exactCity)
+    }
+
+    const normalized = normalizeTR(candidate)
+    const containedCity = TURKEY_CITIES.find(city => normalized.includes(normalizeTR(city)))
+    if (containedCity) return titleCity(containedCity)
+  }
+
+  return null
+}
+
 function useProject(projectId) {
   const [project, setProject] = useState(null)
   useEffect(() => {
-    if (!projectId) return
-    supabase.from('projects')
-      .select('id, name, location, progress')
-      .eq('id', projectId)
-      .single()
-      .then(({ data }) => setProject(data))
+    if (!projectId) {
+      setProject(null)
+      return
+    }
+    async function loadProject() {
+      const byId = await supabase.from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .maybeSingle()
+
+      if (byId.data) {
+        setProject(byId.data)
+        return
+      }
+
+      if (projectIdLabel(projectId)) {
+        const byName = await supabase.from('projects')
+          .select('*')
+          .ilike('name', `%${String(projectId).replace(/[-_]+/g, ' ')}%`)
+          .limit(1)
+          .maybeSingle()
+
+        if (byName.data) {
+          setProject(byName.data)
+          return
+        }
+      }
+
+      setProject({ id: projectId, name: projectIdLabel(projectId) })
+    }
+
+    loadProject()
   }, [projectId])
   return project
 }
 
-function useRecentReports(projectId) {
-  const [reports, setReports] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  const fetch5 = useCallback(async () => {
-    if (!projectId) return
-    setLoading(true)
-    const { data } = await supabase
-      .from('daily_reports')
-      .select('id, report_date, weather, general_status, worker_count, profiles(full_name)')
-      .eq('project_id', projectId)
-      .order('report_date', { ascending: false })
-      .limit(5)
-    setReports(data || [])
-    setLoading(false)
-  }, [projectId])
-
-  useEffect(() => { fetch5() }, [fetch5])
-
-  return { reports, loading, refetch: fetch5 }
-}
-
-export default function SantiyeSefiDashboard({ onTabChange }) {
-  const { user, profile, projectId } = useAuth()
-  const [talepTab, setTalepTab]   = useState('satin_alma')
-  const [prLimit, setPrLimit]     = useState(5)
-  const [tkLimit, setTkLimit]     = useState(5)
-  const [showModal, setShowModal] = useState(false)
+export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditReport }) {
+  const { projectId } = useAuth()
+  const [talepTab, setTalepTab]   = useState('all')
+  const [requestLimit, setRequestLimit] = useState(5)
+  const [reportLimit, setReportLimit] = useState(5)
   const [showTicket, setShowTicket] = useState(false)
   const [showTalep, setShowTalep]   = useState(false)
   const [detayTicket, setDetayTicket] = useState(null)
@@ -107,21 +159,39 @@ export default function SantiyeSefiDashboard({ onTabChange }) {
   const [toast, setToast] = useState('')
 
   const project     = useProject(projectId)
-  const weatherCity = project?.location?.split('/')?.[0]?.trim() || null
+  const weatherCity = extractWeatherCity(project)
   const weather     = useWeather(weatherCity)
-  const { loading, openPurchaseRequests, openTickets, todayReport, stats, refetch } = useSantiyeData(projectId)
-  const { reports: recentReports, loading: recentLoading, refetch: refetchReports } = useRecentReports(projectId)
+  const { openPurchaseRequests, openTickets, todayReport, recentReports, stats, refetch } = useSantiyeData(projectId)
+
+  useEffect(() => {
+    setReportLimit(5)
+  }, [projectId])
 
   function showToast(msg) {
     setToast(msg)
     setTimeout(() => setToast(''), 3000)
   }
 
-  const progressPct = project?.progress || 0
-
   const CARD_BASE = {
     background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14,
     padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04)',
+  }
+
+  const requestItems = [
+    ...openPurchaseRequests.map(item => ({ ...item, _type: 'purchase' })),
+    ...openTickets.map(item => ({ ...item, _type: 'ticket' })),
+  ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+
+  const visibleRequests = requestItems.filter(item => {
+    if (talepTab === 'satin_alma') return item._type === 'purchase'
+    if (talepTab === 'ticket') return item._type === 'ticket'
+    return true
+  })
+
+  function goRequests(tab = 'all') {
+    setTalepTab(tab)
+    setRequestLimit(5)
+    document.getElementById('taleplerim')?.scrollIntoView({ behavior: 'smooth' })
   }
 
   return (
@@ -138,23 +208,14 @@ export default function SantiyeSefiDashboard({ onTabChange }) {
         </div>
       )}
 
-      {/* Proje başlığı */}
-      <div style={{ ...CARD_BASE, marginBottom: 16, padding: '14px 20px' }}>
-        <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>
-          {project?.name || projectId || 'Proje'}
-        </p>
-        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#94a3b8' }}>Genel Bakış</p>
-      </div>
-
       {/* KPI Cards — auto-fill grid, wraps naturally on mobile */}
-      <div style={{
+      <div className="santiye-kpi-grid" style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
         gap: 12, marginBottom: 16,
       }}>
         {/* Günlük Rapor */}
         <button
-          onClick={() => setShowModal(true)}
+          onClick={() => todayReport ? onEditReport?.(todayReport.id) : onNewReport?.()}
           style={{
             ...CARD_BASE, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
             borderLeft: `4px solid ${todayReport ? '#10B981' : '#F59E0B'}`,
@@ -174,58 +235,55 @@ export default function SantiyeSefiDashboard({ onTabChange }) {
             </span>
           </div>
           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: todayReport ? '#065F46' : '#92400E' }}>
-            {todayReport ? '✓ Görüntüle' : '+ Rapor Gir'}
+            {todayReport ? 'Görüntüle' : '+ Rapor Gir'}
           </p>
         </button>
 
-        {/* Satın Alma */}
+        {/* Satın Alma Aç */}
         <button
-          onClick={() => {
-            setTalepTab('satin_alma')
-            document.getElementById('taleplerim')?.scrollIntoView({ behavior: 'smooth' })
-          }}
+          onClick={() => setShowTalep(true)}
           style={{ ...CARD_BASE, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', borderLeft: '4px solid #185FA5' }}
         >
           <div style={{ marginBottom: 6 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Açık Satın Alma
+              Satın Alma
             </span>
           </div>
-          <p style={{ margin: '0 0 2px', fontSize: 26, fontWeight: 800, color: '#185FA5', lineHeight: 1 }}>{stats.prCount}</p>
-          <p style={{ margin: 0, fontSize: 11, color: '#94a3b8' }}>bekleyen talep</p>
+          <p style={{ margin: '8px 0 0', fontSize: 18, fontWeight: 800, color: '#185FA5', lineHeight: 1.15 }}>+ Talep Aç</p>
         </button>
 
-        {/* Ticketlar */}
+        {/* Ticket Aç */}
         <button
-          onClick={() => {
-            setTalepTab('ticket')
-            document.getElementById('taleplerim')?.scrollIntoView({ behavior: 'smooth' })
-          }}
+          onClick={() => setShowTicket(true)}
           style={{ ...CARD_BASE, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', borderLeft: '4px solid #7C3AED' }}
         >
           <div style={{ marginBottom: 6 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Açık Ticketlar
+              Ticket
             </span>
           </div>
-          <p style={{ margin: '0 0 2px', fontSize: 26, fontWeight: 800, color: '#7C3AED', lineHeight: 1 }}>{stats.ticketCount}</p>
-          <p style={{ margin: 0, fontSize: 11, color: '#94a3b8' }}>açık ticket</p>
+          <p style={{ margin: '8px 0 0', fontSize: 18, fontWeight: 800, color: '#7C3AED', lineHeight: 1.15 }}>+ Ticket Aç</p>
         </button>
 
-        {/* Proje İlerlemesi */}
-        <div style={{ ...CARD_BASE, borderLeft: '4px solid #003B8E' }}>
+        {/* Açık Talepler */}
+        <button
+          onClick={() => goRequests('all')}
+          style={{ ...CARD_BASE, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', borderLeft: '4px solid #003B8E' }}
+        >
           <div style={{ marginBottom: 6 }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Proje İlerlemesi
+              Açık Talepler
             </span>
           </div>
-          <p style={{ margin: '0 0 8px', fontSize: 26, fontWeight: 800, color: '#003B8E', lineHeight: 1 }}>
-            {progressPct}%
-          </p>
-          <div style={{ height: 5, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${Math.min(100, progressPct)}%`, background: '#003B8E', borderRadius: 3, transition: 'width 0.5s' }} />
+          <div style={{ display: 'grid', gap: 4 }}>
+            <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>
+              <strong style={{ color: '#185FA5', fontSize: 20 }}>{stats.prCount}</strong> satın alma
+            </p>
+            <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>
+              <strong style={{ color: '#7C3AED', fontSize: 20 }}>{stats.ticketCount}</strong> ticket
+            </p>
           </div>
-        </div>
+        </button>
 
         {/* Hava Durumu */}
         <div style={{ ...CARD_BASE, borderLeft: '4px solid #0EA5E9' }}>
@@ -270,12 +328,13 @@ export default function SantiyeSefiDashboard({ onTabChange }) {
         {/* Sekme seçici */}
         <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #f1f5f9', padding: '0 18px' }}>
           {[
+            { key: 'all', label: `Tümü (${requestItems.length})` },
             { key: 'satin_alma', label: `Satın Alma (${openPurchaseRequests.length})` },
             { key: 'ticket',     label: `Ticketlar (${openTickets.length})` },
           ].map(tab => (
             <button
               key={tab.key}
-              onClick={() => { setTalepTab(tab.key); setPrLimit(5); setTkLimit(5) }}
+              onClick={() => { setTalepTab(tab.key); setRequestLimit(5) }}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                 fontSize: 13, fontWeight: 600, padding: '10px 16px', whiteSpace: 'nowrap',
@@ -290,136 +349,114 @@ export default function SantiyeSefiDashboard({ onTabChange }) {
         </div>
 
         <div style={{ padding: 16 }}>
-          {/* Satın Alma listesi */}
-          {talepTab === 'satin_alma' && (
-            openPurchaseRequests.length === 0 ? (
-              <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '16px 0', margin: 0 }}>
-                Açık satın alma talebi yok.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {openPurchaseRequests.slice(0, prLimit).map(pr => (
-                  <button key={pr.id} onClick={() => setDetayTalep(pr)}
+          {visibleRequests.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '16px 0', margin: 0 }}>
+              Açık talep bulunmuyor.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {visibleRequests.slice(0, requestLimit).map(item => {
+                const isPurchase = item._type === 'purchase'
+                return (
+                  <button
+                    key={`${item._type}-${item.id}`}
+                    onClick={() => isPurchase ? setDetayTalep(item) : setDetayTicket(item)}
                     style={ITEM_BTN}
                   >
-                    <span style={{ fontSize: 18, flexShrink: 0 }}>🛒</span>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111827', flex: 1, minWidth: 0, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {pr.title}
-                    </p>
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>{isPurchase ? '🛒' : '🎫'}</span>
+                    <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.title || item.description || 'Başlıksız talep'}
+                      </p>
+                      <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8' }}>
+                        {isPurchase ? 'Satın Alma' : 'Ticket'} · {fmtDate(item.created_at)}
+                      </p>
+                    </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <Badge map={PR_URGENCY} value={pr.urgency} />
-                      <Badge map={PR_STATUS} value={pr.status} />
-                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>{fmtDate(pr.created_at)}</span>
+                      {isPurchase ? (
+                        <>
+                          <Badge map={PR_URGENCY} value={item.urgency} />
+                          <Badge map={PR_STATUS} value={item.status} />
+                        </>
+                      ) : (
+                        <>
+                          <Badge map={TK_SEVERITY} value={item.severity} />
+                          <Badge map={TK_STATUS} value={item.status} />
+                        </>
+                      )}
                     </div>
                   </button>
-                ))}
-                {openPurchaseRequests.length > prLimit && (
-                  <button onClick={() => setPrLimit(l => l + 5)} style={LOAD_MORE_BTN}>
-                    Daha Fazla Yükle ({openPurchaseRequests.length - prLimit} kaldı)
-                  </button>
-                )}
-              </div>
-            )
-          )}
-
-          {/* Ticket listesi */}
-          {talepTab === 'ticket' && (
-            openTickets.length === 0 ? (
-              <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '16px 0', margin: 0 }}>
-                Açık ticket yok.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {openTickets.slice(0, tkLimit).map(tk => (
-                  <button key={tk.id} onClick={() => setDetayTicket(tk)}
-                    style={ITEM_BTN}
-                  >
-                    <span style={{ fontSize: 18, flexShrink: 0 }}>🎫</span>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111827', flex: 1, minWidth: 0, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {tk.title}
-                    </p>
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <Badge map={TK_SEVERITY} value={tk.severity} />
-                      <Badge map={TK_STATUS} value={tk.status} />
-                      <span style={{ fontSize: 11, color: '#9CA3AF' }}>{fmtDate(tk.created_at)}</span>
-                    </div>
-                  </button>
-                ))}
-                {openTickets.length > tkLimit && (
-                  <button onClick={() => setTkLimit(l => l + 5)} style={LOAD_MORE_BTN}>
-                    Daha Fazla Yükle ({openTickets.length - tkLimit} kaldı)
-                  </button>
-                )}
-              </div>
-            )
+                )
+              })}
+              {visibleRequests.length > requestLimit && (
+                <button onClick={() => setRequestLimit(l => l + 5)} style={LOAD_MORE_BTN}>
+                  Daha Fazla Yükle ({visibleRequests.length - requestLimit} kaldı)
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Son Günlük Raporlar */}
-      <div style={{ ...CARD_BASE, marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Son Günlük Raporlar</h3>
-          <button onClick={() => onTabChange?.('rapor-listesi')} style={BTN_LINK}>Tümünü Gör →</button>
+      {/* Son Raporlar */}
+      <div style={{
+        ...CARD_BASE, padding: 0, marginBottom: 16, overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '14px 18px', borderBottom: '1px solid #f1f5f9',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+        }}>
+          <div>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', display: 'block' }}>Son Raporlar</span>
+            <span style={{ fontSize: 12, color: '#94a3b8' }}>En son girilen günlük saha raporları</span>
+          </div>
+          <button onClick={() => onTabChange?.('rapor-listesi')} style={BTN_SM_GHOST}>Tümünü Gör</button>
         </div>
 
-        {recentLoading ? (
-          <p style={{ fontSize: 13, color: '#9CA3AF', textAlign: 'center', padding: '16px 0', margin: 0 }}>Yükleniyor…</p>
-        ) : recentReports.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '20px 0', color: '#9CA3AF' }}>
-            <p style={{ fontSize: 13, margin: '0 0 8px' }}>Henüz rapor girilmemiş.</p>
-            <button onClick={() => setShowModal(true)} style={BTN_ACCENT}>İlk Raporu Gir</button>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {recentReports.map(r => {
-              const ss = STATUS_STYLES[r.general_status] || { bg: '#F3F4F6', color: '#6B7280', label: r.general_status || '—' }
-              return (
-                <div key={r.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-                  padding: '10px 14px', background: '#F9FAFB', borderRadius: 10, border: '1px solid #F3F4F6',
-                }}>
-                  <span style={{ fontSize: 18, flexShrink: 0 }}>{WEATHER_EMOJI[r.weather] || '🌡️'}</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: '#374151', flex: 1, minWidth: 80 }}>
-                    {new Date(r.report_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+        <div style={{ padding: 16 }}>
+          {recentReports.length === 0 ? (
+            <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '16px 0', margin: 0 }}>
+              Henüz günlük rapor girilmedi.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {recentReports.slice(0, reportLimit).map(report => (
+                <button
+                  key={report.id}
+                  onClick={() => onEditReport?.(report.id)}
+                  style={ITEM_BTN}
+                >
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>📋</span>
+                  <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111827' }}>
+                      {report.report_date ? new Date(report.report_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Tarihsiz rapor'}
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8' }}>
+                      {report.weather || 'Hava yok'} · {report.worker_count || 0} personel
+                    </p>
+                  </div>
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+                    background: '#EEF2FF', color: '#3730A3', whiteSpace: 'nowrap',
+                  }}>
+                    {report.general_status || 'Durum yok'}
                   </span>
-                  <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: ss.bg, color: ss.color, flexShrink: 0 }}>
-                    {ss.label}
-                  </span>
-                  {r.worker_count > 0 && (
-                    <span style={{ fontSize: 11, color: '#9CA3AF', flexShrink: 0 }}>{r.worker_count} kişi</span>
-                  )}
-                  <button onClick={() => onTabChange?.('rapor-listesi')} style={{ ...BTN_SMALL, marginLeft: 'auto' }}>
-                    Görüntüle
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Saha Fotoğrafları */}
-      <div style={{ marginBottom: 16 }}>
-        <SahaFotograflari projectId={projectId} userId={user?.id} />
+                </button>
+              ))}
+              {recentReports.length > reportLimit && (
+                <button onClick={() => setReportLimit(l => l + 5)} style={LOAD_MORE_BTN}>
+                  Daha Fazla Yükle ({recentReports.length - reportLimit} kaldı)
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Modaller */}
-      {showModal && (
-        <DailyReportModal
-          projectId={projectId}
-          userId={user?.id}
-          onClose={() => setShowModal(false)}
-          onSaved={() => {
-            setShowModal(false)
-            refetch()
-            refetchReports()
-            showToast('Günlük rapor kaydedildi ✓')
-          }}
-        />
-      )}
       {showTicket && (
         <YeniTicketModal
+          defaultProject={project ? { ...project, location: project.location || weatherCity } : undefined}
           onClose={() => setShowTicket(false)}
           onSaved={() => { setShowTicket(false); refetch(); showToast('Ticket oluşturuldu ✓') }}
         />
@@ -440,7 +477,7 @@ export default function SantiyeSefiDashboard({ onTabChange }) {
       )}
       {detayTalep && (
         <TalepDetayModal
-          talepId={detayTalep.id}
+          request={detayTalep}
           onClose={() => { setDetayTalep(null); refetch() }}
         />
       )}
@@ -448,21 +485,14 @@ export default function SantiyeSefiDashboard({ onTabChange }) {
   )
 }
 
-const BTN_ACCENT = {
-  background: '#003B8E', color: '#fff', border: 'none', borderRadius: 8,
-  padding: '9px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-}
 const BTN_SM_PRIMARY = {
   background: '#003B8E', color: '#fff', border: 'none', borderRadius: 6,
   padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
 }
-const BTN_LINK = {
-  background: 'none', color: '#003B8E', border: 'none', cursor: 'pointer',
-  fontSize: 12, fontWeight: 600, fontFamily: 'inherit', padding: 0,
-}
-const BTN_SMALL = {
-  background: '#EBF5FF', color: '#003B8E', border: '1px solid #BFDBFE',
-  borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+const BTN_SM_GHOST = {
+  background: '#fff', color: '#003B8E', border: '1px solid #BFDBFE', borderRadius: 6,
+  padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+  whiteSpace: 'nowrap',
 }
 const ITEM_BTN = {
   background: '#F9FAFB', border: '1px solid #F3F4F6', borderRadius: 10,
