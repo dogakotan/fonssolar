@@ -10,13 +10,12 @@ const MACHINE_LABELS = {
   gayk_delici: 'Gayk Delici', vinç: 'Vinç', kamyon: 'Kamyon', traktör: 'Traktör',
 }
 const WEATHER_OPTIONS = ['açık', 'parçalı bulutlu', 'bulutlu', 'yağmurlu', 'karlı', 'fırtınalı']
-const WEATHER_EMOJI   = { 0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️', 45: '🌫️', 48: '🌫️',
-  51: '🌦️', 53: '🌦️', 55: '🌧️', 61: '🌧️', 63: '🌧️', 65: '🌧️',
-  71: '🌨️', 73: '🌨️', 75: '❄️', 80: '🌦️', 81: '🌦️', 82: '⛈️', 95: '⛈️', 99: '⛈️' }
-const WC_TO_ENUM = { 0: 'açık', 1: 'parçalı bulutlu', 2: 'parçalı bulutlu', 3: 'bulutlu',
+const WC_TO_ENUM = {
+  0: 'açık', 1: 'parçalı bulutlu', 2: 'parçalı bulutlu', 3: 'bulutlu',
   51: 'yağmurlu', 53: 'yağmurlu', 55: 'yağmurlu', 61: 'yağmurlu', 63: 'yağmurlu', 65: 'yağmurlu',
   80: 'yağmurlu', 81: 'yağmurlu', 82: 'yağmurlu', 71: 'karlı', 73: 'karlı', 75: 'karlı',
-  95: 'fırtınalı', 99: 'fırtınalı' }
+  95: 'fırtınalı', 99: 'fırtınalı',
+}
 const CATEGORY_LABELS = {
   mobilizasyon: 'Mobilizasyon', mekanik: 'Mekanik', elektrik_dc: 'Elektrik DC',
   elektrik_ac: 'Elektrik AC', elektrik_og: 'Elektrik OG', topraklama: 'Topraklama',
@@ -39,14 +38,25 @@ function initMachinery() {
   return m
 }
 
-export default function DailyReportModal({ projectId, userId, profileId, onClose, onSaved }) {
-  const today = todayStr()
+function useIsMobile(bp = 680) {
+  const [mobile, setMobile] = useState(() => window.innerWidth < bp)
+  useEffect(() => {
+    const fn = () => setMobile(window.innerWidth < bp)
+    window.addEventListener('resize', fn)
+    return () => window.removeEventListener('resize', fn)
+  }, [bp])
+  return mobile
+}
 
-  const [loading, setLoading]       = useState(true)
-  const [saving, setSaving]         = useState(false)
-  const [toast, setToast]           = useState('')
-  const [error, setError]           = useState('')
-  const [reportId, setReportId]     = useState(null)
+export default function DailyReportModal({ projectId, userId, onClose, onSaved }) {
+  const today    = todayStr()
+  const isMobile = useIsMobile()
+
+  const [loading, setLoading]   = useState(true)
+  const [saving, setSaving]     = useState(false)
+  const [toast, setToast]       = useState('')
+  const [error, setError]       = useState('')
+  const [activeShift, setActiveShift] = useState(SHIFTS[0])
 
   const [form, setForm] = useState({
     general_status: 'normal',
@@ -54,15 +64,12 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
     weather_note:   '',
     notes:          '',
   })
-  const [personnel, setPersonnel] = useState(initPersonnel)
-  const [machinery, setMachinery] = useState(initMachinery)
+  const [personnel, setPersonnel]         = useState(initPersonnel)
+  const [machinery, setMachinery]         = useState(initMachinery)
   const [progressItems, setProgressItems] = useState([])
   const [existingQtys, setExistingQtys]   = useState({})
 
-  useEffect(() => {
-    loadAll()
-    fetchWeather()
-  }, [])
+  useEffect(() => { loadAll(); fetchWeather() }, [])
 
   async function loadAll() {
     setLoading(true)
@@ -78,63 +85,48 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
 
     const report = reportRes.data
     if (report) {
-      setReportId(report.id)
       setForm({
         general_status: report.general_status || 'normal',
         weather:        report.weather        || 'açık',
         weather_note:   report.weather_note   || '',
         notes:          report.notes          || '',
       })
-
       const [persRes, machRes, progRes] = await Promise.all([
         supabase.from('personnel_log_entries').select('shift, department, count').eq('report_id', report.id),
         supabase.from('machinery_logs').select('machine_type, count, status, notes').eq('report_id', report.id),
         supabase.from('progress_daily').select('item_id, id, qty_added').eq('report_id', report.id),
       ])
-
       const pState = initPersonnel()
       ;(persRes.data || []).forEach(e => { pState[`${e.shift}|${e.department}`] = e.count })
       setPersonnel(pState)
-
       const mState = initMachinery()
       ;(machRes.data || []).forEach(m => {
         if (mState[m.machine_type]) mState[m.machine_type] = { count: m.count, status: m.status, notes: m.notes || '' }
       })
       setMachinery(mState)
-
       const eQtys = {}
       ;(progRes.data || []).forEach(e => { eQtys[e.item_id] = { id: e.id, qty: Number(e.qty_added) } })
       setExistingQtys(eQtys)
-
-      const items = (itemsRes.data || []).map(item => ({
-        ...item,
-        qty_today: eQtys[item.id]?.qty || 0,
-        note: '',
-      }))
-      setProgressItems(items)
+      setProgressItems((itemsRes.data || []).map(item => ({
+        ...item, qty_today: eQtys[item.id]?.qty || 0, note: '',
+      })))
     } else {
       setProgressItems((itemsRes.data || []).map(item => ({ ...item, qty_today: 0, note: '' })))
     }
-
     setLoading(false)
   }
 
   async function fetchWeather() {
     try {
-      const res = await fetch('https://api.open-meteo.com/v1/forecast?latitude=38.6823&longitude=29.4082&current=weathercode&timezone=Europe/Istanbul')
+      const res  = await fetch('https://api.open-meteo.com/v1/forecast?latitude=38.6823&longitude=29.4082&current=weathercode&timezone=Europe/Istanbul')
       const data = await res.json()
-      const wc = data?.current?.weathercode
-      if (wc !== undefined) {
-        const mapped = WC_TO_ENUM[wc] || 'açık'
-        setForm(f => ({ ...f, weather: mapped }))
-      }
+      const wc   = data?.current?.weathercode
+      if (wc !== undefined) setForm(f => ({ ...f, weather: WC_TO_ENUM[wc] || 'açık' }))
     } catch {}
   }
 
   function updateProgressQty(id, value) {
-    setProgressItems(prev => prev.map(item =>
-      item.id === id ? { ...item, qty_today: Number(value) || 0 } : item
-    ))
+    setProgressItems(prev => prev.map(item => item.id === id ? { ...item, qty_today: Number(value) || 0 } : item))
   }
   function updateProgressNote(id, note) {
     setProgressItems(prev => prev.map(item => item.id === id ? { ...item, note } : item))
@@ -174,7 +166,6 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
           note:      item.note || '',
         })),
       })
-
       if (rpcErr) throw rpcErr
       setToast('Rapor kaydedildi ✓')
       setTimeout(() => { onSaved?.(); onClose() }, 900)
@@ -185,9 +176,27 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
     }
   }
 
+  /* Responsive styles */
+  const overlayStyle = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+    display: 'flex',
+    alignItems: isMobile ? 'flex-start' : 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: isMobile ? 0 : 16,
+  }
+  const panelStyle = isMobile ? {
+    background: '#fff', display: 'flex', flexDirection: 'column',
+    width: '100%', height: '100%', overflow: 'hidden',
+  } : {
+    background: '#fff', borderRadius: 14, display: 'flex', flexDirection: 'column',
+    width: '95vw', maxWidth: 1060, maxHeight: '92vh',
+    boxShadow: '0 25px 80px rgba(0,0,0,0.25)',
+  }
+
   if (loading) return (
-    <div style={OVERLAY}>
-      <div style={{ ...PANEL, display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}>
+    <div style={overlayStyle}>
+      <div style={{ ...panelStyle, alignItems: 'center', justifyContent: 'center', minHeight: 200 }}>
         <p style={{ color: '#9CA3AF', fontSize: 14 }}>Yükleniyor…</p>
       </div>
     </div>
@@ -201,48 +210,59 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
   })
 
   return (
-    <div style={OVERLAY} onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={PANEL}>
+    <div style={overlayStyle} onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={panelStyle}>
+
         {/* Header */}
-        <div style={{ padding: '18px 24px', borderBottom: '1px solid #F3F4F6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{
+          padding: isMobile ? '14px 16px' : '18px 24px',
+          borderBottom: '1px solid #F3F4F6',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0,
+        }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#111827' }}>Günlük Saha Raporu</h2>
+            <h2 style={{ margin: 0, fontSize: isMobile ? 15 : 17, fontWeight: 700, color: '#111827' }}>Günlük Saha Raporu</h2>
             <p style={{ margin: '2px 0 0', fontSize: 12, color: '#9CA3AF' }}>
               {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
-          <button onClick={onClose} style={CLOSE_BTN}>×</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, color: '#9CA3AF', cursor: 'pointer', lineHeight: 1, padding: 4, flexShrink: 0 }}>×</button>
         </div>
 
         {toast && (
-          <div style={{ background: '#D1FAE5', color: '#065F46', padding: '10px 24px', fontSize: 13, fontWeight: 600 }}>
+          <div style={{ background: '#D1FAE5', color: '#065F46', padding: '10px 24px', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
             {toast}
           </div>
         )}
 
         {/* Body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div style={{
+          flex: 1, overflowY: 'auto', padding: isMobile ? 14 : 24,
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+          gap: isMobile ? 16 : 24,
+          alignContent: 'start',
+        }}>
 
-          {/* LEFT COLUMN */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* ── LEFT COLUMN ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: isMobile ? 16 : 20 }}>
 
             {/* Genel Durum */}
             <div>
               <p style={SECTION_TITLE}>Genel Durum</p>
-              <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {[
-                  { value: 'normal',  label: '🟢 Normal Seyir',         bg: '#D1FAE5', color: '#065F46' },
-                  { value: 'dikkat',  label: '🟡 Dikkat',               bg: '#FEF3C7', color: '#92400E' },
-                  { value: 'kritik',  label: '🔴 Kritik',               bg: '#FEE2E2', color: '#991B1B' },
+                  { value: 'normal', label: '🟢 Normal',  bg: '#D1FAE5', color: '#065F46' },
+                  { value: 'dikkat', label: '🟡 Dikkat',  bg: '#FEF3C7', color: '#92400E' },
+                  { value: 'kritik', label: '🔴 Kritik',  bg: '#FEE2E2', color: '#991B1B' },
                 ].map(opt => (
                   <button
                     key={opt.value}
                     onClick={() => setForm(f => ({ ...f, general_status: opt.value }))}
                     style={{
-                      flex: 1, padding: '8px 6px', borderRadius: 8, border: '2px solid',
+                      flex: 1, minWidth: 90, padding: '8px 6px', borderRadius: 8, border: '2px solid',
                       borderColor: form.general_status === opt.value ? opt.color : '#E5E7EB',
-                      background: form.general_status === opt.value ? opt.bg : '#F9FAFB',
-                      color: form.general_status === opt.value ? opt.color : '#6B7280',
+                      background:  form.general_status === opt.value ? opt.bg : '#F9FAFB',
+                      color:       form.general_status === opt.value ? opt.color : '#6B7280',
                       fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                       transition: 'all 0.1s',
                     }}
@@ -259,7 +279,42 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
                   Toplam: {totalPersonnel} kişi
                 </span>
               </p>
-              <div style={{ overflowX: 'auto' }}>
+
+              {isMobile ? (
+                /* Mobile: vardiya seçici + 2x2 ızgara */
+                <div>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                    {SHIFTS.map(s => (
+                      <button key={s} onClick={() => setActiveShift(s)} style={{
+                        padding: '6px 14px', borderRadius: 20, border: '1px solid',
+                        borderColor: activeShift === s ? '#185FA5' : '#E5E7EB',
+                        background:  activeShift === s ? '#EBF5FF' : '#F9FAFB',
+                        color:       activeShift === s ? '#185FA5' : '#6B7280',
+                        fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                      }}>{s}</button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    {DEPARTMENTS.map(dept => {
+                      const key = `${activeShift}|${dept}`
+                      return (
+                        <div key={dept}>
+                          <label style={{ fontSize: 11, color: '#6B7280', display: 'block', marginBottom: 4, fontWeight: 500 }}>
+                            {dept.charAt(0).toUpperCase() + dept.slice(1)}
+                          </label>
+                          <input
+                            type="number" min={0}
+                            value={personnel[key] || 0}
+                            onChange={e => setPersonnelCell(key, e.target.value)}
+                            style={{ width: '100%', boxSizing: 'border-box', textAlign: 'center', border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 6px', fontSize: 15, fontFamily: 'inherit', outline: 'none' }}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* Desktop: tablo */
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr>
@@ -288,41 +343,73 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
                     ))}
                   </tbody>
                 </table>
-              </div>
+              )}
             </div>
 
             {/* İş Makineleri */}
             <div>
               <p style={SECTION_TITLE}>İş Makineleri</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {MACHINE_TYPES.map(type => (
-                  <div key={type} style={{ display: 'grid', gridTemplateColumns: '90px 50px 110px 1fr', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontSize: 12, color: '#374151', fontWeight: 500 }}>{MACHINE_LABELS[type]}</span>
-                    <input
-                      type="number" min={0}
-                      value={machinery[type].count}
-                      onChange={e => setMachineryField(type, 'count', e.target.value)}
-                      style={{ ...NUM_INPUT, width: '100%' }}
-                    />
-                    <select
-                      value={machinery[type].status}
-                      onChange={e => setMachineryField(type, 'status', e.target.value)}
-                      style={{ ...SELECT, fontSize: 11 }}
-                    >
-                      <option value="çalışıyor">Çalışıyor</option>
-                      <option value="arızalı">Arızalı</option>
-                      <option value="beklemede">Beklemede</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={machinery[type].notes}
-                      onChange={e => setMachineryField(type, 'notes', e.target.value)}
-                      placeholder="not..."
-                      style={{ ...TEXT_INPUT, fontSize: 11 }}
-                    />
-                  </div>
-                ))}
-              </div>
+              {isMobile ? (
+                /* Mobile: 2 kolon kart ızgara */
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {MACHINE_TYPES.map(type => (
+                    <div key={type} style={{ background: '#F9FAFB', border: '1px solid #F3F4F6', borderRadius: 8, padding: '10px' }}>
+                      <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                        {MACHINE_LABELS[type]}
+                      </p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                        <span style={{ fontSize: 11, color: '#6B7280', flexShrink: 0 }}>Adet:</span>
+                        <input
+                          type="number" min={0}
+                          value={machinery[type].count}
+                          onChange={e => setMachineryField(type, 'count', e.target.value)}
+                          style={{ width: 48, textAlign: 'center', border: '1px solid #D1D5DB', borderRadius: 6, padding: '4px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+                        />
+                      </div>
+                      <select
+                        value={machinery[type].status}
+                        onChange={e => setMachineryField(type, 'status', e.target.value)}
+                        style={{ ...SELECT, fontSize: 11 }}
+                      >
+                        <option value="çalışıyor">Çalışıyor</option>
+                        <option value="arızalı">Arızalı</option>
+                        <option value="beklemede">Beklemede</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Desktop: 4 kolon satır */
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {MACHINE_TYPES.map(type => (
+                    <div key={type} style={{ display: 'grid', gridTemplateColumns: '90px 50px 110px 1fr', gap: 6, alignItems: 'center' }}>
+                      <span style={{ fontSize: 12, color: '#374151', fontWeight: 500 }}>{MACHINE_LABELS[type]}</span>
+                      <input
+                        type="number" min={0}
+                        value={machinery[type].count}
+                        onChange={e => setMachineryField(type, 'count', e.target.value)}
+                        style={{ ...NUM_INPUT, width: '100%' }}
+                      />
+                      <select
+                        value={machinery[type].status}
+                        onChange={e => setMachineryField(type, 'status', e.target.value)}
+                        style={{ ...SELECT, fontSize: 11 }}
+                      >
+                        <option value="çalışıyor">Çalışıyor</option>
+                        <option value="arızalı">Arızalı</option>
+                        <option value="beklemede">Beklemede</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={machinery[type].notes}
+                        onChange={e => setMachineryField(type, 'notes', e.target.value)}
+                        placeholder="not..."
+                        style={{ ...TEXT_INPUT, fontSize: 11 }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Hava Durumu */}
@@ -335,7 +422,7 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
                 type="text"
                 value={form.weather_note}
                 onChange={e => setForm(f => ({ ...f, weather_note: e.target.value }))}
-                placeholder="Hava durumu notu (opsiyonel)..."
+                placeholder="Hava durumu notu (opsiyonel)…"
                 style={{ ...TEXT_INPUT, marginTop: 8 }}
               />
             </div>
@@ -346,14 +433,14 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
               <textarea
                 value={form.notes}
                 onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-                placeholder="Bugün yapılan işler, önemli gelişmeler, sorunlar..."
-                rows={5}
+                placeholder="Bugün yapılan işler, önemli gelişmeler, sorunlar…"
+                rows={isMobile ? 3 : 5}
                 style={{ ...TEXT_INPUT, resize: 'vertical' }}
               />
             </div>
           </div>
 
-          {/* RIGHT COLUMN — Progress Items */}
+          {/* ── RIGHT COLUMN — İlerleme ── */}
           <div>
             <p style={{ ...SECTION_TITLE, marginBottom: 4 }}>İlerleme Girişi</p>
             <p style={{ margin: '0 0 14px', fontSize: 11, color: '#9CA3AF' }}>Bugün tamamlanan miktarları gir</p>
@@ -371,37 +458,38 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
                     <span style={{
                       background: CATEGORY_COLORS[cat] || '#9CA3AF',
                       color: '#fff', fontSize: 10, fontWeight: 700,
-                      padding: '2px 8px', borderRadius: 10, textTransform: 'uppercase', letterSpacing: '0.5px',
+                      padding: '2px 8px', borderRadius: 10,
+                      textTransform: 'uppercase', letterSpacing: '0.5px',
                     }}>
                       {CATEGORY_LABELS[cat] || cat}
                     </span>
                   </div>
                   {items.map(item => {
-                    const existQty = existingQtys[item.id]?.qty || 0
+                    const existQty  = existingQtys[item.id]?.qty || 0
                     const prevTotal = (Number(item.total_progress) || 0) - existQty
-                    const kalan = (Number(item.target_qty) || 0) - prevTotal - (Number(item.qty_today) || 0)
-                    const isOver = kalan < 0
+                    const kalan     = (Number(item.target_qty) || 0) - prevTotal - (Number(item.qty_today) || 0)
+                    const isOver    = kalan < 0
                     return (
                       <div key={item.id} style={{
-                        background: '#F9FAFB', borderRadius: 8, padding: '10px 12px',
-                        marginBottom: 8, border: isOver ? '1px solid #FECACA' : '1px solid #F3F4F6',
+                        background: '#F9FAFB', borderRadius: 8, padding: '10px 12px', marginBottom: 8,
+                        border: isOver ? '1px solid #FECACA' : '1px solid #F3F4F6',
                       }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6, flexWrap: 'wrap', gap: 4 }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: '#111827' }}>{item.name}</span>
-                          <span style={{ fontSize: 10, color: '#9CA3AF', whiteSpace: 'nowrap', marginLeft: 8 }}>
+                          <span style={{ fontSize: 10, color: '#9CA3AF', whiteSpace: 'nowrap' }}>
                             H:{item.target_qty} | Y:{prevTotal.toFixed(1)} | K:{Math.max(0, (Number(item.target_qty) - prevTotal)).toFixed(1)} {item.unit}
                           </span>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 11, color: '#6B7280' }}>Bugün:</span>
+                          <span style={{ fontSize: 11, color: '#6B7280', flexShrink: 0 }}>Bugün:</span>
                           <input
                             type="number" min={0} step="0.01"
                             value={item.qty_today || ''}
                             onChange={e => updateProgressQty(item.id, e.target.value)}
                             style={{
                               width: 80, border: `1px solid ${isOver ? '#FCA5A5' : '#D1D5DB'}`,
-                              borderRadius: 6, padding: '4px 8px', fontSize: 13, fontFamily: 'inherit',
-                              outline: 'none', background: isOver ? '#FFF5F5' : '#fff',
+                              borderRadius: 6, padding: '5px 8px', fontSize: 13, fontFamily: 'inherit',
+                              outline: 'none', background: isOver ? '#FFF5F5' : '#fff', textAlign: 'center',
                             }}
                           />
                           <span style={{ fontSize: 11, color: '#9CA3AF' }}>{item.unit}</span>
@@ -420,7 +508,7 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
                               type="text"
                               value={item.note}
                               onChange={e => updateProgressNote(item.id, e.target.value)}
-                              placeholder="Aşma sebebini açıkla..."
+                              placeholder="Aşma sebebini açıkla…"
                               style={{ ...TEXT_INPUT, fontSize: 11 }}
                             />
                           </div>
@@ -436,13 +524,18 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
 
         {/* Footer */}
         <div style={{
-          padding: '14px 24px', borderTop: '1px solid #F3F4F6',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0,
-          background: '#FAFAFA',
+          padding: isMobile ? '12px 16px' : '14px 24px',
+          borderTop: '1px solid #F3F4F6',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          flexShrink: 0, background: '#FAFAFA',
+          gap: 10, flexWrap: 'wrap',
         }}>
-          {error && <p style={{ color: '#EF4444', fontSize: 12, margin: 0 }}>{error}</p>}
-          {!error && <span style={{ fontSize: 12, color: '#9CA3AF' }}>Toplam personel: {totalPersonnel} kişi</span>}
-          <div style={{ display: 'flex', gap: 10 }}>
+          {error ? (
+            <p style={{ color: '#EF4444', fontSize: 12, margin: 0, flex: 1 }}>{error}</p>
+          ) : (
+            <span style={{ fontSize: 12, color: '#9CA3AF' }}>Toplam personel: {totalPersonnel} kişi</span>
+          )}
+          <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
             <button onClick={onClose} disabled={saving} style={BTN_SECONDARY}>İptal</button>
             <button onClick={handleSave} disabled={saving} style={BTN_PRIMARY}>
               {saving ? 'Kaydediliyor…' : '💾 Raporu Kaydet'}
@@ -454,19 +547,6 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
   )
 }
 
-const OVERLAY = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16,
-}
-const PANEL = {
-  background: '#fff', borderRadius: 14, display: 'flex', flexDirection: 'column',
-  width: '95vw', maxWidth: 1060, maxHeight: '92vh',
-  boxShadow: '0 25px 80px rgba(0,0,0,0.25)',
-}
-const CLOSE_BTN = {
-  background: 'none', border: 'none', fontSize: 24, color: '#9CA3AF',
-  cursor: 'pointer', lineHeight: 1, padding: 0, flexShrink: 0,
-}
 const SECTION_TITLE = {
   margin: '0 0 10px', fontSize: 12, fontWeight: 700, color: '#374151',
   textTransform: 'uppercase', letterSpacing: '0.5px',
@@ -488,7 +568,7 @@ const TEXT_INPUT = {
 const SELECT = {
   width: '100%', border: '1px solid #D1D5DB', borderRadius: 8,
   padding: '7px 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none',
-  background: '#fff', cursor: 'pointer',
+  background: '#fff', cursor: 'pointer', boxSizing: 'border-box',
 }
 const BTN_PRIMARY = {
   background: '#003B8E', color: '#fff', border: 'none', borderRadius: 8,
