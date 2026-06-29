@@ -1,18 +1,21 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 
 export default function TicketStats({ refreshKey }) {
+  const { role, projectId } = useAuth()
   const [c, setC] = useState({ gonderildi: 0, islemde: 0, bugun: 0, cozuldu: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       const today = new Date().toISOString().split('T')[0]
+      const scope = (query) => role === 'santiye_sefi' && projectId ? query.eq('project_id', projectId) : query
       const [gonderildi, islemde, bugun, cozuldu] = await Promise.all([
-        supabase.from('tickets').select('id', { count: 'exact', head: true }).in('status', ['gönderildi', 'açık']),
-        supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('status', 'işlemde'),
-        supabase.from('tickets').select('id', { count: 'exact', head: true }).gte('created_at', today),
-        supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('status', 'kapatıldı'),
+        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).in('status', ['gönderildi', 'açık'])),
+        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('status', 'işlemde')),
+        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).gte('created_at', today)),
+        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('status', 'kapatıldı')),
       ])
       setC({
         gonderildi: gonderildi.count ?? 0,
@@ -23,7 +26,7 @@ export default function TicketStats({ refreshKey }) {
       setLoading(false)
     }
     load()
-  }, [refreshKey])
+  }, [refreshKey, role, projectId])
 
   const cards = [
     { label: 'Gönderildi',    value: c.gonderildi, accent: '#1D4ED8', note: 'Bekliyor' },

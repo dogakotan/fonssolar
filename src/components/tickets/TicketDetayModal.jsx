@@ -54,7 +54,8 @@ function Badge({ map, value }) {
 
 export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }) {
   const { user, isAdmin } = useAuth()
-  const [ticket]                            = useState(initial)
+  const [ticket, setTicket]                 = useState(initial)
+  const [loadingTicket, setLoadingTicket]   = useState(false)
   const [notifications, setNotifications]  = useState([])
   const [history, setHistory]              = useState([])
   const [commentText, setCommentText]      = useState('')
@@ -63,15 +64,42 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
   const [pendingAction, setPendingAction]  = useState(null)
   const [confirmVisible, setConfirmVisible] = useState(false)
 
-  useEffect(() => { fetchNotifications(); fetchHistory() }, [ticket.id])
+  useEffect(() => {
+    if (!initial?.id) return
+    fetchTicket()
+    fetchNotifications()
+    fetchHistory()
+  }, [initial?.id])
+
+  async function fetchTicket() {
+    setLoadingTicket(true)
+    try {
+      const { data } = await supabase
+        .from('tickets')
+        .select('*, projects(name), creator:profiles!tickets_created_by_fkey(full_name)')
+        .eq('id', initial.id)
+        .single()
+      if (data) setTicket(data)
+    } finally {
+      setLoadingTicket(false)
+    }
+  }
 
   async function fetchNotifications() {
     const { data } = await supabase
       .from('ticket_comments')
       .select('*, profiles!user_id(full_name)')
       .eq('ticket_id', ticket.id)
-      .eq('is_notification', true)
       .order('created_at', { ascending: true })
+    if (!data) {
+      const fallback = await supabase
+        .from('ticket_comments')
+        .select('*, profiles!created_by(full_name)')
+        .eq('ticket_id', initial.id)
+        .order('created_at', { ascending: true })
+      setNotifications(fallback.data || [])
+      return
+    }
     setNotifications(data || [])
   }
 
@@ -79,7 +107,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
     const { data } = await supabase
       .from('ticket_history')
       .select('*, profiles!changed_by(full_name)')
-      .eq('ticket_id', ticket.id)
+      .eq('ticket_id', initial.id)
       .order('created_at', { ascending: true })
     setHistory(data || [])
   }
@@ -132,6 +160,8 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
     onClose()
   }
 
+  if (!ticket) return null
+
   const ca       = CATEGORY[ticket.category] || CATEGORY['genel']
   const isActive = ticket.status === 'gönderildi' || ticket.status === 'açık' || ticket.status === 'işlemde'
 
@@ -167,6 +197,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
             <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#111827', lineHeight: 1.3 }}>
               {ticket.title || ticket.description}
             </h2>
+            {loadingTicket && <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9CA3AF' }}>Detaylar yükleniyor…</p>}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#9CA3AF', flexShrink: 0, lineHeight: 1 }}>×</button>
         </div>
@@ -188,10 +219,10 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
             {/* Bildirimler */}
             <div>
               <p style={{ fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 12px' }}>
-                Bildirimler {notifications.length > 0 && `(${notifications.length})`}
+                Yorumlar {notifications.length > 0 && `(${notifications.length})`}
               </p>
               {notifications.length === 0 ? (
-                <p style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 12 }}>Henüz bildirim yok.</p>
+                <p style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 12 }}>Henüz yorum yok.</p>
               ) : (
                 <div style={{ marginBottom: 12 }}>
                   {notifications.map(c => (
@@ -199,7 +230,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                       <Avatar name={c.profiles?.full_name} />
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{c.profiles?.full_name || 'Yönetici'}</span>
+                          <span style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{c.profiles?.full_name || (c.sent_by_admin ? 'Yönetici' : 'Kullanıcı')}</span>
                           <span style={{ fontSize: 11, color: '#9CA3AF' }}>{fmtDateTime(c.created_at)}</span>
                         </div>
                         <p style={{ fontSize: 13, color: '#374151', margin: 0, lineHeight: 1.55, background: '#EFF6FF', borderRadius: 8, padding: '8px 12px', borderLeft: '3px solid #185FA5' }}>

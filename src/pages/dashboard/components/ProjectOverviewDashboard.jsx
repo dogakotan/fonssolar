@@ -25,6 +25,20 @@ const RISK_BADGE = {
   dusuk: 'blue',
 }
 
+const WEATHER_META = {
+  'açık': { label: 'Açık', emoji: '☀️' },
+  acik: { label: 'Açık', emoji: '☀️' },
+  'parçalı bulutlu': { label: 'Parçalı Bulutlu', emoji: '🌤️' },
+  'parcali bulutlu': { label: 'Parçalı Bulutlu', emoji: '🌤️' },
+  bulutlu: { label: 'Bulutlu', emoji: '☁️' },
+  'yağmurlu': { label: 'Yağmurlu', emoji: '🌧️' },
+  yagmurlu: { label: 'Yağmurlu', emoji: '🌧️' },
+  'karlı': { label: 'Karlı', emoji: '❄️' },
+  karli: { label: 'Karlı', emoji: '❄️' },
+  'fırtınalı': { label: 'Fırtınalı', emoji: '⛈️' },
+  firtinali: { label: 'Fırtınalı', emoji: '⛈️' },
+}
+
 function clamp(n, min = 0, max = 100) {
   return Math.min(max, Math.max(min, Number(n || 0)))
 }
@@ -41,6 +55,23 @@ function fmtMoney(value) {
 function fmtNumber(value, suffix = '') {
   if (value === null || value === undefined || value === '') return '—'
   return `${Number(value).toLocaleString('tr-TR')}${suffix}`
+}
+
+function normalizeWeatherKey(value) {
+  return String(value || '')
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replaceAll('ı', 'i')
+    .replaceAll('ğ', 'g')
+    .replaceAll('ü', 'u')
+    .replaceAll('ş', 's')
+    .replaceAll('ö', 'o')
+    .replaceAll('ç', 'c')
+}
+
+function getWeatherMeta(value) {
+  const direct = String(value || '').trim().toLocaleLowerCase('tr-TR')
+  return WEATHER_META[direct] || WEATHER_META[normalizeWeatherKey(value)] || { label: value || 'Kayıt yok', emoji: '🌡️' }
 }
 
 function getRange(dateText, period) {
@@ -149,9 +180,12 @@ function normalizePurchase(pr) {
   }
 }
 
-function ProjectWeatherCard({ location, lostDays }) {
+function ProjectWeatherCard({ location, lostDays, reportWeather }) {
   const city = location ? location.split('/')[0].split(',')[0].trim() : ''
-  const weather = useWeather(city || null)
+  const hasStoredWeather = Boolean(reportWeather?.weather)
+  const weather = useWeather(hasStoredWeather ? null : city || null)
+  const storedWeather = hasStoredWeather ? getWeatherMeta(reportWeather.weather) : null
+  const storedDate = reportWeather?.report_date ? fmtDate(reportWeather.report_date) : null
 
   return (
     <div className="card project-overview-card project-weather-card">
@@ -159,7 +193,27 @@ function ProjectWeatherCard({ location, lostDays }) {
         <h3>Hava Durumu</h3>
         <span>{city || 'Konum bilgisi yok'}</span>
       </div>
-      {weather.loading ? (
+      {hasStoredWeather ? (
+        <>
+          <div className="project-weather-main">
+            <span className="project-weather-emoji">{storedWeather.emoji}</span>
+            <div>
+              <strong style={{ fontSize: '1.35rem' }}>{storedWeather.label}</strong>
+              <p>{storedDate ? `${storedDate} raporu` : 'Günlük rapor kaydı'}</p>
+            </div>
+            {reportWeather.weather_note ? (
+              <div className="project-weather-meta">
+                <span>{reportWeather.weather_note}</span>
+              </div>
+            ) : null}
+          </div>
+          <div className="project-weather-tomorrow">
+            <span>Kaynak</span>
+            <strong>Supabase günlük rapor</strong>
+            <small>Seçili tarih aralığındaki son rapor verisi</small>
+          </div>
+        </>
+      ) : weather.loading ? (
         <div className="project-weather-empty">Hava yükleniyor…</div>
       ) : weather.error || !weather.current ? (
         <div className="project-weather-empty">Hava durumu alınamadı</div>
@@ -197,14 +251,17 @@ export default function ProjectOverviewDashboard({
   filterDate,
   reportPeriod,
   onGoTab,
+  progressSummary: progressSummaryProp,
 }) {
   const [loading, setLoading] = useState(true)
   const [projectDetails, setProjectDetails] = useState(null)
+  const [progressSummary, setProgressSummary] = useState(null)
+  const [periodProgress, setPeriodProgress] = useState(null)
+  const [taskProgressByDate, setTaskProgressByDate] = useState({})
   const [dailyReports, setDailyReports] = useState([])
   const [personnel, setPersonnel] = useState([])
   const [machinery, setMachinery] = useState([])
   const [dailyTasks, setDailyTasks] = useState([])
-  const [progressItemRows, setProgressItemRows] = useState([])
   const [purchases, setPurchases] = useState([])
   const [budgetLines, setBudgetLines] = useState([])
   const [invoices, setInvoices] = useState([])
@@ -224,7 +281,7 @@ export default function ProjectOverviewDashboard({
       const endOfRange = `${range.end}T23:59:59`
       const reportsRes = await supabase
         .from('daily_reports')
-        .select('id, report_date, weather, notes, prepared_by')
+        .select('id, report_date, weather, weather_note, notes, created_by, worker_count')
         .eq('project_id', projectId)
         .gte('report_date', range.start)
         .lte('report_date', range.end)
@@ -232,12 +289,12 @@ export default function ProjectOverviewDashboard({
 
       const reports = reportsRes.data || []
       const reportIds = reports.map(r => r.id)
+      const creatorIds = [...new Set(reports.map(r => r.created_by).filter(Boolean))]
 
       const [
         personnelRes,
         machineryRes,
         dailyTasksRes,
-        progressItemsRes,
         purchaseRes,
         budgetRes,
         invoiceRes,
@@ -245,6 +302,10 @@ export default function ProjectOverviewDashboard({
         projectRes,
         ticketRes,
         photoRes,
+        creatorsRes,
+        progressSummaryRes,
+        periodProgressRes,
+        progressItemsRes,
       ] = await Promise.all([
         reportIds.length
           ? supabase.from('personnel_log_entries').select('report_id, shift, department, count').in('report_id', reportIds)
@@ -255,22 +316,6 @@ export default function ProjectOverviewDashboard({
         reportIds.length
           ? supabase.from('daily_tasks').select('report_id, type, description, order_index').in('report_id', reportIds).order('order_index')
           : Promise.resolve({ data: [] }),
-        supabase
-          .from('progress_items')
-          .select(`
-            id,
-            name,
-            category,
-            target_qty,
-            unit,
-            total_progress,
-            progress_daily (
-              qty_added,
-              report:daily_reports!report_id (report_date)
-            )
-          `)
-          .eq('project_id', projectId)
-          .order('order_index', { ascending: true }),
         supabase.from('purchase_requests').select('id, title, request_no, description, status, delivery_date, required_date, created_at').eq('project_id', projectId).lte('created_at', endOfRange).order('created_at', { ascending: false }).limit(6),
         supabase.from('budget_lines').select('id, category, planned_amount').eq('project_id', projectId),
         supabase.from('invoices').select('id, total_amount, amount, status, created_at, invoice_date').eq('project_id', projectId),
@@ -278,15 +323,66 @@ export default function ProjectOverviewDashboard({
         supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
         supabase.from('tickets').select('id, title, severity, status, created_at').eq('project_id', projectId).neq('status', 'kapatıldı').order('created_at', { ascending: false }).limit(8),
         supabase.from('daily_report_photos').select('id, storage_path, report_date, created_at').eq('project_id', projectId).order('created_at', { ascending: false }).limit(9),
+        creatorIds.length
+          ? supabase.from('profiles').select('id, full_name, email').in('id', creatorIds)
+          : Promise.resolve({ data: [] }),
+        supabase.from('vw_project_progress_summary').select('*').eq('project_id', projectId).maybeSingle(),
+        supabase
+          .from('vw_progress_timeline')
+          .select('*')
+          .eq('project_id', projectId)
+          .lte('report_date', range.end)
+          .order('report_date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('progress_items')
+          .select('id, task_id, target_qty')
+          .eq('project_id', projectId),
       ])
 
       if (!alive) return
+      const progressItems = progressItemsRes.data || []
+      const itemIds = progressItems.map(item => item.id)
+      let progressMap = {}
+      if (itemIds.length > 0) {
+        const { data: dailyProgressRows } = await supabase
+          .from('progress_daily')
+          .select('item_id, qty_added, daily_reports!inner(report_date)')
+          .in('item_id', itemIds)
+          .lte('daily_reports.report_date', range.end)
+
+        if (!alive) return
+        const sumByItem = {}
+        ;(dailyProgressRows || []).forEach(row => {
+          sumByItem[row.item_id] = (sumByItem[row.item_id] || 0) + Number(row.qty_added || 0)
+        })
+
+        const taskSums = {}
+        progressItems.forEach(item => {
+          if (!item.task_id || !Number(item.target_qty)) return
+          const pct = Math.min(100, ((sumByItem[item.id] || 0) / Number(item.target_qty)) * 100)
+          if (!taskSums[item.task_id]) taskSums[item.task_id] = { sum: 0, count: 0 }
+          taskSums[item.task_id].sum += pct
+          taskSums[item.task_id].count += 1
+        })
+        progressMap = Object.fromEntries(
+          Object.entries(taskSums).map(([taskId, value]) => [taskId, value.count ? value.sum / value.count : 0])
+        )
+      }
+
+      const creatorMap = new Map((creatorsRes.data || []).map(p => [p.id, p.full_name || p.email]))
       setProjectDetails(projectRes.data || null)
-      setDailyReports(reports)
+      setProgressSummary(progressSummaryRes.data || null)
+      setPeriodProgress(periodProgressRes.data || null)
+      setTaskProgressByDate(progressMap)
+      setDailyReports(reports.map(report => ({
+        ...report,
+        creator_name: creatorMap.get(report.created_by) || null,
+      })))
       setPersonnel(personnelRes.data || [])
       setMachinery(machineryRes.data || [])
       setDailyTasks(dailyTasksRes.data || [])
-      setProgressItemRows(progressItemsRes.data || [])
       setPurchases(purchaseRes.data || [])
       setBudgetLines(budgetRes.data || [])
       setInvoices(invoiceRes.data || [])
@@ -305,35 +401,43 @@ export default function ProjectOverviewDashboard({
   }, [projectId, range.start, range.end])
 
   const currentProject = projectDetails || project
+  const effectiveProgressSummary = periodProgress || progressSummaryProp || progressSummary
   const latestReport = dailyReports[0] || null
-  const avgTaskProgress = tasks.length
-    ? Math.round(tasks.reduce((sum, task) => sum + clamp(task.progress), 0) / tasks.length)
-    : 0
-
-  const progressItems = progressItemRows.map(item => {
-    const dailyRows = item.progress_daily || []
-    const cumulative = dailyRows
-      .filter(row => row.report?.report_date && row.report.report_date <= range.end)
-      .reduce((sum, row) => sum + Number(row.qty_added || 0), 0)
-    const periodAdded = dailyRows
-      .filter(row => row.report?.report_date && row.report.report_date >= range.start && row.report.report_date <= range.end)
-      .reduce((sum, row) => sum + Number(row.qty_added || 0), 0)
-    const pct = item.target_qty > 0 ? (cumulative / Number(item.target_qty)) * 100 : 0
+  const latestPersonnelReport = dailyReports.find(report =>
+    personnel.some(row => row.report_id === report.id)
+  )
+  const latestMachineryReport = dailyReports.find(report =>
+    machinery.some(row => row.report_id === report.id)
+  )
+  const summaryPersonnelRows = latestPersonnelReport
+    ? personnel.filter(row => row.report_id === latestPersonnelReport.id)
+    : personnel
+  const summaryMachineryRows = latestMachineryReport
+    ? machinery.filter(row => row.report_id === latestMachineryReport.id)
+    : machinery
+  const taskProgressRows = tasks.map(task => {
+    const pct = clamp(taskProgressByDate[task.id] ?? task.progress_pct ?? task.progress)
     return {
-      name: item.name || 'İş kalemi',
-      done: cumulative,
-      periodAdded,
-      target: item.target_qty || 0,
-      unit: item.unit || '',
-      pct: clamp(pct),
+      id: task.id,
+      name: task.name || task.task_name || task.title || 'İş kalemi',
+      done: task.actual_qty ?? task.completed_qty ?? task.total_progress ?? '',
+      target: task.target_qty ?? task.quantity ?? '',
+      unit: task.unit || '',
+      pct,
+      progress: pct,
+      progress_pct: pct,
     }
   })
 
-  const avgReportProgress = progressItems.length
-    ? Math.round(progressItems.reduce((sum, item) => sum + item.pct, 0) / progressItems.length)
-    : avgTaskProgress
+  const plannedProgressValue = effectiveProgressSummary?.planned_cumulative_pct ?? effectiveProgressSummary?.planned_progress_pct
 
-  const plannedPct = calcPlannedAt(tasks, filterDate)
+  const avgReportProgress = taskProgressRows.length
+    ? Math.round(taskProgressRows.reduce((sum, item) => sum + item.pct, 0) / taskProgressRows.length)
+    : Math.round(Number(effectiveProgressSummary?.actual_cumulative_pct ?? effectiveProgressSummary?.actual_progress_pct ?? 0))
+
+  const plannedPct = plannedProgressValue != null
+    ? Math.round(Number(plannedProgressValue || 0))
+    : calcPlannedAt(tasks, filterDate)
   const totalBudget = budgetLines.reduce((sum, b) => sum + Number(b.planned_amount || 0), 0)
   const invoicesUntilEnd = invoices.filter(i => {
     const date = (i.invoice_date || i.created_at || '').slice(0, 10)
@@ -348,30 +452,22 @@ export default function ProjectOverviewDashboard({
   const remainingDays = target ? Math.ceil((target - selected) / 86400000) : null
   const lostDays = dailyReports.filter(r => ['yağmurlu', 'yagmurlu', 'karlı', 'karli', 'fırtınalı', 'firtinali'].includes((r.weather || '').toLowerCase())).length
 
-  const totalPersonnel = personnel.reduce((sum, p) => sum + Number(p.count || 0), 0)
-  const activeMachines = machinery
+  const personnelTotalFromRows = summaryPersonnelRows.reduce((sum, p) => sum + Number(p.count || 0), 0)
+  const totalPersonnel = personnelTotalFromRows || Number(latestReport?.worker_count || 0)
+  const activeMachines = summaryMachineryRows
     .filter(m => !m.status || ['çalışıyor', 'calisiyor', 'aktif'].includes((m.status || '').toLowerCase()))
     .reduce((sum, m) => sum + Number(m.count || 0), 0)
   const todayDone = dailyTasks.find(t => ['tamamlandı', 'tamamlandi', 'done'].includes((t.type || '').toLowerCase()))?.description
   const tomorrowPlan = dailyTasks.find(t => ['planlandı', 'planlandi', 'planned'].includes((t.type || '').toLowerCase()))?.description
+  const progressedTaskCount = (progressSummaryProp || progressSummary)?.active_tasks != null
+    ? Number((progressSummaryProp || progressSummary).active_tasks || 0)
+    : taskProgressRows.filter(item => item.pct > 0).length
 
-  const milestones = progressItems.length ? progressItems.slice(0, 11).map(item => ({
-    id: item.name,
-    name: item.name,
-    progress: item.pct,
-  })) : tasks.length ? tasks.slice(0, 11) : [
-    { id: 'm1', name: 'Mobilizasyon', progress: 100 },
-    { id: 'm2', name: 'Arazi Tesviye', progress: 100 },
-    { id: 'm3', name: 'Konstrüksiyon', progress: 60 },
-    { id: 'm4', name: 'Panel Montajı', progress: 0 },
-    { id: 'm5', name: 'Test & Devreye Alma', progress: 0 },
-  ]
+  const milestones = taskProgressRows.slice(0, 11)
 
   const purchaseRows = purchases.map(normalizePurchase)
   const riskRows = risks.map(normalizeRisk)
-  const progressRows = progressItems.length
-    ? progressItems.slice(0, 6)
-    : tasks.slice(0, 6).map(t => ({ name: t.name || t.task_name, done: '', target: '', unit: '', pct: t.progress || 0 }))
+  const progressRows = taskProgressRows.slice(0, 6)
 
   if (loading) {
     return (
@@ -410,7 +506,7 @@ export default function ProjectOverviewDashboard({
         <div className="card project-overview-card project-progress-card">
           <div className="project-card-title"><h3>Genel İlerleme</h3></div>
           <Ring value={avgReportProgress} />
-          <p>Günlük raporlara göre genel proje ilerlemesi</p>
+          <p>Günlük saha girişlerinden hesaplanan gerçekleşen ilerleme</p>
         </div>
 
         <div className="card project-overview-card">
@@ -451,7 +547,7 @@ export default function ProjectOverviewDashboard({
           </div>
         </div>
 
-        <ProjectWeatherCard location={currentProject?.location} lostDays={lostDays} />
+        <ProjectWeatherCard location={currentProject?.location} lostDays={lostDays} reportWeather={latestReport} />
       </div>
 
       {tooltipInfo && (
@@ -531,13 +627,13 @@ export default function ProjectOverviewDashboard({
         <div className="card project-mini-card">
           <div className="project-card-title">
             <h3>Günlük Rapor Özeti</h3>
-            <LinkButton onClick={() => onGoTab?.('genel')}>Tüm Raporlar</LinkButton>
+            <LinkButton onClick={() => onGoTab?.('raporlar')}>Tüm Raporlar</LinkButton>
           </div>
           {[
             { label: 'Aktif Personel', value: totalPersonnel ? `${totalPersonnel} kişi` : '—' },
             { label: 'Çalışan Makine', value: activeMachines ? `${activeMachines} adet` : '—' },
-            { label: 'İlerleme Yapılan Kalem', value: progressItems.filter(i => i.periodAdded > 0).length ? `${progressItems.filter(i => i.periodAdded > 0).length} kalem` : '—' },
-            { label: 'Rapor / Gönderen', value: latestReport ? `${fmtDate(latestReport.report_date)}${latestReport.prepared_by ? ` · ${latestReport.prepared_by}` : ''}` : '—' },
+            { label: 'İlerleme Yapılan Kalem', value: progressedTaskCount ? `${progressedTaskCount} kalem` : '—' },
+            { label: 'Rapor / Gönderen', value: latestReport ? `${fmtDate(latestReport.report_date)}${latestReport.creator_name ? ` · ${latestReport.creator_name}` : ''}` : '—' },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #f1f5f9' }}>
               <span style={{ fontSize: 12, color: 'var(--color-text)', fontWeight: 500 }}>{item.label}</span>
@@ -552,13 +648,12 @@ export default function ProjectOverviewDashboard({
             <LinkButton onClick={() => onGoTab?.('gantt')}>Detayı Gör</LinkButton>
           </div>
           {(() => {
-            const active = progressRows.filter(i => i.periodAdded > 0).slice(0, 4)
-            const rows = active.length ? active : progressRows.slice(0, 4)
+            const rows = progressRows.slice(0, 4)
             return rows.length ? rows.map(item => (
               <div className="project-progress-row" key={item.name}>
                 <div>
                   <strong>{item.name}</strong>
-                  <span>{item.done || 0} / {item.target || '—'} {item.unit}{item.periodAdded ? ` +${item.periodAdded}` : ''}</span>
+                  <span>{item.done || 0} / {item.target || '—'} {item.unit}</span>
                 </div>
                 <MiniProgress value={item.pct} />
                 <b>{Math.round(item.pct)}%</b>

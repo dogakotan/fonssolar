@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { parseIlerlemeBilgileri } from '../../../utils/projectExcelImport'
 
 const CATEGORY_OPTS = [
   { v: 'mobilizasyon', l: 'Mobilizasyon' },
@@ -35,8 +36,11 @@ export default function Adim3IlerlemeBilgileri({ projectId, result, onDone, onBa
     }
     return [{ ...DEF, _id: 1 }]
   })
-  const [error, setError] = useState(null)
+  const [error,     setError]     = useState(null)
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState(null)
   const loadedRef = useRef(false)
+  const fileRef   = useRef(null)
 
   useEffect(() => {
     if (mode !== 'edit' || loadedRef.current) return
@@ -52,6 +56,28 @@ export default function Adim3IlerlemeBilgileri({ projectId, result, onDone, onBa
   function addRow() { setRows(r => [...r, { ...DEF, _id: Date.now() }]) }
   function upd(_id, k, v) { setRows(r => r.map(row => row._id === _id ? { ...row, [k]: v } : row)) }
   function del(_id) { setRows(r => r.filter(row => row._id !== _id)) }
+
+  async function handleExcelImport(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImporting(true)
+    setError(null)
+    setImportMsg(null)
+    try {
+      const { rows: parsed, sheetName, skippedCount } = await parseIlerlemeBilgileri(file)
+      if (parsed.length === 0) {
+        setError('Excel dosyasında geçerli kalem bulunamadı. "Kalem Adı" sütununun dolu olduğunu kontrol edin.')
+        return
+      }
+      setRows(parsed)
+      setImportMsg(`"${sheetName}" sayfasından ${parsed.length} kalem yüklendi${skippedCount > 0 ? ` (${skippedCount} satır atlandı)` : ''}.`)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setImporting(false)
+    }
+  }
 
   function handleSave() {
     setError(null)
@@ -74,10 +100,31 @@ export default function Adim3IlerlemeBilgileri({ projectId, result, onDone, onBa
     <div className="card">
       <div className="card-header">
         <h3>Adım 3 — İlerleme Kalemleri</h3>
-        <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>Opsiyonel — progress_items</span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={importing}
+            style={{ ...btnP, fontSize: 12, padding: '0.35rem 0.75rem', background: importing ? '#94a3b8' : '#16a34a' }}
+          >
+            {importing ? 'Yükleniyor…' : 'Excel\'den İçe Aktar'}
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xls"
+            style={{ display: 'none' }}
+            onChange={handleExcelImport}
+          />
+        </div>
       </div>
 
       <div style={{ padding: '1rem 1.5rem', maxHeight: '62vh', overflowY: 'auto' }}>
+        {importMsg && (
+          <div style={{ padding: '0.5rem 1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, color: '#166534', fontSize: 13, marginBottom: '0.75rem' }}>
+            {importMsg}
+          </div>
+        )}
         {error && (
           <div style={{ padding: '0.625rem 1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 'var(--radius-md)', color: 'var(--color-danger)', fontSize: 13, marginBottom: '1rem' }}>
             {error}

@@ -135,6 +135,16 @@
 }
 .dash-header h2 { font-size: 1.125rem; font-weight: 700; color: var(--color-text); margin: 0; }
 
+.santiye-kpi-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+@media (max-width: 1180px) {
+  .santiye-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .santiye-kpi-grid { grid-template-columns: 1fr; }
+}
+
 /* ── Stat kartlar ── */
 .stats-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -1222,7 +1232,115 @@
 
 /* ── Overflow koruması ── */
 body, #root { overflow-x: hidden; }
+
+.daily-report-modal-shell {
+  min-width: 0;
+}
+.daily-report-modal-shell * {
+  box-sizing: border-box;
+}
+.daily-report-modal-shell > div {
+  padding: 14px !important;
+}
+.daily-report-modal-form {
+  min-width: 0;
+}
+.daily-report-modal-shell h2,
+.daily-report-modal-shell h3,
+.daily-report-modal-shell p,
+.daily-report-modal-shell span,
+.daily-report-modal-shell button,
+.daily-report-modal-shell label {
+  overflow-wrap: anywhere;
+}
+.daily-report-modal-form > div:first-child {
+  align-items: flex-start !important;
+  gap: 10px !important;
+  margin-bottom: 12px !important;
+  padding: 12px 14px !important;
+}
+.daily-report-modal-form > div:first-child > div {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.daily-report-modal-form > div:first-child h2 {
+  font-size: 15px !important;
+  line-height: 1.25 !important;
+}
+.daily-report-modal-form > div:first-child p {
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+}
+.daily-report-modal-form > div:nth-child(3) {
+  margin-bottom: 12px !important;
+  padding: 12px 14px !important;
+}
+.daily-report-modal-form > div:nth-child(3) > div {
+  min-width: 0 !important;
+  width: 100%;
+}
+.daily-report-modal-form > div:nth-child(3) span {
+  width: 82px;
+  max-width: 82px;
+  white-space: normal !important;
+  line-height: 1.15 !important;
+  font-size: 9px !important;
+}
+.daily-report-modal-form > div:nth-child(3) div[style*="border-radius: 50%"] {
+  width: 28px !important;
+  height: 28px !important;
+}
+.daily-report-modal-form > div:nth-child(4) {
+  padding: 18px !important;
+  margin-bottom: 12px !important;
+}
+.daily-report-modal-shell table {
+  width: 100%;
+}
+.daily-report-modal-shell input,
+.daily-report-modal-shell select,
+.daily-report-modal-shell textarea {
+  min-width: 0;
+}
+.daily-report-modal-form > div:nth-last-child(1) {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-bottom: 0 !important;
+  padding: 12px 16px !important;
+}
+
 @media (max-width: 768px) {
   body, #root { overflow-x: hidden; }
   .dash-content { padding: 1rem; }
+  .daily-report-modal-shell {
+    width: 98vw !important;
+    max-height: 94vh !important;
+    border-radius: 12px !important;
+  }
+  .daily-report-modal-shell > div {
+    padding: 10px !important;
+  }
+  .daily-report-modal-form > div:first-child {
+    flex-direction: column !important;
+  }
+  .daily-report-modal-form > div:nth-child(3) span {
+    width: 64px;
+    max-width: 64px;
+    font-size: 8.5px !important;
+  }
+  .daily-report-modal-form > div:nth-child(4) {
+    padding: 14px !important;
+  }
+  .daily-report-modal-form > div:nth-last-child(1) {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .daily-report-modal-form > div:nth-last-child(1) > div:last-child {
+    justify-content: stretch !important;
+    flex-wrap: wrap;
+  }
+  .daily-report-modal-form > div:nth-last-child(1) button {
+    flex: 1 1 140px;
+  }
 }

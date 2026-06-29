@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { getProjects, getWorkPackages } from '../../../api'
 import { exportGunlukRaporPdf, exportGunlukRaporExcel } from '../../../utils/exportUtils'
 import TicketListesi from '../../../components/tickets/TicketListesi'
@@ -8,6 +8,7 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import TabIsPlan from './TabIsPlan'
 import ProjectOverviewDashboard from './ProjectOverviewDashboard'
+import DailyReportList from '../../DailyReportList'
 
 // ── Periyot yardımcıları ──────────────────────────────────────────────────────
 const PERIODS = [
@@ -360,20 +361,64 @@ const periodBtnActive = {
   borderColor: 'var(--color-primary)',
 }
 const periodNavBtn = {
-  padding: '3px 9px', borderRadius: 6, border: '1px solid var(--color-border)',
-  background: '#fff', color: 'var(--color-text)', fontSize: 13, fontWeight: 600,
+  padding: '2px 8px', borderRadius: 6, border: '1px solid var(--color-border)',
+  background: '#fff', color: 'var(--color-text)', fontSize: 12, fontWeight: 600,
   cursor: 'pointer', fontFamily: 'inherit', lineHeight: 1.4,
 }
+const periodSegment = {
+  display: 'flex', gap: 4, padding: 3, border: '1px solid var(--color-border)',
+  borderRadius: 999, background: '#fff',
+}
+const periodSegmentInCalendar = {
+  ...periodSegment,
+  marginBottom: 12,
+  width: '100%',
+  boxSizing: 'border-box',
+  justifyContent: 'space-between',
+}
+const periodSegmentBtn = {
+  padding: '5px 10px', borderRadius: 999, border: 'none', background: 'transparent',
+  color: 'var(--color-muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+  fontFamily: 'inherit', lineHeight: 1,
+}
+const periodSegmentActive = {
+  ...periodSegmentBtn, background: 'var(--color-primary)', color: '#fff',
+}
+const calendarBtn = {
+  width: 32, height: 32, borderRadius: 9, border: '1px solid var(--color-border)',
+  background: '#fff', color: 'var(--color-muted)', display: 'inline-flex',
+  alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+}
+const calendarPopover = {
+  position: 'absolute', top: 'calc(100% + 8px)', left: 0, zIndex: 500,
+  width: 224, background: '#fff', border: '1px solid #D1D5DB', borderRadius: 12,
+  boxShadow: '0 14px 34px rgba(15,23,42,.14)', padding: 12,
+}
+const calendarHeader = {
+  display: 'grid', gridTemplateColumns: '28px 1fr 28px', alignItems: 'center',
+  gap: 5, marginBottom: 10, color: '#0f172a', fontSize: 12, textTransform: 'capitalize',
+}
+const calendarNav = {
+  border: 'none', background: '#fff', color: '#0f172a', fontSize: 17,
+  lineHeight: 1, cursor: 'pointer', fontFamily: 'inherit',
+}
+const calendarWeekdays = {
+  display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4,
+  color: '#0f172a', fontSize: 10, fontWeight: 800, textAlign: 'center', marginBottom: 5,
+}
+const calendarGrid = { display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }
+const calendarDay = {
+  height: 24, border: 'none', borderRadius: 6, background: 'transparent',
+  fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+}
+const calendarDayActive = { background: '#2563EB', outline: '3px solid #0f172a', outlineOffset: -2 }
+const calendarFooter = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 8 }
+const calendarLink = { border: 'none', background: 'transparent', color: '#2563EB', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }
 const backBtn = {
   padding: '6px 12px', borderRadius: 7, border: '1px solid var(--color-border)',
   background: 'transparent', color: 'var(--color-muted)', fontSize: 13,
   cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center',
   gap: '0.3rem', transition: 'all 0.15s',
-}
-
-function getPeriodLabel(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00')
-  return d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
 }
 
 function todayStr() {
@@ -384,46 +429,121 @@ function todayStr() {
   return `${yyyy}-${mm}-${dd}`
 }
 
+function parseLocalDate(value) {
+  const [year, month, day] = String(value || todayStr()).split('-').map(Number)
+  return new Date(year, (month || 1) - 1, day || 1)
+}
+
+function toDateStr(date) {
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function addDays(date, amount) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + amount)
+  return next
+}
+
+function addMonths(date, amount) {
+  return new Date(date.getFullYear(), date.getMonth() + amount, Math.min(date.getDate(), 28))
+}
+
+function startOfWeek(date) {
+  const day = date.getDay()
+  return addDays(date, day === 0 ? -6 : 1 - day)
+}
+
+function endOfWeek(date) {
+  return addDays(startOfWeek(date), 6)
+}
+
+function getPeriodLabel(dateStr, mode = 'gunluk') {
+  const d = parseLocalDate(dateStr)
+  if (mode === 'haftalik') {
+    return `${startOfWeek(d).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })} - ${endOfWeek(d).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}`
+  }
+  if (mode === 'aylik') {
+    return d.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+  }
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+function buildCalendarDays(monthDate) {
+  const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
+  const offset = (first.getDay() + 6) % 7
+  const start = addDays(first, -offset)
+  return Array.from({ length: 42 }, (_, index) => addDays(start, index))
+}
+
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
 export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate }) {
   const [tab, setTab]                = useState('genel')
 
   const [project, setProject]        = useState(null)
   const [wps, setWPs]                = useState([])
+  const [progressSummary, setProgressSummary] = useState(null)
   const [filterMode, setFilterMode]  = useState('gunluk')   // 'gunluk' | 'haftalik' | 'aylik'
   const [loading, setLoading]        = useState(true)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [filterDate, setFilterDate]  = useState(todayStr())
+  const [showCalendar, setShowCalendar] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = parseLocalDate(todayStr())
+    return new Date(today.getFullYear(), today.getMonth(), 1)
+  })
   const exportRef = useRef(null)
+  const calendarRef = useRef(null)
+  const calendarDays = useMemo(() => buildCalendarDays(calendarMonth), [calendarMonth])
 
   useEffect(() => {
     function handleOut(e) {
       if (exportRef.current && !exportRef.current.contains(e.target)) setShowExportMenu(false)
+      if (calendarRef.current && !calendarRef.current.contains(e.target)) setShowCalendar(false)
     }
-    if (showExportMenu) document.addEventListener('mousedown', handleOut)
+    if (showExportMenu || showCalendar) document.addEventListener('mousedown', handleOut)
     return () => document.removeEventListener('mousedown', handleOut)
-  }, [showExportMenu])
+  }, [showExportMenu, showCalendar])
 
   function navPrev() {
     setFilterDate(prev => {
-      const d = new Date(prev + 'T00:00:00')
-      d.setDate(1)
-      d.setMonth(d.getMonth() - 1)
-      return d.toISOString().split('T')[0]
+      const d = parseLocalDate(prev)
+      const next = filterMode === 'aylik'
+        ? addMonths(d, -1)
+        : addDays(d, filterMode === 'haftalik' ? -7 : -1)
+      setCalendarMonth(new Date(next.getFullYear(), next.getMonth(), 1))
+      return toDateStr(next)
     })
   }
 
   function navNext() {
     setFilterDate(prev => {
-      const d = new Date(prev + 'T00:00:00')
-      d.setDate(1)
-      d.setMonth(d.getMonth() + 1)
-      return d.toISOString().split('T')[0]
+      const d = parseLocalDate(prev)
+      const next = filterMode === 'aylik'
+        ? addMonths(d, 1)
+        : addDays(d, filterMode === 'haftalik' ? 7 : 1)
+      setCalendarMonth(new Date(next.getFullYear(), next.getMonth(), 1))
+      return toDateStr(next)
     })
   }
 
   function handleFilter(mode) {
     setFilterMode(mode)
+  }
+
+  function selectCalendarDay(day) {
+    setFilterDate(toDateStr(day))
+    setCalendarMonth(new Date(day.getFullYear(), day.getMonth(), 1))
+    setShowCalendar(false)
+  }
+
+  function jumpToday() {
+    const today = parseLocalDate(todayStr())
+    setFilterDate(toDateStr(today))
+    setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1))
+    setShowCalendar(false)
   }
 
   async function handleExport(type, period = 'gunluk') {
@@ -508,7 +628,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         ['Proje', project?.name || projectName || projectId],
         ['Seçili Tarih', new Date(filterDate + 'T00:00:00').toLocaleDateString('tr-TR')],
         ['İş Paketi', wps.length],
-        ['Ortalama İlerleme', `%${wps.length ? Math.round(wps.reduce((s, w) => s + (w.progress || 0), 0) / wps.length) : 0}`],
+        ['Ortalama İlerleme', `%${progressSummary?.actual_progress_pct ?? (wps.length ? Math.round(wps.reduce((s, w) => s + (w.progress || 0), 0) / wps.length) : 0)}`],
         ['Not', 'Haftalık/aylık export altyapısı hazır; detay sorguları rapor backendine bağlanabilir.'],
       ]
       if (type === 'pdf') {
@@ -534,8 +654,10 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     Promise.all([
       getProjects(),
       getWorkPackages(projectId),
-    ]).then(([{ data: pData }, { data: wData }]) => {
+      supabase.from('vw_project_progress_summary').select('*').eq('project_id', projectId).maybeSingle(),
+    ]).then(([{ data: pData }, { data: wData }, summaryRes]) => {
       setProject(pData?.find(p => p.id === projectId) || null)
+      setProgressSummary(summaryRes.data || null)
 
       const seen = new Set()
       const deduped = (wData || []).filter(w => {
@@ -570,6 +692,9 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           <button onClick={() => setTab('tickets')} style={tab === 'tickets' ? tabBtnActive : tabBtn}>
             Ticket
           </button>
+          <button onClick={() => setTab('raporlar')} style={tab === 'raporlar' ? tabBtnActive : tabBtn}>
+            Raporlar
+          </button>
           <button onClick={() => setTab('ekip')} style={tab === 'ekip' ? tabBtnActive : tabBtn}>
             Ekip
           </button>
@@ -577,17 +702,74 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
         {/* ── Sağ grup: Tarih Navigasyon + Dışa Aktar ── */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {/* ← dönem → navigasyonu */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div ref={calendarRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button onClick={() => setShowCalendar(v => !v)} style={calendarBtn} title="Takvim">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+              </svg>
+            </button>
             <button onClick={navPrev} style={periodNavBtn}>‹</button>
-            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', minWidth: 150, textAlign: 'center', padding: '0 4px', whiteSpace: 'nowrap' }}>
-              {getPeriodLabel(filterDate)}
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)', minWidth: 122, textAlign: 'center', padding: '0 2px', whiteSpace: 'nowrap' }}>
+              {getPeriodLabel(filterDate, filterMode)}
             </span>
             <button onClick={navNext} style={periodNavBtn}>›</button>
+
+            {showCalendar && (
+              <div style={calendarPopover}>
+                <div style={periodSegmentInCalendar}>
+                  {PERIODS.map(p => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => handleFilter(p.key)}
+                      style={filterMode === p.key ? periodSegmentActive : periodSegmentBtn}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={calendarHeader}>
+                  <button type="button" onClick={() => setCalendarMonth(addMonths(calendarMonth, -1))} style={calendarNav}>↑</button>
+                  <strong>{calendarMonth.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}</strong>
+                  <button type="button" onClick={() => setCalendarMonth(addMonths(calendarMonth, 1))} style={calendarNav}>↓</button>
+                </div>
+                <div style={calendarWeekdays}>
+                  {['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pa'].map(day => <span key={day}>{day}</span>)}
+                </div>
+                <div style={calendarGrid}>
+                  {calendarDays.map(day => {
+                    const dayText = toDateStr(day)
+                    const selected = dayText === filterDate
+                    const inMonth = day.getMonth() === calendarMonth.getMonth()
+                    return (
+                      <button
+                        key={dayText}
+                        type="button"
+                        onClick={() => selectCalendarDay(day)}
+                        style={{
+                          ...calendarDay,
+                          ...(selected ? calendarDayActive : {}),
+                          color: selected ? '#fff' : inMonth ? '#0f172a' : '#94a3b8',
+                        }}
+                      >
+                        {day.getDate()}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div style={calendarFooter}>
+                  <button type="button" onClick={() => setShowCalendar(false)} style={calendarLink}>Kapat</button>
+                  <button type="button" onClick={jumpToday} style={calendarLink}>Bugün</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Dışa Aktar — İş Planı sade görünümünde gizli */}
-          {!['tickets', 'satin-alma', 'finans', 'gantt'].includes(tab) && (
+          {!['tickets', 'satin-alma', 'finans', 'gantt', 'raporlar'].includes(tab) && (
             <div ref={exportRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setShowExportMenu(v => !v)}
@@ -626,7 +808,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
                   padding: '0.875rem', minWidth: 220,
                 }}>
                   <div style={{ marginBottom: '0.625rem', padding: '6px 10px', background: '#FEF3C7', borderRadius: 6, fontSize: 11, color: '#92400E', fontWeight: 600 }}>
-                    {getPeriodLabel(filterDate)} raporu
+                    {getPeriodLabel(filterDate, filterMode)} raporu
                   </div>
                   <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 0.5rem' }}>
                     Rapor Seçenekleri
@@ -658,27 +840,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         </div>
       </div>
 
-      {/* Dönem filtresi */}
-      <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap' }}>
-        {PERIODS.map(p => (
-          <button
-            key={p.key}
-            onClick={() => handleFilter(p.key)}
-            style={filterMode === p.key ? periodBtnActive : periodBtn}
-          >
-            {p.label}
-          </button>
-        ))}
-        {filterDate !== todayStr() && (
-          <button
-            onClick={() => setFilterDate(todayStr())}
-            style={{ ...periodBtn, color: '#003B8E', borderColor: '#003B8E', fontWeight: 600 }}
-          >
-            Bugüne Dön
-          </button>
-        )}
-      </div>
-
       {tab === 'ekip' ? (
         <EkipListesi projectId={projectId} />
       ) : tab === 'tickets' ? (
@@ -687,6 +848,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
       ) : tab === 'finans' ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
+      ) : tab === 'raporlar' ? (
+        <DailyReportList projectId={projectId} title="Günlük Raporlar" showHeader={false} />
       ) : tab === 'genel' ? (
         <ProjectOverviewDashboard
           project={project}
@@ -695,6 +858,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           filterDate={filterDate}
           reportPeriod={filterMode === 'haftalik' ? 'weekly' : filterMode === 'aylik' ? 'monthly' : 'daily'}
           onGoTab={setTab}
+          progressSummary={progressSummary}
         />
       ) : (
         <TabIsPlan projectId={projectId} filterDate={filterDate} />

@@ -13,22 +13,26 @@ import TabKullanicilar from './components/TabKullanicilar'
 import ProjeDetay from './components/ProjeDetay'
 import TabProjeYonetimi from './components/TabProjeYonetimi'
 import FloatingAgent from '../../components/agent/FloatingAgent'
+import DailyReportForm from '../../components/daily-report/DailyReportForm'
+import DailyReportList from '../DailyReportList'
 import './Dashboard.css'
 
 const TABS = {
-  genel:          { title: 'Genel Bakış',      subtitle: 'Proje özeti ve aktif görevler' },
-  projeler:       { title: 'Projeler',          subtitle: 'Tüm GES projeleri' },
-  'satin-alma':   { title: 'Satın Alma',        subtitle: 'Tedarik talepleri ve siparişler' },
-  finans:         { title: 'Finans',            subtitle: 'Fatura yönetimi ve maliyet takibi' },
-  tickets:        { title: 'Ticket Sistemi',    subtitle: 'Sahadan yöneticiye hata bildirimi' },
-  kullanicilar:   { title: 'Kullanıcı Yönetimi', subtitle: 'Sistem kullanıcıları ve rol atamaları' },
-  'proje-ekle':   { title: 'Proje Yönetimi',         subtitle: 'Projeleri görüntüle, ekle ve düzenle' },
+  genel:            { title: 'Genel Bakış',      subtitle: 'Proje özeti ve aktif görevler' },
+  projeler:         { title: 'Projeler',          subtitle: 'Tüm GES projeleri' },
+  'satin-alma':     { title: 'Satın Alma',        subtitle: 'Tedarik talepleri ve siparişler' },
+  finans:           { title: 'Finans',            subtitle: 'Fatura yönetimi ve maliyet takibi' },
+  tickets:          { title: 'Ticket Sistemi',    subtitle: 'Sahadan yöneticiye hata bildirimi' },
+  kullanicilar:     { title: 'Kullanıcı Yönetimi', subtitle: 'Sistem kullanıcıları ve rol atamaları' },
+  'proje-ekle':     { title: 'Proje Yönetimi',    subtitle: 'Projeleri görüntüle, ekle ve düzenle' },
+  'daily-report':    { title: 'Günlük Rapor Gir',  subtitle: 'Saha günlük raporu oluştur veya düzenle' },
+  'rapor-listesi':   { title: 'Raporlarım',         subtitle: 'Geçmiş günlük raporlar' },
 }
 
 const ROLE_TABS = {
   muhasebe:          ['finans'],
   satin_alma_uzmani: ['satin-alma'],
-  santiye_sefi:      ['genel', 'satin-alma', 'tickets'],
+  santiye_sefi:      ['genel', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets'],
 }
 
 const ROLE_DEFAULT = {
@@ -51,27 +55,88 @@ function getHeaderInitials(name) {
   return name.split(/[\s@._-]+/).slice(0, 2).map(p => p[0]?.toUpperCase()).filter(Boolean).join('') || '?'
 }
 
+function projectIdLabel(projectId) {
+  if (!projectId || /^[0-9a-f-]{24,}$/i.test(String(projectId))) return ''
+  return String(projectId)
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
+}
+
 export default function Dashboard() {
-  const { user, role, isAdmin } = useAuth()
+  const { user, role, isAdmin, projectId } = useAuth()
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [openTicketCount,     setOpenTicketCount]     = useState(0)
   const [activeTab,           setActiveTab]           = useState(() => {
     const saved = window.localStorage.getItem('dashboard-active-tab')
     return saved && TABS[saved] ? saved : 'genel'
   })
+  const [editReportId, setEditReportId] = useState(null)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportViewKey, setReportViewKey] = useState(0)
   const [selectedProjectId,   setSelectedProjectId]   = useState(null)
   const [selectedProjectName, setSelectedProjectName] = useState('')
+  const [assignedProjectName, setAssignedProjectName] = useState('')
+  const [assignedProjectLoaded, setAssignedProjectLoaded] = useState(false)
   const [showProjectDetail,   setShowProjectDetail]   = useState(false)
   const [selectedDate,        setSelectedDate]        = useState(null)
   const navigate = useNavigate()
 
   useEffect(() => {
-    supabase
+    let query = supabase
       .from('tickets')
       .select('id', { count: 'exact', head: true })
-      .eq('status', 'open')
+      .in('status', ['gönderildi', 'açık', 'işlemde'])
+    if (role === 'santiye_sefi' && projectId) query = query.eq('project_id', projectId)
+    query
       .then(({ count }) => setOpenTicketCount(count || 0))
-  }, [])
+  }, [role, projectId])
+
+  useEffect(() => {
+    if (role !== 'santiye_sefi') return
+    if (!projectId) {
+      setAssignedProjectName('')
+      setAssignedProjectLoaded(true)
+      return
+    }
+    setAssignedProjectName('')
+    setAssignedProjectLoaded(false)
+    async function loadAssignedProjectName() {
+      try {
+        const byId = await supabase
+          .from('projects')
+          .select('*')
+          .eq('id', projectId)
+          .maybeSingle()
+
+        if (byId.data?.name) {
+          setAssignedProjectName(byId.data.name)
+          return
+        }
+
+        if (projectIdLabel(projectId)) {
+          const byName = await supabase
+            .from('projects')
+            .select('*')
+            .ilike('name', `%${String(projectId).replace(/[-_]+/g, ' ')}%`)
+            .limit(1)
+            .maybeSingle()
+
+          if (byName.data?.name) {
+            setAssignedProjectName(byName.data.name)
+            return
+          }
+        }
+
+        setAssignedProjectName(projectIdLabel(projectId))
+      } finally {
+        setAssignedProjectLoaded(true)
+      }
+    }
+
+    loadAssignedProjectName()
+  }, [role, projectId])
 
   // Kısıtlı roller → başlangıç sekmesi
   useEffect(() => {
@@ -93,11 +158,38 @@ export default function Dashboard() {
   function handleTabChange(tab) {
     const allowed = ROLE_TABS[role]
     if (allowed && !allowed.includes(tab)) return
+    if (role === 'santiye_sefi' && tab === 'daily-report') {
+      setEditReportId(null)
+      setShowReportModal(true)
+      return
+    }
     setShowProjectDetail(false)
     setActiveTab(tab)
   }
 
+  function openReportModal(id = null) {
+    setEditReportId(id)
+    setShowReportModal(true)
+  }
+
+  function closeReportModal() {
+    setEditReportId(null)
+    setShowReportModal(false)
+  }
+
+  function handleReportSaved() {
+    setEditReportId(null)
+    setShowReportModal(false)
+    setReportViewKey(k => k + 1)
+  }
+
   const showingDetail = activeTab === 'projeler' && showProjectDetail
+  const headerTitle = role === 'santiye_sefi' && activeTab === 'genel'
+    ? (assignedProjectName || (projectId && !assignedProjectLoaded ? 'Proje yükleniyor...' : 'Proje atanmadı'))
+    : showingDetail
+      ? selectedProjectName
+      : TABS[activeTab].title
+  const headerSubtitle = role === 'santiye_sefi' && activeTab === 'genel' ? 'Genel Bakış' : null
 
   return (
     <div className="dashboard">
@@ -126,7 +218,10 @@ export default function Dashboard() {
             </svg>
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2>{showingDetail ? selectedProjectName : TABS[activeTab].title}</h2>
+            <h2>{headerTitle}</h2>
+            {headerSubtitle && (
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{headerSubtitle}</p>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
             <button
@@ -178,7 +273,28 @@ export default function Dashboard() {
         </header>
 
         <div className="dash-content">
-        {activeTab === 'genel'        && role === 'santiye_sefi' && <TabSantiyeSefi />}
+        {activeTab === 'genel'        && role === 'santiye_sefi' && (
+          <TabSantiyeSefi
+            key={reportViewKey}
+            onTabChange={handleTabChange}
+            onNewReport={() => openReportModal(null)}
+            onEditReport={(id) => openReportModal(id)}
+          />
+        )}
+        {activeTab === 'daily-report' && role === 'santiye_sefi' && false && (
+          <DailyReportForm
+            reportId={editReportId || undefined}
+            onBack={closeReportModal}
+            onSaved={handleReportSaved}
+          />
+        )}
+        {activeTab === 'rapor-listesi' && role === 'santiye_sefi' && (
+          <DailyReportList
+            key={reportViewKey}
+            onNewReport={() => openReportModal(null)}
+            onEditReport={(id) => openReportModal(id)}
+          />
+        )}
         {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
         {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'     && showProjectDetail  && (
@@ -205,6 +321,37 @@ export default function Dashboard() {
           />
         )}
         </div>
+
+        {role === 'santiye_sefi' && showReportModal && (
+          <div
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.48)',
+              zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 18,
+            }}
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget) closeReportModal()
+            }}
+          >
+            <div
+              className="daily-report-modal-shell"
+              style={{
+                width: 'min(1180px, 96vw)', maxHeight: '92vh', overflowY: 'auto',
+                background: '#F8FAFC', borderRadius: 18, boxShadow: '0 24px 80px rgba(15,23,42,.28)',
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div style={{ padding: 18 }}>
+                <DailyReportForm
+                  className="daily-report-modal-form"
+                  reportId={editReportId || undefined}
+                  onBack={closeReportModal}
+                  onSaved={handleReportSaved}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
       <FloatingAgent activeTab={activeTab} projectId={selectedProjectId} selectedDate={selectedDate} />

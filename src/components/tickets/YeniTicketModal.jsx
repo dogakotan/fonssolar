@@ -15,7 +15,17 @@ const SELECT_STYLE = {
   outline: 'none', cursor: 'pointer', minWidth: 130,
 }
 
-export default function YeniTicketModal({ onClose, onSaved }) {
+function projectIdLabel(projectId) {
+  if (!projectId) return '—'
+  if (/^[0-9a-f-]{24,}$/i.test(String(projectId))) return 'Bağlı Proje'
+  return String(projectId)
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
+}
+
+export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
   const { user, profile, projectId } = useAuth()
   const [project, setProject]         = useState(null)
   const [category, setCategory]       = useState('genel')
@@ -25,11 +35,37 @@ export default function YeniTicketModal({ onClose, onSaved }) {
   const [error, setError]             = useState(null)
 
   useEffect(() => {
+    if (defaultProject) {
+      setProject(defaultProject)
+      return
+    }
     if (!projectId) return
-    supabase.from('projects').select('id, name, location')
-      .eq('id', projectId).single()
-      .then(({ data }) => { if (data) setProject(data) })
-  }, [projectId])
+    async function loadProject() {
+      const byId = await supabase.from('projects').select('id, name, location')
+        .eq('id', projectId).maybeSingle()
+
+      if (byId.data) {
+        setProject(byId.data)
+        return
+      }
+
+      const label = projectIdLabel(projectId)
+      if (label !== 'Bağlı Proje') {
+        const byName = await supabase.from('projects').select('id, name, location')
+          .ilike('name', `%${String(projectId).replace(/[-_]+/g, ' ')}%`)
+          .limit(1)
+          .maybeSingle()
+
+        if (byName.data) {
+          setProject(byName.data)
+          return
+        }
+      }
+
+      setProject({ id: projectId, name: label, location: null })
+    }
+    loadProject()
+  }, [projectId, defaultProject])
 
   async function handleSubmit() {
     if (!description.trim()) return
@@ -37,6 +73,7 @@ export default function YeniTicketModal({ onClose, onSaved }) {
     setError(null)
 
     const effectiveProjectId = projectId || null
+    const ticketLocation = project?.location || null
 
     const { error: err } = await supabase.from('tickets').insert({
       project_id:  effectiveProjectId,
@@ -46,7 +83,7 @@ export default function YeniTicketModal({ onClose, onSaved }) {
       category,
       severity,
       status:      'gönderildi',
-      location:    project?.location || null,
+      location:    ticketLocation,
     })
     setSaving(false)
     if (err) { setError('Ticket oluşturulamadı. Lütfen tekrar deneyin.'); return }

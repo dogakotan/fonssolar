@@ -14,6 +14,16 @@ const LABEL = {
   letterSpacing: '0.4px', display: 'block', marginBottom: 4,
 }
 
+function projectIdLabel(projectId) {
+  if (!projectId) return 'Bağlı Proje'
+  if (/^[0-9a-f-]{24,}$/i.test(String(projectId))) return 'Bağlı Proje'
+  return String(projectId)
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
+}
+
 export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
   const { user } = useAuth()
   const [projects, setProjects] = useState([])
@@ -23,8 +33,44 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
   const [items, setItems] = useState([{ name: '', quantity: 1, unit: 'Adet', unit_price: '' }])
 
   useEffect(() => {
-    supabase.from('projects').select('id, name').order('name').then(({ data }) => setProjects(data || []))
-  }, [])
+    if (defaultProjectId) {
+      setForm(f => ({ ...f, project_id: defaultProjectId }))
+
+      async function loadDefaultProject() {
+        const byId = await supabase.from('projects')
+          .select('id, name')
+          .eq('id', defaultProjectId)
+          .maybeSingle()
+
+        if (byId.data) {
+          setProjects([byId.data])
+          return
+        }
+
+        const label = projectIdLabel(defaultProjectId)
+        if (label !== 'Bağlı Proje') {
+          const byName = await supabase.from('projects')
+            .select('id, name')
+            .ilike('name', `%${String(defaultProjectId).replace(/[-_]+/g, ' ')}%`)
+            .limit(1)
+            .maybeSingle()
+
+          if (byName.data) {
+            setProjects([{ ...byName.data, id: defaultProjectId }])
+            return
+          }
+        }
+
+        setProjects([{ id: defaultProjectId, name: label }])
+      }
+
+      loadDefaultProject()
+      return
+    }
+
+    supabase.from('projects').select('id, name').order('name')
+      .then(({ data }) => setProjects(data || []))
+  }, [defaultProjectId])
 
   const addItem    = () => setItems(p => [...p, { name: '', quantity: 1, unit: 'Adet', unit_price: '' }])
   const removeItem = (i) => setItems(p => p.filter((_, j) => j !== i))

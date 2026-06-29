@@ -156,7 +156,9 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   const [showTalep, setShowTalep]   = useState(false)
   const [detayTicket, setDetayTicket] = useState(null)
   const [detayTalep, setDetayTalep]   = useState(null)
-  const [toast, setToast] = useState('')
+  const [toast,           setToast]           = useState('')
+  const [progressItems,   setProgressItems]   = useState([])
+  const [projectProgress, setProjectProgress] = useState(null)
 
   const project     = useProject(projectId)
   const weatherCity = extractWeatherCity(project)
@@ -166,6 +168,20 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   useEffect(() => {
     setReportLimit(5)
   }, [projectId])
+
+  useEffect(() => {
+    const pid = project?.id
+    if (!pid) { setProjectProgress(null); setProgressItems([]); return }
+    Promise.all([
+      supabase.from('vw_project_progress_summary').select('*').eq('project_id', pid).maybeSingle(),
+      supabase.from('progress_items')
+        .select('id, name, unit, target_qty, total_progress, category, order_index')
+        .eq('project_id', pid).gt('target_qty', 0).order('order_index').limit(10),
+    ]).then(([sumRes, itemsRes]) => {
+      setProjectProgress(sumRes.data || null)
+      setProgressItems(itemsRes.data || [])
+    })
+  }, [project?.id])
 
   function showToast(msg) {
     setToast(msg)
@@ -309,6 +325,99 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
           )}
         </div>
       </div>
+
+      {/* Proje İlerlemesi */}
+      {(projectProgress || progressItems.length > 0) && (
+        <div style={{ ...CARD_BASE, padding: 0, marginBottom: 16, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <div>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', display: 'block' }}>Proje İlerlemesi</span>
+              {projectProgress && (
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                  Planlanan %{projectProgress.planned_progress_pct} · Gerçekleşen %{projectProgress.actual_progress_pct}
+                </span>
+              )}
+            </div>
+            {projectProgress && projectProgress.progress_variance != null && (
+              <span style={{
+                fontSize: 14, fontWeight: 700, flexShrink: 0,
+                color: Number(projectProgress.progress_variance) >= 0 ? '#16a34a' : '#dc2626',
+              }}>
+                {Number(projectProgress.progress_variance) >= 0 ? '+' : ''}{projectProgress.progress_variance}%
+              </span>
+            )}
+          </div>
+
+          {projectProgress && (
+            <div style={{ padding: '12px 18px', borderBottom: progressItems.length > 0 ? '1px solid #f9fafb' : 'none' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: '#64748b' }}>Genel İlerleme</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#0ea5e9' }}>%{projectProgress.actual_progress_pct}</span>
+              </div>
+              <div style={{ position: 'relative', height: 10, background: '#f1f5f9', borderRadius: 5, overflow: 'hidden' }}>
+                <div style={{
+                  position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 5,
+                  background: '#0ea5e9', width: `${projectProgress.actual_progress_pct || 0}%`, transition: 'width .4s',
+                }} />
+              </div>
+              {projectProgress.planned_progress_pct > 0 && (
+                <div style={{ position: 'relative', height: 4, marginTop: 3 }}>
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0, height: 2,
+                    background: '#cbd5e1', borderRadius: 2,
+                    width: `${projectProgress.planned_progress_pct || 0}%`,
+                  }} />
+                  <span style={{ position: 'absolute', left: `${projectProgress.planned_progress_pct || 0}%`, top: -2, fontSize: 8, color: '#94a3b8', transform: 'translateX(-50%)' }}>▲</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 11, color: '#64748b' }}>
+                  <strong style={{ color: '#374151' }}>{projectProgress.completed_tasks}</strong>/{projectProgress.total_tasks} görev tamamlandı
+                </span>
+                {projectProgress.delayed_tasks > 0 && (
+                  <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>
+                    {projectProgress.delayed_tasks} geciken görev
+                  </span>
+                )}
+                {projectProgress.days_remaining != null && (
+                  <span style={{ fontSize: 11, color: '#64748b' }}>
+                    <strong style={{ color: '#374151' }}>{projectProgress.days_remaining}</strong> gün kaldı
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {progressItems.length > 0 && (
+            <div style={{ padding: '12px 18px' }}>
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em' }}>İlerleme Kalemleri</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {progressItems.slice(0, 6).map(item => {
+                  const pct = item.target_qty > 0
+                    ? Math.min(100, Math.round((Number(item.total_progress) / Number(item.target_qty)) * 100))
+                    : 0
+                  const barColor = pct >= 100 ? '#22c55e' : pct > 60 ? '#0ea5e9' : pct > 30 ? '#f59e0b' : '#f97316'
+                  return (
+                    <div key={item.id}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, gap: 8 }}>
+                        <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                          {item.name}
+                        </span>
+                        <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                          {Number(item.total_progress).toLocaleString('tr-TR')} / {Number(item.target_qty).toLocaleString('tr-TR')} {item.unit} · %{pct}
+                        </span>
+                      </div>
+                      <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', borderRadius: 3, background: barColor, width: `${pct}%`, transition: 'width .4s' }} />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Taleplerim */}
       <div id="taleplerim" style={{

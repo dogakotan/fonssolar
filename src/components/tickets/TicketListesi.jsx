@@ -196,6 +196,8 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
       q = q.in('category', ['elektrik', 'genel'])
     } else if (role === 'mekanik_sef') {
       q = q.in('category', ['mekanik', 'genel'])
+    } else if (role === 'santiye_sefi') {
+      if (authProjectId) q = q.eq('project_id', authProjectId)
     } else {
       if (user?.id) q = q.eq('created_by', user.id)
     }

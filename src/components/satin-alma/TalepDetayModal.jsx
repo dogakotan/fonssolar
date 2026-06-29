@@ -10,6 +10,7 @@ const URGENCY = {
 const STATUS = {
   bekliyor:       { bg: '#FEF3C7', color: '#92400E',  label: 'Bekliyor' },
   onaylandı:      { bg: '#D1FAE5', color: '#065F46',  label: 'Onaylandı' },
+  satın_alındı:   { bg: '#F3F4F6', color: '#6B7280',  label: 'Satın Alındı' },
   reddedildi:     { bg: '#FEE2E2', color: '#991B1B',  label: 'Reddedildi' },
   fatura_kesildi: { bg: '#EFF6FF', color: '#185FA5',  label: 'Fatura Kesildi' },
 }
@@ -22,7 +23,7 @@ function Badge({ map, value }) {
   return <span style={{ background: b.bg, color: b.color, fontSize: 12, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>{b.label}</span>
 }
 
-export default function TalepDetayModal({ request, onClose }) {
+export default function TalepDetayModal({ request, talepId, onClose }) {
   const { isAdmin, user } = useAuth()
   const [data, setData] = useState(null)
   const [items, setItems] = useState([])
@@ -32,10 +33,12 @@ export default function TalepDetayModal({ request, onClose }) {
 
   useEffect(() => {
     async function load() {
+      const id = request?.id || talepId
+      if (!id) return
       const { data: req } = await supabase
         .from('purchase_requests')
         .select('*, projects(name), profiles!requested_by(full_name), purchase_request_items(*)')
-        .eq('id', request.id)
+        .eq('id', id)
         .single()
       if (req) {
         setData(req)
@@ -43,16 +46,16 @@ export default function TalepDetayModal({ request, onClose }) {
       }
     }
     load()
-  }, [request.id])
+  }, [request?.id, talepId])
 
-  const req = data || request
+  const req = data || request || {}
   const total = items.reduce((sum, i) => sum + (i.total_price ?? (i.quantity * (i.unit_price || 0))), 0)
 
   const meta = [
     { label: 'Proje',        value: req.projects?.name || '—' },
     { label: 'Aciliyet',     value: <Badge map={URGENCY} value={req.urgency} /> },
     { label: 'Durum',        value: <Badge map={STATUS}  value={req.status}  /> },
-    { label: 'Talep Eden',   value: req.profiles?.full_name || '—' },
+    { label: 'Talep Eden',   value: req.profiles?.full_name || req.requester_name || '—' },
     { label: 'Tarih',        value: fmtDate(req.created_at) },
     { label: 'Toplam Tutar', value: <strong style={{ color: '#185FA5' }}>{fmt(total)}</strong> },
   ]
@@ -98,10 +101,12 @@ export default function TalepDetayModal({ request, onClose }) {
             ))}
           </div>
 
-          {req.request_note && (
+          {(req.request_note || req.notes) && (
             <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
               <p style={{ fontSize: 10, color: '#9CA3AF', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Açıklama</p>
-              <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>{req.request_note}</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
+                {[req.request_note, req.notes].filter(Boolean).join('\n\n')}
+              </p>
             </div>
           )}
 
