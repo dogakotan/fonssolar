@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { useWeather } from '../hooks/useWeather'
 import { useSantiyeData } from '../hooks/useSantiyeData'
 import DailyReportModal    from '../components/santiye/modals/DailyReportModal'
 import AcikTaleplerSection from '../components/santiye/AcikTaleplerSection'
@@ -40,6 +41,7 @@ export default function SantiyeSefiDashboard() {
   const [toast, setToast]            = useState('')
 
   const { loading, openPurchaseRequests, openTickets, todayReport, stats, refetch } = useSantiyeData(projectId)
+  const weather = useWeather('Uşak')
 
   function showToast(msg) {
     setToast(msg)
@@ -169,7 +171,19 @@ export default function SantiyeSefiDashboard() {
               <span style={{ fontSize: 11, fontWeight: 600, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 8 }}>
                 Hava — Uşak
               </span>
-              <WeatherWidget />
+              {weather.loading || !weather.current ? (
+                <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>Yükleniyor…</p>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 26, lineHeight: 1 }}>{weather.current.emoji}</span>
+                    <span style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{weather.current.temp}°C</span>
+                  </div>
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9CA3AF' }}>
+                    ↑{weather.tomorrow?.max}° ↓{weather.tomorrow?.min}° · 💨 {weather.current.wind} km/h
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -272,39 +286,6 @@ export default function SantiyeSefiDashboard() {
   )
 }
 
-function WeatherWidget() {
-  const [wx, setWx] = useState(null)
-
-  useEffect(() => {
-    fetch('https://api.open-meteo.com/v1/forecast?latitude=38.6823&longitude=29.4082&current=temperature_2m,weathercode,windspeed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=Europe/Istanbul&forecast_days=1')
-      .then(r => r.json())
-      .then(data => {
-        const wc   = data?.current?.weathercode
-        const temp = data?.current?.temperature_2m
-        const wind = data?.current?.windspeed_10m
-        const max  = data?.daily?.temperature_2m_max?.[0]
-        const min  = data?.daily?.temperature_2m_min?.[0]
-        const EMOJI = { 0:'☀️',1:'🌤️',2:'⛅',3:'☁️',51:'🌦️',53:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',71:'🌨️',75:'❄️',80:'🌦️',95:'⛈️' }
-        const emoji = EMOJI[wc] || (wc <= 3 ? '🌤️' : wc <= 67 ? '🌧️' : '❄️')
-        setWx({ emoji, temp: Math.round(temp), wind: Math.round(wind), max: Math.round(max), min: Math.round(min) })
-      })
-      .catch(() => {})
-  }, [])
-
-  if (!wx) return <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>Yükleniyor…</p>
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 26, lineHeight: 1 }}>{wx.emoji}</span>
-        <span style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{wx.temp}°C</span>
-      </div>
-      <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9CA3AF' }}>
-        ↑{wx.max}° ↓{wx.min}° · 💨 {wx.wind} km/h
-      </p>
-    </div>
-  )
-}
 
 const BTN_ACCENT = {
   background: '#003B8E', color: '#fff', border: 'none', borderRadius: 8,

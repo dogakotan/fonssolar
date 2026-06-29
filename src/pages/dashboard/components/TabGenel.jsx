@@ -8,7 +8,6 @@ import {
 } from 'recharts'
 import ProgBar from '../../../components/ui/ProgBar'
 import ExportButton from '../../../components/ui/ExportButton'
-import WeatherWidget from '../../../components/ui/WeatherWidget'
 import DateNavigator from '../../../components/ui/DateNavigator'
 import { useWeather } from '../../../hooks/useWeather'
 import { dateFilter } from '../../../utils/exportUtils'

@@ -279,11 +279,11 @@
 .project-summary-line span:not(.project-summary-icon) { color: var(--color-text-sub); font-size: .78rem; }
 .project-summary-line strong { color: var(--color-text); font-size: .78rem; text-align: right; }
 .project-weather-card { display: flex; flex-direction: column; }
-.project-weather-main { display: flex; align-items: center; gap: .6rem; padding: .65rem 0 .75rem; min-width: 0; }
+.project-weather-main { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; padding: .65rem 0 .75rem; min-width: 0; }
 .project-weather-emoji { font-size: 2rem; line-height: 1; flex-shrink: 0; }
 .project-weather-main strong { font-size: 1.5rem; line-height: 1; color: var(--color-text); }
 .project-weather-main p { margin: .2rem 0 0; color: var(--color-muted); font-size: .82rem; }
-.project-weather-meta { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: .2rem; color: var(--color-muted); font-size: .72rem; flex-shrink: 0; }
+.project-weather-meta { display: flex; flex-direction: row; gap: .65rem; color: var(--color-muted); font-size: .72rem; width: 100%; }
 .project-weather-tomorrow { display: grid; grid-template-columns: auto auto 1fr; gap: .35rem; align-items: center; padding: .55rem 0; border-top: 1px solid #eef2f7; border-bottom: 1px solid #eef2f7; }
 .project-weather-tomorrow span { color: var(--color-muted); font-size: .7rem; font-weight: 700; text-transform: uppercase; }
 .project-weather-tomorrow strong { font-size: .85rem; color: var(--color-text); }
@@ -378,7 +378,6 @@
   .project-detail-columns > div:first-child { padding-right: 0; border-right: 0; }
   .project-overview-card, .project-mini-card, .project-timeline-card { padding: .95rem 1rem; }
   .project-weather-main { align-items: flex-start; }
-  .project-weather-meta { margin-left: 0; align-items: flex-start; }
   .project-weather-tomorrow { grid-template-columns: 1fr; }
   .project-weather-tomorrow small { text-align: left; }
   .project-timeline { display: flex; overflow-x: auto; padding: .25rem .1rem .45rem; }
