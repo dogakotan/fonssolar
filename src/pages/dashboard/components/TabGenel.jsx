@@ -239,22 +239,19 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTab
   // Başlangıç yüklemesi — projeler + biletler
   useEffect(() => {
     async function load() {
-      const [{ data: projData }, tOpen, tCrit, budgRes, invRes, pendInvRes, notifRes] = await Promise.all([
+      const [{ data: projData }, { data: summary, error: summaryErr }] = await Promise.all([
         getProjects(),
-        supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('status', 'açık'),
-        supabase.from('tickets').select('*', { count: 'exact', head: true }).eq('severity', 'kritik').neq('status', 'kapatıldı'),
-        supabase.from('budget_lines').select('planned_amount'),
-        supabase.from('invoices').select('amount, status').in('status', ['ödendi', 'yönetici_onayında', 'muhasebe_onayında']),
-        supabase.from('invoices').select('id', { count: 'exact', head: true }).in('status', ['yönetici_onayında', 'muhasebe_onayında']),
-        supabase.from('tickets').select('id, title, severity, status, created_at').neq('status', 'kapatıldı').order('created_at', { ascending: false }).limit(5),
+        supabase.rpc('get_dashboard_summary'),
       ])
       if (projData) setProjects(projData)
-      if (!tOpen.error)   setOpenTickets(tOpen.count ?? 0)
-      if (!tCrit.error)   setCriticalTickets(tCrit.count ?? 0)
-      if (!budgRes.error) setTotalBudget(budgRes.data?.reduce((s, b) => s + Number(b.planned_amount || 0), 0) ?? 0)
-      if (!invRes.error)  setSpentAmount(invRes.data?.reduce((s, i) => s + Number(i.amount || 0), 0) ?? 0)
-      if (!pendInvRes.error) setPendingInvoices(pendInvRes.count ?? 0)
-      if (!notifRes.error)   setRecentNotifications(notifRes.data || [])
+      if (!summaryErr && summary) {
+        setOpenTickets(summary.open_tickets ?? 0)
+        setCriticalTickets(summary.critical_tickets ?? 0)
+        setTotalBudget(summary.total_budget ?? 0)
+        setSpentAmount(summary.spent_amount ?? 0)
+        setPendingInvoices(summary.pending_invoices ?? 0)
+        setRecentNotifications(summary.recent_notifications || [])
+      }
       setLoading(false)
     }
     load().catch(() => setLoading(false))
