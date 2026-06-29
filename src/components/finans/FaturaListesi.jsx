@@ -60,14 +60,6 @@ function FaturaEkleModal({ onClose, onSaved }) {
     }).select().single()
     setSaving(false)
     if (error) { setErr(error.message); return }
-    if (newInv) {
-      await supabase.from('invoice_approvals').insert({
-        invoice_id: newInv.id,
-        step: 1,
-        step_label: 'Muhasebe Onayı',
-        status: 'bekliyor',
-      })
-    }
     onSaved()
     onClose()
   }

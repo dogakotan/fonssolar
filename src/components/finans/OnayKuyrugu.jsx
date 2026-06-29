@@ -259,20 +259,6 @@ export default function OnayKuyrugu() {
       newStatus = 'reddedildi'
     } else if (step === 1) {
       newStatus = 'yönetici_onayında'
-      const { data: existing } = await supabase
-        .from('invoice_approvals')
-        .select('id')
-        .eq('invoice_id', invoiceId)
-        .eq('step', 2)
-        .single()
-      if (!existing) {
-        await supabase.from('invoice_approvals').insert({
-          invoice_id: invoiceId,
-          step: 2,
-          step_label: 'Yönetici Onayı',
-          status: 'bekliyor',
-        })
-      }
     } else if (step === 2) {
       newStatus = 'onaylandı'
     }

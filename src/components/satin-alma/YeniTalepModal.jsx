@@ -37,35 +37,24 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
     setSaving(true)
     setErrorMessage(null)
 
-    const { data: pr, error } = await supabase
-      .from('purchase_requests')
-      .insert({
-        project_id:   form.project_id || null,
-        title:        form.title.trim(),
-        urgency:      form.urgency,
-        request_note: form.request_note.trim() || null,
-        status:       'bekliyor',
-        requested_by: user.id,
-      })
-      .select()
-      .single()
+    const { error } = await supabase.rpc('create_purchase_request_with_items', {
+      p_project_id:   form.project_id,
+      p_title:        form.title.trim(),
+      p_urgency:      form.urgency,
+      p_request_note: form.request_note.trim() || null,
+      p_requested_by: user.id,
+      p_items:        items.map(i => ({
+        name:       i.name.trim(),
+        quantity:   Number(i.quantity) || 1,
+        unit:       i.unit,
+        unit_price: i.unit_price !== '' ? Number(i.unit_price) : null,
+      })),
+    })
 
-    if (!error && pr) {
-      const validItems = items.filter(i => i.name.trim())
-      if (validItems.length > 0) {
-        await supabase.from('purchase_request_items').insert(
-          validItems.map(i => ({
-            request_id: pr.id,
-            name:       i.name.trim(),
-            quantity:   Number(i.quantity) || 1,
-            unit:       i.unit,
-            unit_price: i.unit_price !== '' ? Number(i.unit_price) : null,
-          }))
-        )
-      }
-      onSaved()
+    if (error) {
+      setErrorMessage(error.message || 'Talep kaydedilemedi.')
     } else {
-      setErrorMessage(error?.message || 'Talep kaydedilemedi.')
+      onSaved()
     }
     setSaving(false)
   }

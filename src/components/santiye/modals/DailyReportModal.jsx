@@ -152,52 +152,30 @@ export default function DailyReportModal({ projectId, userId, profileId, onClose
     setSaving(true)
     setError('')
     try {
-      const { data: rep, error: repErr } = await supabase.from('daily_reports')
-        .upsert({
-          project_id:     projectId,
-          report_date:    today,
-          created_by:     userId,
-          general_status: form.general_status,
-          worker_count:   totalPersonnel,
-          weather:        form.weather,
-          weather_note:   form.weather_note || null,
-          notes:          form.notes || null,
-          updated_at:     new Date().toISOString(),
-        }, { onConflict: 'project_id,report_date' })
-        .select('id').single()
-
-      if (repErr) throw repErr
-      const rid = rep.id
-
-      await supabase.from('personnel_log_entries').delete().eq('report_id', rid)
-      const persRows = Object.entries(personnel)
-        .filter(([, v]) => Number(v) > 0)
-        .map(([key, count]) => {
+      const { error: rpcErr } = await supabase.rpc('save_daily_report', {
+        p_project_id:     projectId,
+        p_report_date:    today,
+        p_created_by:     userId,
+        p_general_status: form.general_status,
+        p_worker_count:   totalPersonnel,
+        p_weather:        form.weather,
+        p_weather_note:   form.weather_note || '',
+        p_notes:          form.notes || '',
+        p_personnel: Object.entries(personnel).map(([key, count]) => {
           const [shift, department] = key.split('|')
-          return { report_id: rid, shift, department, count: Number(count) }
-        })
-      if (persRows.length) await supabase.from('personnel_log_entries').insert(persRows)
+          return { shift, department, count: Number(count) || 0 }
+        }),
+        p_machinery: Object.entries(machinery).map(([machine_type, v]) => ({
+          machine_type, count: v.count, status: v.status, notes: v.notes || '',
+        })),
+        p_progress: progressItems.map(item => ({
+          item_id:   item.id,
+          qty_added: Number(item.qty_today) || 0,
+          note:      item.note || '',
+        })),
+      })
 
-      await supabase.from('machinery_logs').delete().eq('report_id', rid)
-      const machRows = Object.entries(machinery)
-        .filter(([, v]) => v.count > 0)
-        .map(([machine_type, v]) => ({ report_id: rid, machine_type, count: v.count, status: v.status, notes: v.notes || null }))
-      if (machRows.length) await supabase.from('machinery_logs').insert(machRows)
-
-      const toInsert = []
-      for (const item of progressItems) {
-        const newQty = Number(item.qty_today) || 0
-        const oldQty = existingQtys[item.id]?.qty || 0
-        const diff   = newQty - oldQty
-        if (newQty > 0) toInsert.push({ report_id: rid, item_id: item.id, qty_added: newQty, note: item.note || null })
-        if (diff !== 0) {
-          const newTotal = Math.max(0, (Number(item.total_progress) || 0) + diff)
-          await supabase.from('progress_items').update({ total_progress: newTotal }).eq('id', item.id)
-        }
-      }
-      await supabase.from('progress_daily').delete().eq('report_id', rid)
-      if (toInsert.length) await supabase.from('progress_daily').insert(toInsert)
-
+      if (rpcErr) throw rpcErr
       setToast('Rapor kaydedildi ✓')
       setTimeout(() => { onSaved?.(); onClose() }, 900)
     } catch (e) {
