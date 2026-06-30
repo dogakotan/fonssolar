@@ -93,6 +93,12 @@ export async function fetchXlsxTemplate(paths) {
   throw new Error('Excel şablonu yüklenemedi')
 }
 
+export function xlsxZipBlob(files) {
+  return new Blob([zipSync(files, { level: 6 })], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+}
+
 export function downloadXlsxZip(files, filename) {
   const blob = new Blob([zipSync(files, { level: 6 })], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -13,6 +13,7 @@ import {
   fetchXlsxTemplate,
   setTemplateCell as setExcelTemplateCell,
   downloadXlsxZip,
+  xlsxZipBlob,
   formatExcelDate,
 } from '../../../utils/excelUtils'
 
@@ -801,15 +802,43 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     put('C114', creatorName)
 
     files['xl/worksheets/sheet1.xml'] = strToU8(xml)
-    downloadXlsxZip(files, `gunluk-rapor-${projectId}-${selectedDay}.xlsx`)
+    return { files, selectedDay }
+  }
+
+  async function exportSelectedDailyReportPDF() {
+    const { files, selectedDay } = await exportSelectedDailyReportExcel()
+    const blob = xlsxZipBlob(files)
+    const form = new FormData()
+    form.append('excel', blob, `rapor-${selectedDay}.xlsx`)
+    form.append('proje_id', projectId)
+    form.append('tarih', selectedDay)
+    const res = await fetch('http://localhost:8001/generate-pdf', { method: 'POST', body: form })
+    if (!res.ok) throw new Error(`PDF servisi hatası: ${await res.text().catch(() => res.status)}`)
+    const pdfBlob = await res.blob()
+    const url = URL.createObjectURL(pdfBlob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `gunluk-rapor-${projectId}-${selectedDay}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   async function handleExport(type, period = 'gunluk') {
     setShowExportMenu(false)
 
+    if (type === 'python-pdf' && period === 'gunluk') {
+      try {
+        await exportSelectedDailyReportPDF()
+      } catch (error) {
+        alert(`PDF oluşturulamadı: ${error.message}\n\nPDF servisi çalışıyor mu? → pdf-service/start.bat`)
+      }
+      return
+    }
+
     if (type === 'excel' && period === 'gunluk') {
       try {
-        await exportSelectedDailyReportExcel()
+        const { files, selectedDay } = await exportSelectedDailyReportExcel()
+        downloadXlsxZip(files, `gunluk-rapor-${projectId}-${selectedDay}.xlsx`)
       } catch (error) {
         console.error('Günlük rapor Excel şablonu hatası:', error)
         alert(`Günlük rapor Excel oluşturulamadı: ${error.message}`)
@@ -1086,7 +1115,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
                   </p>
                   <div style={{ display: 'grid', gap: '0.35rem', borderTop: '1px solid var(--color-border)', paddingTop: '0.75rem' }}>
                     {[
-                      ['pdf', 'gunluk', 'Günlük PDF raporu'],
+                      ['python-pdf', 'gunluk', 'Günlük PDF raporu'],
                       ['excel', 'gunluk', 'Günlük Excel raporu'],
                       ['pdf', 'haftalik', 'Haftalık PDF raporu'],
                       ['excel', 'haftalik', 'Haftalık Excel raporu'],

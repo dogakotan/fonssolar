@@ -1,8 +1,15 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { unzipSync, strFromU8, strToU8 } from 'fflate'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import DailyReportDetail from './DailyReportDetail'
 import { exportToExcel, exportToPdf } from '../utils/exportUtils'
+import {
+  fetchXlsxTemplate,
+  setTemplateCell as setExcelTemplateCell,
+  xlsxZipBlob,
+  formatExcelDate,
+} from '../utils/excelUtils'
 
 const PAGE_SIZE = 10
 
@@ -34,6 +41,30 @@ function weekAgoStr() {
   const d = new Date()
   d.setDate(d.getDate() - 30)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function norm(value) {
+  return String(value || '').toLocaleLowerCase('tr-TR')
+}
+
+function sumCount(rows, predicate) {
+  return (rows || []).filter(predicate).reduce((sum, row) => sum + Number(row.count || 0), 0)
+}
+
+function dailyProgressStatus(pct) {
+  if (pct >= 100) return 'Tamamlandı'
+  if (pct > 0) return 'Devam ediyor'
+  return ''
+}
+
+function decodeStoredMeta(prefix, value) {
+  const text = String(value || '')
+  if (!text.startsWith(prefix)) return { description: text }
+  try {
+    return JSON.parse(text.slice(prefix.length)) || { description: '' }
+  } catch {
+    return { description: text }
+  }
 }
 
 function parseLocalDate(value) {
@@ -194,14 +225,217 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     return { rows, projectName: project.name || 'Proje', titleDate }
   }
 
+  async function buildReportExcelById(reportId) {
+    const templateBuffer = await fetchXlsxTemplate([
+      '/excel/fons-solar-gunluk-rapor.xlsx',
+      '/fons-solar-gunluk-rapor.xlsx',
+      '/excel/fons-solar-gunluk-rapor-sablonu.xlsx',
+      '/fons-solar-gunluk-rapor-sablonu.xlsx',
+    ])
+    const files = unzipSync(new Uint8Array(templateBuffer))
+
+    const { data: report } = await supabase.from('daily_reports').select('*').eq('id', reportId).maybeSingle()
+    if (!report) throw new Error('Rapor bulunamadı')
+
+    const selectedDay = report.report_date
+    const previousDay = toDateStr(addDays(parseLocalDate(selectedDay), -1))
+
+    const [
+      projectRes,
+      progressItemsRes,
+      purchasesRes,
+      ticketsRes,
+      personnelRes,
+      machineryRes,
+      dailyTasksRes,
+      progressDailyRes,
+      materialUsageRes,
+      issuesRes,
+      creatorRes,
+    ] = await Promise.all([
+      supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
+      supabase.from('progress_items').select('*').eq('project_id', projectId).order('order_index'),
+      supabase.from('purchase_requests').select('*').eq('project_id', projectId)
+        .gte('created_at', `${selectedDay}T00:00:00`)
+        .lte('created_at', `${selectedDay}T23:59:59`)
+        .order('created_at', { ascending: true }).limit(6),
+      supabase.from('tickets').select('*').eq('project_id', projectId)
+        .gte('created_at', `${selectedDay}T00:00:00`)
+        .lte('created_at', `${selectedDay}T23:59:59`)
+        .order('created_at', { ascending: true }).limit(6),
+      supabase.from('personnel_log_entries').select('*').eq('report_id', reportId),
+      supabase.from('machinery_logs').select('*').eq('report_id', reportId),
+      supabase.from('daily_tasks').select('*').eq('report_id', reportId).order('order_index'),
+      supabase.from('progress_daily').select('*').eq('report_id', reportId),
+      supabase.from('daily_report_material_usage').select('*').eq('report_id', reportId),
+      supabase.from('daily_report_issues').select('*').eq('report_id', reportId),
+      report.created_by
+        ? supabase.from('profiles').select('full_name, email').eq('id', report.created_by).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
+
+    const { data: prevReports } = await supabase
+      .from('daily_reports').select('id').eq('project_id', projectId).lte('report_date', previousDay)
+    const prevIds = (prevReports || []).map(r => r.id).filter(Boolean)
+    const previousTotals = new Map()
+    if (prevIds.length) {
+      const { data: prevRows } = await supabase.from('progress_daily').select('item_id, qty_added').in('report_id', prevIds)
+      ;(prevRows || []).forEach(row => {
+        previousTotals.set(row.item_id, (previousTotals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+      })
+    }
+
+    const projectData = projectRes.data || {}
+    const personnel = personnelRes.data || []
+    const machinery = machineryRes.data || []
+    const progressItems = progressItemsRes.data || []
+    const progressByItem = new Map((progressDailyRes.data || []).map(row => [row.item_id, row]))
+    const creatorName = creatorRes.data?.full_name || creatorRes.data?.email || ''
+    const reportNotes = decodeStoredMeta('__REPORT_NOTES_META__', report.notes)
+
+    let xml = strFromU8(files['xl/worksheets/sheet1.xml'])
+    const put = (cell, value) => { xml = setExcelTemplateCell(xml, cell, value ?? '') }
+
+    put('B5', projectData.name || projectId)
+    put('E5', formatExcelDate(report.report_date))
+    put('H5', String(report.id).slice(0, 8).toUpperCase())
+    put('J5', report.weather || '')
+    put('L5', creatorName)
+
+    const p = (departments, shifts) => sumCount(personnel, row => {
+      const dep = norm(row.department)
+      const shift = norm(row.shift)
+      return departments.some(key => dep.includes(key)) && shifts.some(key => shift.includes(key))
+    })
+    const deptCols = [
+      { keys: ['idari', 'teknik'], col: 'E' },
+      { keys: ['mekanik'], col: 'F' },
+      { keys: ['elektrik'], col: 'G' },
+      { keys: ['yevmiyeci'], col: 'H' },
+      { keys: ['diger', 'diğer'], col: 'I' },
+    ]
+    deptCols.forEach(({ keys, col }) => {
+      put(`${col}9`, p(keys, ['mühendis', 'muhendis', 'tekniker']))
+      put(`${col}10`, p(keys, ['usta', 'teknisyen']))
+      put(`${col}11`, p(keys, ['işçi', 'isci', 'yardımcı', 'yardimci']))
+    })
+
+    const machineRows = {
+      ekskavatör: 16, ekskavator: 16, 'rok_delim': 17, 'rok delim': 17,
+      'kolon çakım': 18, 'kolon cakim': 18, forklift: 19, vinç: 20, vinc: 20,
+      jcb: 21, loader: 21, loder: 21, kamyon: 22, jeneratör: 23, jenerator: 23,
+    }
+    machinery.forEach(machine => {
+      const type = norm(machine.machine_type).replaceAll('_', ' ')
+      const match = Object.entries(machineRows).find(([key]) => type.includes(key))
+      if (!match) return
+      const row = match[1]
+      put(`E${row}`, Number(machine.count || 0))
+      put(`F${row}`, machine.status || '')
+      put(`G${row}`, machine.usage_area || machine.notes || '')
+      put(`J${row}`, machine.notes || '')
+    })
+
+    const doneTasks = (dailyTasksRes.data || []).filter(t => ['tamamlandı', 'tamamlandi', 'done'].includes(norm(t.type))).slice(0, 7)
+    const plannedTasks = (dailyTasksRes.data || []).filter(t => ['planlandı', 'planlandi', 'planned'].includes(norm(t.type))).slice(0, 7)
+    doneTasks.forEach((task, idx) => put(`C${26 + idx}`, task.description || ''))
+    plannedTasks.forEach((task, idx) => put(`C${35 + idx}`, task.description || ''))
+
+    progressItems.slice(0, 35).forEach((item, idx) => {
+      const row = 46 + idx
+      const daily = progressByItem.get(item.id)
+      const previous = Number(previousTotals.get(item.id) || 0)
+      const dailyQty = Number(daily?.qty_added || 0)
+      const cumulative = previous + dailyQty
+      const target = Number(item.target_qty || 0)
+      const pct = target > 0 ? Math.min(1, cumulative / target) : 0
+      put(`B${row}`, item.code || item.item_code || `K-${String(idx + 1).padStart(2, '0')}`)
+      put(`C${row}`, item.name || '')
+      put(`D${row}`, item.unit || '')
+      put(`E${row}`, target || '')
+      put(`F${row}`, previous || '')
+      put(`G${row}`, dailyQty || '')
+      put(`H${row}`, cumulative || '')
+      put(`I${row}`, pct)
+      put(`J${row}`, dailyProgressStatus(Math.round(pct * 100)))
+      put(`K${row}`, daily?.note || daily?.notes || item.notes || '')
+    })
+
+    ;(materialUsageRes.data || []).slice(0, 7).forEach((material, idx) => {
+      const row = 86 + idx
+      const meta = decodeStoredMeta('__MATERIAL_META__', material.description)
+      put(`C${row}`, material.material_name || '')
+      put(`D${row}`, meta.supplier || '')
+      put(`E${row}`, Number(material.quantity_used || 0) || '')
+      put(`F${row}`, material.unit || '')
+      put(`G${row}`, meta.waybill_no || '')
+      put(`H${row}`, formatExcelDate(meta.delivery_date || ''))
+      put(`I${row}`, meta.storage_location || '')
+      put(`K${row}`, meta.description || material.reason || '')
+    })
+
+    ;(purchasesRes.data || []).slice(0, 6).forEach((purchase, idx) => {
+      const row = 95 + idx
+      put(`C${row}`, purchase.title || purchase.material_name || purchase.description || '')
+      put(`E${row}`, purchase.quantity || '')
+      put(`F${row}`, purchase.unit || '')
+      put(`G${row}`, purchase.priority || purchase.urgency || '')
+      put(`H${row}`, purchase.supplier || '')
+      put(`J${row}`, purchase.status || '')
+      put(`K${row}`, formatExcelDate(purchase.required_date || purchase.delivery_date || purchase.created_at))
+    })
+
+    const issueRows = [...(issuesRes.data || []), ...(ticketsRes.data || [])].slice(0, 6)
+    issueRows.forEach((issue, idx) => {
+      const row = 103 + idx
+      const meta = decodeStoredMeta('__ISSUE_META__', issue.description)
+      put(`C${row}`, issue.topic || issue.title || meta.description || issue.description || '')
+      put(`E${row}`, issue.category || meta.category || issue.type || '')
+      put(`F${row}`, issue.priority || issue.severity || '')
+      put(`G${row}`, issue.assigned_to || issue.assignee || '')
+      put(`I${row}`, issue.resolution_status || issue.status || '')
+      put(`K${row}`, formatExcelDate(issue.closed_at || meta.closed_at || issue.resolved_at || ''))
+      put(`L${row}`, issue.notes || meta.notes || meta.description || '')
+    })
+
+    put('C110', report.isg_notes || reportNotes.isg_notes || '')
+    put('C111', report.incident_notes || reportNotes.incident_notes || '')
+    put('C112', reportNotes.description || report.notes || report.weather_note || '')
+    put('C114', creatorName)
+
+    files['xl/worksheets/sheet1.xml'] = strToU8(xml)
+    return { files, reportDate: selectedDay }
+  }
+
   async function handleExport(reportId, type) {
     setExportingId(`${type}-${reportId}`)
     try {
-      const { rows, projectName, titleDate } = await buildReportRows(reportId)
+      if (type === 'pdf') {
+        const { files, reportDate } = await buildReportExcelById(reportId)
+        const blob = xlsxZipBlob(files)
+        const form = new FormData()
+        form.append('excel', blob, `rapor-${reportDate}.xlsx`)
+        form.append('proje_id', projectId)
+        form.append('tarih', reportDate)
+        const res = await fetch('http://localhost:8001/generate-pdf', { method: 'POST', body: form })
+        if (!res.ok) throw new Error(`PDF servisi hatası: ${await res.text().catch(() => String(res.status))}`)
+        const pdfBlob = await res.blob()
+        const url = URL.createObjectURL(pdfBlob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `gunluk-rapor-${projectId}-${reportDate}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+        return
+      }
+      const { rows, projectName: pName, titleDate } = await buildReportRows(reportId)
       const title = 'Günlük Rapor'
       const columns = ['Bölüm', 'Alan', 'Değer']
       if (type === 'excel') exportToExcel(title, 'gunluk', columns, rows)
-      else exportToPdf(title, 'gunluk', columns, rows, { orientation: 'portrait', projectName, subtitle: titleDate })
+      else exportToPdf(title, 'gunluk', columns, rows, { orientation: 'portrait', projectName: pName, subtitle: titleDate })
+    } catch (error) {
+      if (type === 'pdf') alert(`PDF oluşturulamadı: ${error.message}\n\nPDF servisi çalışıyor mu? → pdf-service/start.bat`)
+      else throw error
     } finally {
       setExportingId(null)
     }

@@ -182,63 +182,57 @@ function normalizePurchase(pr) {
 
 function ProjectWeatherCard({ location, lostDays, reportWeather }) {
   const city = location ? location.split('/')[0].split(',')[0].trim() : ''
-  const hasStoredWeather = Boolean(reportWeather?.weather)
-  const weather = useWeather(hasStoredWeather ? null : city || null)
-  const storedWeather = hasStoredWeather ? getWeatherMeta(reportWeather.weather) : null
-  const storedDate = reportWeather?.report_date ? fmtDate(reportWeather.report_date) : null
+  const weather = useWeather(city || null)
+  const storedWeather = reportWeather?.weather ? getWeatherMeta(reportWeather.weather) : null
+
+  const current = weather.current
+  const tomorrow = weather.tomorrow
 
   return (
-    <div className="card project-overview-card project-weather-card">
-      <div className="project-card-title">
-        <h3>Hava Durumu</h3>
-        <span>{city || 'Konum bilgisi yok'}</span>
-      </div>
-      {hasStoredWeather ? (
-        <>
-          <div className="project-weather-main">
-            <span className="project-weather-emoji">{storedWeather.emoji}</span>
-            <div>
-              <strong style={{ fontSize: '1.35rem' }}>{storedWeather.label}</strong>
-              <p>{storedDate ? `${storedDate} raporu` : 'Günlük rapor kaydı'}</p>
-            </div>
-            {reportWeather.weather_note ? (
-              <div className="project-weather-meta">
-                <span>{reportWeather.weather_note}</span>
-              </div>
-            ) : null}
-          </div>
-          <div className="project-weather-tomorrow">
-            <span>Kaynak</span>
-            <strong>Supabase günlük rapor</strong>
-            <small>Seçili tarih aralığındaki son rapor verisi</small>
-          </div>
-        </>
-      ) : weather.loading ? (
-        <div className="project-weather-empty">Hava yükleniyor…</div>
-      ) : weather.error || !weather.current ? (
-        <div className="project-weather-empty">Hava durumu alınamadı</div>
+    <div className="stat-card" style={{ borderTop: '3px solid #0ea5e9' }}>
+      <p className="stat-label">🌤 Hava Durumu{city ? ` — ${city}` : ''}</p>
+
+      {weather.loading ? (
+        <p className="stat-value" style={{ fontSize: '1.5rem' }}>…</p>
+      ) : !city ? (
+        <p className="stat-note">Konum girilmemiş</p>
+      ) : !current ? (
+        storedWeather ? (
+          <>
+            <p className="stat-value" style={{ fontSize: '1.85rem' }}>{storedWeather.emoji} {storedWeather.label}</p>
+            <p className="stat-note">Rapor verisi</p>
+          </>
+        ) : (
+          <p className="stat-note">Veri alınamadı</p>
+        )
       ) : (
         <>
-          <div className="project-weather-main">
-            <span className="project-weather-emoji">{weather.current.emoji}</span>
-            <div>
-              <strong>{weather.current.temp}°C</strong>
-              <p>{weather.current.label}</p>
+          <p className="stat-value" style={{ fontSize: '1.85rem' }}>
+            {current.emoji} {current.temp}°
+          </p>
+          <p className="stat-note">{current.label}</p>
+          <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+              <span style={{ color: 'var(--color-muted)' }}>Rüzgar</span>
+              <strong>{current.wind} km/h</strong>
             </div>
-            <div className="project-weather-meta">
-              <span>💨 {weather.current.wind} km/h</span>
-              <span>💧 %{weather.current.humidity}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+              <span style={{ color: 'var(--color-muted)' }}>Nem</span>
+              <strong>%{current.humidity}</strong>
             </div>
-          </div>
-          <div className="project-weather-tomorrow">
-            <span>Yarın</span>
-            <strong>{weather.tomorrow.emoji} {weather.tomorrow.max}°</strong>
-            <small>{weather.tomorrow.min}° · {weather.tomorrow.label} · yağış %{weather.tomorrow.rain}</small>
+            {tomorrow && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                <span style={{ color: 'var(--color-muted)' }}>Yarın</span>
+                <strong>{tomorrow.emoji} {tomorrow.max}°/{tomorrow.min}°</strong>
+              </div>
+            )}
           </div>
         </>
       )}
-      <div className="project-weather-lost">
-        Hava Kaynaklı Kayıp Gün: <strong>{lostDays}</strong>
+
+      <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+        <span style={{ color: 'var(--color-muted)' }}>Kayıp Gün (hava)</span>
+        <strong style={{ color: lostDays > 0 ? 'var(--color-danger)' : 'var(--color-muted)' }}>{lostDays} gün</strong>
       </div>
     </div>
   )

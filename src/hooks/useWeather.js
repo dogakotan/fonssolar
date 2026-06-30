@@ -58,7 +58,10 @@ export function useWeather(location) {
     : (location ? `${location.lat},${location.lon}` : null)
 
   useEffect(() => {
-    if (!location) return
+    if (!location) {
+      setState({ loading: false, error: null, current: null, tomorrow: null })
+      return
+    }
     setState({ loading: true, error: null, current: null, tomorrow: null })
 
     async function load() {
