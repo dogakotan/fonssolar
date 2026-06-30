@@ -9,11 +9,14 @@ export function todayStr() {
 
 export function useSantiyeData(projectId) {
   const [loading, setLoading]                           = useState(true)
+  const [project, setProject]                           = useState(null)
   const [openPurchaseRequests, setOpenPurchaseRequests] = useState([])
   const [openTickets, setOpenTickets]                   = useState([])
   const [todayReport, setTodayReport]                   = useState(null)
   const [recentReports, setRecentReports]               = useState([])
-  const [stats, setStats] = useState({ prCount: 0, ticketCount: 0 })
+  const [stats, setStats]                               = useState({ prCount: 0, ticketCount: 0 })
+  const [progressSummary, setProgressSummary]           = useState(null)
+  const [progressItems, setProgressItems]               = useState([])
 
   async function migrateLegacyDailyReports(legacyProjectId, canonicalProjectId) {
     if (!legacyProjectId || !canonicalProjectId || legacyProjectId === canonicalProjectId) return
@@ -38,48 +41,28 @@ export function useSantiyeData(projectId) {
     if (!projectId) return
     setLoading(true)
     const today = todayStr()
+
     const resolvedProject = await resolveProjectByAssignedId(supabase, projectId, 'id, name, location')
     const effectiveProjectId = resolvedProject?.id || projectId
-
     await migrateLegacyDailyReports(projectId, effectiveProjectId)
 
-    const [reportRes, recentReportsRes, prRes, ticketRes, prCountRes, ticketCountRes] = await Promise.all([
-      supabase.from('daily_reports')
-        .select('id, report_date, general_status, worker_count, weather, weather_note, notes, created_at')
-        .eq('project_id', effectiveProjectId).eq('report_date', today).maybeSingle(),
-
-      supabase.from('daily_reports')
-        .select('id, report_date, general_status, worker_count, weather, weather_note, notes, created_at')
-        .eq('project_id', effectiveProjectId)
-        .order('report_date', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(30),
-
-      supabase.from('purchase_requests')
-        .select('id, title, urgency, status, created_at')
-        .eq('project_id', effectiveProjectId).in('status', ['bekliyor', 'onaylandı'])
-        .order('created_at', { ascending: false }),
-
-      supabase.from('tickets')
-        .select('id, title, severity, status, created_at, category')
-        .eq('project_id', effectiveProjectId).in('status', ['gönderildi', 'açık', 'işlemde'])
-        .order('created_at', { ascending: false }),
-
-      supabase.from('purchase_requests').select('*', { count: 'exact', head: true })
-        .eq('project_id', effectiveProjectId).in('status', ['bekliyor', 'onaylandı']),
-
-      supabase.from('tickets').select('*', { count: 'exact', head: true })
-        .eq('project_id', effectiveProjectId).in('status', ['gönderildi', 'açık', 'işlemde']),
-    ])
-
-    setTodayReport(reportRes.data || null)
-    setRecentReports(recentReportsRes.data || [])
-    setOpenPurchaseRequests(prRes.data || [])
-    setOpenTickets(ticketRes.data || [])
-    setStats({
-      prCount:     prCountRes.count || 0,
-      ticketCount: ticketCountRes.count || 0,
+    const { data, error } = await supabase.rpc('get_santiye_dashboard', {
+      p_project_id: effectiveProjectId,
+      p_today:      today,
     })
+    if (error) { console.error('get_santiye_dashboard error:', error); setLoading(false); return }
+
+    setProject(data.project || resolvedProject || null)
+    setTodayReport(data.today_report || null)
+    setRecentReports(data.recent_reports || [])
+    setOpenPurchaseRequests(data.purchase_requests || [])
+    setOpenTickets(data.tickets || [])
+    setStats({
+      prCount:     data.pr_count     || 0,
+      ticketCount: data.ticket_count || 0,
+    })
+    setProgressSummary(data.progress_summary || null)
+    setProgressItems(data.progress_items    || [])
     setLoading(false)
   }, [projectId])
 
@@ -101,5 +84,5 @@ export function useSantiyeData(projectId) {
     return () => channels.forEach(c => supabase.removeChannel(c))
   }, [projectId, fetchAll])
 
-  return { loading, openPurchaseRequests, openTickets, todayReport, recentReports, stats, refetch: fetchAll }
+  return { loading, project, openPurchaseRequests, openTickets, todayReport, recentReports, stats, progressSummary, progressItems, refetch: fetchAll }
 }

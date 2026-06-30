@@ -98,24 +98,6 @@ function buildCalendarDays(monthDate) {
   return Array.from({ length: 42 }, (_, index) => addDays(start, index))
 }
 
-async function attachCreatorNames(reports) {
-  const creatorIds = [...new Set((reports || []).map(r => r.created_by).filter(Boolean))]
-  if (creatorIds.length === 0) return reports || []
-
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, full_name')
-    .in('id', creatorIds)
-
-  if (error) return reports || []
-
-  const profileMap = new Map((data || []).map(profile => [profile.id, profile.full_name]))
-  return (reports || []).map(report => ({
-    ...report,
-    creator_name: profileMap.get(report.created_by) || null,
-  }))
-}
-
 export default function DailyReportList({ onNewReport, onEditReport, projectId: projectIdOverride, title = 'Günlük Raporlarım', showHeader = true }) {
   const { projectId: authProjectId } = useAuth()
   const projectId = projectIdOverride || authProjectId
@@ -148,20 +130,13 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     setLoading(true)
     setLoadError('')
     try {
-      const from = page * PAGE_SIZE
-      const to   = from + PAGE_SIZE - 1
-
-      let query = supabase
-        .from('daily_reports')
-        .select('id, report_date, weather, general_status, worker_count, notes, created_at, created_by', { count: 'exact' })
-        .eq('project_id', projectId)
-        .order('report_date', { ascending: false })
-        .range(from, to)
-
-      if (selectedRange.start) query = query.gte('report_date', selectedRange.start)
-      if (selectedRange.end) query = query.lte('report_date', selectedRange.end)
-
-      const { data, count, error } = await query
+      const { data, error } = await supabase.rpc('get_daily_reports_list', {
+        p_project_id: projectId,
+        p_start_date: selectedRange.start || null,
+        p_end_date:   selectedRange.end   || null,
+        p_page:       page,
+        p_page_size:  PAGE_SIZE,
+      })
 
       if (error) {
         setReports([])
@@ -170,8 +145,8 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
         return
       }
 
-      setReports(await attachCreatorNames(data || []))
-      setTotalCount(count || 0)
+      setReports(data.reports || [])
+      setTotalCount(data.total_count || 0)
     } finally {
       setLoading(false)
     }
@@ -182,43 +157,36 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
   async function buildReportRows(reportId) {
-    const [reportRes, projectRes, personnelRes, machineryRes, progressRes, issuesRes] = await Promise.all([
-      supabase.from('daily_reports').select('*').eq('id', reportId).single(),
-      supabase.from('projects').select('id, name, location, capacity_kwp').eq('id', projectId).single(),
-      supabase.from('personnel_log_entries').select('*').eq('report_id', reportId),
-      supabase.from('machinery_logs').select('*').eq('report_id', reportId),
-      supabase.from('progress_daily').select('*, progress_items(name, unit, target_qty, total_progress, category)').eq('report_id', reportId),
-      supabase.from('daily_report_issues').select('*').eq('report_id', reportId),
-    ])
+    const { data, error } = await supabase.rpc('get_daily_report_detail', { p_report_id: reportId })
+    if (error || !data) return { rows: [], projectName: 'Proje', titleDate: '' }
 
-    const report = reportRes.data || {}
-    const project = projectRes.data || {}
-    const creatorName = report.created_by
-      ? (await attachCreatorNames([report]))[0]?.creator_name
-      : null
+    const report  = data.report  || {}
+    const project = data.project || {}
+    const creatorName = report.profiles?.full_name || null
+
     const rows = [
-      ['Genel', 'Proje', project.name || '—'],
-      ['Genel', 'Konum', project.location || '—'],
-      ['Genel', 'Tarih', report.report_date ? new Date(report.report_date).toLocaleDateString('tr-TR') : '—'],
-      ['Genel', 'Hazırlayan', creatorName || '—'],
-      ['Genel', 'Hava', report.weather || '—'],
-      ['Genel', 'Hava Notu', report.weather_note || '—'],
-      ['Genel', 'Durum', report.general_status || '—'],
+      ['Genel', 'Proje',           project.name    || '—'],
+      ['Genel', 'Konum',           project.location || '—'],
+      ['Genel', 'Tarih',           report.report_date ? new Date(report.report_date).toLocaleDateString('tr-TR') : '—'],
+      ['Genel', 'Hazırlayan',      creatorName      || '—'],
+      ['Genel', 'Hava',            report.weather   || '—'],
+      ['Genel', 'Hava Notu',       report.weather_note || '—'],
+      ['Genel', 'Durum',           report.general_status || '—'],
       ['Genel', 'Toplam Personel', String(report.worker_count || 0)],
-      ['Genel', 'Notlar', report.notes || '—'],
+      ['Genel', 'Notlar',          report.notes     || '—'],
     ]
 
-    ;(personnelRes.data || []).forEach(p => {
+    ;(data.personnel || []).forEach(p => {
       rows.push(['Personel', `${p.shift} / ${p.department}`, String(p.count || 0)])
     })
-    ;(machineryRes.data || []).forEach(m => {
+    ;(data.machinery || []).forEach(m => {
       rows.push(['İş Makinesi', m.machine_type || '—', `${m.count || 0} adet · ${m.status || '—'}${m.notes ? ` · ${m.notes}` : ''}`])
     })
-    ;(progressRes.data || []).forEach(p => {
+    ;(data.progress || []).forEach(p => {
       const item = p.progress_items || {}
       rows.push(['İmalat', item.name || '—', `${p.qty_added || 0} ${item.unit || ''} · Toplam: ${item.total_progress || 0}/${item.target_qty || 0}`])
     })
-    ;(issuesRes.data || []).forEach(i => {
+    ;(data.issues || []).forEach(i => {
       rows.push(['Sorun', i.topic || '—', `${i.priority || '—'} · ${i.resolution_status || '—'} · ${i.description || ''}`])
     })
 

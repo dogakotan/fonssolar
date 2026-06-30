@@ -101,10 +101,80 @@ function newMachineryRow() {
   return { machine_type: '', count: 0, status: 'çalışıyor', notes: '' }
 }
 function newMaterialRow() {
-  return { progress_item_id: '', material_name: '', quantity_used: '', unit: 'Adet', description: '', reason: '' }
+  return {
+    progress_item_id: '',
+    material_name: '',
+    quantity_used: '',
+    unit: 'Adet',
+    supplier: '',
+    waybill_no: '',
+    delivery_date: '',
+    storage_location: '',
+    description: '',
+    reason: '',
+  }
 }
 function newIssueRow() {
-  return { topic: '', priority: 'orta', assigned_to: '', description: '', resolution_status: 'açık' }
+  return {
+    topic: '',
+    category: '',
+    priority: 'orta',
+    assigned_to: '',
+    description: '',
+    resolution_status: 'açık',
+    closed_at: '',
+    notes: '',
+  }
+}
+function newTaskRow() {
+  return { description: '' }
+}
+
+const MATERIAL_META_PREFIX = '__MATERIAL_META__'
+const ISSUE_META_PREFIX = '__ISSUE_META__'
+const REPORT_NOTES_META_PREFIX = '__REPORT_NOTES_META__'
+
+function encodeMeta(prefix, payload, fallback = '') {
+  const hasExtra = Object.entries(payload).some(([key, value]) => key !== 'description' && String(value || '').trim())
+  if (!hasExtra) return fallback || payload.description || ''
+  return `${prefix}${JSON.stringify(payload)}`
+}
+
+function decodeMeta(prefix, value) {
+  const text = String(value || '')
+  if (!text.startsWith(prefix)) return { description: text }
+  try {
+    return JSON.parse(text.slice(prefix.length)) || { description: '' }
+  } catch {
+    return { description: text }
+  }
+}
+
+function materialDescription(row) {
+  return encodeMeta(MATERIAL_META_PREFIX, {
+    supplier: row.supplier || '',
+    waybill_no: row.waybill_no || '',
+    delivery_date: row.delivery_date || '',
+    storage_location: row.storage_location || '',
+    description: row.description || '',
+  }, row.description || '')
+}
+
+function issueDescription(row) {
+  return encodeMeta(ISSUE_META_PREFIX, {
+    category: row.category || '',
+    closed_at: row.closed_at || '',
+    notes: row.notes || '',
+    description: row.description || '',
+  }, row.description || '')
+}
+
+function reportNotesPayload(formData) {
+  return encodeMeta(REPORT_NOTES_META_PREFIX, {
+    isg_notes: formData.isg_notes || '',
+    incident_notes: formData.incident_notes || '',
+    description: formData.notes || '',
+  }, formData.notes || '')
 }
 
 function InfoTile({ label, value }) {
@@ -137,6 +207,8 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     weather_note:   '',
     general_status: 'normal',
     worker_count:   0,
+    isg_notes:      '',
+    incident_notes: '',
     notes:          '',
   })
 
@@ -149,6 +221,8 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const [todayQty, setTodayQty]           = useState({})
   const [itemNotes, setItemNotes]         = useState({})
   const [existingQtys, setExistingQtys]   = useState({})
+  const [doneTasks, setDoneTasks]         = useState([newTaskRow()])
+  const [plannedTasks, setPlannedTasks]   = useState([newTaskRow()])
 
   // Step 4
   const [materials, setMaterials] = useState([newMaterialRow()])
@@ -208,11 +282,12 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
       if (initialReportId) {
         // Edit mode — load existing report
-        const [repRes, persRes, machRes, progRes, matRes, photoRes, issueRes] = await Promise.all([
+        const [repRes, persRes, machRes, progRes, taskRes, matRes, photoRes, issueRes] = await Promise.all([
           supabase.from('daily_reports').select('*').eq('id', initialReportId).single(),
           supabase.from('personnel_log_entries').select('*').eq('report_id', initialReportId),
           supabase.from('machinery_logs').select('*').eq('report_id', initialReportId),
           supabase.from('progress_daily').select('*').eq('report_id', initialReportId),
+          supabase.from('daily_tasks').select('*').eq('report_id', initialReportId).order('order_index'),
           supabase.from('daily_report_material_usage').select('*').eq('report_id', initialReportId),
           supabase.from('daily_report_photos').select('*').eq('report_id', initialReportId),
           supabase.from('daily_report_issues').select('*').eq('report_id', initialReportId),
@@ -220,13 +295,16 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
         if (repRes.data) {
           const r = repRes.data
+          const reportNotes = decodeMeta(REPORT_NOTES_META_PREFIX, r.notes)
           setFormData({
             report_date:    r.report_date || todayStr(),
             weather:        normalizeWeather(r.weather || 'açık'),
             weather_note:   r.weather_note   || '',
             general_status: r.general_status || 'normal',
             worker_count:   r.worker_count   || 0,
-            notes:          r.notes          || '',
+            isg_notes:      reportNotes.isg_notes || '',
+            incident_notes: reportNotes.incident_notes || '',
+            notes:          reportNotes.description || '',
           })
         }
 
@@ -264,16 +342,33 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         setExistingQtys(eQtys)
         setTodayQty({ ...eQtys })
 
+        const taskRows = taskRes.data || []
+        const loadedDone = taskRows
+          .filter(t => ['tamamlandı', 'tamamlandi', 'done'].includes(String(t.type || '').toLocaleLowerCase('tr-TR')))
+          .map(t => ({ description: t.description || '' }))
+        const loadedPlanned = taskRows
+          .filter(t => ['planlandı', 'planlandi', 'planned'].includes(String(t.type || '').toLocaleLowerCase('tr-TR')))
+          .map(t => ({ description: t.description || '' }))
+        setDoneTasks(loadedDone.length ? loadedDone : [newTaskRow()])
+        setPlannedTasks(loadedPlanned.length ? loadedPlanned : [newTaskRow()])
+
         // Materials
         if (matRes.data && matRes.data.length > 0) {
-          setMaterials(matRes.data.map(m => ({
-            progress_item_id: m.progress_item_id || '',
-            material_name:    m.material_name    || '',
-            quantity_used:    m.quantity_used     || '',
-            unit:             m.unit              || 'Adet',
-            description:      m.description       || '',
-            reason:           m.reason            || '',
-          })))
+          setMaterials(matRes.data.map(m => {
+            const meta = decodeMeta(MATERIAL_META_PREFIX, m.description)
+            return {
+              progress_item_id: m.progress_item_id || '',
+              material_name:    m.material_name    || '',
+              quantity_used:    m.quantity_used     || '',
+              unit:             m.unit              || 'Adet',
+              supplier:         meta.supplier       || '',
+              waybill_no:       meta.waybill_no     || '',
+              delivery_date:    meta.delivery_date  || '',
+              storage_location: meta.storage_location || '',
+              description:      meta.description    || '',
+              reason:           m.reason            || '',
+            }
+          }))
         }
 
         // Existing photos
@@ -281,13 +376,19 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
         // Issues
         if (issueRes.data && issueRes.data.length > 0) {
-          setIssues(issueRes.data.map(i => ({
-            topic:             i.topic             || '',
-            priority:          i.priority          || 'orta',
-            assigned_to:       i.assigned_to       || '',
-            description:       i.description       || '',
-            resolution_status: i.resolution_status || 'açık',
-          })))
+          setIssues(issueRes.data.map(i => {
+            const meta = decodeMeta(ISSUE_META_PREFIX, i.description)
+            return {
+              topic:             i.topic             || '',
+              category:          meta.category        || '',
+              priority:          i.priority          || 'orta',
+              assigned_to:       i.assigned_to       || '',
+              description:       meta.description    || '',
+              resolution_status: i.resolution_status || 'açık',
+              closed_at:         meta.closed_at      || '',
+              notes:             meta.notes          || '',
+            }
+          }))
         }
 
       } else {
@@ -357,6 +458,23 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   function addMaterialRow()    { setMaterials(prev => [...prev, newMaterialRow()]) }
   function removeMaterialRow(i){ setMaterials(prev => prev.filter((_, idx) => idx !== i)) }
 
+  // Daily task helpers
+  function updateTask(kind, i, val) {
+    const setter = kind === 'done' ? setDoneTasks : setPlannedTasks
+    setter(prev => prev.map((row, idx) => idx === i ? { ...row, description: val } : row))
+  }
+  function addTask(kind) {
+    const setter = kind === 'done' ? setDoneTasks : setPlannedTasks
+    setter(prev => [...prev, newTaskRow()])
+  }
+  function removeTask(kind, i) {
+    const setter = kind === 'done' ? setDoneTasks : setPlannedTasks
+    setter(prev => {
+      const next = prev.filter((_, idx) => idx !== i)
+      return next.length ? next : [newTaskRow()]
+    })
+  }
+
   // Issue helpers
   function updateIssue(i, field, val) {
     setIssues(prev => prev.map((row, idx) => idx === i ? { ...row, [field]: val } : row))
@@ -403,7 +521,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
           weather_note:   formData.weather_note  || null,
           general_status: formData.general_status,
           worker_count:   totalPersonnel,
-          notes:          formData.notes         || null,
+          notes:          reportNotesPayload(formData) || null,
           updated_at:     new Date().toISOString(),
         }, { onConflict: 'project_id,report_date' })
         .select('id').single()
@@ -441,7 +559,23 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         if (machInsertErr) throw machInsertErr
       }
 
-      // 4. Progress items
+      // 4. Daily tasks
+      const { error: taskDeleteErr } = await supabase.from('daily_tasks').delete().eq('report_id', rid)
+      if (taskDeleteErr) throw taskDeleteErr
+      const taskRows = [
+        ...doneTasks
+          .filter(r => String(r.description || '').trim())
+          .map((r, index) => ({ report_id: rid, type: 'tamamlandı', description: r.description.trim(), order_index: index })),
+        ...plannedTasks
+          .filter(r => String(r.description || '').trim())
+          .map((r, index) => ({ report_id: rid, type: 'planlandı', description: r.description.trim(), order_index: index })),
+      ]
+      if (taskRows.length) {
+        const { error: taskInsertErr } = await supabase.from('daily_tasks').insert(taskRows)
+        if (taskInsertErr) throw taskInsertErr
+      }
+
+      // 5. Progress items
       const { error: progressDeleteErr } = await supabase.from('progress_daily').delete().eq('report_id', rid)
       if (progressDeleteErr) throw progressDeleteErr
       const toInsert = []
@@ -463,7 +597,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         if (progressInsertErr) throw progressInsertErr
       }
 
-      // 5. Materials
+      // 6. Materials
       const { error: matDeleteErr } = await supabase.from('daily_report_material_usage').delete().eq('report_id', rid)
       if (matDeleteErr) throw matDeleteErr
       const validMats = materials.filter(r => r.material_name)
@@ -476,14 +610,14 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
             material_name:   r.material_name,
             quantity_used:   Number(r.quantity_used) || 0,
             unit:            r.unit || 'Adet',
-            description:     r.description || null,
+            description:     materialDescription(r) || null,
             reason:          r.reason || null,
           }))
         )
         if (matInsertErr) throw matInsertErr
       }
 
-      // 6. Photos
+      // 7. Photos
       for (const photo of photos) {
         const safeName = photo.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const path = `${effectiveProjectId}/${formData.report_date}/${Date.now()}_${safeName}`
@@ -502,7 +636,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         }
       }
 
-      // 7. Issues
+      // 8. Issues
       const { error: issueDeleteErr } = await supabase.from('daily_report_issues').delete().eq('report_id', rid)
       if (issueDeleteErr) throw issueDeleteErr
       const validIssues = issues.filter(r => r.topic)
@@ -514,7 +648,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
             topic:             r.topic,
             priority:          r.priority,
             assigned_to:       r.assigned_to || null,
-            description:       r.description || null,
+            description:       issueDescription(r) || null,
             resolution_status: r.resolution_status,
           }))
         )
@@ -693,6 +827,28 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
               </div>
 
               <div style={{ gridColumn: '1 / -1' }}>
+                <label style={LABEL}>İSG Notları (opsiyonel)</label>
+                <textarea
+                  value={formData.isg_notes}
+                  onChange={e => setFormData(f => ({ ...f, isg_notes: e.target.value }))}
+                  placeholder="İSG gözlemleri, toolbox, uygunsuzluk veya tedbir notları..."
+                  rows={2}
+                  style={{ ...INPUT, resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
+                <label style={LABEL}>Olağandışı Olay / Şantiye Ziyareti (opsiyonel)</label>
+                <textarea
+                  value={formData.incident_notes}
+                  onChange={e => setFormData(f => ({ ...f, incident_notes: e.target.value }))}
+                  placeholder="Olağandışı durum, ziyaret, denetim veya saha notu..."
+                  rows={2}
+                  style={{ ...INPUT, resize: 'vertical' }}
+                />
+              </div>
+
+              <div style={{ gridColumn: '1 / -1' }}>
                 <label style={LABEL}>Genel Notlar</label>
                 <textarea
                   value={formData.notes}
@@ -808,6 +964,46 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
           <div>
             <h3 style={STEP_TITLE}>3. İmalat İlerlemesi</h3>
 
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 22 }}>
+              <div>
+                <p style={SECTION_LABEL}>Bugün Yapılan İşler</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {doneTasks.map((row, i) => (
+                    <div key={`done-${i}`} style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="text"
+                        value={row.description}
+                        onChange={e => updateTask('done', i, e.target.value)}
+                        placeholder="Bugün yapılan iş..."
+                        style={INPUT}
+                      />
+                      <button onClick={() => removeTask('done', i)} style={BTN_REMOVE} title="Sil">×</button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => addTask('done')} style={{ ...BTN_GHOST, marginTop: 8 }}>+ İş Ekle</button>
+              </div>
+
+              <div>
+                <p style={SECTION_LABEL}>Yarın Yapılacak İşler</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {plannedTasks.map((row, i) => (
+                    <div key={`planned-${i}`} style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        type="text"
+                        value={row.description}
+                        onChange={e => updateTask('planned', i, e.target.value)}
+                        placeholder="Yarın planlanan iş..."
+                        style={INPUT}
+                      />
+                      <button onClick={() => removeTask('planned', i)} style={BTN_REMOVE} title="Sil">×</button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => addTask('planned')} style={{ ...BTN_GHOST, marginTop: 8 }}>+ Plan Ekle</button>
+              </div>
+            </div>
+
             {progressItems.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9CA3AF' }}>
                 <p style={{ fontSize: 32, margin: '0 0 12px' }}>📋</p>
@@ -905,13 +1101,17 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
             <h3 style={STEP_TITLE}>4. Malzeme Kullanımı</h3>
             <p style={{ margin: '0 0 16px', fontSize: 12, color: '#9CA3AF' }}>Sahada kullanılan malzemeleri kaydedin.</p>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 700 }}>
+              <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 1120 }}>
                 <thead>
                   <tr>
                     <th style={TH}>İş Kalemi (opsiyonel)</th>
                     <th style={TH}>Malzeme Adı</th>
+                    <th style={TH}>Tedarikçi</th>
                     <th style={{ ...TH, width: 80 }}>Miktar</th>
                     <th style={{ ...TH, width: 80 }}>Birim</th>
+                    <th style={TH}>İrsaliye</th>
+                    <th style={{ ...TH, width: 130 }}>Teslim Tarihi</th>
+                    <th style={TH}>Depolama Yeri</th>
                     <th style={TH}>Açıklama</th>
                     <th style={TH}>Sebep</th>
                     <th style={{ ...TH, width: 44 }}></th>
@@ -930,12 +1130,24 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                         <input type="text" value={row.material_name} onChange={e => updateMaterial(i, 'material_name', e.target.value)} placeholder="Malzeme adı..." style={{ ...INPUT, padding: '5px 8px' }} />
                       </td>
                       <td style={TD}>
+                        <input type="text" value={row.supplier} onChange={e => updateMaterial(i, 'supplier', e.target.value)} placeholder="Tedarikçi..." style={{ ...INPUT, padding: '5px 8px' }} />
+                      </td>
+                      <td style={TD}>
                         <input type="number" min={0} step="0.01" value={row.quantity_used} onChange={e => updateMaterial(i, 'quantity_used', e.target.value)} style={NUM_INPUT} />
                       </td>
                       <td style={TD}>
                         <select value={row.unit} onChange={e => updateMaterial(i, 'unit', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
                           {UNIT_OPTIONS.map(u => <option key={u}>{u}</option>)}
                         </select>
+                      </td>
+                      <td style={TD}>
+                        <input type="text" value={row.waybill_no} onChange={e => updateMaterial(i, 'waybill_no', e.target.value)} placeholder="İrsaliye no..." style={{ ...INPUT, padding: '5px 8px' }} />
+                      </td>
+                      <td style={TD}>
+                        <input type="date" value={row.delivery_date} onChange={e => updateMaterial(i, 'delivery_date', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }} />
+                      </td>
+                      <td style={TD}>
+                        <input type="text" value={row.storage_location} onChange={e => updateMaterial(i, 'storage_location', e.target.value)} placeholder="Depo/saha..." style={{ ...INPUT, padding: '5px 8px' }} />
                       </td>
                       <td style={TD}>
                         <input type="text" value={row.description} onChange={e => updateMaterial(i, 'description', e.target.value)} placeholder="Açıklama..." style={{ ...INPUT, padding: '5px 8px' }} />
@@ -1016,14 +1228,17 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
             {/* Issues */}
             <p style={SECTION_LABEL}>Sorunlar / Blokerlar</p>
             <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 640 }}>
+              <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 980 }}>
                 <thead>
                   <tr>
                     <th style={TH}>Konu</th>
+                    <th style={TH}>Kategori</th>
                     <th style={{ ...TH, width: 100 }}>Öncelik</th>
                     <th style={TH}>İlgili Kişi</th>
                     <th style={TH}>Açıklama</th>
                     <th style={{ ...TH, width: 110 }}>Çözüm Durumu</th>
+                    <th style={{ ...TH, width: 130 }}>Kapanış Tarihi</th>
+                    <th style={TH}>Not</th>
                     <th style={{ ...TH, width: 44 }}></th>
                   </tr>
                 </thead>
@@ -1032,6 +1247,9 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                     <tr key={i}>
                       <td style={TD}>
                         <input type="text" value={row.topic} onChange={e => updateIssue(i, 'topic', e.target.value)} placeholder="Sorun konusu..." style={{ ...INPUT, padding: '5px 8px' }} />
+                      </td>
+                      <td style={TD}>
+                        <input type="text" value={row.category} onChange={e => updateIssue(i, 'category', e.target.value)} placeholder="Kategori..." style={{ ...INPUT, padding: '5px 8px' }} />
                       </td>
                       <td style={TD}>
                         <select value={row.priority} onChange={e => updateIssue(i, 'priority', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
@@ -1048,6 +1266,12 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                         <select value={row.resolution_status} onChange={e => updateIssue(i, 'resolution_status', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
                           {RESOLUTION_OPTIONS.map(r => <option key={r}>{r}</option>)}
                         </select>
+                      </td>
+                      <td style={TD}>
+                        <input type="date" value={row.closed_at} onChange={e => updateIssue(i, 'closed_at', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }} />
+                      </td>
+                      <td style={TD}>
+                        <input type="text" value={row.notes} onChange={e => updateIssue(i, 'notes', e.target.value)} placeholder="Not..." style={{ ...INPUT, padding: '5px 8px' }} />
                       </td>
                       <td style={TD}>
                         <button onClick={() => removeIssueRow(i)} style={BTN_REMOVE} title="Sil">×</button>

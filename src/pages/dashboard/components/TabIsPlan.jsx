@@ -116,11 +116,40 @@ function progressFor(task, progressMap) {
   return Math.round(progressMap[task.id] !== undefined ? progressMap[task.id] : Number(task.progress_pct || 0))
 }
 
+function getEffectiveFilterDate(dateText, period) {
+  const fallback = new Date().toISOString().split('T')[0]
+  const base = new Date(`${dateText || fallback}T00:00:00`)
+
+  if (period === 'weekly') {
+    const day = base.getDay()
+    const end = new Date(base)
+    end.setDate(base.getDate() + (day === 0 ? 0 : 7 - day))
+    return end.toISOString().slice(0, 10)
+  }
+
+  if (period === 'monthly') {
+    return new Date(base.getFullYear(), base.getMonth() + 1, 0).toISOString().slice(0, 10)
+  }
+
+  return dateText || fallback
+}
+
+function deriveTaskStatusAt(task, pct, date) {
+  if (pct >= 100) return 'tamamlandi'
+
+  const selected = new Date(`${date}T00:00:00`)
+  const start = task.planned_start ? new Date(`${task.planned_start}T00:00:00`) : null
+
+  if (start && selected < start) return 'bekliyor'
+  if (pct > 0) return 'devam_ediyor'
+  return task.status || 'bekliyor'
+}
+
 function statusLabel(status) {
   return STATUS_LABELS[status] || status?.replace(/_/g, ' ') || '-'
 }
 
-export default function TabIsPlan({ projectId, filterDate }) {
+export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily' }) {
   const [tasks, setTasks] = useState([])
   const [project, setProject] = useState(null)
   const [criticalCodes, setCriticalCodes] = useState(new Set())
@@ -137,96 +166,57 @@ export default function TabIsPlan({ projectId, filterDate }) {
   const bottomScrollRef = useRef(null)
   const bodyScrollRef = useRef(null)
 
+  const effectiveDate = useMemo(
+    () => getEffectiveFilterDate(filterDate, reportPeriod),
+    [filterDate, reportPeriod]
+  )
+
   useEffect(() => {
     setLoading(true)
 
     async function load() {
       if (projectId) {
-        const [
-          { data: projData },
-          { data: tasksData },
-          { data: critData },
-          { data: progItemsData },
-          latestReportRes,
-          latestPurchaseRes,
-          topRiskRes,
-        ] = await Promise.all([
-          supabase.from('projects')
-            .select('id, name, capacity_kwp, location, start_date, target_date')
-            .eq('id', projectId).single(),
-          supabase.from('project_tasks')
-            .select('id, task_code, task_name, group_label, category, planned_start, planned_end, progress_pct, status, responsible_role')
-            .eq('project_id', projectId)
-            .order('planned_start', { ascending: true }),
-          supabase.from('critical_path_items')
-            .select('path_code')
-            .eq('project_id', projectId),
-          supabase.from('progress_items')
-            .select('id, task_id, target_qty')
-            .eq('project_id', projectId),
-          supabase.from('daily_reports')
-            .select('report_date, notes')
-            .eq('project_id', projectId)
-            .order('report_date', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          supabase.from('purchase_requests')
-            .select('id, title, request_no, status, required_date, delivery_date, created_at')
-            .eq('project_id', projectId)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          supabase.from('project_risks')
-            .select('*')
-            .eq('project_id', projectId)
-            .neq('status', 'kapandi')
-            .limit(1)
-            .maybeSingle(),
-        ])
-
-        setProject(projData || null)
-        setTasks(tasksData || [])
-        const codes = new Set((critData || []).map(c => c.path_code).filter(Boolean))
-        setCriticalCodes(codes)
-        setCritCount(codes.size)
-        setDetailContext({
-          latestReport: latestReportRes.error ? null : latestReportRes.data,
-          latestPurchase: latestPurchaseRes.error ? null : latestPurchaseRes.data,
-          topRisk: topRiskRes.error ? null : topRiskRes.data,
+        const { data, error } = await supabase.rpc('get_project_gantt', {
+          p_project_id:  projectId,
+          p_filter_date: effectiveDate,
         })
 
-        const itemIds = (progItemsData || []).map(p => p.id)
-        if (itemIds.length > 0) {
-          const { data: pdData } = await supabase
-            .from('progress_daily')
-            .select('item_id, qty_added, daily_reports!inner(report_date)')
-            .in('item_id', itemIds)
-            .lte('daily_reports.report_date', filterDate || new Date().toISOString().split('T')[0])
-
-          const sumByItem = {}
-          for (const d of (pdData || [])) {
-            sumByItem[d.item_id] = (sumByItem[d.item_id] || 0) + Number(d.qty_added || 0)
-          }
-          const taskSums = {}
-          for (const item of (progItemsData || [])) {
-            if (!item.task_id || !item.target_qty) continue
-            const pct = Math.min(100, ((sumByItem[item.id] || 0) / item.target_qty) * 100)
-            if (!taskSums[item.task_id]) taskSums[item.task_id] = { sum: 0, count: 0 }
-            taskSums[item.task_id].sum += pct
-            taskSums[item.task_id].count++
-          }
-          const finalMap = {}
-          for (const [tid, { sum, count }] of Object.entries(taskSums)) finalMap[tid] = sum / count
-          setTaskProgressByDate(finalMap)
-        } else {
-          setTaskProgressByDate({})
+        if (error) {
+          console.error('get_project_gantt error:', error)
+          setLoading(false)
+          return
         }
+
+        const progressByDate = data.task_progress || {}
+        const normalizedTasks = (data.tasks || []).map(task => {
+          const pct = progressFor(task, progressByDate)
+          return {
+            ...task,
+            progress_pct: pct,
+            status: deriveTaskStatusAt(task, pct, effectiveDate),
+          }
+        })
+
+        setProject(data.project || null)
+        setTasks(normalizedTasks)
+        const codes = new Set((data.critical_codes || []).filter(Boolean))
+        setCriticalCodes(codes)
+        setCritCount(codes.size)
+        setTaskProgressByDate(progressByDate)
+        setDetailContext({
+          latestReport:   data.context?.latest_report   || null,
+          latestPurchase: data.context?.latest_purchase || null,
+          topRisk:        data.context?.top_risk        || null,
+        })
       } else {
         const { data: tasksData } = await supabase
           .from('project_tasks')
           .select('id, task_code, task_name, group_label, category, planned_start, planned_end, progress_pct, status')
           .order('planned_start', { ascending: true })
-        setTasks(tasksData || [])
+        setTasks((tasksData || []).map(task => ({
+          ...task,
+          status: deriveTaskStatusAt(task, Number(task.progress_pct || 0), effectiveDate),
+        })))
         setCritCount(0)
         setDetailContext({ latestReport: null, latestPurchase: null, topRisk: null })
       }
@@ -234,13 +224,13 @@ export default function TabIsPlan({ projectId, filterDate }) {
     }
 
     load().catch(() => setLoading(false))
-  }, [projectId, filterDate])
+  }, [projectId, effectiveDate])
 
   const today = useMemo(() => {
-    const date = filterDate ? new Date(`${filterDate}T00:00:00`) : new Date()
+    const date = effectiveDate ? new Date(`${effectiveDate}T00:00:00`) : new Date()
     date.setHours(0, 0, 0, 0)
     return date
-  }, [filterDate])
+  }, [effectiveDate])
 
   const allGroupNames = useMemo(() => [...new Set(tasks.map(t => resolveGroup(t)))].sort(), [tasks])
 
@@ -643,7 +633,7 @@ function TaskDetailPanel({ task, group, progress, isCritical, context, onClose }
   const groupCfg = GROUP_CONFIG[group] || GROUP_CONFIG._diger
   const duration = daysBetween(task.planned_start, task.planned_end)
   const riskTitle = risk?.title || risk?.risk_title || risk?.description || '-'
-  const purchaseTitle = purchase ? (purchase.request_no ? `${purchase.request_no} · ${purchase.title || 'Satın alma talebi'}` : purchase.title || 'Satın alma talebi') : '-'
+  const purchaseTitle = purchase ? (purchase.title || 'Satın alma talebi') : '-'
 
   const rows = [
     ['Durum', statusLabel(task.status), task.status === 'devam_ediyor' ? 'blue' : 'muted'],

@@ -33,6 +33,14 @@ const PROJECT_DELETE_TABLES = [
   'electrical_checklist', 'quality_inspections',
 ]
 
+const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu-v3.xlsx'
+const PROJECT_TEMPLATE_PATHS = [
+  `/excel/${PROJECT_TEMPLATE_FILE}`,
+  '/excel/fons-solar-proje-sablonu.xlsx',
+  '/fons-solar-proje-sablonu.xlsx',
+]
+const PROJECT_TEMPLATE_PHOTO_CELLS = new Set(['A1', 'B1', 'A2', 'B2'])
+
 const CAT_MAP = {
   'Mobilizasyon':       'mobilizasyon',
   'Mekanik':            'mekanik',
@@ -87,6 +95,7 @@ const xmlEscape = value => String(value ?? '')
 // Şablonun ZIP içeriğinde yalnızca veri hücrelerini değiştirir. Böylece tema,
 // renk, koşullu biçimlendirme, sütun genişliği ve veri doğrulamaları korunur.
 function setTemplateCell(xmlStr, address, value) {
+  if (PROJECT_TEMPLATE_PHOTO_CELLS.has(address)) return xmlStr
   if (address === 'A1') return xmlStr
 
   const col = address.match(/^[A-Z]+/)[0]
@@ -241,7 +250,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
   async function handleExport(project) {
     setExportLoadingId(project.id)
     try {
-      const templateBuffer = await fetchTemplate(['/fons-solar-proje-sablonu.xlsx', '/excel/fons-solar-proje-sablonu.xlsx'])
+      const templateBuffer = await fetchTemplate(PROJECT_TEMPLATE_PATHS)
       const files = unzipSync(new Uint8Array(templateBuffer))
       const [{ data: exportProj }, { data: exportTasks }, { data: exportProgressItems }, { data: exportRisks }, { data: exportProcurement }, { data: exportBudget }, { data: exportCriticalPath }] = await Promise.all([
         supabase.from('projects').select('*').eq('id', project.id).single(),
@@ -277,7 +286,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
       return
       {
       // Şablonun mevcut biçimlerini koruyarak sadece veri hücrelerini doldur.
-      const templateBuffer = await fetchTemplate(['/fons-solar-proje-sablonu.xlsx', '/excel/fons-solar-proje-sablonu.xlsx'])
+      const templateBuffer = await fetchTemplate(PROJECT_TEMPLATE_PATHS)
       const files = unzipSync(new Uint8Array(templateBuffer))
       const [{ data: proj }, { data: tasks }, { data: progressItems }, { data: risks }, { data: procurement }, { data: budget }, { data: criticalPath }] = await Promise.all([
         supabase.from('projects').select('*').eq('id', project.id).single(),
@@ -775,8 +784,8 @@ export default function TabProjeYonetimi({ onViewProject }) {
   // ── Template ────────────────────────────────────────────────────────────────
   function handleDownloadTemplate() {
     const a = document.createElement('a')
-    a.href = '/excel/fons-solar-proje-sablonu.xlsx'
-    a.download = 'fons-solar-proje-sablonu.xlsx'
+    a.href = `/excel/${PROJECT_TEMPLATE_FILE}`
+    a.download = PROJECT_TEMPLATE_FILE
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)

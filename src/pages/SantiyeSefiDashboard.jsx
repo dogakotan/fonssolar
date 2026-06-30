@@ -6,7 +6,6 @@ import YeniTicketModal from '../components/tickets/YeniTicketModal'
 import YeniTalepModal from '../components/satin-alma/YeniTalepModal'
 import TicketDetayModal from '../components/tickets/TicketDetayModal'
 import TalepDetayModal from '../components/satin-alma/TalepDetayModal'
-import { supabase } from '../lib/supabase'
 
 const PR_STATUS = {
   bekliyor:     { label: 'Bekliyor',     bg: '#DBEAFE', color: '#1D4ED8' },
@@ -72,15 +71,6 @@ function titleCity(value) {
   return value.charAt(0).toLocaleUpperCase('tr-TR') + value.slice(1)
 }
 
-function projectIdLabel(projectId) {
-  if (!projectId || /^[0-9a-f-]{24,}$/i.test(String(projectId))) return ''
-  return String(projectId)
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
-}
-
 function extractWeatherCity(project) {
   if (!project) return null
 
@@ -108,45 +98,6 @@ function extractWeatherCity(project) {
   return null
 }
 
-function useProject(projectId) {
-  const [project, setProject] = useState(null)
-  useEffect(() => {
-    if (!projectId) {
-      setProject(null)
-      return
-    }
-    async function loadProject() {
-      const byId = await supabase.from('projects')
-        .select('*')
-        .eq('id', projectId)
-        .maybeSingle()
-
-      if (byId.data) {
-        setProject(byId.data)
-        return
-      }
-
-      if (projectIdLabel(projectId)) {
-        const byName = await supabase.from('projects')
-          .select('*')
-          .ilike('name', `%${String(projectId).replace(/[-_]+/g, ' ')}%`)
-          .limit(1)
-          .maybeSingle()
-
-        if (byName.data) {
-          setProject(byName.data)
-          return
-        }
-      }
-
-      setProject({ id: projectId, name: projectIdLabel(projectId) })
-    }
-
-    loadProject()
-  }, [projectId])
-  return project
-}
-
 export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditReport }) {
   const { projectId } = useAuth()
   const [talepTab, setTalepTab]   = useState('all')
@@ -156,32 +107,15 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   const [showTalep, setShowTalep]   = useState(false)
   const [detayTicket, setDetayTicket] = useState(null)
   const [detayTalep, setDetayTalep]   = useState(null)
-  const [toast,           setToast]           = useState('')
-  const [progressItems,   setProgressItems]   = useState([])
-  const [projectProgress, setProjectProgress] = useState(null)
+  const [toast, setToast] = useState('')
 
-  const project     = useProject(projectId)
+  const { project, openPurchaseRequests, openTickets, todayReport, recentReports, stats, progressSummary, progressItems, refetch } = useSantiyeData(projectId)
   const weatherCity = extractWeatherCity(project)
   const weather     = useWeather(weatherCity)
-  const { openPurchaseRequests, openTickets, todayReport, recentReports, stats, refetch } = useSantiyeData(projectId)
 
   useEffect(() => {
     setReportLimit(5)
   }, [projectId])
-
-  useEffect(() => {
-    const pid = project?.id
-    if (!pid) { setProjectProgress(null); setProgressItems([]); return }
-    Promise.all([
-      supabase.from('vw_project_progress_summary').select('*').eq('project_id', pid).maybeSingle(),
-      supabase.from('progress_items')
-        .select('id, name, unit, target_qty, total_progress, category, order_index')
-        .eq('project_id', pid).gt('target_qty', 0).order('order_index').limit(10),
-    ]).then(([sumRes, itemsRes]) => {
-      setProjectProgress(sumRes.data || null)
-      setProgressItems(itemsRes.data || [])
-    })
-  }, [project?.id])
 
   function showToast(msg) {
     setToast(msg)
@@ -327,61 +261,61 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
       </div>
 
       {/* Proje İlerlemesi */}
-      {(projectProgress || progressItems.length > 0) && (
+      {(progressSummary || progressItems.length > 0) && (
         <div style={{ ...CARD_BASE, padding: 0, marginBottom: 16, overflow: 'hidden' }}>
           <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <div>
               <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', display: 'block' }}>Proje İlerlemesi</span>
-              {projectProgress && (
+              {progressSummary && (
                 <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                  Planlanan %{projectProgress.planned_progress_pct} · Gerçekleşen %{projectProgress.actual_progress_pct}
+                  Planlanan %{progressSummary.planned_progress_pct} · Gerçekleşen %{progressSummary.actual_progress_pct}
                 </span>
               )}
             </div>
-            {projectProgress && projectProgress.progress_variance != null && (
+            {progressSummary && progressSummary.progress_variance != null && (
               <span style={{
                 fontSize: 14, fontWeight: 700, flexShrink: 0,
-                color: Number(projectProgress.progress_variance) >= 0 ? '#16a34a' : '#dc2626',
+                color: Number(progressSummary.progress_variance) >= 0 ? '#16a34a' : '#dc2626',
               }}>
-                {Number(projectProgress.progress_variance) >= 0 ? '+' : ''}{projectProgress.progress_variance}%
+                {Number(progressSummary.progress_variance) >= 0 ? '+' : ''}{progressSummary.progress_variance}%
               </span>
             )}
           </div>
 
-          {projectProgress && (
+          {progressSummary && (
             <div style={{ padding: '12px 18px', borderBottom: progressItems.length > 0 ? '1px solid #f9fafb' : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <span style={{ fontSize: 11, color: '#64748b' }}>Genel İlerleme</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#0ea5e9' }}>%{projectProgress.actual_progress_pct}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#0ea5e9' }}>%{progressSummary.actual_progress_pct}</span>
               </div>
               <div style={{ position: 'relative', height: 10, background: '#f1f5f9', borderRadius: 5, overflow: 'hidden' }}>
                 <div style={{
                   position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 5,
-                  background: '#0ea5e9', width: `${projectProgress.actual_progress_pct || 0}%`, transition: 'width .4s',
+                  background: '#0ea5e9', width: `${progressSummary.actual_progress_pct || 0}%`, transition: 'width .4s',
                 }} />
               </div>
-              {projectProgress.planned_progress_pct > 0 && (
+              {progressSummary.planned_progress_pct > 0 && (
                 <div style={{ position: 'relative', height: 4, marginTop: 3 }}>
                   <div style={{
                     position: 'absolute', left: 0, top: 0, height: 2,
                     background: '#cbd5e1', borderRadius: 2,
-                    width: `${projectProgress.planned_progress_pct || 0}%`,
+                    width: `${progressSummary.planned_progress_pct || 0}%`,
                   }} />
-                  <span style={{ position: 'absolute', left: `${projectProgress.planned_progress_pct || 0}%`, top: -2, fontSize: 8, color: '#94a3b8', transform: 'translateX(-50%)' }}>▲</span>
+                  <span style={{ position: 'absolute', left: `${progressSummary.planned_progress_pct || 0}%`, top: -2, fontSize: 8, color: '#94a3b8', transform: 'translateX(-50%)' }}>▲</span>
                 </div>
               )}
               <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 11, color: '#64748b' }}>
-                  <strong style={{ color: '#374151' }}>{projectProgress.completed_tasks}</strong>/{projectProgress.total_tasks} görev tamamlandı
+                  <strong style={{ color: '#374151' }}>{progressSummary.completed_tasks}</strong>/{progressSummary.total_tasks} görev tamamlandı
                 </span>
-                {projectProgress.delayed_tasks > 0 && (
+                {progressSummary.delayed_tasks > 0 && (
                   <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>
-                    {projectProgress.delayed_tasks} geciken görev
+                    {progressSummary.delayed_tasks} geciken görev
                   </span>
                 )}
-                {projectProgress.days_remaining != null && (
+                {progressSummary.days_remaining != null && (
                   <span style={{ fontSize: 11, color: '#64748b' }}>
-                    <strong style={{ color: '#374151' }}>{projectProgress.days_remaining}</strong> gün kaldı
+                    <strong style={{ color: '#374151' }}>{progressSummary.days_remaining}</strong> gün kaldı
                   </span>
                 )}
               </div>

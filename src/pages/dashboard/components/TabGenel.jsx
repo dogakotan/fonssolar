@@ -236,6 +236,67 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTab
     setShowCal(v => !v)
   }
 
+  async function applyReportProgress(projectRows) {
+    const projectIds = projectRows.map(p => p.id).filter(Boolean)
+    if (!projectIds.length) return projectRows
+
+    const asOfDate = selectedDate ? toIsoDate(selectedDate) : null
+    const [itemsRes, reportsRes] = await Promise.all([
+      supabase
+        .from('progress_items')
+        .select('id, project_id, target_qty')
+        .in('project_id', projectIds),
+      (() => {
+        let query = supabase
+          .from('daily_reports')
+          .select('id, project_id, report_date')
+          .in('project_id', projectIds)
+        if (asOfDate) query = query.lte('report_date', asOfDate)
+        return query
+      })(),
+    ])
+
+    if (itemsRes.error || reportsRes.error) throw (itemsRes.error || reportsRes.error)
+
+    const items = itemsRes.data || []
+    const reports = reportsRes.data || []
+    const reportIds = reports.map(report => report.id).filter(Boolean)
+    const reportProjectById = new Map(reports.map(report => [report.id, report.project_id]))
+
+    let dailyRows = []
+    if (reportIds.length) {
+      const { data, error } = await supabase
+        .from('progress_daily')
+        .select('report_id, item_id, qty_added')
+        .in('report_id', reportIds)
+      if (error) throw error
+      dailyRows = data || []
+    }
+
+    const qtyByItem = new Map()
+    dailyRows.forEach(row => {
+      if (!reportProjectById.has(row.report_id)) return
+      qtyByItem.set(row.item_id, (qtyByItem.get(row.item_id) || 0) + Number(row.qty_added || 0))
+    })
+
+    const itemsByProject = new Map()
+    items.forEach(item => {
+      if (!itemsByProject.has(item.project_id)) itemsByProject.set(item.project_id, [])
+      itemsByProject.get(item.project_id).push(item)
+    })
+
+    return projectRows.map(project => {
+      const projectItems = itemsByProject.get(project.id) || []
+      if (!projectItems.length) return project
+      const pct = Math.round(projectItems.reduce((sum, item) => {
+        const target = Number(item.target_qty || 0)
+        const done = Number(qtyByItem.get(item.id) || 0)
+        return sum + (target > 0 ? Math.min(done / target, 1) * 100 : 0)
+      }, 0) / projectItems.length)
+      return { ...project, progress: pct }
+    })
+  }
+
   // Başlangıç yüklemesi — projeler + biletler
   useEffect(() => {
     async function load() {
@@ -243,7 +304,35 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTab
         getProjects(),
         supabase.rpc('get_dashboard_summary'),
       ])
-      if (projData) setProjects(projData)
+      let projectRows = projData || []
+      const projectIds = projectRows.map(p => p.id).filter(Boolean)
+
+      if (projectIds.length) {
+        try {
+          projectRows = await applyReportProgress(projectRows)
+        } catch (reportProgressErr) {
+          console.warn('Günlük rapor ilerlemesi hesaplanamadı, özet view deneniyor:', reportProgressErr)
+          const { data: progressRows, error: progressErr } = await supabase
+            .from('vw_project_progress_summary')
+            .select('project_id, actual_progress_pct')
+            .in('project_id', projectIds)
+
+          if (!progressErr && progressRows) {
+            const progressByProject = new Map(progressRows.map(row => [
+              row.project_id,
+              Math.round(Number(row.actual_progress_pct || 0)),
+            ]))
+            projectRows = projectRows.map(project => ({
+              ...project,
+              progress: progressByProject.has(project.id)
+                ? progressByProject.get(project.id)
+                : Math.round(Number(project.progress || 0)),
+            }))
+          }
+        }
+      }
+
+      setProjects(projectRows)
       if (!summaryErr && summary) {
         setOpenTickets(summary.open_tickets ?? 0)
         setCriticalTickets(summary.critical_tickets ?? 0)
@@ -255,7 +344,7 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTab
       setLoading(false)
     }
     load().catch(() => setLoading(false))
-  }, [])
+  }, [selectedDate])
 
   // selectedDate değiştiğinde filtreli proje ID'lerine göre görev + satın alma say
   useEffect(() => {
@@ -667,163 +756,57 @@ function ProjectDashboard({ projectId, filterDate }) {
 
   useEffect(() => {
     if (!projectId) return
+    let alive = true
     setLoading(true)
 
     async function load() {
-      const [
-        { data: proj },
-        { data: tasksData },
-        { data: progData, error: progErr },
-        { data: critData, error: critErr },
-        { data: budgData, error: budgErr },
-        { data: invData,  error: invErr  },
-        { data: riskData, error: riskErr },
-        { data: dailyData },
-        { data: mechData, error: mechErr },
-        { data: elecData, error: elecErr },
-        { data: inspData, error: inspErr },
-        { count: lostCount },
-        { count: ticketCount },
-        { count: prCount },
-        { data: ticketsData },
-      ] = await Promise.all([
-        supabase.from('projects').select('*').eq('id', projectId).single(),
-        supabase.from('project_tasks')
-          .select('task_code, task_name, group_label, planned_start, planned_end, progress_pct, status')
-          .eq('project_id', projectId)
-          .lte('planned_start', effectiveDate),
-        supabase.from('progress_items')
-          .select('name, unit, target_qty, total_progress, dashboard_visible, dashboard_order')
-          .eq('project_id', projectId).eq('dashboard_visible', true).order('dashboard_order'),
-        supabase.from('critical_path_items')
-          .select('path_code, activity_name, planned_start, planned_end, status, progress_pct, is_critical')
-          .eq('project_id', projectId)
-          .lte('planned_start', effectiveDate)
-          .order('planned_start'),
-        supabase.from('budget_lines')
-          .select('name, planned_amount').eq('project_id', projectId),
-        supabase.from('invoices')
-          .select('amount, status').eq('project_id', projectId),
-        supabase.from('project_risks')
-          .select('id, title, severity, probability, impact, status')
-          .eq('project_id', projectId).eq('status', 'açık'),
-        supabase.from('daily_reports')
-          .select('id, report_date, weather')
-          .eq('project_id', projectId)
-          .lte('report_date', effectiveDate)
-          .order('report_date', { ascending: false }).limit(1),
-        supabase.from('mechanical_checklist')
-          .select('id, is_completed').eq('project_id', projectId),
-        supabase.from('electrical_checklist')
-          .select('id, is_completed').eq('project_id', projectId),
-        supabase.from('quality_inspections')
-          .select('id, result').eq('project_id', projectId),
-        supabase.from('daily_reports')
-          .select('id', { count: 'exact', head: true })
-          .eq('project_id', projectId)
-          .lte('report_date', effectiveDate)
-          .in('weather', ['yağmurlu', 'karlı', 'fırtınalı']),
-        supabase.from('tickets')
-          .select('id', { count: 'exact', head: true })
-          .eq('project_id', projectId)
-          .neq('status', 'kapatıldı'),
-        supabase.from('purchase_requests')
-          .select('id', { count: 'exact', head: true })
-          .eq('project_id', projectId)
-          .eq('status', 'bekliyor'),
-        supabase.from('tickets')
-          .select('id, title, severity, status, created_at, category')
-          .eq('project_id', projectId)
-          .order('created_at', { ascending: false })
-          .limit(8),
-      ])
+      const { data, error } = await supabase.rpc('get_project_dashboard', {
+        p_project_id:     projectId,
+        p_effective_date: effectiveDate,
+      })
+      if (!alive) return
+      if (error) { console.error('get_project_dashboard error:', error); setLoading(false); return }
 
-      setProject(proj || null)
-      setTasks(tasksData || [])
-      setProgressItems(progErr ? [] : (progData || []))
-      setCritical(critErr ? [] : (critData || []))
-      setBudgetLines(budgErr ? [] : (budgData || []))
-      setInvoices(invErr ? [] : (invData || []))
-      setRisks(riskErr ? [] : (riskData || []))
-      setLostDays(lostCount || 0)
-      setOpenTickets(ticketCount ?? 0)
-      setPendingPR(prCount ?? 0)
-      setRecentTickets(ticketsData || [])
+      const taskList = data.tasks || []
+      setProject(data.project || null)
+      setTasks(taskList)
+      setProgressItems(data.progress_items || [])
+      setCritical(data.critical || [])
+      setBudgetLines(data.budget_lines || [])
+      setInvoices(data.invoices || [])
+      setRisks(data.risks || [])
+      setWeather(data.weather || null)
+      setLostDays(data.lost_days || 0)
+      setMechCheck(data.mech_check || [])
+      setElecCheck(data.elec_check || [])
+      setInspections(data.inspections || [])
+      setOpenTickets(data.open_tickets ?? 0)
+      setPendingPR(data.pending_pr ?? 0)
+      setRecentTickets(data.recent_tickets || [])
+      setPersonnel(data.personnel || [])
+      setMachinery(data.machinery || [])
 
-      const latestReport = (dailyData || [])[0] || null
-      setWeather(latestReport?.weather || null)
-      setMechCheck(mechErr ? [] : (mechData || []))
-      setElecCheck(elecErr ? [] : (elecData || []))
-      setInspections(inspErr ? [] : (inspData || []))
-
-      if (latestReport?.id) {
-        const [{ data: persData }, { data: machData }] = await Promise.all([
-          supabase.from('personnel_log_entries').select('count').eq('report_id', latestReport.id),
-          supabase.from('machinery_logs').select('count, status').eq('report_id', latestReport.id),
-        ])
-        setPersonnel(persData || [])
-        setMachinery(machData || [])
+      // avgProgress: tarih filtreli progress_items toplamından hesapla
+      const items = data.progress_items || []
+      if (items.length) {
+        const progresses = items.map(item =>
+          Math.min(Number(item.total_progress || 0) / (Number(item.target_qty) || 1), 1.0)
+        )
+        setAvgProgress((progresses.reduce((s, v) => s + v, 0) / progresses.length) * 100)
+      } else {
+        setAvgProgress(
+          taskList.length
+            ? taskList.reduce((s, t) => s + Number(t.progress_pct || 0), 0) / taskList.length
+            : 0
+        )
       }
 
       setLoading(false)
     }
 
-    load().catch(() => setLoading(false))
+    load().catch(err => { console.error('get_project_dashboard error:', err); if (alive) setLoading(false) })
+    return () => { alive = false }
   }, [projectId, effectiveDate])
-
-  useEffect(() => {
-    if (!projectId) return
-
-    if (!filterDate) {
-      setAvgProgress(
-        tasks.length
-          ? tasks.reduce((s, t) => s + Number(t.progress_pct || 0), 0) / tasks.length
-          : 0
-      )
-      return
-    }
-
-    let cancelled = false
-    async function calcFiltered() {
-      const { data, error } = await supabase
-        .from('progress_items')
-        .select(`
-          id,
-          target_qty,
-          progress_daily (
-            qty_added,
-            report:daily_reports!report_id (report_date)
-          )
-        `)
-        .eq('project_id', projectId)
-
-      if (cancelled) return
-
-      if (error || !data?.length) {
-        setAvgProgress(
-          tasks.length
-            ? tasks.reduce((s, t) => s + Number(t.progress_pct || 0), 0) / tasks.length
-            : 0
-        )
-        return
-      }
-
-      const itemProgresses = data.map(item => {
-        const filteredSum = (item.progress_daily || [])
-          .filter(pd => pd.report?.report_date <= filterDate)
-          .reduce((sum, pd) => sum + Number(pd.qty_added || 0), 0)
-        return Math.min(filteredSum / (item.target_qty || 1), 1.0)
-      })
-
-      const avg = itemProgresses.length
-        ? (itemProgresses.reduce((s, v) => s + v, 0) / itemProgresses.length) * 100
-        : 0
-      setAvgProgress(avg)
-    }
-
-    calcFiltered()
-    return () => { cancelled = true }
-  }, [projectId, filterDate, tasks])
 
   async function getReportsBetween(start, end) {
     const { data } = await supabase

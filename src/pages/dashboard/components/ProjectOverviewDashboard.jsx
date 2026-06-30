@@ -253,221 +253,167 @@ export default function ProjectOverviewDashboard({
   onGoTab,
   progressSummary: progressSummaryProp,
 }) {
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]           = useState(true)
   const [projectDetails, setProjectDetails] = useState(null)
-  const [progressSummary, setProgressSummary] = useState(null)
-  const [periodProgress, setPeriodProgress] = useState(null)
-  const [taskProgressByDate, setTaskProgressByDate] = useState({})
-  const [dailyReports, setDailyReports] = useState([])
-  const [personnel, setPersonnel] = useState([])
-  const [machinery, setMachinery] = useState([])
-  const [dailyTasks, setDailyTasks] = useState([])
-  const [purchases, setPurchases] = useState([])
-  const [budgetLines, setBudgetLines] = useState([])
-  const [invoices, setInvoices] = useState([])
-  const [risks, setRisks] = useState([])
-  const [tickets, setTickets] = useState([])
-  const [sahaPhotos, setSahaPhotos] = useState([])
-  const [tooltipInfo, setTooltipInfo] = useState(null)
+  const [report, setReport]             = useState(null)   // seçili tarihe en yakın rapor
+  const [personnel, setPersonnel]       = useState([])
+  const [machinery, setMachinery]       = useState([])
+  const [progressItems, setProgressItems] = useState([])
+  const [overallProgressPct, setOverallProgressPct] = useState(null)
+  const [tickets, setTickets]           = useState([])
+  const [purchases, setPurchases]       = useState([])
+  const [budgetLines, setBudgetLines]   = useState([])
+  const [invoices, setInvoices]         = useState([])
+  const [lostDays, setLostDays]         = useState(0)
+  const [tooltipInfo, setTooltipInfo]   = useState(null)
+  const [sitePhotos, setSitePhotos]     = useState([])
+  const [sitePhotoReport, setSitePhotoReport] = useState(null)
+  const [sitePhotosLoading, setSitePhotosLoading] = useState(false)
+  const [photoLightbox, setPhotoLightbox] = useState(null)
 
-  const range = useMemo(() => getRange(filterDate, reportPeriod), [filterDate, reportPeriod])
+  // Haftalık → o haftanın son günü, Aylık → o ayın son günü, Günlük → filterDate
+  const effectiveDate = useMemo(() => {
+    const base = new Date(`${filterDate}T00:00:00`)
+    if (reportPeriod === 'weekly') {
+      const day = base.getDay()
+      const end = new Date(base)
+      end.setDate(base.getDate() + (day === 0 ? 0 : 7 - day))
+      return end.toISOString().slice(0, 10)
+    }
+    if (reportPeriod === 'monthly') {
+      const end = new Date(base.getFullYear(), base.getMonth() + 1, 0)
+      return end.toISOString().slice(0, 10)
+    }
+    return filterDate
+  }, [filterDate, reportPeriod])
 
   useEffect(() => {
     if (!projectId) return
     let alive = true
+    setLoading(true)
 
-    async function load() {
-      setLoading(true)
-      const endOfRange = `${range.end}T23:59:59`
-      const reportsRes = await supabase
-        .from('daily_reports')
-        .select('id, report_date, weather, weather_note, notes, created_by, worker_count')
-        .eq('project_id', projectId)
-        .gte('report_date', range.start)
-        .lte('report_date', range.end)
-        .order('report_date', { ascending: false })
-
-      const reports = reportsRes.data || []
-      const reportIds = reports.map(r => r.id)
-      const creatorIds = [...new Set(reports.map(r => r.created_by).filter(Boolean))]
-
-      const [
-        personnelRes,
-        machineryRes,
-        dailyTasksRes,
-        purchaseRes,
-        budgetRes,
-        invoiceRes,
-        riskRes,
-        projectRes,
-        ticketRes,
-        photoRes,
-        creatorsRes,
-        progressSummaryRes,
-        periodProgressRes,
-        progressItemsRes,
-      ] = await Promise.all([
-        reportIds.length
-          ? supabase.from('personnel_log_entries').select('report_id, shift, department, count').in('report_id', reportIds)
-          : Promise.resolve({ data: [] }),
-        reportIds.length
-          ? supabase.from('machinery_logs').select('report_id, machine_type, count, status').in('report_id', reportIds)
-          : Promise.resolve({ data: [] }),
-        reportIds.length
-          ? supabase.from('daily_tasks').select('report_id, type, description, order_index').in('report_id', reportIds).order('order_index')
-          : Promise.resolve({ data: [] }),
-        supabase.from('purchase_requests').select('id, title, request_no, description, status, delivery_date, required_date, created_at').eq('project_id', projectId).lte('created_at', endOfRange).order('created_at', { ascending: false }).limit(6),
-        supabase.from('budget_lines').select('id, category, planned_amount').eq('project_id', projectId),
-        supabase.from('invoices').select('id, total_amount, amount, status, created_at, invoice_date').eq('project_id', projectId),
-        supabase.from('project_risks').select('*').eq('project_id', projectId).neq('status', 'kapandi').limit(6),
-        supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
-        supabase.from('tickets').select('id, title, severity, status, created_at').eq('project_id', projectId).neq('status', 'kapatıldı').order('created_at', { ascending: false }).limit(8),
-        supabase.from('daily_report_photos').select('id, storage_path, report_date, created_at').eq('project_id', projectId).order('created_at', { ascending: false }).limit(9),
-        creatorIds.length
-          ? supabase.from('profiles').select('id, full_name, email').in('id', creatorIds)
-          : Promise.resolve({ data: [] }),
-        supabase.from('vw_project_progress_summary').select('*').eq('project_id', projectId).maybeSingle(),
-        supabase
-          .from('vw_progress_timeline')
-          .select('*')
-          .eq('project_id', projectId)
-          .lte('report_date', range.end)
-          .order('report_date', { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-        supabase
-          .from('progress_items')
-          .select('id, task_id, target_qty')
-          .eq('project_id', projectId),
-      ])
-
+    supabase.rpc('get_project_by_date', {
+      p_project_id: projectId,
+      p_date:       effectiveDate,
+    }).then(({ data, error }) => {
       if (!alive) return
-      const progressItems = progressItemsRes.data || []
-      const itemIds = progressItems.map(item => item.id)
-      let progressMap = {}
-      if (itemIds.length > 0) {
-        const { data: dailyProgressRows } = await supabase
-          .from('progress_daily')
-          .select('item_id, qty_added, daily_reports!inner(report_date)')
-          .in('item_id', itemIds)
-          .lte('daily_reports.report_date', range.end)
-
-        if (!alive) return
-        const sumByItem = {}
-        ;(dailyProgressRows || []).forEach(row => {
-          sumByItem[row.item_id] = (sumByItem[row.item_id] || 0) + Number(row.qty_added || 0)
-        })
-
-        const taskSums = {}
-        progressItems.forEach(item => {
-          if (!item.task_id || !Number(item.target_qty)) return
-          const pct = Math.min(100, ((sumByItem[item.id] || 0) / Number(item.target_qty)) * 100)
-          if (!taskSums[item.task_id]) taskSums[item.task_id] = { sum: 0, count: 0 }
-          taskSums[item.task_id].sum += pct
-          taskSums[item.task_id].count += 1
-        })
-        progressMap = Object.fromEntries(
-          Object.entries(taskSums).map(([taskId, value]) => [taskId, value.count ? value.sum / value.count : 0])
-        )
-      }
-
-      const creatorMap = new Map((creatorsRes.data || []).map(p => [p.id, p.full_name || p.email]))
-      setProjectDetails(projectRes.data || null)
-      setProgressSummary(progressSummaryRes.data || null)
-      setPeriodProgress(periodProgressRes.data || null)
-      setTaskProgressByDate(progressMap)
-      setDailyReports(reports.map(report => ({
-        ...report,
-        creator_name: creatorMap.get(report.created_by) || null,
-      })))
-      setPersonnel(personnelRes.data || [])
-      setMachinery(machineryRes.data || [])
-      setDailyTasks(dailyTasksRes.data || [])
-      setPurchases(purchaseRes.data || [])
-      setBudgetLines(budgetRes.data || [])
-      setInvoices(invoiceRes.data || [])
-      setRisks(riskRes.data || [])
-      setTickets(ticketRes.data || [])
-      setSahaPhotos(photoRes.data || [])
+      if (error) { console.error('get_project_by_date error:', error); setLoading(false); return }
+      setProjectDetails(data.project || null)
+      setReport(data.report || null)
+      setPersonnel(data.personnel || [])
+      setMachinery(data.machinery || [])
+      setProgressItems(data.progress_items || [])
+      setOverallProgressPct(data.overall_pct ?? null)
+      setTickets(data.tickets || [])
+      setPurchases(data.purchases || [])
+      setBudgetLines(data.budget_lines || [])
+      setInvoices(data.invoices || [])
+      setLostDays(Number(data.weather_lost_days || 0))
       setLoading(false)
-    }
-
-    load().catch(error => {
-      console.error('ProjectOverviewDashboard load error:', error)
+    }).catch(err => {
+      console.error('get_project_by_date error:', err)
       if (alive) setLoading(false)
     })
 
     return () => { alive = false }
-  }, [projectId, range.start, range.end])
+  }, [projectId, effectiveDate])
 
-  const currentProject = projectDetails || project
-  const effectiveProgressSummary = periodProgress || progressSummaryProp || progressSummary
-  const latestReport = dailyReports[0] || null
-  const latestPersonnelReport = dailyReports.find(report =>
-    personnel.some(row => row.report_id === report.id)
-  )
-  const latestMachineryReport = dailyReports.find(report =>
-    machinery.some(row => row.report_id === report.id)
-  )
-  const summaryPersonnelRows = latestPersonnelReport
-    ? personnel.filter(row => row.report_id === latestPersonnelReport.id)
-    : personnel
-  const summaryMachineryRows = latestMachineryReport
-    ? machinery.filter(row => row.report_id === latestMachineryReport.id)
-    : machinery
+  useEffect(() => {
+    if (!projectId || !filterDate) return
+    let alive = true
+    setSitePhotosLoading(true)
+
+    async function loadSitePhotos() {
+      const { data: dailyReport } = await supabase
+        .from('daily_reports')
+        .select('id, report_date')
+        .eq('project_id', projectId)
+        .eq('report_date', filterDate)
+        .maybeSingle()
+
+      if (!alive) return
+      setSitePhotoReport(dailyReport || null)
+
+      if (!dailyReport?.id) {
+        setSitePhotos([])
+        setSitePhotosLoading(false)
+        return
+      }
+
+      const { data: photos } = await supabase
+        .from('daily_report_photos')
+        .select('id, storage_path, caption, created_at, uploaded_by')
+        .eq('project_id', projectId)
+        .eq('report_date', filterDate)
+        .order('created_at', { ascending: false })
+
+      if (!alive) return
+      setSitePhotos(photos || [])
+      setSitePhotosLoading(false)
+    }
+
+    loadSitePhotos().catch(err => {
+      console.error('daily_report_photos load error:', err)
+      if (alive) {
+        setSitePhotos([])
+        setSitePhotosLoading(false)
+      }
+    })
+
+    return () => { alive = false }
+  }, [projectId, filterDate])
+
+  const currentProject  = projectDetails || project
   const taskProgressRows = tasks.map(task => {
-    const pct = clamp(taskProgressByDate[task.id] ?? task.progress_pct ?? task.progress)
+    const pct = clamp(task.progress_pct ?? task.progress ?? 0)
     return {
-      id: task.id,
+      id:   task.id,
       name: task.name || task.task_name || task.title || 'İş kalemi',
-      done: task.actual_qty ?? task.completed_qty ?? task.total_progress ?? '',
-      target: task.target_qty ?? task.quantity ?? '',
-      unit: task.unit || '',
-      pct,
-      progress: pct,
-      progress_pct: pct,
+      pct,  progress: pct, progress_pct: pct,
+      start_date: task.planned_start || task.start_date,
+      due_date:   task.planned_end   || task.due_date,
     }
   })
 
-  const plannedProgressValue = effectiveProgressSummary?.planned_cumulative_pct ?? effectiveProgressSummary?.planned_progress_pct
+  const avgReportProgress = overallProgressPct !== null
+    ? Math.round(Number(overallProgressPct))
+    : taskProgressRows.length
+      ? Math.round(taskProgressRows.reduce((s, t) => s + t.pct, 0) / taskProgressRows.length)
+      : Math.round(Number(progressSummaryProp?.actual_progress_pct ?? 0))
 
-  const avgReportProgress = taskProgressRows.length
-    ? Math.round(taskProgressRows.reduce((sum, item) => sum + item.pct, 0) / taskProgressRows.length)
-    : Math.round(Number(effectiveProgressSummary?.actual_cumulative_pct ?? effectiveProgressSummary?.actual_progress_pct ?? 0))
+  const plannedPct     = calcPlannedAt(tasks, effectiveDate)
+  const totalBudget    = budgetLines.reduce((s, b) => s + Number(b.planned_amount || 0), 0)
+  const spent          = invoices
+    .filter(i => ['onaylandı','onaylandi','ödendi','odendi','paid','approved'].includes((i.status||'').toLowerCase()))
+    .reduce((s, i) => s + Number(i.total_amount || i.amount || 0), 0)
+  const budgetPct      = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0
+  const target         = currentProject?.target_date ? new Date(`${currentProject.target_date}T00:00:00`) : null
+  const selected       = new Date(`${effectiveDate}T00:00:00`)
+  const remainingDays  = target ? Math.ceil((target - selected) / 86400000) : null
 
-  const plannedPct = plannedProgressValue != null
-    ? Math.round(Number(plannedProgressValue || 0))
-    : calcPlannedAt(tasks, filterDate)
-  const totalBudget = budgetLines.reduce((sum, b) => sum + Number(b.planned_amount || 0), 0)
-  const invoicesUntilEnd = invoices.filter(i => {
-    const date = (i.invoice_date || i.created_at || '').slice(0, 10)
-    return !date || date <= range.end
-  })
-  const spent = invoicesUntilEnd
-    .filter(i => ['onaylandı', 'onaylandi', 'ödendi', 'odendi', 'paid', 'approved'].includes((i.status || '').toLowerCase()))
-    .reduce((sum, i) => sum + Number(i.total_amount || i.amount || 0), 0)
-  const budgetPct = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0
-  const target = currentProject?.target_date ? new Date(`${currentProject.target_date}T00:00:00`) : null
-  const selected = new Date(`${filterDate}T00:00:00`)
-  const remainingDays = target ? Math.ceil((target - selected) / 86400000) : null
-  const lostDays = dailyReports.filter(r => ['yağmurlu', 'yagmurlu', 'karlı', 'karli', 'fırtınalı', 'firtinali'].includes((r.weather || '').toLowerCase())).length
+  const totalPersonnel = personnel.reduce((s, p) => s + Number(p.count || 0), 0) || Number(report?.worker_count || 0)
+  const activeMachines = machinery
+    .filter(m => ['çalışıyor','calisiyor','aktif'].includes((m.status||'').toLowerCase()))
+    .reduce((s, m) => s + Number(m.count || 0), 0)
 
-  const personnelTotalFromRows = summaryPersonnelRows.reduce((sum, p) => sum + Number(p.count || 0), 0)
-  const totalPersonnel = personnelTotalFromRows || Number(latestReport?.worker_count || 0)
-  const activeMachines = summaryMachineryRows
-    .filter(m => !m.status || ['çalışıyor', 'calisiyor', 'aktif'].includes((m.status || '').toLowerCase()))
-    .reduce((sum, m) => sum + Number(m.count || 0), 0)
-  const todayDone = dailyTasks.find(t => ['tamamlandı', 'tamamlandi', 'done'].includes((t.type || '').toLowerCase()))?.description
-  const tomorrowPlan = dailyTasks.find(t => ['planlandı', 'planlandi', 'planned'].includes((t.type || '').toLowerCase()))?.description
-  const progressedTaskCount = (progressSummaryProp || progressSummary)?.active_tasks != null
-    ? Number((progressSummaryProp || progressSummary).active_tasks || 0)
-    : taskProgressRows.filter(item => item.pct > 0).length
-
-  const milestones = taskProgressRows.slice(0, 11)
-
-  const purchaseRows = purchases.map(normalizePurchase)
-  const riskRows = risks.map(normalizeRisk)
-  const progressRows = taskProgressRows.slice(0, 6)
+  const refDate = new Date(`${effectiveDate}T00:00:00`)
+  const milestones = taskProgressRows.map(task => {
+    const s = task.start_date ? new Date(`${task.start_date}T00:00:00`) : null
+    const e = task.due_date   ? new Date(`${task.due_date}T00:00:00`)   : null
+    let asOf = task.pct
+    if (s && e) {
+      if (refDate < s)       asOf = 0
+      else if (refDate >= e) asOf = 100
+      else asOf = clamp(((refDate - s) / Math.max(1, e - s)) * 100)
+    }
+    return { ...task, pct: asOf, progress: asOf, progress_pct: asOf }
+  }).slice(0, 11)
+  const purchaseRows  = purchases.map(normalizePurchase)
+  const progressRows  = progressItems.slice(0, 6).map(item => ({
+    id: item.id, name: item.name, done: item.total_to_date,
+    target: item.target_qty, unit: item.unit, pct: Number(item.pct),
+  }))
+  const sitePhotoUrl = path => supabase.storage.from('saha-fotolari').getPublicUrl(path).data.publicUrl
 
   if (loading) {
     return (
@@ -510,44 +456,49 @@ export default function ProjectOverviewDashboard({
         </div>
 
         <div className="card project-overview-card">
-          <div className="project-card-title"><h3>Özet Durum</h3></div>
+          <div className="project-card-title">
+            <h3>{reportPeriod === 'weekly' ? 'Haftalık Özet' : reportPeriod === 'monthly' ? 'Aylık Özet' : 'Günlük Özet'}</h3>
+            <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+              {reportPeriod === 'weekly' ? `Hafta sonu: ${effectiveDate}` : reportPeriod === 'monthly' ? `Ay sonu: ${effectiveDate}` : effectiveDate}
+            </span>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-            {[
-              {
-                label: 'Kalan Gün',
-                value: remainingDays === null ? '—' : remainingDays < 0 ? `${Math.abs(remainingDays)} gün gecikti` : `${remainingDays} gün`,
-                color: remainingDays === null ? '#64748b' : remainingDays > 30 ? '#16a34a' : remainingDays >= 0 ? '#f59e0b' : '#ef4444',
-              },
-              {
-                label: 'Plan / Gerçek',
-                value: `%${plannedPct} / %${avgReportProgress}`,
-                color: avgReportProgress >= plannedPct ? '#16a34a' : '#ef4444',
-              },
-              {
-                label: 'Bütçe Kullanımı',
-                value: totalBudget > 0 ? `%${budgetPct}` : '—',
-                color: '#f59e0b',
-              },
-              {
-                label: 'Satın Alma Talebi',
-                value: purchases.filter(p => (p.status || '').toLowerCase() === 'bekliyor').length,
-                color: purchases.filter(p => (p.status || '').toLowerCase() === 'bekliyor').length > 0 ? '#ef4444' : '#16a34a',
-              },
-              {
-                label: 'Açık Ticket',
-                value: tickets.length,
-                color: tickets.length > 0 ? '#ef4444' : '#16a34a',
-              },
-            ].map(item => (
-              <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
-                <span style={{ fontSize: 12, color: 'var(--color-text)', fontWeight: 500 }}>{item.label}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: item.color }}>{item.value}</span>
-              </div>
-            ))}
+            {(() => {
+              const delayColor = remainingDays === null ? '#64748b' : remainingDays > 30 ? '#16a34a' : remainingDays >= 0 ? '#f59e0b' : '#ef4444'
+              const pendingPurchases = purchases.filter(p => (p.status || '').toLowerCase() === 'bekliyor').length
+
+              const remainingRow = {
+                label: reportPeriod === 'weekly' ? 'Kalan Hafta' : reportPeriod === 'monthly' ? 'Kalan Ay' : 'Kalan Gün',
+                value: remainingDays === null ? '—'
+                  : remainingDays < 0
+                    ? `${reportPeriod === 'weekly' ? Math.ceil(Math.abs(remainingDays) / 7) : reportPeriod === 'monthly' ? Math.ceil(Math.abs(remainingDays) / 30) : Math.abs(remainingDays)} ${reportPeriod === 'weekly' ? 'hafta' : reportPeriod === 'monthly' ? 'ay' : 'gün'} gecikti`
+                    : `${reportPeriod === 'weekly' ? Math.ceil(remainingDays / 7) : reportPeriod === 'monthly' ? Math.ceil(remainingDays / 30) : remainingDays} ${reportPeriod === 'weekly' ? 'hafta' : reportPeriod === 'monthly' ? 'ay' : 'gün'}`,
+                color: delayColor,
+              }
+
+              const periodSpecific = reportPeriod === 'daily'
+                ? { label: 'Günlük Rapor Durumu', value: report?.general_status ? (report.general_status === 'normal' ? 'Normal' : report.general_status === 'dikkat' ? 'Dikkat' : 'Kritik') : '—', color: report?.general_status === 'kritik' ? '#ef4444' : report?.general_status === 'dikkat' ? '#f59e0b' : '#16a34a' }
+                : reportPeriod === 'weekly'
+                  ? { label: 'Aktif Personel', value: totalPersonnel ? `${totalPersonnel} kişi` : '—', color: '#185FA5' }
+                  : { label: 'Hava Kayıp Gün', value: `${lostDays} gün`, color: lostDays > 5 ? '#ef4444' : lostDays > 2 ? '#f59e0b' : '#16a34a' }
+
+              return [
+                remainingRow,
+                { label: 'Plan / Gerçek', value: `%${plannedPct} / %${avgReportProgress}`, color: avgReportProgress >= plannedPct ? '#16a34a' : '#ef4444' },
+                { label: 'Bütçe Kullanımı', value: totalBudget > 0 ? `%${budgetPct}` : '—', color: '#f59e0b' },
+                { label: 'Bekleyen Satın Alma', value: pendingPurchases, color: pendingPurchases > 0 ? '#ef4444' : '#16a34a' },
+                periodSpecific,
+              ].map(item => (
+                <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-text)', fontWeight: 500 }}>{item.label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: item.color }}>{item.value}</span>
+                </div>
+              ))
+            })()}
           </div>
         </div>
 
-        <ProjectWeatherCard location={currentProject?.location} lostDays={lostDays} reportWeather={latestReport} />
+        <ProjectWeatherCard location={currentProject?.location} lostDays={lostDays} reportWeather={report} />
       </div>
 
       {tooltipInfo && (
@@ -632,8 +583,8 @@ export default function ProjectOverviewDashboard({
           {[
             { label: 'Aktif Personel', value: totalPersonnel ? `${totalPersonnel} kişi` : '—' },
             { label: 'Çalışan Makine', value: activeMachines ? `${activeMachines} adet` : '—' },
-            { label: 'İlerleme Yapılan Kalem', value: progressedTaskCount ? `${progressedTaskCount} kalem` : '—' },
-            { label: 'Rapor / Gönderen', value: latestReport ? `${fmtDate(latestReport.report_date)}${latestReport.creator_name ? ` · ${latestReport.creator_name}` : ''}` : '—' },
+            { label: 'İlerleme Yapılan Kalem', value: progressItems.filter(i => Number(i.pct) > 0).length ? `${progressItems.filter(i => Number(i.pct) > 0).length} kalem` : '—' },
+            { label: 'Rapor / Gönderen', value: report ? `${fmtDate(report.report_date)}${report.creator_name ? ` · ${report.creator_name}` : ''}` : '—' },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #f1f5f9' }}>
               <span style={{ fontSize: 12, color: 'var(--color-text)', fontWeight: 500 }}>{item.label}</span>
@@ -727,30 +678,75 @@ export default function ProjectOverviewDashboard({
             <h3>Saha Fotoğrafları</h3>
             <LinkButton onClick={() => onGoTab?.('genel')}>Tümünü Gör</LinkButton>
           </div>
-          {sahaPhotos.length === 0
-            ? <p className="project-empty">Henüz fotoğraf yüklenmemiş.</p>
-            : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-                {sahaPhotos.slice(0, 9).map(photo => {
-                  const url = supabase.storage.from('saha-fotolari').getPublicUrl(photo.storage_path).data.publicUrl
-                  return (
-                    <a key={photo.id} href={url} target="_blank" rel="noopener noreferrer"
-                      style={{ display: 'block', aspectRatio: '1', borderRadius: 6, overflow: 'hidden', background: '#f1f5f9' }}
-                    >
-                      <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} loading="lazy" />
-                    </a>
-                  )
-                })}
-              </div>
-            )
-          }
-          {sahaPhotos.length > 0 && (
-            <p style={{ fontSize: 10, color: 'var(--color-muted)', margin: '6px 0 0', textAlign: 'right' }}>
-              {sahaPhotos.length} fotoğraf
+          {sitePhotosLoading ? (
+            <p className="project-empty">Fotoğraflar yükleniyor…</p>
+          ) : !sitePhotoReport ? (
+            <p className="project-empty">{fmtDate(filterDate)} için rapor bekleniyor.</p>
+          ) : sitePhotos.length === 0 ? (
+            <p className="project-empty">Rapor yüklendi, saha fotoğrafı yüklenmedi.</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8, marginTop: 8 }}>
+              {sitePhotos.slice(0, 8).map(photo => {
+                const url = sitePhotoUrl(photo.storage_path)
+                return (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => setPhotoLightbox(url)}
+                    title={photo.caption || 'Saha fotoğrafı'}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      background: '#f8fafc',
+                      padding: 0,
+                      borderRadius: 8,
+                      overflow: 'hidden',
+                      aspectRatio: '1',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <img src={url} alt={photo.caption || ''} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {sitePhotos.length > 8 && (
+            <p style={{ margin: '8px 0 0', fontSize: 11, color: 'var(--color-muted)' }}>
+              +{sitePhotos.length - 8} fotoğraf daha
             </p>
           )}
         </div>
       </div>
+
+      {photoLightbox && (
+        <div
+          onClick={() => setPhotoLightbox(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15,23,42,.88)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 3000,
+            padding: 24,
+            cursor: 'zoom-out',
+          }}
+        >
+          <img
+            src={photoLightbox}
+            alt=""
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '92vw', maxHeight: '88vh', objectFit: 'contain', borderRadius: 12, boxShadow: '0 24px 60px rgba(0,0,0,.35)' }}
+          />
+          <button
+            onClick={() => setPhotoLightbox(null)}
+            style={{ position: 'fixed', top: 18, right: 22, border: 'none', background: 'transparent', color: '#fff', fontSize: 34, lineHeight: 1, cursor: 'pointer' }}
+          >
+            ×
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -41,43 +41,18 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
   async function loadAll() {
     setLoading(true)
     try {
-      const [repRes, persRes, machRes, progRes, matRes, photoRes, issueRes] = await Promise.all([
-        supabase.from('daily_reports')
-          .select('*')
-          .eq('id', reportId).single(),
-        supabase.from('personnel_log_entries').select('*').eq('report_id', reportId),
-        supabase.from('machinery_logs').select('*').eq('report_id', reportId),
-        supabase.from('progress_daily')
-          .select('*, progress_items(name, unit, target_qty, total_progress)')
-          .eq('report_id', reportId),
-        supabase.from('daily_report_material_usage')
-          .select('*, progress_items(name)')
-          .eq('report_id', reportId),
-        supabase.from('daily_report_photos').select('*').eq('report_id', reportId),
-        supabase.from('daily_report_issues').select('*').eq('report_id', reportId),
-      ])
+      const { data, error } = await supabase.rpc('get_daily_report_detail', {
+        p_report_id: reportId,
+      })
+      if (error) { console.error('get_daily_report_detail error:', error); return }
 
-      let reportData = repRes.data
-      if (reportData?.created_by) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', reportData.created_by)
-          .maybeSingle()
-
-        reportData = {
-          ...reportData,
-          profiles: profile ? { full_name: profile.full_name } : null,
-        }
-      }
-
-      setReport(reportData)
-      setPersonnel(persRes.data || [])
-      setMachinery(machRes.data || [])
-      setProgress(progRes.data || [])
-      setMaterials(matRes.data || [])
-      setPhotos(photoRes.data || [])
-      setIssues(issueRes.data || [])
+      setReport(data.report || null)
+      setPersonnel(data.personnel || [])
+      setMachinery(data.machinery || [])
+      setProgress(data.progress || [])
+      setMaterials(data.materials || [])
+      setPhotos(data.photos || [])
+      setIssues(data.issues || [])
     } finally {
       setLoading(false)
     }
