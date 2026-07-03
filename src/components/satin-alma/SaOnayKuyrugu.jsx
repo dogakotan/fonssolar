@@ -118,20 +118,22 @@ export default function SaOnayKuyrugu() {
 
   async function handleApprove(id) {
     setActionLoading(id)
-    await supabase
+    const { error } = await supabase
       .from('purchase_requests')
-      .update({ status: 'onaylandı', approved_by: user.id, approved_at: new Date().toISOString() })
+      .update({ status: 'onaylandi', approved_by: user.id, approved_at: new Date().toISOString() })
       .eq('id', id)
+    if (error) { console.error('purchase_requests approve error:', error); alert('Onaylanamadı: ' + error.message) }
     setActionLoading(null)
     fetchData()
   }
 
   async function handleReject(id, note) {
     setActionLoading(id)
-    await supabase
+    const { error } = await supabase
       .from('purchase_requests')
       .update({ status: 'reddedildi', approved_by: user.id, approved_at: new Date().toISOString() })
       .eq('id', id)
+    if (error) { console.error('purchase_requests reject error:', error); alert('Reddedilemedi: ' + error.message) }
     setActionLoading(null)
     fetchData()
   }

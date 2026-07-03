@@ -302,6 +302,20 @@
 .project-weather-lost strong { color: var(--color-danger); }
 .project-weather-empty { padding: 2.2rem 0; color: var(--color-muted); font-size: .85rem; text-align: center; }
 .project-timeline-card { padding: 1rem 1.25rem 1.1rem; overflow: visible; }
+.project-timeline-scroll {
+  overflow-x: auto;
+  padding-bottom: .55rem;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.project-timeline-scroll::-webkit-scrollbar { height: 6px; }
+.project-timeline-scroll::-webkit-scrollbar-track { background: transparent; }
+.project-timeline-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+.project-timeline-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 .project-timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(58px, 1fr)); gap: .45rem; position: relative; }
 .project-milestone { display: flex; flex-direction: column; align-items: center; gap: .35rem; text-align: center; min-width: 0; cursor: help; position: relative; }
 .project-milestone span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: #e2e8f0; color: #94a3b8; font-size: .7rem; font-weight: 800; border: 2px solid #e2e8f0; }
@@ -1194,6 +1208,23 @@
 .gantt-detail-empty, .gantt-empty { padding: 2rem; text-align: center; color: var(--color-muted); }
 .gantt-panel-reopen { align-self: start; padding: .7rem .9rem; border: 1px solid #dbeafe; border-radius: .75rem; background: #eff6ff; color: var(--color-primary); font-size: .78rem; font-weight: 800; }
 
+/* ── Satın Alma özet kart ızgarası ── */
+.sa-overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 0.7fr;
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 18px;
+}
+.sa-card {
+  transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+}
+.sa-card:hover {
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.10);
+  transform: translateY(-2px);
+  border-color: var(--color-border-md);
+}
+
 /* ── Responsive ── */
 @media (max-width: 1200px) {
   .proj-dash-kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1201,10 +1232,12 @@
   .gantt-kpi-strip    { grid-template-columns: repeat(2, 1fr); }
   .gantt-workspace.has-panel { grid-template-columns: 1fr; }
   .gantt-detail-panel { position: static; max-height: none; min-height: 0; }
+  .sa-overview-grid   { grid-template-columns: repeat(3, 1fr); }
 }
 @media (max-width: 900px) {
   .gantt-card-header { flex-direction: column; }
   .gantt-toolbar { justify-content: flex-start; }
+  .sa-overview-grid  { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 640px) {
   .proj-dash-kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1213,6 +1246,7 @@
   .gantt-kpi-icon { width: 46px; height: 46px; }
   .gantt-toolbar, .gantt-toolbar select { width: 100%; }
   .gantt-detail-row strong { max-width: 190px; }
+  .sa-overview-grid   { grid-template-columns: 1fr; }
 }
 
 /* ── Proje liste satırı — responsive ── */

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchDoviz } from '../../utils/exchangeRates'
 
 const CARD = {
   background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12,
@@ -11,17 +12,6 @@ const formatKur = (value) =>
     ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' ₺'
     : '—'
 
-async function fetchDoviz() {
-  try {
-    const response = await fetch('https://open.er-api.com/v6/latest/USD')
-    const data = await response.json()
-    if (data?.result !== 'success' || !data.rates?.TRY || !data.rates?.EUR) return null
-    return { usd: data.rates.TRY, eur: data.rates.TRY / data.rates.EUR }
-  } catch {
-    return null
-  }
-}
-
 export default function SatinAlmaStats() {
   const [counts, setCounts] = useState({ bekliyor: 0, onaylandi: 0, faturaKesilecek: 0, faturaKesildi: 0 })
   const [doviz, setDoviz] = useState({ usd: null, eur: null })
@@ -29,10 +19,7 @@ export default function SatinAlmaStats() {
 
   useEffect(() => {
     async function load() {
-      const [{ data }, kurData] = await Promise.all([
-        supabase.from('purchase_requests').select('status'),
-        fetchDoviz(),
-      ])
+      const { data } = await supabase.from('purchase_requests').select('status')
       if (data) {
         const next = { bekliyor: 0, onaylandi: 0, faturaKesilecek: 0, faturaKesildi: 0 }
         data.forEach(row => {
@@ -42,10 +29,11 @@ export default function SatinAlmaStats() {
         })
         setCounts(next)
       }
-      if (kurData) setDoviz(kurData)
       setLoading(false)
     }
     load()
+    // TCMB kur servisi yavaş/erişilemez olabilir; ana veriyi bekletmemesi için ayrı yükleniyor.
+    fetchDoviz().then(kurData => { if (kurData) setDoviz(kurData) })
   }, [])
 
   const cards = [
@@ -71,16 +59,16 @@ export default function SatinAlmaStats() {
         background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12,
         padding: '16px 20px', minWidth: 172, display: 'flex', flexDirection: 'column', gap: 8,
       }}>
-        <p style={{ fontSize: 11, fontWeight: 500, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 4px' }}>DÖVİZ KURLARI</p>
+        <p style={{ fontSize: 11, fontWeight: 500, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 4px' }}>TCMB SATIŞ KURLARI</p>
         <div>
           <p style={{ margin: 0, fontSize: 11, fontWeight: 500, color: '#0369A1' }}>$ Dolar / TRY</p>
-          <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#0C4A6E', lineHeight: 1.1 }}>{loading ? '…' : formatKur(doviz.usd)}</p>
+          <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#0C4A6E', lineHeight: 1.1 }}>{doviz.usd == null ? '…' : formatKur(doviz.usd)}</p>
         </div>
         <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 8 }}>
           <p style={{ margin: 0, fontSize: 11, fontWeight: 500, color: '#15803D' }}>€ Euro / TRY</p>
-          <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#14532D', lineHeight: 1.1 }}>{loading ? '…' : formatKur(doviz.eur)}</p>
+          <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#14532D', lineHeight: 1.1 }}>{doviz.eur == null ? '…' : formatKur(doviz.eur)}</p>
         </div>
-        <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>{loading ? 'Güncelleniyor…' : today}</p>
+        <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>{doviz.date || (doviz.usd == null ? 'Güncelleniyor…' : today)}</p>
       </div>
     </div>
   )

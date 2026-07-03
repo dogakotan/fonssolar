@@ -56,11 +56,6 @@ function fmtDate(date) {
   return new Date(date).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-function fmtLongDate(date) {
-  if (!date) return '-'
-  return new Date(date).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
 function daysBetween(start, end) {
   if (!start || !end) return 0
   return Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1)
@@ -149,9 +144,32 @@ function statusLabel(status) {
   return STATUS_LABELS[status] || status?.replace(/_/g, ' ') || '-'
 }
 
+function pctFromProgressItems(items) {
+  const validItems = (items || []).filter(item => Number(item.target_qty || 0) > 0)
+  if (!validItems.length) return 0
+
+  const totalPct = validItems.reduce((sum, item) => {
+    const target = Number(item.target_qty || 0)
+    const done = Number(item.total_progress || 0)
+    return sum + Math.min(done / target, 1) * 100
+  }, 0)
+
+  return Math.round(totalPct / validItems.length)
+}
+
+function pctFromDailyProgress(items, dailyRows) {
+  const totalTarget = (items || []).reduce((sum, item) => sum + Number(item.target_qty || 0), 0)
+  if (totalTarget <= 0) return 0
+
+  const dailyDone = (dailyRows || []).reduce((sum, row) => sum + Number(row.qty_added || 0), 0)
+  return Math.min(100, Math.round((dailyDone / totalTarget) * 100))
+}
+
 export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily' }) {
   const [tasks, setTasks] = useState([])
   const [project, setProject] = useState(null)
+  const [siteChief, setSiteChief] = useState(null)
+  const [progressSummary, setProgressSummary] = useState({ cumulative: 0, daily: 0 })
   const [criticalCodes, setCriticalCodes] = useState(new Set())
   const [critCount, setCritCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -161,7 +179,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [panelOpen, setPanelOpen] = useState(true)
   const [taskProgressByDate, setTaskProgressByDate] = useState({})
-  const [detailContext, setDetailContext] = useState({ latestReport: null, latestPurchase: null, topRisk: null })
   const topScrollRef = useRef(null)
   const bottomScrollRef = useRef(null)
   const bodyScrollRef = useRef(null)
@@ -203,10 +220,41 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
         setCriticalCodes(codes)
         setCritCount(codes.size)
         setTaskProgressByDate(progressByDate)
-        setDetailContext({
-          latestReport:   data.context?.latest_report   || null,
-          latestPurchase: data.context?.latest_purchase || null,
-          topRisk:        data.context?.top_risk        || null,
+
+        const [chiefRes, itemsRes, reportRes] = await Promise.all([
+          supabase
+            .from('profiles')
+            .select('full_name, email')
+            .eq('project_id', projectId)
+            .eq('role_key', 'santiye_sefi')
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from('progress_items')
+            .select('id, target_qty, total_progress')
+            .eq('project_id', projectId),
+          supabase
+            .from('daily_reports')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('report_date', effectiveDate)
+            .maybeSingle(),
+        ])
+
+        const progressItems = itemsRes.data || []
+        let dailyProgressRows = []
+        if (reportRes.data?.id) {
+          const { data: progressRows } = await supabase
+            .from('progress_daily')
+            .select('qty_added')
+            .eq('report_id', reportRes.data.id)
+          dailyProgressRows = progressRows || []
+        }
+
+        setSiteChief(chiefRes.data?.full_name || chiefRes.data?.email || null)
+        setProgressSummary({
+          cumulative: pctFromProgressItems(progressItems),
+          daily: pctFromDailyProgress(progressItems, dailyProgressRows),
         })
       } else {
         const { data: tasksData } = await supabase
@@ -218,7 +266,8 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           status: deriveTaskStatusAt(task, Number(task.progress_pct || 0), effectiveDate),
         })))
         setCritCount(0)
-        setDetailContext({ latestReport: null, latestPurchase: null, topRisk: null })
+        setSiteChief(null)
+        setProgressSummary({ cumulative: 0, daily: 0 })
       }
       setLoading(false)
     }
@@ -507,9 +556,9 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           <TaskDetailPanel
             task={selectedTask}
             group={selectedTask ? resolveGroup(selectedTask) : null}
-            progress={selectedTask ? progressFor(selectedTask, taskProgressByDate) : 0}
+            progressSummary={progressSummary}
+            siteChief={siteChief}
             isCritical={selectedTask ? criticalCodes.has(selectedTask.task_code) : false}
-            context={detailContext}
             onClose={() => setPanelOpen(false)}
           />
         ) : (
@@ -613,11 +662,7 @@ function KpiIcon({ name }) {
   )
 }
 
-function TaskDetailPanel({ task, group, progress, isCritical, context, onClose }) {
-  const purchase = context.latestPurchase
-  const risk = context.topRisk
-  const report = context.latestReport
-
+function TaskDetailPanel({ task, group, progressSummary, siteChief, isCritical, onClose }) {
   if (!task) {
     return (
       <aside className="gantt-detail-panel">
@@ -632,21 +677,17 @@ function TaskDetailPanel({ task, group, progress, isCritical, context, onClose }
 
   const groupCfg = GROUP_CONFIG[group] || GROUP_CONFIG._diger
   const duration = daysBetween(task.planned_start, task.planned_end)
-  const riskTitle = risk?.title || risk?.risk_title || risk?.description || '-'
-  const purchaseTitle = purchase ? (purchase.title || 'Satın alma talebi') : '-'
 
   const rows = [
     ['Durum', statusLabel(task.status), task.status === 'devam_ediyor' ? 'blue' : 'muted'],
     ['Grup', group || '-', groupCfg.tone],
-    ['Sorumlu', task.responsible_role || '-'],
+    ['Sorumlu', siteChief || '-'],
     ['Plan Başlangıç', fmtDate(task.planned_start)],
     ['Plan Bitiş', fmtDate(task.planned_end)],
     ['Süre', `${duration} gün`],
-    ['İlerleme', `%${progress}`, 'blue'],
+    ['Kümülatif İlerleme', `%${progressSummary.cumulative || 0}`, 'blue'],
+    ['Günlük İlerleme', `%${progressSummary.daily || 0}`, progressSummary.daily > 0 ? 'green' : 'muted'],
     ['Kritiklik', isCritical ? 'Kritik Yol' : 'Normal', isCritical ? 'red' : 'muted'],
-    ['Bağlı Satın Alma', purchaseTitle, purchase ? 'blue' : 'muted'],
-    ['Risk Durumu', riskTitle, risk ? 'red' : 'muted'],
-    ['Son Günlük Rapor', report ? fmtLongDate(report.report_date) : '-'],
   ]
 
   return (
@@ -669,19 +710,7 @@ function TaskDetailPanel({ task, group, progress, isCritical, context, onClose }
             <strong className={tone ? `tone-${tone}` : ''}>{value}</strong>
           </div>
         ))}
-        <DetailText title="Bugün Yapılan" text={report?.notes || 'Günlük rapor notu bulunamadı.'} />
-        <DetailText title="Yarın Planlanan" text={task.status === 'tamamlandi' ? 'Görev tamamlandı.' : 'Plan takibine göre sonraki saha aktivitesi izlenecek.'} />
-        <DetailText title="Not" text={isCritical ? 'Bu görev kritik yol üzerinde izleniyor.' : 'Ek görev notu bulunmuyor.'} />
       </div>
     </aside>
-  )
-}
-
-function DetailText({ title, text }) {
-  return (
-    <div className="gantt-detail-note">
-      <h4>{title}</h4>
-      <p>{text}</p>
-    </div>
   )
 }

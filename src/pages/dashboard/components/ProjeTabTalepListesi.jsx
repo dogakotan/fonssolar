@@ -3,98 +3,241 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
+import { toNumber, materialKey, normalizeStatus, materialName, isRisky } from '../../../utils/satinAlma'
 
-const URGENCY = {
-  normal:    { bg: '#F3F4F6', color: '#374151', label: 'Normal' },
-  acil:      { bg: '#FEF3C7', color: '#92400E', label: 'Acil' },
-  'çok_acil': { bg: '#FEE2E2', color: '#991B1B', label: 'Çok Acil' },
-}
 const STATUS = {
-  bekliyor:       { bg: '#FEF3C7', color: '#92400E',  label: 'Bekliyor' },
-  onaylandı:      { bg: '#D1FAE5', color: '#065F46',  label: 'Onaylandı' },
-  reddedildi:     { bg: '#FEE2E2', color: '#991B1B',  label: 'Reddedildi' },
-  fatura_kesildi: { bg: '#EFF6FF', color: '#185FA5',  label: 'Fatura Kesildi' },
+  bekliyor: { bg: '#FEF3C7', color: '#92400E', label: 'Bekliyor' },
+  onaylandi: { bg: '#D1FAE5', color: '#065F46', label: 'Onaylandı' },
+  red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Red Edildi' },
+  faturada: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Bekleniyor' },
+  faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Faturası Kesildi' },
+  tamamlandi: { bg: '#E5E7EB', color: '#374151', label: 'Tamamlandı' },
 }
 
-const TH = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
+const STATUS_FILTERS = [
+  { value: 'all', label: 'Tüm Durumlar' },
+  { value: 'bekliyor', label: 'Bekliyor' },
+  { value: 'onaylandi', label: 'Onaylandı' },
+  { value: 'red_edildi', label: 'Red Edildi' },
+  { value: 'faturada', label: 'Fatura Bekleniyor' },
+  { value: 'faturasi_kesildi', label: 'Faturası Kesildi' },
+  { value: 'tamamlandi', label: 'Tamamlandı' },
+]
 
-function filterBtn(active) {
-  return {
-    padding: '6px 14px', fontSize: 13, borderRadius: 6, cursor: 'pointer',
-    fontFamily: 'inherit', border: active ? '1px solid #185FA5' : '1px solid #E5E7EB',
-    background: active ? '#EFF6FF' : '#fff', color: active ? '#185FA5' : '#6B7280',
-    fontWeight: active ? 600 : 400,
-  }
+const TH = { padding: '10px 12px', textAlign: 'left', fontSize: 10.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.45px', whiteSpace: 'nowrap' }
+const TD = { padding: '12px', fontSize: 12.5, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
+
+const fmtDate = (date) =>
+  date ? new Date(date).toLocaleDateString('tr-TR') : '—'
+
+function materialTitle(request) {
+  return request.material_name || request.title || request.description || 'Satın alma talebi'
 }
 
-export default function ProjeTabTalepListesi({ projectId, filterDate }) {
+function requesterName(request) {
+  return request.profiles?.full_name || request.requester_name || request.requested_by_name || request.created_by_name || '—'
+}
+
+function requestNo(request) {
+  if (request.request_no || request.code) return request.request_no || request.code
+  const year = request.created_at ? new Date(request.created_at).getFullYear() : new Date().getFullYear()
+  const suffix = String(request.id || '').replace(/-/g, '').slice(-3).toUpperCase() || '001'
+  return `SAT-${year}-${suffix}`
+}
+
+function requestType(request) {
+  const text = `${request.title || ''} ${(request.purchase_request_items || []).map(item => item.name).join(' ')}`.toLocaleLowerCase('tr-TR')
+  return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'Hizmet' : 'Malzeme'
+}
+
+function StatusBadge({ status }) {
+  const normalized = normalizeStatus(status)
+  const badge = STATUS[normalized] || { bg: '#F3F4F6', color: '#374151', label: (normalized || '—').replace(/_/g, ' ') }
+  return (
+    <span style={{ background: badge.bg, color: badge.color, fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 7, whiteSpace: 'nowrap' }}>
+      {badge.label}
+    </span>
+  )
+}
+
+function InvoiceStatusBadge({ status }) {
+  const normalized = normalizeStatus(status)
+  const info = {
+    onaylandi: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura Bekliyor' },
+    faturada: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Sürecinde' },
+    faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Faturası Kesildi' },
+    tamamlandi: { bg: '#E5E7EB', color: '#374151', label: 'Fatura Tamam' },
+    red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Red Edildi' },
+  }[normalized] || { bg: '#F3F4F6', color: '#64748B', label: 'Fatura Yok' }
+
+  return (
+    <span style={{ background: info.bg, color: info.color, fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 7, whiteSpace: 'nowrap' }}>
+      {info.label}
+    </span>
+  )
+}
+
+function RiskBadge({ risky }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: risky ? 'var(--color-danger)' : 'var(--color-success)', fontSize: 12, fontWeight: 600 }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: risky ? 'var(--color-danger)' : 'var(--color-success)' }} />
+      {risky ? 'Riskli' : 'Uygun'}
+    </span>
+  )
+}
+
+export default function ProjeTabTalepListesi({ projectId, filterDate, onChanged, onlyPending = false, procurement }) {
   const { role } = useAuth()
-  const [requests, setRequests]           = useState([])
-  const [loading, setLoading]             = useState(true)
-  const [urgencyFilter, setUrgencyFilter] = useState('all')
-  const [statusFilter, setStatusFilter]   = useState('all')
-  const [showNew, setShowNew]             = useState(false)
-  const [selected, setSelected]           = useState(null)
+  const [requests, setRequests] = useState([])
+  const [materialPlan, setMaterialPlan] = useState(new Map())
+  const [requestedTotals, setRequestedTotals] = useState(new Map())
+  const [loading, setLoading] = useState(true)
+  const [statusFilter, setStatusFilter] = useState(onlyPending ? 'bekliyor' : 'all')
+  const [showNew, setShowNew] = useState(false)
+  const [selected, setSelected] = useState(null)
+  const [actionLoading, setActionLoading] = useState(null)
+  const [errorMessage, setErrorMessage] = useState('')
 
   const canCreate = role !== 'muhasebe'
 
-  useEffect(() => { if (projectId) fetchData() }, [projectId, filterDate])
+  useEffect(() => { if (projectId) fetchData() }, [projectId, filterDate, onlyPending])
+
+  // Üst bileşen (ProjeTabSatinAlma) procurement_items'i zaten tek bir RPC ile getirdiyse
+  // burada aynı tabloyu ikinci kez sorgulamak yerine o veriden malzeme planını hesaplıyoruz.
+  useEffect(() => {
+    if (!procurement) return
+    const plan = new Map()
+    procurement.forEach(material => {
+      const key = materialKey(materialName(material))
+      if (!key) return
+      plan.set(key, toNumber(material.quantity))
+    })
+    setMaterialPlan(plan)
+  }, [procurement])
 
   async function fetchData() {
     setLoading(true)
-    const { data } = await supabase
+    setErrorMessage('')
+    let query = supabase
       .from('purchase_requests')
-      .select('*, purchase_request_items(count), projects(name)')
+      .select('*, purchase_request_items(*)')
       .eq('project_id', projectId)
       .lte('created_at', (filterDate || new Date().toISOString().split('T')[0]) + 'T23:59:59')
       .order('created_at', { ascending: false })
-    setRequests(data || [])
+
+    if (onlyPending) query = query.in('status', ['bekliyor', 'beklemede', 'talep_olusturuldu', 'talep_oluşturuldu'])
+
+    const [requestsResult, materialResult] = await Promise.all([
+      query,
+      procurement ? Promise.resolve(null) : supabase.from('procurement_items').select('*').eq('project_id', projectId),
+    ])
+
+    if (requestsResult.error) {
+      console.error('purchase_requests load error:', requestsResult.error)
+      setErrorMessage('Satın alma talepleri yüklenemedi.')
+      setRequests([])
+    } else {
+      const rows = requestsResult.data || []
+      const requestedByIds = [...new Set(rows.map(row => row.requested_by).filter(Boolean))]
+
+      if (requestedByIds.length > 0) {
+        const { data: profiles, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', requestedByIds)
+
+        if (profileError) {
+          console.error('profiles load error:', profileError)
+          setRequests(rows)
+        } else {
+          const profileById = new Map((profiles || []).map(profile => [profile.id, profile]))
+          setRequests(rows.map(row => ({ ...row, profiles: profileById.get(row.requested_by) || null })))
+        }
+      } else {
+        setRequests(rows)
+      }
+
+      // Malzeme Tedarik kartıyla tutarlı olması için yalnızca onay bekleyen taleplerin
+      // miktarları toplanır — onaylanmış/reddedilmiş/tamamlanmış talepler risk hesabına girmez.
+      const totals = new Map()
+      rows.filter(row => normalizeStatus(row.status) === 'bekliyor').forEach(row => {
+        ;(row.purchase_request_items || []).forEach(item => {
+          const key = materialKey(item.name)
+          if (!key) return
+          totals.set(key, (totals.get(key) || 0) + toNumber(item.quantity))
+        })
+      })
+      setRequestedTotals(totals)
+    }
+
+    if (!procurement) {
+      const plan = new Map()
+      ;(materialResult.data || []).forEach(material => {
+        const key = materialKey(materialName(material))
+        if (!key) return
+        plan.set(key, toNumber(material.planned_quantity ?? material.quantity))
+      })
+      setMaterialPlan(plan)
+    }
     setLoading(false)
   }
 
-  const filtered = requests.filter(r => {
-    if (urgencyFilter !== 'all' && r.urgency !== urgencyFilter) return false
-    if (statusFilter  !== 'all' && r.status  !== statusFilter)  return false
-    return true
+  async function updateStatus(event, id, status) {
+    event.stopPropagation()
+    setActionLoading(id)
+    setErrorMessage('')
+    const { error } = await supabase
+      .from('purchase_requests')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('project_id', projectId)
+
+    if (error) {
+      console.error('purchase_requests status update error:', error)
+      setErrorMessage('Durum güncellenemedi.')
+    } else {
+      await fetchData()
+      onChanged?.()
+    }
+    setActionLoading(null)
+  }
+
+  const filtered = requests.filter(request => {
+    if (onlyPending) return true
+    if (statusFilter === 'all') return true
+    return normalizeStatus(request.status) === statusFilter
   })
 
+  const emptyText = onlyPending
+    ? 'Onay bekleyen satın alma talebi yok.'
+    : 'Bu projeye ait satın alma talebi bulunmuyor.'
+
   return (
-    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid #E5E7EB', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: '#111827', margin: 0 }}>Satın Alma Talepleri</h3>
-        <span style={{ background: '#F3F4F6', color: '#374151', fontSize: 12, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
-          {requests.length} talep
+    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
+          {onlyPending ? 'Onay Bekleyenler' : 'Tüm Satın Alma Talepleri'}
+        </h3>
+        <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 12, fontWeight: 600, padding: '2px 9px', borderRadius: 7 }}>
+          {filtered.length} talep
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 6 }}>
-            {[
-              { value: 'all', label: 'Tümü' },
-              { value: 'normal', label: 'Normal' },
-              { value: 'acil', label: 'Acil' },
-              { value: 'çok_acil', label: 'Çok Acil' },
-            ].map(({ value, label }) => (
-              <button key={value} style={filterBtn(urgencyFilter === value)} onClick={() => setUrgencyFilter(value)}>
-                {label}
-              </button>
-            ))}
-          </div>
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '6px 10px', fontSize: 13, fontFamily: 'inherit', color: '#374151', cursor: 'pointer' }}
-          >
-            <option value="all">Tüm Durumlar</option>
-            <option value="bekliyor">Bekliyor</option>
-            <option value="onaylandı">Onaylandı</option>
-            <option value="reddedildi">Reddedildi</option>
-            <option value="fatura_kesildi">Fatura Kesildi</option>
-          </select>
-          {canCreate && (
+          {!onlyPending && (
+            <select
+              value={statusFilter}
+              onChange={event => setStatusFilter(event.target.value)}
+              style={{ border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '8px 34px 8px 12px', fontSize: 13, color: 'var(--color-text-sub)', background: 'var(--color-surface)', cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
+            >
+              {STATUS_FILTERS.map(({ value, label }) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          )}
+          {canCreate && !onlyPending && (
             <button
               onClick={() => setShowNew(true)}
-              style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+              style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
             >
               + Yeni Talep
             </button>
@@ -102,49 +245,62 @@ export default function ProjeTabTalepListesi({ projectId, filterDate }) {
         </div>
       </div>
 
+      {errorMessage && (
+        <div style={{ padding: '10px 20px', background: '#FEF2F2', color: '#991B1B', fontSize: 13, borderBottom: '1px solid #FECACA' }}>
+          {errorMessage}
+        </div>
+      )}
+
       {loading ? (
-        <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>Yükleniyor…</div>
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>Yükleniyor…</div>
       ) : filtered.length === 0 ? (
-        <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>Talep bulunamadı.</div>
+        <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>{emptyText}</div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 480 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-                {['TALEP BAŞLIĞI', 'ACİLİYET', 'DURUM', 'KALEM SAYISI', 'TARİH', 'İŞLEM'].map(h => (
-                  <th key={h} style={TH}>{h}</th>
+              <tr style={{ borderBottom: '1px solid var(--color-border-md)' }}>
+                {['TALEP NO', 'TALEP / MALZEME', 'TİP', 'OLUŞTURAN KİŞİ', 'RİSK DURUMU', 'DURUM', 'TARİH', 'İŞLEM / FATURA'].map(header => (
+                  <th key={header} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1 }}>{header}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {filtered.map(r => {
-                const ub = URGENCY[r.urgency] || URGENCY.normal
-                const sb = STATUS[r.status]   || STATUS.bekliyor
-                const itemCount = r.purchase_request_items?.[0]?.count ?? 0
+              {filtered.map(request => {
+                const isPending = normalizeStatus(request.status) === 'bekliyor'
+                const risky = isRisky(request.purchase_request_items || [], materialPlan, requestedTotals)
                 return (
                   <tr
-                    key={r.id}
-                    onClick={() => setSelected(r)}
-                    style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    key={request.id}
+                    onClick={() => setSelected(request)}
+                    style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}
+                    onMouseEnter={event => { event.currentTarget.style.background = 'var(--color-bg)' }}
+                    onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
                   >
-                    <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#111827' }}>{r.title}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: ub.bg, color: ub.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>{ub.label}</span>
+                    <td style={{ ...TD, color: 'var(--color-primary)', fontWeight: 700 }}>{requestNo(request)}</td>
+                    <td style={{ ...TD, fontWeight: 700, color: 'var(--color-text)', minWidth: 180 }}>{materialTitle(request)}</td>
+                    <td style={TD}>
+                      <span style={{ background: requestType(request) === 'Malzeme' ? '#EAF2FF' : '#E9FBEF', color: requestType(request) === 'Malzeme' ? 'var(--color-primary)' : 'var(--color-success)', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6 }}>
+                        {requestType(request)}
+                      </span>
                     </td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ background: sb.bg, color: sb.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>{sb.label}</span>
-                    </td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280' }}>{itemCount} kalem</td>
-                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280' }}>{fmtDate(r.created_at)}</td>
-                    <td style={{ padding: '12px 16px' }} onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => setSelected(r)}
-                        style={{ background: '#F3F4F6', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}
-                      >
-                        Detay
-                      </button>
+                    <td style={TD}>{requesterName(request)}</td>
+                    <td style={TD}><RiskBadge risky={risky} /></td>
+                    <td style={TD}><StatusBadge status={request.status} /></td>
+                    <td style={TD}>{fmtDate(request.request_date || request.created_at)}</td>
+                    <td style={TD}>
+                      {isPending ? (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button onClick={event => updateStatus(event, request.id, 'onaylandi')} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {actionLoading === request.id ? '…' : 'Onayla'}
+                          </button>
+                          <button onClick={event => updateStatus(event, request.id, 'reddedildi')} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {actionLoading === request.id ? '…' : 'Reddet'}
+                          </button>
+                        </div>
+                      ) : (
+                        <InvoiceStatusBadge status={request.status} />
+                      )}
                     </td>
                   </tr>
                 )
@@ -157,14 +313,16 @@ export default function ProjeTabTalepListesi({ projectId, filterDate }) {
       {showNew && (
         <YeniTalepModal
           onClose={() => setShowNew(false)}
-          onSaved={() => { setShowNew(false); fetchData() }}
+          onSaved={() => { setShowNew(false); fetchData(); onChanged?.() }}
           defaultProjectId={projectId}
         />
       )}
       {selected && (
         <TalepDetayModal
           request={selected}
-          onClose={() => { setSelected(null); fetchData() }}
+          materialPlan={materialPlan}
+          requestedTotals={requestedTotals}
+          onClose={() => { setSelected(null); fetchData(); onChanged?.() }}
         />
       )}
     </div>

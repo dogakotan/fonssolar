@@ -1,202 +1,254 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { riskBreakdownForItems } from '../../utils/satinAlma'
 
-const URGENCY = {
-  normal:    { bg: '#F3F4F6', color: '#374151', label: 'Normal' },
-  acil:      { bg: '#FEF3C7', color: '#92400E', label: 'Acil' },
-  'çok_acil': { bg: '#FEE2E2', color: '#991B1B', label: 'Çok Acil' },
-}
-const STATUS = {
-  bekliyor:       { bg: '#FEF3C7', color: '#92400E',  label: 'Bekliyor' },
-  onaylandı:      { bg: '#D1FAE5', color: '#065F46',  label: 'Onaylandı' },
-  satın_alındı:   { bg: '#F3F4F6', color: '#6B7280',  label: 'Satın Alındı' },
-  reddedildi:     { bg: '#FEE2E2', color: '#991B1B',  label: 'Reddedildi' },
-  fatura_kesildi: { bg: '#EFF6FF', color: '#185FA5',  label: 'Fatura Kesildi' },
-}
+const fmtQty = (value) =>
+  Number(value || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
 
-const fmt = (n) => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n || 0)
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
+const fmtDate = (date) =>
+  date ? new Date(date).toLocaleDateString('tr-TR') : '-'
 
-function Badge({ map, value }) {
-  const b = map[value] || { bg: '#F3F4F6', color: '#374151', label: value || '—' }
-  return <span style={{ background: b.bg, color: b.color, fontSize: 12, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>{b.label}</span>
+const normalizeStatus = (status) => {
+  const value = String(status || '').trim().toLocaleLowerCase('tr-TR').replace(/\s+/g, '_')
+  if (!value || ['bekliyor', 'beklemede', 'talep_olusturuldu', 'talep_oluşturuldu'].includes(value)) return 'bekliyor'
+  if (['onaylandı', 'onaylandi', 'approved'].includes(value)) return 'onaylandi'
+  if (['red_edildi', 'reddedildi', 'rejected'].includes(value)) return 'red_edildi'
+  if (['faturada', 'fatura_bekleniyor'].includes(value)) return 'faturada'
+  if (['fatura_kesildi', 'faturası_kesildi', 'faturasi_kesildi'].includes(value)) return 'faturasi_kesildi'
+  if (['satın_alındı', 'satin_alindi', 'tamamlandı', 'tamamlandi'].includes(value)) return 'tamamlandi'
+  return value
 }
 
-export default function TalepDetayModal({ request, talepId, onClose }) {
+const STATUS_META = {
+  bekliyor: { bg: '#FEF3C7', color: '#92400E', label: 'Bekliyor' },
+  onaylandi: { bg: '#D1FAE5', color: '#065F46', label: 'Onaylandı' },
+  red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Red Edildi' },
+  faturada: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Sürecinde' },
+  faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Faturası Kesildi' },
+  tamamlandi: { bg: '#E5E7EB', color: '#374151', label: 'Tamamlandı' },
+}
+
+const CARD = { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: 14, minWidth: 0 }
+const TITLE = { margin: '0 0 10px', fontSize: 13, fontWeight: 800, color: '#0F172A' }
+const LABEL = { margin: 0, fontSize: 11, color: '#64748B' }
+const VALUE = { margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: '#0F172A' }
+
+function Badge({ status }) {
+  const meta = STATUS_META[normalizeStatus(status)] || { bg: '#F3F4F6', color: '#374151', label: status || '-' }
+  return <span style={{ background: meta.bg, color: meta.color, borderRadius: 999, padding: '4px 10px', fontSize: 11, fontWeight: 800 }}>{meta.label}</span>
+}
+
+function requestNo(req) {
+  if (req.request_no || req.code) return req.request_no || req.code
+  const year = req.created_at ? new Date(req.created_at).getFullYear() : new Date().getFullYear()
+  const suffix = String(req.id || '').replace(/-/g, '').slice(-3).toUpperCase() || '001'
+  return `SAT-${year}-${suffix}`
+}
+
+function requestType(req, items) {
+  const text = `${req.title || ''} ${(items || []).map(item => item.name).join(' ')}`.toLocaleLowerCase('tr-TR')
+  return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'Hizmet' : 'Malzeme'
+}
+
+function Step({ done, active, label, sub, last = false }) {
+  const color = done ? '#22C55E' : active ? '#F59E0B' : '#CBD5E1'
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr', gap: 8, position: 'relative' }}>
+      {!last && <span style={{ position: 'absolute', left: 5, top: 16, bottom: -10, width: 1, background: '#E5E7EB' }} />}
+      <span style={{ position: 'relative', zIndex: 1, width: 10, height: 10, borderRadius: '50%', background: color, marginTop: 4, boxShadow: `0 0 0 4px ${done ? '#DCFCE7' : active ? '#FEF3C7' : '#F1F5F9'}` }} />
+      <div>
+        <p style={{ margin: 0, fontSize: 12.5, fontWeight: 800, color: done || active ? '#0F172A' : '#94A3B8' }}>{label}</p>
+        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748B', lineHeight: 1.35 }}>{sub}</p>
+      </div>
+    </div>
+  )
+}
+
+const emptyMap = new Map()
+
+export default function TalepDetayModal({ request, talepId, materialPlan = emptyMap, requestedTotals = emptyMap, onClose }) {
   const { isAdmin, user } = useAuth()
-  const [data, setData] = useState(null)
-  const [items, setItems] = useState([])
+  const [data, setData] = useState(request || null)
+  const [items, setItems] = useState(request?.purchase_request_items || [])
+  const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
-  const [showReject, setShowReject] = useState(false)
-  const [rejectNote, setRejectNote] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
     async function load() {
       const id = request?.id || talepId
       if (!id) return
-      const { data: req } = await supabase
+      const { data: req, error } = await supabase
         .from('purchase_requests')
-        .select('*, projects(name), profiles!requested_by(full_name), purchase_request_items(*)')
+        .select('*, purchase_request_items(*)')
         .eq('id', id)
         .single()
-      if (req) {
-        setData(req)
-        setItems(req.purchase_request_items || [])
+
+      if (!error && req) {
+        setData({ ...request, ...req })
+        setItems(req.purchase_request_items || request?.purchase_request_items || [])
       }
     }
     load()
-  }, [request?.id, talepId])
+  }, [request, talepId])
 
   const req = data || request || {}
-  const total = items.reduce((sum, i) => sum + (i.total_price ?? (i.quantity * (i.unit_price || 0))), 0)
+  const status = normalizeStatus(req.status)
+  const canAct = isAdmin && status === 'bekliyor'
+  const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
+  const description = req.description || req.request_note || req.notes || '-'
+  const requester = req.profiles?.full_name || req.requester_name || req.requested_by_name || req.created_by_name || 'santiyesefi.test'
+  const type = requestType(req, items)
+  const approvalDate = req.approved_at || req.updated_at
+  const invoiceDone = ['faturasi_kesildi', 'tamamlandi'].includes(status)
+  const approvalDone = ['onaylandi', 'faturada', 'faturasi_kesildi', 'tamamlandi'].includes(status)
+  const isRejected = status === 'red_edildi'
 
-  const meta = [
-    { label: 'Proje',        value: req.projects?.name || '—' },
-    { label: 'Aciliyet',     value: <Badge map={URGENCY} value={req.urgency} /> },
-    { label: 'Durum',        value: <Badge map={STATUS}  value={req.status}  /> },
-    { label: 'Talep Eden',   value: req.profiles?.full_name || req.requester_name || '—' },
-    { label: 'Tarih',        value: fmtDate(req.created_at) },
-    { label: 'Toplam Tutar', value: <strong style={{ color: '#185FA5' }}>{fmt(total)}</strong> },
-  ]
-
-  async function handleApprove() {
+  async function updateStatus(nextStatus) {
     setSaving(true)
-    await supabase
-      .from('purchase_requests')
-      .update({ status: 'onaylandı', approved_by: user.id, approved_at: new Date().toISOString() })
-      .eq('id', req.id)
+    setErrorMessage('')
+    const payload = {
+      status: nextStatus,
+      approved_by: user?.id || null,
+      approved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    const combinedNote = [req.notes, note].filter(Boolean).join('\n')
+    if (combinedNote) payload.notes = combinedNote
+
+    const { error } = await supabase.from('purchase_requests').update(payload).eq('id', req.id)
     setSaving(false)
+    if (error) {
+      console.error('purchase request update error:', error)
+      setErrorMessage('İşlem kaydedilemedi.')
+      return
+    }
     onClose()
   }
-
-  async function handleReject() {
-    setSaving(true)
-    await supabase
-      .from('purchase_requests')
-      .update({ status: 'reddedildi', approved_by: user.id, approved_at: new Date().toISOString() })
-      .eq('id', req.id)
-    setSaving(false)
-    onClose()
-  }
-
-  const showActions = isAdmin && req.status === 'bekliyor'
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: '#fff', borderRadius: 16, width: 560, maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1000, display: 'grid', placeItems: 'center', padding: 18 }}>
+      <div style={{ width: 'min(680px, calc(100vw - 36px))', background: '#F8FAFC', borderRadius: 12, boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)', overflow: 'hidden' }}>
+        <header style={{ background: '#fff', borderBottom: '1px solid #E5E7EB', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Talep Detayı</h2>
+            <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{requestNo(req)} · {req.title || req.material_name || 'Satın alma talebi'}</p>
+          </div>
+          <Badge status={req.status} />
+          <button onClick={onClose} style={{ border: 'none', background: 'transparent', color: '#64748B', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
+        </header>
 
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: '#111827' }}>{req.title}</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#9CA3AF' }}>×</button>
-        </div>
+        <div style={{ padding: 14, display: 'grid', gap: 12 }}>
+          {errorMessage && <div style={{ background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 10px', fontSize: 12 }}>{errorMessage}</div>}
 
-        <div style={{ padding: '20px 24px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 20 }}>
-            {meta.map(({ label, value }) => (
-              <div key={label}>
-                <p style={{ fontSize: 10, color: '#9CA3AF', margin: '0 0 3px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</p>
-                <p style={{ margin: 0, fontSize: 13, color: '#111827' }}>{value}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <section style={CARD}>
+              <h3 style={TITLE}>Talep Bilgileri</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div><p style={LABEL}>Talep / Malzeme</p><p style={VALUE}>{req.title || req.material_name || '-'}</p></div>
+                <div><p style={LABEL}>Talep Türü</p><p style={VALUE}>{type}</p></div>
+                <div><p style={LABEL}>Oluşturan</p><p style={VALUE}>{requester}</p></div>
+                <div><p style={LABEL}>Talep Tarihi</p><p style={VALUE}>{fmtDate(req.request_date || req.created_at)}</p></div>
               </div>
-            ))}
-          </div>
+            </section>
 
-          {(req.request_note || req.notes) && (
-            <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
-              <p style={{ fontSize: 10, color: '#9CA3AF', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Açıklama</p>
-              <p style={{ margin: 0, fontSize: 13, color: '#374151', lineHeight: 1.6 }}>
-                {[req.request_note, req.notes].filter(Boolean).join('\n\n')}
-              </p>
-            </div>
-          )}
-
-          <div>
-            <p style={{ fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 8 }}>Malzeme Kalemleri</p>
-            {items.length === 0 ? (
-              <p style={{ color: '#9CA3AF', fontSize: 13 }}>Kalem eklenmemiş.</p>
-            ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-                    {['Malzeme', 'Miktar', 'Birim', 'Birim Fiyat', 'Toplam'].map(h => (
-                      <th key={h} style={{ padding: '6px 8px', textAlign: 'left', fontSize: 10, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map(item => {
-                    const lineTotal = item.total_price ?? (item.quantity * (item.unit_price || 0))
-                    return (
-                      <tr key={item.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                        <td style={{ padding: '8px 8px', fontSize: 13, fontWeight: 500, color: '#111827' }}>{item.name}</td>
-                        <td style={{ padding: '8px 8px', fontSize: 13, color: '#374151' }}>{item.quantity}</td>
-                        <td style={{ padding: '8px 8px', fontSize: 13, color: '#374151' }}>{item.unit}</td>
-                        <td style={{ padding: '8px 8px', fontSize: 13, color: '#374151' }}>{item.unit_price ? fmt(item.unit_price) : '—'}</td>
-                        <td style={{ padding: '8px 8px', fontSize: 13, fontWeight: 600, color: '#185FA5' }}>{lineTotal ? fmt(lineTotal) : '—'}</td>
-                      </tr>
-                    )
-                  })}
-                  <tr style={{ borderTop: '2px solid #E5E7EB' }}>
-                    <td colSpan={4} style={{ padding: '10px 8px', fontSize: 13, fontWeight: 600, color: '#374151' }}>Toplam</td>
-                    <td style={{ padding: '10px 8px', fontSize: 14, fontWeight: 700, color: '#185FA5' }}>{fmt(total)}</td>
-                  </tr>
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: 1 }}>
-            {showActions && !showReject && (
-              <>
-                <button
-                  onClick={handleApprove}
-                  disabled={saving}
-                  style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}
-                >
-                  {saving ? '…' : '✓ Onayla'}
-                </button>
-                <button
-                  onClick={() => setShowReject(true)}
-                  disabled={saving}
-                  style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 8, padding: '9px 18px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-                >
-                  ✗ Reddet
-                </button>
-              </>
-            )}
-            {showActions && showReject && (
-              <>
-                <input
-                  type="text"
-                  placeholder="Red gerekçesi (opsiyonel)"
-                  value={rejectNote}
-                  onChange={e => setRejectNote(e.target.value)}
-                  style={{ flex: 1, border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+            <section style={CARD}>
+              <h3 style={TITLE}>Onay Süreci</h3>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <Step
+                  done
+                  label="Talep Oluşturuldu"
+                  sub={`${requester} · ${fmtDate(req.created_at)}`}
                 />
-                <button
-                  onClick={handleReject}
-                  disabled={saving}
-                  style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1, whiteSpace: 'nowrap' }}
-                >
-                  {saving ? '…' : 'Reddi Onayla'}
-                </button>
-                <button
-                  onClick={() => { setShowReject(false); setRejectNote('') }}
-                  style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '9px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-                >
-                  İptal
-                </button>
-              </>
-            )}
+                <Step
+                  active={status === 'bekliyor'}
+                  done={approvalDone}
+                  label={isRejected ? 'Yönetici Onayı Reddedildi' : approvalDone ? 'Yönetici Onayı Alındı' : 'Yönetici Onayı Bekliyor'}
+                  sub={isRejected
+                    ? `Red tarihi · ${fmtDate(approvalDate)}`
+                    : approvalDone
+                      ? `Onay tarihi · ${fmtDate(approvalDate)}`
+                      : 'Şu anki adım'}
+                />
+                <Step
+                  active={status === 'faturada'}
+                  done={invoiceDone}
+                  label="Fatura Bekleniyor"
+                  sub={status === 'faturada' ? 'Muhasebe takibinde' : 'Onay sonrası başlar'}
+                />
+                <Step
+                  done={invoiceDone}
+                  label="Fatura Kesildi"
+                  sub={invoiceDone ? 'Süreç tamamlandı' : 'Bekliyor'}
+                  last
+                />
+              </div>
+            </section>
           </div>
-          <button
-            onClick={onClose}
-            style={{ background: '#F3F4F6', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, color: '#374151', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-          >
-            Kapat
-          </button>
+
+          <section style={CARD}>
+            <h3 style={TITLE}>Malzeme / Hizmet Miktar Kontrol</h3>
+            {breakdown.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12.5, color: '#64748B' }}>Kalem girilmemiş; miktar kontrolü yapılamıyor.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {breakdown.map((row, index) => (
+                  <div key={`${row.name}-${index}`} style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 8, padding: '9px 10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                      <strong style={{ fontSize: 12.5, color: '#0F172A' }}>{row.name || 'Kalem'}</strong>
+                      <span style={{
+                        background: row.risky ? '#FEE2E2' : '#DCFCE7',
+                        color: row.risky ? '#DC2626' : '#16A34A',
+                        fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap',
+                      }}>
+                        {row.risky ? 'Riskli' : 'Uygun'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                      <div><p style={LABEL}>Bu Talepte</p><p style={VALUE}>{fmtQty(row.quantity)} {row.unit}</p></div>
+                      <div><p style={LABEL}>Planlanan (BOM)</p><p style={VALUE}>{row.planned > 0 ? `${fmtQty(row.planned)} ${row.unit}` : '—'}</p></div>
+                      <div><p style={LABEL}>Toplam İstenen</p><p style={VALUE}>{fmtQty(row.totalRequested)} {row.unit}</p></div>
+                      <div>
+                        <p style={LABEL}>Aşım</p>
+                        <p style={{ ...VALUE, color: row.excess > 0 ? '#DC2626' : '#16A34A' }}>
+                          {row.excess > 0 ? `+${fmtQty(row.excess)}` : '0'} {row.unit}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <p style={{ margin: 0, fontSize: 11, color: '#64748B' }}>
+                  "Planlanan" malzeme listesindeki (BOM) miktar, "Toplam İstenen" bu malzeme için açılmış tüm taleplerin toplamıdır.
+                </p>
+              </div>
+            )}
+          </section>
+
+          <section style={CARD}>
+            <h3 style={TITLE}>Açıklama</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: canAct ? '1fr 1fr' : '1fr', gap: 10 }}>
+              <p style={{ margin: 0, minHeight: 46, maxHeight: 70, overflow: 'hidden', fontSize: 12.5, lineHeight: 1.45, color: '#334155', whiteSpace: 'pre-wrap' }}>{description}</p>
+              {canAct && (
+                <textarea
+                  value={note}
+                  onChange={event => setNote(event.target.value)}
+                  placeholder="Onay/red notu..."
+                  style={{ width: '100%', height: 64, resize: 'none', boxSizing: 'border-box', border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit', fontSize: 12.5, outline: 'none' }}
+                />
+              )}
+            </div>
+          </section>
+
+          {canAct && (
+            <section style={{ ...CARD, padding: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', gap: 10, alignItems: 'center' }}>
+                <span />
+                <button onClick={() => updateStatus('reddedildi')} disabled={saving} style={{ background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>Reddet</button>
+                <button onClick={() => updateStatus('onaylandi')} disabled={saving} style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>Onayla</button>
+              </div>
+            </section>
+          )}
         </div>
       </div>
     </div>

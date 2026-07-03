@@ -1,60 +1,34 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../../../lib/supabase'
-
 const CARD = {
-  background: '#fff',
-  border: '1px solid #E5E7EB',
-  borderRadius: 12,
-  padding: '16px 20px',
-  flex: 1,
-  minWidth: 140,
+  background: 'var(--color-surface)',
+  border: '1px solid var(--color-border-md)',
+  borderTop: '3px solid var(--color-primary)',
+  borderRadius: 10,
+  padding: '12px 16px',
+  minHeight: 118,
+  boxSizing: 'border-box',
+  overflow: 'hidden',
+  boxShadow: 'var(--shadow-card)',
 }
 
-export default function ProjeTabSatinAlmaStats({ projectId }) {
-  const [counts, setCounts] = useState({ bekliyor: 0, onaylandı: 0, fatura_kesildi: 0 })
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    if (!projectId) return
-    async function load() {
-      const { data } = await supabase
-        .from('purchase_requests')
-        .select('status')
-        .eq('project_id', projectId)
-      if (data) {
-        const c = { bekliyor: 0, onaylandı: 0, fatura_kesildi: 0 }
-        data.forEach(r => {
-          if (r.status === 'bekliyor')       c.bekliyor++
-          if (r.status === 'onaylandı')      c.onaylandı++
-          if (r.status === 'fatura_kesildi') c.fatura_kesildi++
-        })
-        setCounts(c)
-      }
-      setLoading(false)
-    }
-    load()
-  }, [projectId])
-
+export default function ProjeTabSatinAlmaStats({ kpi, loading }) {
   const cards = [
-    { label: 'Toplam Talep',   value: Object.values(counts).reduce((a, b) => a + b, 0), color: '#111827', note: 'Tüm talepler' },
-    { label: 'Onay Bekliyor',  value: counts.bekliyor,       color: '#92400E', note: 'Yönetici onayında' },
-    { label: 'Onaylandı',      value: counts.onaylandı,      color: '#065F46', note: 'Fatura kesilecek' },
-    { label: 'Fatura Kesildi', value: counts.fatura_kesildi, color: '#185FA5', note: 'Tamamlandı' },
+    { label: 'Onay Bekleyen', value: kpi.pending, color: 'var(--color-warning)' },
+    { label: 'Riskli Satın Alma', value: kpi.risky, color: 'var(--color-danger)' },
+    { label: 'Fatura Bekleyen', value: kpi.invoicePending, color: 'var(--color-primary)' },
+    { label: 'Bu Ay Açılan Talep', value: kpi.monthOpened, color: 'var(--color-success)' },
   ]
-
   return (
-    <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-      {cards.map(c => (
-        <div key={c.label} style={{ ...CARD, borderLeft: `3px solid ${c.color}` }}>
-          <p style={{ fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 6px' }}>
-            {c.label}
-          </p>
-          <p style={{ fontSize: 28, fontWeight: 700, color: c.color, margin: '0 0 2px', lineHeight: 1 }}>
-            {loading ? '…' : c.value}
-          </p>
-          <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>{c.note}</p>
-        </div>
-      ))}
-    </div>
+    <section className="sa-card" style={CARD}>
+      <div style={{ display: 'grid', gap: 9, height: '100%', alignContent: 'center' }}>
+        {cards.map(card => (
+          <div key={card.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'var(--color-bg)', border: '1px solid var(--color-border-md)', borderRadius: 9, padding: '8px 12px' }}>
+            <span style={{ minWidth: 0, color: 'var(--color-text-sub)', fontSize: 13.5, fontWeight: 700 }}>
+              {card.label}
+            </span>
+            <strong style={{ fontSize: 18, color: card.color, fontWeight: 800 }}>{loading ? '…' : card.value}</strong>
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }

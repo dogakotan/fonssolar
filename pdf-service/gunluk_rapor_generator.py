@@ -230,7 +230,7 @@ class ExcelData:
             return default
 
     def _parse(self):
-        # Satir  4: Proje / Tarih / Rapor No / Hava / Olusturan
+        # Satir  5: Proje / Tarih / Rapor No / Hava / Olusturan
         # Satir  9-11: Personel
         # Satir 16-23: Ekipman
         # Satir 26-32: Bugun yapilan isler
@@ -239,12 +239,12 @@ class ExcelData:
         # Satir 86-92: Gelen malzeme
         # Satir 109-114: Notlar / ISG
 
-        self.proje     = str(self._c(4,  3))
-        tarih          = self._c(4,  6)
+        self.proje     = str(self._c(5,  2))
+        tarih          = self._c(5,  5)
         self.tarih     = tarih.strftime("%d.%m.%Y") if hasattr(tarih,'strftime') else str(tarih)
-        self.rapor_no  = str(self._c(4,  9))
-        self.hava      = str(self._c(4, 11))
-        self.olusturan = str(self._c(4, 13))
+        self.rapor_no  = str(self._c(5,  8))
+        self.hava      = str(self._c(5, 10))
+        self.olusturan = str(self._c(5, 12))
 
         keys = ['idari', 'mekanik', 'elektrik', 'yevmiyeci', 'diger']
         self.personel = {}
@@ -468,23 +468,6 @@ def build_equipment_table(d: ExcelData):
     return t
 
 
-def build_work_list(items, ncols=7):
-    uw = W - 2 * MARGIN
-    rows = [col_hdr('#', 'Aciklama')]
-    for i, item in enumerate(items):
-        rows.append([
-            P(str(i+1), 7, align=TA_CENTER),
-            P(str(item) if item else "", 7),
-        ])
-    t = Table(rows, colWidths=[uw * 0.05, uw * 0.95])
-    t.setStyle(TableStyle(BASE_STYLE + [
-        ('BACKGROUND',    (0, 0), (-1, 0), MID_BLUE),
-        ('ROWBACKGROUNDS',(0, 1), (-1,-1), [WHITE, ROW_ALT]),
-    ]))
-    return t
-
-
-
 def build_today_tomorrow(d):
     """Bugun / Yarin listelerini yan yana iki sutunda gosterir."""
     uw  = W - 2 * MARGIN
@@ -532,58 +515,6 @@ def build_today_tomorrow(d):
         ('LEFTPADDING',  (1,0),(1,0), int(gap)),
     ]))
     return wrapper
-
-
-def build_all_items_table(d: ExcelData):
-    """
-    Tüm iş kalemlerini kategorileriyle birlikte gösterir (gunluk > 0 filtresi yok).
-    """
-    uw = W - 2 * MARGIN
-    cw = [uw * f for f in [0.04, 0.36, 0.07, 0.10, 0.10, 0.09, 0.24]]
-
-    rows = [col_hdr('#', 'İş Kalemi', 'Birim', 'Hedef', 'Kümülatif', 'İlerleme %', 'Açıklama')]
-    ts   = list(BASE_STYLE) + [('BACKGROUND', (0, 0), (-1, 0), MID_BLUE)]
-    ri   = 1
-    idx  = 1
-
-    for item in d.e_data:
-        if item['is_cat']:
-            rows.append([P(f"  {item['name']}", 7, bold=True, color=NAVY)] + [""] * 6)
-            ts += [
-                ('SPAN',          (0, ri), (6, ri)),
-                ('BACKGROUND',    (0, ri), (-1, ri), CAT_BG),
-                ('TOPPADDING',    (0, ri), (-1, ri), 3),
-                ('BOTTOMPADDING', (0, ri), (-1, ri), 3),
-            ]
-            ri += 1
-            continue
-
-        pc = item['pct']
-        bg = WHITE if ri % 2 == 0 else ROW_ALT
-        ts.append(('BACKGROUND', (0, ri), (-1, ri), bg))
-        rows.append([
-            P(str(idx), 7, align=TA_CENTER),
-            P(item['name'], 7),
-            P(item['unit'], 7, align=TA_CENTER),
-            P(str(item['hedef']),  7, align=TA_CENTER),
-            P(str(item['kumul']),  7, bold=True, align=TA_CENTER),
-            P(pc, 7, bold=True, color=pct_color(pc), align=TA_CENTER),
-            P(item['note'], 6.5),
-        ])
-        idx += 1
-        ri += 1
-
-    if idx == 1:
-        rows.append([
-            P("—", 7, align=TA_CENTER),
-            P("İş kalemi bulunamadı.", 7, color=colors.gray),
-            P(""), P(""), P(""), P(""), P("")
-        ])
-        ts += [('SPAN', (1, 1), (6, 1)), ('BACKGROUND', (0, 1), (-1, 1), L_GRAY)]
-
-    t = Table(rows, colWidths=cw)
-    t.setStyle(TableStyle(ts))
-    return t
 
 
 def build_progress_table(d: ExcelData):
@@ -664,28 +595,6 @@ def build_progress_table(d: ExcelData):
 
     t = Table(rows, colWidths=cw)
     t.setStyle(TableStyle(ts))
-    return t
-
-
-def build_materials_table(d: ExcelData):
-    uw = W - 2 * MARGIN
-    cw = [uw * f for f in [0.25, 0.33, 0.10, 0.10, 0.22]]
-    rows = [col_hdr('Firma / Tedarikci', 'Malzeme Adi', 'Miktar', 'Birim', 'Not')]
-    if not d.malzeme:
-        for _ in range(3):
-            rows.append([P("") for _ in range(5)])
-    else:
-        for m in d.malzeme:
-            rows.append([
-                P(m['tedarikci'], 7), P(m['ad'], 7, bold=True),
-                P(m['miktar'], 7, align=TA_CENTER), P(m['birim'], 7, align=TA_CENTER),
-                P(m['not'], 7),
-            ])
-    t = Table(rows, colWidths=cw)
-    t.setStyle(TableStyle(BASE_STYLE + [
-        ('BACKGROUND',    (0,0), (-1,0), MID_BLUE),
-        ('ROWBACKGROUNDS',(0,1), (-1,-1), [WHITE, ROW_ALT]),
-    ]))
     return t
 
 

@@ -281,13 +281,6 @@ export default function Dashboard() {
             onEditReport={(id) => openReportModal(id)}
           />
         )}
-        {activeTab === 'daily-report' && role === 'santiye_sefi' && false && (
-          <DailyReportForm
-            reportId={editReportId || undefined}
-            onBack={closeReportModal}
-            onSaved={handleReportSaved}
-          />
-        )}
         {activeTab === 'rapor-listesi' && role === 'santiye_sefi' && (
           <DailyReportList
             key={reportViewKey}
@@ -306,8 +299,8 @@ export default function Dashboard() {
             setSelectedDate={setSelectedDate}
           />
         )}
-        {activeTab === 'satin-alma'   && <TabSatinAlma projectId={selectedProjectId} selectedDate={selectedDate} />}
-        {activeTab === 'finans'       && <TabFinans selectedDate={selectedDate} />}
+        {activeTab === 'satin-alma'   && <TabSatinAlma />}
+        {activeTab === 'finans'       && <TabFinans />}
         {activeTab === 'tickets'      && <TabTickets selectedDate={selectedDate} />}
         {activeTab === 'kullanicilar' && isAdmin && <TabKullanicilar />}
         {activeTab === 'proje-ekle'  && isAdmin && (

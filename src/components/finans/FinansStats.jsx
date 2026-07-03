@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { fetchDoviz } from '../../utils/exchangeRates'
 
 const formatTRY = (amount) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
@@ -8,20 +9,6 @@ const formatKur = (val) =>
   (val != null && !isNaN(val))
     ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val) + ' ₺'
     : '—'
-
-async function fetchDoviz() {
-  try {
-    const res  = await fetch('https://open.er-api.com/v6/latest/USD')
-    const data = await res.json()
-    if (data?.result !== 'success' || !data.rates?.TRY) return null
-    return {
-      usd: data.rates.TRY,
-      eur: data.rates.TRY / data.rates.EUR,
-    }
-  } catch {
-    return null
-  }
-}
 
 export default function FinansStats() {
   const [stats,   setStats]   = useState({ toplamFatura: 0, onayBekleyen: 0, buAyOnaylanan: 0, spendPct: 0 })
@@ -34,10 +21,9 @@ export default function FinansStats() {
       const now         = new Date()
       const ayBaslangic = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
-      const [invRes, sumRes, kurData] = await Promise.all([
+      const [invRes, sumRes] = await Promise.all([
         supabase.from('invoices').select('total_amount, status, created_at'),
         supabase.from('project_cost_summary').select('spend_pct'),
-        fetchDoviz(),
       ])
 
       if (invRes.error) { setErr(invRes.error.message); setLoading(false); return }
@@ -57,10 +43,11 @@ export default function FinansStats() {
         : 0
 
       setStats({ toplamFatura, onayBekleyen, buAyOnaylanan, spendPct })
-      if (kurData) setDoviz(kurData)
       setLoading(false)
     }
     load()
+    // TCMB kur servisi yavaş/erişilemez olabilir; ana veriyi bekletmemesi için ayrı yükleniyor.
+    fetchDoviz().then(kurData => { if (kurData) setDoviz(kurData) })
   }, [])
 
   if (err) return (
@@ -118,24 +105,24 @@ export default function FinansStats() {
         padding: '16px 20px', minWidth: 172,
         display: 'flex', flexDirection: 'column', gap: 8,
       }}>
-        <p style={{ ...LBL, color: '#475569', margin: '0 0 4px' }}>DÖVİZ KURLARI</p>
+        <p style={{ ...LBL, color: '#475569', margin: '0 0 4px' }}>TCMB SATIŞ KURLARI</p>
 
         <div>
           <p style={{ margin: 0, fontSize: 11, fontWeight: 500, color: '#0369A1' }}>$ Dolar / TRY</p>
           <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#0C4A6E', lineHeight: 1.1 }}>
-            {loading ? '…' : formatKur(doviz.usd)}
+            {doviz.usd == null ? '…' : formatKur(doviz.usd)}
           </p>
         </div>
 
         <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 8 }}>
           <p style={{ margin: 0, fontSize: 11, fontWeight: 500, color: '#15803D' }}>€ Euro / TRY</p>
           <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#14532D', lineHeight: 1.1 }}>
-            {loading ? '…' : formatKur(doviz.eur)}
+            {doviz.eur == null ? '…' : formatKur(doviz.eur)}
           </p>
         </div>
 
         <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>
-          {loading ? 'Güncelleniyor…' : bugun}
+          {doviz.date || (doviz.usd == null ? 'Güncelleniyor…' : bugun)}
         </p>
       </div>
     </div>

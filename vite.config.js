@@ -14,6 +14,15 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/generate-pdf': {
+        target: 'http://127.0.0.1:8001',
+        changeOrigin: true,
+      },
+      '/tcmb-kurlar': {
+        target: 'https://www.tcmb.gov.tr',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/tcmb-kurlar/, '/kurlar'),
+      },
       '/anthropic': {
         target: 'https://api.anthropic.com',
         changeOrigin: true,

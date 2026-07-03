@@ -401,7 +401,7 @@ export default function ProjectOverviewDashboard({
       else asOf = clamp(((refDate - s) / Math.max(1, e - s)) * 100)
     }
     return { ...task, pct: asOf, progress: asOf, progress_pct: asOf }
-  }).slice(0, 11)
+  })
   const purchaseRows  = purchases.map(normalizePurchase)
   const progressRows  = progressItems.slice(0, 6).map(item => ({
     id: item.id, name: item.name, done: item.total_to_date,
@@ -523,7 +523,7 @@ export default function ProjectOverviewDashboard({
             )}
           </span>
         </div>
-        <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+        <div className="project-timeline-scroll">
           <div style={{ display: 'flex', alignItems: 'flex-start', minWidth: milestones.length * 90, padding: '8px 16px 4px' }}>
             {milestones.map((m, index) => {
               const pct = clamp(m.progress || m.progress_pct)
@@ -578,7 +578,8 @@ export default function ProjectOverviewDashboard({
             { label: 'Aktif Personel', value: totalPersonnel ? `${totalPersonnel} kişi` : '—' },
             { label: 'Çalışan Makine', value: activeMachines ? `${activeMachines} adet` : '—' },
             { label: 'İlerleme Yapılan Kalem', value: progressItems.filter(i => Number(i.pct) > 0).length ? `${progressItems.filter(i => Number(i.pct) > 0).length} kalem` : '—' },
-            { label: 'Rapor / Gönderen', value: report ? `${fmtDate(report.report_date)}${report.creator_name ? ` · ${report.creator_name}` : ''}` : '—' },
+            { label: 'Rapor Tarihi', value: report ? fmtDate(report.report_date) : '—' },
+            { label: 'Gönderen', value: report?.creator_name || '—' },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #f1f5f9' }}>
               <span style={{ fontSize: 12, color: 'var(--color-text)', fontWeight: 500 }}>{item.label}</span>

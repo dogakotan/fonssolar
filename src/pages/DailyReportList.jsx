@@ -404,20 +404,33 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     put('C114', creatorName)
 
     files['xl/worksheets/sheet1.xml'] = strToU8(xml)
-    return { files, reportDate: selectedDay }
+    return {
+      files,
+      reportDate: selectedDay,
+      metadata: {
+        projectName: projectData.name || projectId,
+        reportNo: String(report.id).slice(0, 8).toUpperCase(),
+        weather: report.weather || '',
+        creatorName,
+      },
+    }
   }
 
   async function handleExport(reportId, type) {
     setExportingId(`${type}-${reportId}`)
     try {
       if (type === 'pdf') {
-        const { files, reportDate } = await buildReportExcelById(reportId)
+        const { files, reportDate, metadata } = await buildReportExcelById(reportId)
         const blob = xlsxZipBlob(files)
         const form = new FormData()
         form.append('excel', blob, `rapor-${reportDate}.xlsx`)
         form.append('proje_id', projectId)
         form.append('tarih', reportDate)
-        const res = await fetch('http://localhost:8001/generate-pdf', { method: 'POST', body: form })
+        form.append('proje_adi', metadata.projectName)
+        form.append('rapor_no', metadata.reportNo)
+        form.append('hava', metadata.weather)
+        form.append('hazirlayan', metadata.creatorName)
+        const res = await fetch('/generate-pdf', { method: 'POST', body: form })
         if (!res.ok) throw new Error(`PDF servisi hatası: ${await res.text().catch(() => String(res.status))}`)
         const pdfBlob = await res.blob()
         const url = URL.createObjectURL(pdfBlob)

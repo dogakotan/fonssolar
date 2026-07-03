@@ -802,17 +802,30 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     put('C114', creatorName)
 
     files['xl/worksheets/sheet1.xml'] = strToU8(xml)
-    return { files, selectedDay }
+    return {
+      files,
+      selectedDay,
+      metadata: {
+        projectName: projectData.name || projectName || projectId,
+        reportNo: report?.id ? String(report.id).slice(0, 8).toUpperCase() : '',
+        weather: report?.weather || '',
+        creatorName,
+      },
+    }
   }
 
   async function exportSelectedDailyReportPDF() {
-    const { files, selectedDay } = await exportSelectedDailyReportExcel()
+    const { files, selectedDay, metadata } = await exportSelectedDailyReportExcel()
     const blob = xlsxZipBlob(files)
     const form = new FormData()
     form.append('excel', blob, `rapor-${selectedDay}.xlsx`)
     form.append('proje_id', projectId)
     form.append('tarih', selectedDay)
-    const res = await fetch('http://localhost:8001/generate-pdf', { method: 'POST', body: form })
+    form.append('proje_adi', metadata.projectName)
+    form.append('rapor_no', metadata.reportNo)
+    form.append('hava', metadata.weather)
+    form.append('hazirlayan', metadata.creatorName)
+    const res = await fetch('/generate-pdf', { method: 'POST', body: form })
     if (!res.ok) throw new Error(`PDF servisi hatası: ${await res.text().catch(() => res.status)}`)
     const pdfBlob = await res.blob()
     const url = URL.createObjectURL(pdfBlob)
