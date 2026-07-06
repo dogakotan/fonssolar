@@ -47,6 +47,8 @@ function requestNo(req) {
 }
 
 function requestType(req, items) {
+  if (req.category === 'malzeme') return 'Malzeme'
+  if (req.category === 'hizmet') return 'Hizmet'
   const text = `${req.title || ''} ${(items || []).map(item => item.name).join(' ')}`.toLocaleLowerCase('tr-TR')
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'Hizmet' : 'Malzeme'
 }
@@ -100,6 +102,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const description = req.description || req.request_note || req.notes || '-'
   const requester = req.profiles?.full_name || req.requester_name || req.requested_by_name || req.created_by_name || 'santiyesefi.test'
   const type = requestType(req, items)
+  const anyTracked = breakdown.some(row => !(type === 'Malzeme' && row.planned <= 0))
   const approvalDate = req.approved_at || req.updated_at
   const invoiceDone = ['faturasi_kesildi', 'tamamlandi'].includes(status)
   const approvalDone = ['onaylandi', 'faturada', 'faturasi_kesildi', 'tamamlandi'].includes(status)
@@ -193,34 +196,45 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
               <p style={{ margin: 0, fontSize: 12.5, color: '#64748B' }}>Kalem girilmemiş; miktar kontrolü yapılamıyor.</p>
             ) : (
               <div style={{ display: 'grid', gap: 8 }}>
-                {breakdown.map((row, index) => (
-                  <div key={`${row.name}-${index}`} style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 8, padding: '9px 10px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
-                      <strong style={{ fontSize: 12.5, color: '#0F172A' }}>{row.name || 'Kalem'}</strong>
-                      <span style={{
-                        background: row.risky ? '#FEE2E2' : '#DCFCE7',
-                        color: row.risky ? '#DC2626' : '#16A34A',
-                        fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap',
-                      }}>
-                        {row.risky ? 'Riskli' : 'Uygun'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                      <div><p style={LABEL}>Bu Talepte</p><p style={VALUE}>{fmtQty(row.quantity)} {row.unit}</p></div>
-                      <div><p style={LABEL}>Planlanan (BOM)</p><p style={VALUE}>{row.planned > 0 ? `${fmtQty(row.planned)} ${row.unit}` : '—'}</p></div>
-                      <div><p style={LABEL}>Toplam İstenen</p><p style={VALUE}>{fmtQty(row.totalRequested)} {row.unit}</p></div>
-                      <div>
-                        <p style={LABEL}>Aşım</p>
-                        <p style={{ ...VALUE, color: row.excess > 0 ? '#DC2626' : '#16A34A' }}>
-                          {row.excess > 0 ? `+${fmtQty(row.excess)}` : '0'} {row.unit}
-                        </p>
+                {breakdown.map((row, index) => {
+                  const notTracked = type === 'Malzeme' && row.planned <= 0
+                  return (
+                    <div key={`${row.name}-${index}`} style={{ background: '#F8FAFC', border: '1px solid #E5E7EB', borderRadius: 8, padding: '9px 10px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+                        <strong style={{ fontSize: 12.5, color: '#0F172A' }}>{row.name || 'Kalem'}</strong>
+                        <span style={{
+                          background: notTracked ? '#FEF3C7' : row.risky ? '#FEE2E2' : '#DCFCE7',
+                          color: notTracked ? '#92400E' : row.risky ? '#DC2626' : '#16A34A',
+                          fontSize: 10.5, fontWeight: 800, padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap',
+                        }}>
+                          {notTracked ? 'Listede Yok' : row.risky ? 'Riskli' : 'Uygun'}
+                        </span>
                       </div>
+                      {notTracked ? (
+                        <p style={{ margin: 0, fontSize: 11.5, color: '#92400E', lineHeight: 1.4 }}>
+                          ⚠ Bu malzeme proje malzeme listesinde (BOM) bulunmuyor, risk hesaplanamadı.
+                        </p>
+                      ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                          <div><p style={LABEL}>Bu Talepte</p><p style={VALUE}>{fmtQty(row.quantity)} {row.unit}</p></div>
+                          <div><p style={LABEL}>Planlanan (BOM)</p><p style={VALUE}>{row.planned > 0 ? `${fmtQty(row.planned)} ${row.unit}` : '—'}</p></div>
+                          <div><p style={LABEL}>Toplam İstenen</p><p style={VALUE}>{fmtQty(row.totalRequested)} {row.unit}</p></div>
+                          <div>
+                            <p style={LABEL}>Aşım</p>
+                            <p style={{ ...VALUE, color: row.excess > 0 ? '#DC2626' : '#16A34A' }}>
+                              {row.excess > 0 ? `+${fmtQty(row.excess)}` : '0'} {row.unit}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
-                <p style={{ margin: 0, fontSize: 11, color: '#64748B' }}>
-                  "Planlanan" malzeme listesindeki (BOM) miktar, "Toplam İstenen" bu malzeme için açılmış tüm taleplerin toplamıdır.
-                </p>
+                  )
+                })}
+                {anyTracked && (
+                  <p style={{ margin: 0, fontSize: 11, color: '#64748B' }}>
+                    "Planlanan" malzeme listesindeki (BOM) miktar, "Toplam İstenen" bu malzeme için açılmış tüm taleplerin toplamıdır.
+                  </p>
+                )}
               </div>
             )}
           </section>

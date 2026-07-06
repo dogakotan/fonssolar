@@ -45,7 +45,7 @@ function PercentDonut({ total, totalLabel, items, size = 108, thickness = 20 }) 
   })
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '10px 0' }}>
       <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
         <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
           {total <= 0 && (
@@ -72,8 +72,7 @@ function PercentDonut({ total, totalLabel, items, size = 108, thickness = 20 }) 
           alignItems: 'center', justifyContent: 'center', pointerEvents: 'none',
         }}>
           <div style={{ width: holeSize, height: holeSize, borderRadius: '50%', background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 0 1px var(--color-border-md)' }}>
-            <strong style={{ fontSize: 20, lineHeight: 1, color: 'var(--color-text)' }}>{total}</strong>
-            <span style={{ marginTop: 3, fontSize: 9.5, lineHeight: 1, color: 'var(--color-muted)', fontWeight: 600 }}>{totalLabel}</span>
+            <span style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{totalLabel}</span>
           </div>
         </div>
         {hovered && arcs.filter(arc => arc.label === hovered).map(arc => (
@@ -89,6 +88,9 @@ function PercentDonut({ total, totalLabel, items, size = 108, thickness = 20 }) 
           </div>
         ))}
       </div>
+      <p style={{ margin: '10px 0 0', fontSize: 9.5, color: 'var(--color-muted-light)', textAlign: 'center' }}>
+        Yüzdeler toplam {totalLabel === 'talep' ? 'talebe' : totalLabel} göre hesaplanmıştır.
+      </p>
     </div>
   )
 }
@@ -128,7 +130,14 @@ const sectionBase = {
   minHeight: 118,
   boxSizing: 'border-box',
   boxShadow: 'var(--shadow-card)',
+  display: 'flex',
+  flexDirection: 'column',
 }
+
+// Başlık her kartta üstte sabit kalsın, sadece alttaki içerik (grafik/liste) kalan
+// boşlukta dikeyde ortalansın — aksi halde farklı içerik yüksekliklerinde başlıklar
+// kartlar arasında farklı hizalarda görünür.
+const sectionBody = { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }
 
 const sectionTitle = {
   margin: 0, fontSize: 10, fontWeight: 700, color: 'var(--color-muted-light)',
@@ -137,7 +146,7 @@ const sectionTitle = {
 
 const sectionDivider = { height: 1, background: 'var(--color-border-md)', margin: '9px 0' }
 
-export default function ProjeTabSatinAlmaSidebar({ tedarik, pendingCount = 0, dagilim, recent, doviz }) {
+export default function ProjeTabSatinAlmaSidebar({ tedarik, dagilim, recent, doviz }) {
   const tedarikItems = [
     { label: 'Uygun', value: tedarik.ok, color: 'var(--color-success)' },
     { label: 'Riskli', value: tedarik.excess, color: 'var(--color-danger)' },
@@ -152,39 +161,44 @@ export default function ProjeTabSatinAlmaSidebar({ tedarik, pendingCount = 0, da
     <>
       <section className="sa-card" style={{ ...sectionBase, borderTop: '3px solid var(--color-success)', order: 2 }}>
         <h3 style={sectionTitle}>Malzeme Tedarik</h3>
-        <p style={{ margin: '2px 0 0', fontSize: 10, color: 'var(--color-muted-light)' }}>Onay bekleyen {pendingCount} talebe göre</p>
         <div style={sectionDivider} />
-        <ColumnChart total={tedarik.total} totalLabel="talep" items={tedarikItems} />
+        <div style={sectionBody}>
+          <ColumnChart total={tedarik.total} totalLabel="talep" items={tedarikItems} />
+        </div>
       </section>
 
       <section className="sa-card" style={{ ...sectionBase, borderTop: '3px solid var(--color-primary)', order: 3 }}>
         <h3 style={sectionTitle}>Talep Dağılımı</h3>
         <div style={sectionDivider} />
-        <PercentDonut total={dagilimTotal} totalLabel="talep" items={dagilimItems} />
+        <div style={sectionBody}>
+          <PercentDonut total={dagilimTotal} totalLabel="talep" items={dagilimItems} />
+        </div>
       </section>
 
       <section className="sa-card" style={{ ...sectionBase, borderTop: '3px solid var(--color-primary)', order: 4 }}>
         <h3 style={sectionTitle}>Son İşlemler</h3>
         <div style={sectionDivider} />
-        <div style={{ display: 'grid', gap: 7 }}>
-          {recent.length === 0 ? (
-            <p style={{ margin: 0, color: 'var(--color-muted-light)', fontSize: 13 }}>Henüz işlem yok.</p>
-          ) : recent.map(request => {
-            const status = normalizeStatus(request.status)
-            const icon = status === 'red_edildi' ? '×' : status === 'faturada' ? '▤' : status === 'bekliyor' ? '◷' : '✓'
-            const color = status === 'red_edildi' ? 'var(--color-danger)' : status === 'faturada' ? 'var(--color-primary)' : status === 'bekliyor' ? 'var(--color-warning)' : 'var(--color-success)'
-            return (
-              <div key={request.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                <RecentIcon color={color}>{icon}</RecentIcon>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {request.title || 'Satın alma talebi'}
-                  </p>
-                  <p style={{ margin: '2px 0 0', fontSize: 10, color: 'var(--color-muted)' }}>{statusLabel(request.status)}</p>
+        <div style={sectionBody}>
+          <div style={{ display: 'grid', gap: 7 }}>
+            {recent.length === 0 ? (
+              <p style={{ margin: 0, color: 'var(--color-muted-light)', fontSize: 13 }}>Henüz işlem yok.</p>
+            ) : recent.map(request => {
+              const status = normalizeStatus(request.status)
+              const icon = status === 'red_edildi' ? '×' : status === 'faturada' ? '▤' : status === 'bekliyor' ? '◷' : '✓'
+              const color = status === 'red_edildi' ? 'var(--color-danger)' : status === 'faturada' ? 'var(--color-primary)' : status === 'bekliyor' ? 'var(--color-warning)' : 'var(--color-success)'
+              return (
+                <div key={request.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                  <RecentIcon color={color}>{icon}</RecentIcon>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {request.title || 'Satın alma talebi'}
+                    </p>
+                    <p style={{ margin: '2px 0 0', fontSize: 10, color: 'var(--color-muted)' }}>{statusLabel(request.status)}</p>
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       </section>
 
@@ -197,25 +211,26 @@ export default function ProjeTabSatinAlmaSidebar({ tedarik, pendingCount = 0, da
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
-        gap: 8,
         order: 5,
       }}>
         <p style={{ fontSize: 11, fontWeight: 500, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 4px' }}>
           TCMB SATIŞ KURLARI
         </p>
-        <div>
-          <p style={{ margin: 0, fontSize: 11, fontWeight: 500, color: '#0369A1' }}>$ Dolar / TRY</p>
-          <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#0C4A6E', lineHeight: 1.1 }}>
-            {formatKur(doviz.usd)}
-          </p>
+        <div style={{ ...sectionBody, gap: 8 }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 500, color: '#0369A1' }}>$ Dolar / TRY</p>
+            <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#0C4A6E', lineHeight: 1.1 }}>
+              {formatKur(doviz.usd)}
+            </p>
+          </div>
+          <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 8 }}>
+            <p style={{ margin: 0, fontSize: 11, fontWeight: 500, color: '#15803D' }}>€ Euro / TRY</p>
+            <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#14532D', lineHeight: 1.1 }}>
+              {formatKur(doviz.eur)}
+            </p>
+          </div>
+          <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>{doviz.date || 'Güncelleniyor…'}</p>
         </div>
-        <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 8 }}>
-          <p style={{ margin: 0, fontSize: 11, fontWeight: 500, color: '#15803D' }}>€ Euro / TRY</p>
-          <p style={{ margin: '2px 0 0', fontSize: 22, fontWeight: 700, color: '#14532D', lineHeight: 1.1 }}>
-            {formatKur(doviz.eur)}
-          </p>
-        </div>
-        <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>{doviz.date || 'Güncelleniyor…'}</p>
       </section>
     </>
   )

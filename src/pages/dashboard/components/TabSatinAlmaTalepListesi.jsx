@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
-import { toNumber, materialKey, normalizeStatus, materialName, riskState } from '../../../utils/satinAlma'
+import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId } from '../../../utils/satinAlma'
 
 const STATUS = {
   bekliyor: { bg: '#FEF3C7', color: '#92400E', label: 'Bekliyor' },
@@ -24,10 +24,11 @@ const STATUS_FILTERS = [
   { value: 'tamamlandi', label: 'Tamamlandı' },
 ]
 
-const VISIBLE_ROWS = 6
+const VISIBLE_ROWS = 7
 const ROW_HEIGHT = 44
 const HEADER_HEIGHT = 24
 const TABLE_MAX_HEIGHT = HEADER_HEIGHT + VISIBLE_ROWS * ROW_HEIGHT
+const EMPTY_MAP = new Map()
 
 const TH = { height: HEADER_HEIGHT, boxSizing: 'border-box', padding: '0 12px', lineHeight: `${HEADER_HEIGHT}px`, textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', whiteSpace: 'nowrap', verticalAlign: 'middle' }
 const TD = { height: ROW_HEIGHT, boxSizing: 'border-box', padding: '0 12px', fontSize: 12.5, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
@@ -100,11 +101,9 @@ function RiskBadge({ state }) {
   )
 }
 
-export default function ProjeTabTalepListesi({ projectId, filterDate, onChanged, onlyPending = false, procurement }) {
+export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = false, procurement, projectId }) {
   const { role } = useAuth()
   const [requests, setRequests] = useState([])
-  const [materialPlan, setMaterialPlan] = useState(new Map())
-  const [requestedTotals, setRequestedTotals] = useState(new Map())
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState(onlyPending ? 'bekliyor' : 'all')
   const [showNew, setShowNew] = useState(false)
@@ -114,87 +113,77 @@ export default function ProjeTabTalepListesi({ projectId, filterDate, onChanged,
 
   const canCreate = role !== 'muhasebe'
 
-  useEffect(() => { if (projectId) fetchData() }, [projectId, filterDate, onlyPending])
-
-  // Üst bileşen (ProjeTabSatinAlma) procurement_items'i zaten tek bir RPC ile getirdiyse
-  // burada aynı tabloyu ikinci kez sorgulamak yerine o veriden malzeme planını hesaplıyoruz.
-  useEffect(() => {
-    if (!procurement) return
-    const plan = new Map()
-    procurement.forEach(material => {
-      const key = materialKey(materialName(material))
-      if (!key) return
-      plan.set(key, toNumber(material.quantity))
-    })
-    setMaterialPlan(plan)
-  }, [procurement])
+  useEffect(() => { fetchData() }, [onlyPending, projectId])
 
   async function fetchData() {
     setLoading(true)
     setErrorMessage('')
     let query = supabase
       .from('purchase_requests')
-      .select('*, purchase_request_items(*)')
-      .eq('project_id', projectId)
-      .lte('created_at', (filterDate || new Date().toISOString().split('T')[0]) + 'T23:59:59')
+      .select('*, purchase_request_items(*), projects(name)')
       .order('created_at', { ascending: false })
 
+    if (projectId) query = query.eq('project_id', projectId)
     if (onlyPending) query = query.in('status', ['bekliyor', 'beklemede', 'talep_olusturuldu', 'talep_oluşturuldu'])
 
-    const [requestsResult, materialResult] = await Promise.all([
-      query,
-      procurement ? Promise.resolve(null) : supabase.from('procurement_items').select('*').eq('project_id', projectId),
-    ])
+    const { data, error } = await query
 
-    if (requestsResult.error) {
-      console.error('purchase_requests load error:', requestsResult.error)
+    if (error) {
+      console.error('purchase_requests load error:', error)
       setErrorMessage('Satın alma talepleri yüklenemedi.')
       setRequests([])
-    } else {
-      const rows = requestsResult.data || []
-      const requestedByIds = [...new Set(rows.map(row => row.requested_by).filter(Boolean))]
-
-      if (requestedByIds.length > 0) {
-        const { data: profiles, error: profileError } = await supabase
-          .from('profiles')
-          .select('id, full_name')
-          .in('id', requestedByIds)
-
-        if (profileError) {
-          console.error('profiles load error:', profileError)
-          setRequests(rows)
-        } else {
-          const profileById = new Map((profiles || []).map(profile => [profile.id, profile]))
-          setRequests(rows.map(row => ({ ...row, profiles: profileById.get(row.requested_by) || null })))
-        }
-      } else {
-        setRequests(rows)
-      }
-
-      // Malzeme Tedarik kartıyla tutarlı olması için yalnızca onay bekleyen taleplerin
-      // miktarları toplanır — onaylanmış/reddedilmiş/tamamlanmış talepler risk hesabına girmez.
-      const totals = new Map()
-      rows.filter(row => normalizeStatus(row.status) === 'bekliyor').forEach(row => {
-        ;(row.purchase_request_items || []).forEach(item => {
-          const key = materialKey(item.name)
-          if (!key) return
-          totals.set(key, (totals.get(key) || 0) + toNumber(item.quantity))
-        })
-      })
-      setRequestedTotals(totals)
+      setLoading(false)
+      return
     }
 
-    if (!procurement) {
-      const plan = new Map()
-      ;(materialResult.data || []).forEach(material => {
-        const key = materialKey(materialName(material))
-        if (!key) return
-        plan.set(key, toNumber(material.planned_quantity ?? material.quantity))
-      })
-      setMaterialPlan(plan)
+    const rows = data || []
+    const requestedByIds = [...new Set(rows.map(row => row.requested_by).filter(Boolean))]
+
+    if (requestedByIds.length > 0) {
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', requestedByIds)
+
+      if (profileError) {
+        console.error('profiles load error:', profileError)
+        setRequests(rows)
+      } else {
+        const profileById = new Map((profiles || []).map(profile => [profile.id, profile]))
+        setRequests(rows.map(row => ({ ...row, profiles: profileById.get(row.requested_by) || null })))
+      }
+    } else {
+      setRequests(rows)
     }
     setLoading(false)
   }
+
+  // Malzeme Tedarik kartıyla tutarlı olması için per-proje planlanan miktar (BOM) ve
+  // onay bekleyen taleplerin per-proje toplamı — asla projeler arası düzleştirilmez,
+  // çünkü aynı isimli malzemenin farklı projelerde alakasız planlanan miktarları olabilir.
+  const materialPlanByProject = new Map()
+  groupByProjectId(procurement || []).forEach((group, projectId) => {
+    const plan = new Map()
+    group.rows.forEach(material => {
+      const key = materialKey(materialName(material))
+      if (!key) return
+      plan.set(key, toNumber(material.quantity))
+    })
+    materialPlanByProject.set(projectId, plan)
+  })
+
+  const requestedTotalsByProject = new Map()
+  groupByProjectId(requests.filter(row => normalizeStatus(row.status) === 'bekliyor')).forEach((group, projectId) => {
+    const totals = new Map()
+    group.rows.forEach(row => {
+      ;(row.purchase_request_items || []).forEach(item => {
+        const key = materialKey(item.name)
+        if (!key) return
+        totals.set(key, (totals.get(key) || 0) + toNumber(item.quantity))
+      })
+    })
+    requestedTotalsByProject.set(projectId, totals)
+  })
 
   async function updateStatus(event, id, status) {
     event.stopPropagation()
@@ -204,7 +193,6 @@ export default function ProjeTabTalepListesi({ projectId, filterDate, onChanged,
       .from('purchase_requests')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', id)
-      .eq('project_id', projectId)
 
     if (error) {
       console.error('purchase_requests status update error:', error)
@@ -224,7 +212,7 @@ export default function ProjeTabTalepListesi({ projectId, filterDate, onChanged,
 
   const emptyText = onlyPending
     ? 'Onay bekleyen satın alma talebi yok.'
-    : 'Bu projeye ait satın alma talebi bulunmuyor.'
+    : 'Hiç satın alma talebi bulunmuyor.'
 
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
@@ -271,10 +259,10 @@ export default function ProjeTabTalepListesi({ projectId, filterDate, onChanged,
         <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>{emptyText}</div>
       ) : (
         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: TABLE_MAX_HEIGHT }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 980 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040 }}>
             <thead>
               <tr>
-                {['TALEP NO', 'TALEP / MALZEME', 'TİP', 'OLUŞTURAN KİŞİ', 'RİSK DURUMU', 'DURUM', 'TARİH', 'İŞLEM / FATURA'].map(header => (
+                {['TALEP NO', 'PROJE', 'TALEP / MALZEME', 'TİP', 'OLUŞTURAN KİŞİ', 'RİSK DURUMU', 'DURUM', 'TARİH', 'İŞLEM / FATURA'].map(header => (
                   <th key={header} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1, boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)' }}>{header}</th>
                 ))}
               </tr>
@@ -282,6 +270,8 @@ export default function ProjeTabTalepListesi({ projectId, filterDate, onChanged,
             <tbody>
               {filtered.map(request => {
                 const isPending = normalizeStatus(request.status) === 'bekliyor'
+                const materialPlan = materialPlanByProject.get(request.project_id) || EMPTY_MAP
+                const requestedTotals = requestedTotalsByProject.get(request.project_id) || EMPTY_MAP
                 const risk = riskState(request.purchase_request_items || [], materialPlan, requestedTotals, requestType(request).toLocaleLowerCase('tr-TR'))
                 return (
                   <tr
@@ -291,24 +281,25 @@ export default function ProjeTabTalepListesi({ projectId, filterDate, onChanged,
                     onMouseEnter={event => { event.currentTarget.style.background = 'var(--color-bg)' }}
                     onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
                   >
-                    <td style={{ ...TD, color: 'var(--color-primary)', fontWeight: 700 }}>{requestNo(request)}</td>
-                    <td style={{ ...TD, fontWeight: 700, color: 'var(--color-text)', minWidth: 180 }}>{materialTitle(request)}</td>
-                    <td style={TD}>
+                    <td style={{ ...TD, color: 'var(--color-primary)', fontWeight: 700, whiteSpace: 'nowrap' }}>{requestNo(request)}</td>
+                    <td style={{ ...TD, color: 'var(--color-text-sub)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={request.projects?.name || ''}>{request.projects?.name || '—'}</td>
+                    <td style={{ ...TD, fontWeight: 700, color: 'var(--color-text)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={materialTitle(request)}>{materialTitle(request)}</td>
+                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>
                       <span style={{ background: requestType(request) === 'Malzeme' ? '#EAF2FF' : '#E9FBEF', color: requestType(request) === 'Malzeme' ? 'var(--color-primary)' : 'var(--color-success)', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6 }}>
                         {requestType(request)}
                       </span>
                     </td>
-                    <td style={TD}>{requesterName(request)}</td>
-                    <td style={TD}><RiskBadge state={risk} /></td>
-                    <td style={TD}><StatusBadge status={request.status} /></td>
-                    <td style={TD}>{fmtDate(request.request_date || request.created_at)}</td>
-                    <td style={{ ...TD, minWidth: 150, whiteSpace: 'nowrap' }}>
+                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>{requesterName(request)}</td>
+                    <td style={{ ...TD, whiteSpace: 'nowrap' }}><RiskBadge state={risk} /></td>
+                    <td style={{ ...TD, whiteSpace: 'nowrap' }}><StatusBadge status={request.status} /></td>
+                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(request.request_date || request.created_at)}</td>
+                    <td style={{ ...TD, minWidth: 128, whiteSpace: 'nowrap' }}>
                       {isPending ? (
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
-                          <button onClick={event => updateStatus(event, request.id, 'onaylandi')} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'nowrap' }}>
+                          <button onClick={event => updateStatus(event, request.id, 'onaylandi')} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                             {actionLoading === request.id ? '…' : 'Onayla'}
                           </button>
-                          <button onClick={event => updateStatus(event, request.id, 'reddedildi')} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          <button onClick={event => updateStatus(event, request.id, 'reddedildi')} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                             {actionLoading === request.id ? '…' : 'Reddet'}
                           </button>
                         </div>
@@ -334,8 +325,8 @@ export default function ProjeTabTalepListesi({ projectId, filterDate, onChanged,
       {selected && (
         <TalepDetayModal
           request={selected}
-          materialPlan={materialPlan}
-          requestedTotals={requestedTotals}
+          materialPlan={materialPlanByProject.get(selected.project_id) || EMPTY_MAP}
+          requestedTotals={requestedTotalsByProject.get(selected.project_id) || EMPTY_MAP}
           onClose={() => { setSelected(null); fetchData(); onChanged?.() }}
         />
       )}

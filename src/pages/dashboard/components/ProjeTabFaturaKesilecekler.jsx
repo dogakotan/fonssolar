@@ -1,5 +1,10 @@
-const TH = { padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }
-const TD = { padding: '11px 14px', fontSize: 13, color: 'var(--color-text-sub)' }
+const VISIBLE_ROWS = 6
+const ROW_HEIGHT = 44
+const HEADER_HEIGHT = 24
+const TABLE_MAX_HEIGHT = HEADER_HEIGHT + VISIBLE_ROWS * ROW_HEIGHT
+
+const TH = { height: HEADER_HEIGHT, boxSizing: 'border-box', padding: '0 14px', lineHeight: `${HEADER_HEIGHT}px`, textAlign: 'left', fontSize: 9.5, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', verticalAlign: 'middle' }
+const TD = { height: ROW_HEIGHT, boxSizing: 'border-box', padding: '0 14px', fontSize: 13, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
 
 const formatQty = (value) =>
   Number(value || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
@@ -7,9 +12,9 @@ const formatQty = (value) =>
 export default function ProjeTabFaturaKesilecekler({ rows = [], loading }) {
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', margin: 0 }}>Malzeme Listesi</h3>
-        <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 12, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
+      <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', margin: 0 }}>Malzeme Listesi</h3>
+        <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20 }}>
           {rows.length} kalem
         </span>
       </div>
@@ -21,11 +26,13 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading }) {
           Bu projeye ait malzeme listesi henüz eklenmemiş.
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: TABLE_MAX_HEIGHT }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--color-border-md)' }}>
-                {['MALZEME', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN'].map(h => <th key={h} style={TH}>{h}</th>)}
+              <tr>
+                {['MALZEME', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN'].map(h => (
+                  <th key={h} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1, boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)' }}>{h}</th>
+                ))}
               </tr>
             </thead>
             <tbody>

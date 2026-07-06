@@ -834,7 +834,7 @@
 /* ── Satın Alma: malzeme kalem satırı responsive ── */
 .talep-item-row {
   display: grid;
-  grid-template-columns: 2fr 80px 90px 100px 36px;
+  grid-template-columns: 2fr 90px 100px;
   gap: 6px;
   margin-bottom: 6px;
 }
@@ -842,7 +842,7 @@
 @media (max-width: 520px) {
   .talep-item-row {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr 32px;
+    grid-template-columns: 1fr 1fr;
     grid-template-rows: auto auto;
     gap: 6px;
     margin-bottom: 10px;
@@ -1216,6 +1216,14 @@
   align-items: stretch;
   margin-bottom: 18px;
 }
+/* ── Finans Genel sekmesi — 4 eşit sütun, Proje Özeti 2 sütun kaplar (4 üstte + 4 altta okunaklı düzen). ── */
+.finans-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 18px;
+}
 .sa-card {
   transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
 }
@@ -1232,12 +1240,13 @@
   .gantt-kpi-strip    { grid-template-columns: repeat(2, 1fr); }
   .gantt-workspace.has-panel { grid-template-columns: 1fr; }
   .gantt-detail-panel { position: static; max-height: none; min-height: 0; }
-  .sa-overview-grid   { grid-template-columns: repeat(3, 1fr); }
+  .sa-overview-grid { grid-template-columns: repeat(3, 1fr); }
+  .finans-panel-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 900px) {
   .gantt-card-header { flex-direction: column; }
   .gantt-toolbar { justify-content: flex-start; }
-  .sa-overview-grid  { grid-template-columns: repeat(2, 1fr); }
+  .sa-overview-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 640px) {
   .proj-dash-kpi-grid { grid-template-columns: repeat(2, 1fr); }
@@ -1246,7 +1255,8 @@
   .gantt-kpi-icon { width: 46px; height: 46px; }
   .gantt-toolbar, .gantt-toolbar select { width: 100%; }
   .gantt-detail-row strong { max-width: 190px; }
-  .sa-overview-grid   { grid-template-columns: 1fr; }
+  .sa-overview-grid { grid-template-columns: 1fr; }
+  .finans-panel-grid { grid-template-columns: 1fr; }
 }
 
 /* ── Proje liste satırı — responsive ── */

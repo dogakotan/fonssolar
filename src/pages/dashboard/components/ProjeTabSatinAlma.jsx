@@ -40,10 +40,12 @@ export default function ProjeTabSatinAlma({ projectId, filterDate }) {
 
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const dateBoundary = new Date((filterDate || now.toISOString().split('T')[0]) + 'T23:59:59')
+  const requestsUntilDate = requests.filter(r => !r.created_at || new Date(r.created_at) <= dateBoundary)
   const pendingRequests = requests.filter(r => normalizeStatus(r.status) === 'bekliyor')
   const tedarik = classifyMaterials(procurement, pendingRequests)
   const dagilim = classifyRequestTypes(requests)
-  const materialRows = buildMaterialListRows(procurement, requests)
+  const materialRows = buildMaterialListRows(procurement, requestsUntilDate)
   const kpi = {
     pending: pendingRequests.length,
     risky: tedarik.excess,
@@ -64,7 +66,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate }) {
     <div>
       <div className="sa-overview-grid">
         <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
-        <ProjeTabSatinAlmaSidebar tedarik={tedarik} pendingCount={kpi.pending} dagilim={dagilim} recent={recent} doviz={doviz} loading={loading} />
+        <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} recent={recent} doviz={doviz} loading={loading} />
       </div>
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
         {TABS.map(t => (
@@ -83,7 +85,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate }) {
       {tab === 'talepler' && (
         <ProjeTabTalepListesi projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} />
       )}
-      {tab === 'onay' && isAdmin && <ProjeTabSaOnayKuyrugu projectId={projectId} onChanged={refresh} procurement={procurement} />}
+      {tab === 'onay' && isAdmin && <ProjeTabSaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} />}
       {tab === 'malzeme' && <ProjeTabFaturaKesilecekler rows={materialRows} loading={loading} />}
     </div>
   )

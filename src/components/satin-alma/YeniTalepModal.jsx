@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
 const UNITS = ['Adet', 'Metre', 'Kg', 'Lt', 'Rulo', 'Kutu', 'Takım', 'Ton', 'M²', 'M³']
+const OTHER_VALUE = '__diger__'
 
 const INPUT = {
   border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px',
@@ -27,10 +28,58 @@ function projectIdLabel(projectId) {
 export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
   const { user } = useAuth()
   const [projects, setProjects] = useState([])
+  const [materialOptions, setMaterialOptions] = useState([])
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState(null)
-  const [form, setForm] = useState({ project_id: defaultProjectId || '', title: '', urgency: 'normal', request_note: '' })
-  const [items, setItems] = useState([{ name: '', quantity: 1, unit: 'Adet', unit_price: '' }])
+  const [form, setForm] = useState({ project_id: defaultProjectId || '', title: '', category: 'malzeme', request_note: '' })
+  const [item, setItem] = useState({ name: '', quantity: 1, unit: 'Adet' })
+  const [useOther, setUseOther] = useState(false)
+  const [materialMenuOpen, setMaterialMenuOpen] = useState(false)
+  const [materialMenuStyle, setMaterialMenuStyle] = useState(null)
+  const materialMenuRef = useRef(null)
+  const materialButtonRef = useRef(null)
+  const modalBoxRef = useRef(null)
+  const modalFooterRef = useRef(null)
+
+  useEffect(() => {
+    function handleOutsideClick(e) {
+      if (materialMenuRef.current && !materialMenuRef.current.contains(e.target)) setMaterialMenuOpen(false)
+    }
+    if (materialMenuOpen) document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [materialMenuOpen])
+
+  function toggleMaterialMenu() {
+    if (!materialMenuOpen && materialButtonRef.current) {
+      const rect = materialButtonRef.current.getBoundingClientRect()
+      const margin = 8
+      // Boşluğu tüm ekrana göre değil, modal kutusunun kendi üst/alt sınırına göre
+      // hesaplıyoruz — aksi halde dropdown modalın altındaki footer'ı (İptal/Talep
+      // Oluştur) veya üstündeki alanları (Proje) kapatabiliyor.
+      const boxRect = modalBoxRef.current?.getBoundingClientRect()
+      const footerTop = modalFooterRef.current?.getBoundingClientRect().top
+      const boundBottom = footerTop ?? boxRect?.bottom ?? window.innerHeight
+      const boundTop = boxRect?.top ?? 0
+      const spaceBelow = boundBottom - rect.bottom - margin
+      const spaceAbove = rect.top - boundTop - margin
+      const openUp = spaceBelow < 120 && spaceAbove > spaceBelow
+      setMaterialMenuStyle({
+        position: 'fixed',
+        left: rect.left,
+        width: rect.width,
+        ...(openUp
+          ? { bottom: window.innerHeight - rect.top + 4, maxHeight: Math.max(80, Math.min(220, spaceAbove)) }
+          : { top: rect.bottom + 4, maxHeight: Math.max(80, Math.min(220, spaceBelow)) }),
+      })
+    }
+    setMaterialMenuOpen(v => !v)
+  }
+
+  useEffect(() => {
+    if (!form.project_id) { setMaterialOptions([]); return }
+    supabase.from('procurement_items').select('equipment').eq('project_id', form.project_id)
+      .then(({ data }) => setMaterialOptions([...new Set((data || []).map(row => row.equipment).filter(Boolean))]))
+  }, [form.project_id])
 
   useEffect(() => {
     if (defaultProjectId) {
@@ -72,29 +121,44 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
       .then(({ data }) => setProjects(data || []))
   }, [defaultProjectId])
 
-  const addItem    = () => setItems(p => [...p, { name: '', quantity: 1, unit: 'Adet', unit_price: '' }])
-  const removeItem = (i) => setItems(p => p.filter((_, j) => j !== i))
-  const updateItem = (i, field, value) => setItems(p => p.map((it, j) => j === i ? { ...it, [field]: value } : it))
-
   const setF = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }))
+  const updateItem = (field, value) => setItem(it => ({ ...it, [field]: value }))
+
+  function handleCategoryChange(e) {
+    setForm(f => ({ ...f, category: e.target.value }))
+    setUseOther(false)
+    setMaterialMenuOpen(false)
+    setItem(it => ({ ...it, name: '' }))
+  }
+
+  function selectMaterial(value) {
+    if (value === OTHER_VALUE) {
+      setUseOther(true)
+      updateItem('name', '')
+    } else {
+      setUseOther(false)
+      updateItem('name', value)
+    }
+    setMaterialMenuOpen(false)
+  }
 
   async function handleSubmit() {
-    if (!form.title.trim() || !form.project_id) return
+    if (!form.title.trim() || !form.project_id || !item.name.trim()) return
     setSaving(true)
     setErrorMessage(null)
 
     const { error } = await supabase.rpc('create_purchase_request_with_items', {
       p_project_id:   form.project_id,
       p_title:        form.title.trim(),
-      p_urgency:      form.urgency,
+      p_urgency:      'normal',
+      p_category:     form.category,
       p_request_note: form.request_note.trim() || null,
       p_requested_by: user.id,
-      p_items:        items.map(i => ({
-        name:       i.name.trim(),
-        quantity:   Number(i.quantity) || 1,
-        unit:       i.unit,
-        unit_price: i.unit_price !== '' ? Number(i.unit_price) : null,
-      })),
+      p_items: [{
+        name:     item.name.trim(),
+        quantity: Number(item.quantity) || 1,
+        unit:     item.unit,
+      }],
     })
 
     if (error) {
@@ -107,7 +171,7 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px' }}>
-      <div className="modal-centered-box" style={{ width: '100%', maxWidth: 560 }}>
+      <div className="modal-centered-box" ref={modalBoxRef} style={{ width: '100%', maxWidth: 560 }}>
 
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #E5E7EB', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600, color: '#111827' }}>Yeni Satın Alma Talebi</h2>
@@ -140,11 +204,10 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
           </div>
 
           <div>
-            <label style={LABEL}>Aciliyet</label>
-            <select value={form.urgency} onChange={setF('urgency')} style={INPUT}>
-              <option value="normal">Normal</option>
-              <option value="acil">Acil</option>
-              <option value="çok_acil">Çok Acil</option>
+            <label style={LABEL}>Tip</label>
+            <select value={form.category} onChange={handleCategoryChange} style={INPUT}>
+              <option value="malzeme">Malzeme</option>
+              <option value="hizmet">Hizmet</option>
             </select>
           </div>
 
@@ -160,57 +223,96 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
           </div>
 
           <div>
-            <label style={LABEL}>Malzeme Kalemleri</label>
-            {items.map((item, i) => (
-              <div key={i} className="talep-item-row">
+            <label style={LABEL}>{form.category === 'hizmet' ? 'Hizmet' : 'Malzeme'}</label>
+            <div className="talep-item-row">
+              {form.category === 'malzeme' ? (
+                useOther ? (
+                  <input
+                    autoFocus
+                    placeholder="Malzeme adını yazın"
+                    value={item.name}
+                    onChange={e => updateItem('name', e.target.value)}
+                    style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit' }}
+                  />
+                ) : (
+                  <div ref={materialMenuRef} style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      ref={materialButtonRef}
+                      onClick={toggleMaterialMenu}
+                      style={{
+                        border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit',
+                        width: '100%', boxSizing: 'border-box', background: '#fff', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, textAlign: 'left',
+                      }}
+                    >
+                      <span style={{ color: item.name ? '#111827' : '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.name || '— Malzeme seçin —'}
+                      </span>
+                      <span style={{ fontSize: 10, color: '#9CA3AF', flexShrink: 0 }}>▾</span>
+                    </button>
+                    {materialMenuOpen && materialMenuStyle && (
+                      <div style={{
+                        ...materialMenuStyle, zIndex: 2000,
+                        background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
+                        overflowY: 'auto', boxShadow: '0 12px 28px rgba(15,23,42,0.16)',
+                      }}>
+                        {materialOptions.map(name => (
+                          <div
+                            key={name}
+                            onClick={() => selectMaterial(name)}
+                            style={{ padding: '8px 10px', fontSize: 13, cursor: 'pointer', color: '#111827', borderBottom: '1px solid #F3F4F6' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+                            onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
+                          >
+                            {name}
+                          </div>
+                        ))}
+                        <div
+                          onClick={() => selectMaterial(OTHER_VALUE)}
+                          style={{ padding: '8px 10px', fontSize: 13, cursor: 'pointer', color: '#92400E', fontWeight: 600 }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#FEF3C7' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
+                        >
+                          Diğer (Listede Yok)
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              ) : (
                 <input
-                  placeholder="Malzeme adı"
+                  placeholder="Hizmet adı"
                   value={item.name}
-                  onChange={e => updateItem(i, 'name', e.target.value)}
+                  onChange={e => updateItem('name', e.target.value)}
                   style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit' }}
                 />
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Miktar"
-                  value={item.quantity}
-                  onChange={e => updateItem(i, 'quantity', e.target.value)}
-                  style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 8px', fontSize: 13, fontFamily: 'inherit' }}
-                />
-                <select
-                  value={item.unit}
-                  onChange={e => updateItem(i, 'unit', e.target.value)}
-                  style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 6px', fontSize: 13, fontFamily: 'inherit' }}
-                >
-                  {UNITS.map(u => <option key={u}>{u}</option>)}
-                </select>
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="Birim ₺"
-                  value={item.unit_price}
-                  onChange={e => updateItem(i, 'unit_price', e.target.value)}
-                  style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 8px', fontSize: 13, fontFamily: 'inherit' }}
-                />
-                <button
-                  onClick={() => removeItem(i)}
-                  disabled={items.length === 1}
-                  style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 8, cursor: 'pointer', opacity: items.length === 1 ? 0.35 : 1, fontSize: 16 }}
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={addItem}
-              style={{ background: '#F3F4F6', border: '1px dashed #D1D5DB', borderRadius: 8, padding: '8px 16px', fontSize: 13, color: '#6B7280', cursor: 'pointer', width: '100%', fontFamily: 'inherit', marginTop: 2 }}
-            >
-              + Kalem Ekle
-            </button>
+              )}
+              <input
+                type="number"
+                min="0"
+                placeholder="Miktar"
+                value={item.quantity}
+                onChange={e => updateItem('quantity', e.target.value)}
+                style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 8px', fontSize: 13, fontFamily: 'inherit' }}
+              />
+              <select
+                value={item.unit}
+                onChange={e => updateItem('unit', e.target.value)}
+                style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 6px', fontSize: 13, fontFamily: 'inherit' }}
+              >
+                {UNITS.map(u => <option key={u}>{u}</option>)}
+              </select>
+            </div>
+            {useOther && (
+              <p style={{ margin: '6px 0 0', fontSize: 11, color: '#92400E' }}>
+                ⚠ Listede olmayan bu malzeme için risk hesaplanamayacak.
+              </p>
+            )}
           </div>
         </div>
 
-        <div style={{ padding: '16px 24px', borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+        <div ref={modalFooterRef} style={{ padding: '16px 24px', borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button
             onClick={onClose}
             style={{ background: 'none', border: '1px solid #E5E7EB', borderRadius: 8, padding: '9px 20px', fontSize: 14, color: '#374151', cursor: 'pointer', fontFamily: 'inherit' }}
@@ -219,8 +321,8 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !form.title.trim() || !form.project_id}
-            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: !form.title.trim() || !form.project_id ? 0.5 : 1 }}
+            disabled={saving || !form.title.trim() || !form.project_id || !item.name.trim()}
+            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: (!form.title.trim() || !form.project_id || !item.name.trim()) ? 0.5 : 1 }}
           >
             {saving ? 'Kaydediliyor…' : 'Talep Oluştur'}
           </button>

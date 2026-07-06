@@ -108,11 +108,19 @@ export function riskBreakdownForItems(items, materialPlan, requestedTotals) {
   })
 }
 
-export function isRisky(items, materialPlan, requestedTotals) {
-  return riskBreakdownForItems(items, materialPlan, requestedTotals).some(row => row.risky)
+// Talep listesindeki rozet için 3 durumlu risk hesabı: 'riskli' | 'listede_yok' | 'uygun'.
+// Malzeme tipi bir talebin hiçbir kalemi proje malzeme listesinde (BOM) bulunamadıysa
+// risk hesaplanamadığı için "Uygun" değil "Listede Yok" gösterilmeli.
+export function riskState(items, materialPlan, requestedTotals, category) {
+  const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
+  if (breakdown.some(row => row.risky)) return 'riskli'
+  if (category === 'malzeme' && breakdown.length > 0 && breakdown.every(row => row.planned <= 0)) return 'listede_yok'
+  return 'uygun'
 }
 
 export function requestType(request) {
+  if (request.category === 'malzeme' || request.category === 'hizmet') return request.category
+  // Eski kayıtlarda kategori girilmemiş olabilir; başlık/kalem adlarından tahmin ediyoruz.
   const text = `${request.title || ''} ${(request.items || []).map(i => i.name).join(' ')}`.toLocaleLowerCase('tr-TR')
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'hizmet' : 'malzeme'
 }
@@ -123,3 +131,32 @@ export function classifyRequestTypes(requests) {
     return acc
   }, { malzeme: 0, hizmet: 0 })
 }
+
+// Talepleri/malzemeleri project_id'ye göre gruplar. Farklı projelerin BOM'ları
+// birbirine karışmasın diye tüm çapraz-proje hesaplar bu gruplama üzerinden yapılır.
+export function groupByProjectId(rows) {
+  const groups = new Map()
+  ;(rows || []).forEach(row => {
+    const projectId = row.project_id || '—'
+    if (!groups.has(projectId)) {
+      groups.set(projectId, { projectName: row.project_name || null, rows: [] })
+    }
+    groups.get(projectId).rows.push(row)
+  })
+  return groups
+}
+
+// Her proje için classifyMaterials'i ayrı çağırıp {total, ok, excess} toplamlarını döner.
+// Asla projeler arası düzleştirilmiş (flatten) bir malzeme haritası kullanmaz.
+export function aggregateMaterialsAcrossProjects(materialsByProject, requestsByProject) {
+  const totals = { total: 0, ok: 0, excess: 0 }
+  requestsByProject.forEach((group, projectId) => {
+    const materials = materialsByProject.get(projectId)?.rows || []
+    const result = classifyMaterials(materials, group.rows)
+    totals.total += result.total
+    totals.ok += result.ok
+    totals.excess += result.excess
+  })
+  return totals
+}
+
