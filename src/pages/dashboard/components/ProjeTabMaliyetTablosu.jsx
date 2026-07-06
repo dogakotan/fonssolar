@@ -68,7 +68,7 @@ export default function ProjeTabMaliyetTablosu({ costBuckets, loading }) {
         />
       </div>
       <p style={{ margin: 0, padding: '10px 20px', fontSize: 11, color: 'var(--color-muted-light)', borderTop: '1px solid var(--color-border-md)' }}>
-        Tutarlar KDV hariçtir. Faturalar bütçe kalemine değil kategoriye kaydedildiği için gerçekleşen tutar Malzeme/İşçilik/Diğer düzeyinde hesaplanır; alt kalemler yalnızca planlanan tutarı gösterir.
+        Tutarlar KDV hariçtir. Faturalar bütçe kalemine değil kategoriye kaydedildiği için gerçekleşen tutar Malzeme/Hizmet/Diğer düzeyinde hesaplanır; alt kalemler yalnızca planlanan tutarı gösterir.
       </p>
     </div>
   )

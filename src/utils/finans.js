@@ -2,8 +2,8 @@
 // Bu dosyada sadece SAF sunum yardımcıları kalıyor: renk/etiket eşlemesi ve metin biçimlendirme —
 // hiçbiri veriyi sorgulamıyor ya da toplamıyor, sadece RPC'den gelen hazır sayıları görüntüye çeviriyor.
 
-// Satın Alma modülüyle aynı kategori adlandırması (Malzeme/Hizmet) kullanılıyor — işçilik
-// faturaları veritabanında hâlâ 'iscilik' değeriyle tutuluyor, sadece etiket "Hizmet" oldu.
+// Hem Harcama Dağılımı hem Maliyet Tablosu/Maliyet Kalemi Özeti AYNI 3 kategoriyi kullanır —
+// invoices.category'de birebir gerçek (malzeme/iscilik/diger), tahmini dağıtıma gerek yok.
 export const CATEGORY_META = {
   malzeme: { label: 'Malzeme', color: 'var(--color-primary)' },
   iscilik: { label: 'Hizmet',  color: 'var(--color-warning)' },
@@ -58,4 +58,33 @@ export function formatRecentActivity(recentActivity = []) {
       date: i.created_at || i.invoice_date,
     }
   })
+}
+
+// "Maliyet Durumu" kartı için sapma yüzdesinden düz Türkçe durum + risk seviyesi üretir.
+// Eşikler: pozitif sapma = bütçe aşımı, negatif = bütçenin altında (mevcut sapma.pct kuralıyla aynı).
+export function maliyetDurumu(sapmaPct) {
+  const pct = Number(sapmaPct) || 0
+  if (pct > 15) return { durum: 'Bütçe Aşıldı', risk: 'Kritik', color: 'var(--color-danger)' }
+  if (pct > 5) return { durum: 'Bütçe Aşımı Riski', risk: 'Yüksek', color: 'var(--color-danger)' }
+  if (pct > -10) return { durum: 'Bütçeye Yakın', risk: 'Orta', color: 'var(--color-warning)' }
+  return { durum: 'Bütçe Altında', risk: 'Düşük', color: 'var(--color-success)' }
+}
+
+// RPC'nin actionItems nesnesini "Aksiyon Gerektirenler" kartının satırlarına çevirir.
+// targetTab: tıklanınca ProjeTabFinans.jsx'in hangi alt sekmeye geçeceğini belirtir.
+export function formatActionItems(actionItems) {
+  const ai = actionItems || {}
+  const fmt = (n) => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })
+  return [
+    {
+      key: 'muhasebe', label: 'Muhasebe onayı bekliyor', count: ai.muhasebeOnayi?.count || 0,
+      description: `${ai.muhasebeOnayi?.count || 0} fatura · ₺${fmt(ai.muhasebeOnayi?.amount)}`,
+      color: 'var(--color-warning)', targetTab: 'onay',
+    },
+    {
+      key: 'yonetici', label: 'Yönetici onayı bekliyor', count: ai.yoneticiOnayi?.count || 0,
+      description: `${ai.yoneticiOnayi?.count || 0} fatura · ₺${fmt(ai.yoneticiOnayi?.amount)}`,
+      color: 'var(--color-warning)', targetTab: 'onay',
+    },
+  ]
 }

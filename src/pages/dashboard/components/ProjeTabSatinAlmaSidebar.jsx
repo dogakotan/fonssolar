@@ -184,8 +184,9 @@ export default function ProjeTabSatinAlmaSidebar({ tedarik, dagilim, recent, dov
               <p style={{ margin: 0, color: 'var(--color-muted-light)', fontSize: 13 }}>Henüz işlem yok.</p>
             ) : recent.map(request => {
               const status = normalizeStatus(request.status)
-              const icon = status === 'red_edildi' ? '×' : status === 'faturada' ? '▤' : status === 'bekliyor' ? '◷' : '✓'
-              const color = status === 'red_edildi' ? 'var(--color-danger)' : status === 'faturada' ? 'var(--color-primary)' : status === 'bekliyor' ? 'var(--color-warning)' : 'var(--color-success)'
+              const invoiceInProgress = ['fatura_bekliyor', 'fatura_onay_bekliyor'].includes(status)
+              const icon = status === 'red_edildi' ? '×' : invoiceInProgress ? '▤' : status === 'bekliyor' ? '◷' : '✓'
+              const color = status === 'red_edildi' ? 'var(--color-danger)' : invoiceInProgress ? 'var(--color-primary)' : status === 'bekliyor' ? 'var(--color-warning)' : 'var(--color-success)'
               return (
                 <div key={request.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                   <RecentIcon color={color}>{icon}</RecentIcon>

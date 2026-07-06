@@ -6,14 +6,19 @@ export const toNumber = (value) => {
 export const materialKey = (value) =>
   String(value || '').trim().toLocaleLowerCase('tr-TR').replace(/\s+/g, ' ')
 
+// purchase_requests_status_check (Supabase) yalnızca şu değerlere izin verir:
+// talep_olusturuldu, fiyat_girildi, onay_bekliyor, onaylandi, reddedildi, satin_alindi,
+// fatura_bekliyor, fatura_onay_bekliyor, faturasi_kesildi, iptal.
 export const normalizeStatus = (status) => {
   const value = String(status || '').trim().toLocaleLowerCase('tr-TR').replace(/\s+/g, '_')
-  if (!value || ['bekliyor', 'beklemede', 'talep_olusturuldu', 'talep_oluşturuldu'].includes(value)) return 'bekliyor'
+  if (!value || ['bekliyor', 'beklemede', 'talep_olusturuldu', 'talep_oluşturuldu', 'fiyat_girildi', 'onay_bekliyor'].includes(value)) return 'bekliyor'
   if (['onaylandı', 'onaylandi', 'approved'].includes(value)) return 'onaylandi'
   if (['red_edildi', 'reddedildi', 'rejected'].includes(value)) return 'red_edildi'
-  if (['faturada', 'fatura_bekleniyor'].includes(value)) return 'faturada'
-  if (['fatura_kesildi', 'faturası_kesildi', 'faturasi_kesildi'].includes(value)) return 'faturasi_kesildi'
-  if (['satın_alındı', 'satin_alindi', 'tamamlandı', 'tamamlandi'].includes(value)) return 'tamamlandi'
+  if (['satın_alındı', 'satin_alindi'].includes(value)) return 'satin_alindi'
+  if (['fatura_bekliyor', 'faturada', 'fatura_bekleniyor'].includes(value)) return 'fatura_bekliyor'
+  if (['fatura_onay_bekliyor'].includes(value)) return 'fatura_onay_bekliyor'
+  if (['fatura_kesildi', 'faturası_kesildi', 'faturasi_kesildi', 'tamamlandı', 'tamamlandi'].includes(value)) return 'faturasi_kesildi'
+  if (['iptal', 'cancelled'].includes(value)) return 'iptal'
   return value
 }
 
@@ -21,10 +26,23 @@ export const statusLabel = (status) => ({
   bekliyor: 'Bekliyor',
   onaylandi: 'Onaylandı',
   red_edildi: 'Red Edildi',
-  faturada: 'Fatura Bekleniyor',
+  satin_alindi: 'Satın Alındı',
+  fatura_bekliyor: 'Fatura Bekleniyor',
+  fatura_onay_bekliyor: 'Fatura Onayında',
   faturasi_kesildi: 'Faturası Kesildi',
-  tamamlandi: 'Tamamlandı',
+  iptal: 'İptal Edildi',
 })[normalizeStatus(status)] || String(status || 'Durum yok').replace(/_/g, ' ')
+
+// Talep onaylandı/satın alındı ama henüz faturası kesilmedi mi? -> "Faturası Kesilecekler"
+// kuyruğunda görünmeli ve Fatura Oluştur aksiyonu gösterilmeli.
+export function isAwaitingInvoice(request) {
+  return !request.invoice_id && ['onaylandi', 'satin_alindi'].includes(normalizeStatus(request.status))
+}
+
+// Malzeme fiilen satın alınıp projeye ulaştı mı? (fatura süreci bundan sonra, bağımsız ilerler)
+function isDelivered(status) {
+  return ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(normalizeStatus(status))
+}
 
 export function materialName(row) {
   return row.equipment || row.material_name || row.name || ''
@@ -66,9 +84,10 @@ export function classifyMaterials(materials, requests) {
   }, { total: 0, ok: 0, excess: 0 })
 }
 
-// Yalnızca "satın alındı" statüsündeki taleplerin miktarı → projeye fiilen gönderilen miktar
+// Yalnızca fiilen satın alınmış/teslim edilmiş taleplerin miktarı → projeye gönderilen miktar
+// (fatura süreci bundan bağımsız ilerler; henüz faturası kesilmemiş olması "gönderilmedi" anlamına gelmez)
 function sentTotalsByMaterial(requests) {
-  const purchased = requests.filter(r => normalizeStatus(r.status) === 'tamamlandi')
+  const purchased = requests.filter(r => isDelivered(r.status))
   return requestedTotalsByMaterial(purchased)
 }
 

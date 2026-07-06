@@ -3,15 +3,18 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
-import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId } from '../../../utils/satinAlma'
+import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModal'
+import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
 
 const STATUS = {
   bekliyor: { bg: '#FEF3C7', color: '#92400E', label: 'Bekliyor' },
   onaylandi: { bg: '#D1FAE5', color: '#065F46', label: 'Onaylandı' },
   red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Red Edildi' },
-  faturada: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Bekleniyor' },
+  satin_alindi: { bg: '#DBEAFE', color: '#1E40AF', label: 'Satın Alındı' },
+  fatura_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Bekleniyor' },
+  fatura_onay_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Onayında' },
   faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Faturası Kesildi' },
-  tamamlandi: { bg: '#E5E7EB', color: '#374151', label: 'Tamamlandı' },
+  iptal: { bg: '#E5E7EB', color: '#374151', label: 'İptal Edildi' },
 }
 
 const STATUS_FILTERS = [
@@ -19,9 +22,9 @@ const STATUS_FILTERS = [
   { value: 'bekliyor', label: 'Bekliyor' },
   { value: 'onaylandi', label: 'Onaylandı' },
   { value: 'red_edildi', label: 'Red Edildi' },
-  { value: 'faturada', label: 'Fatura Bekleniyor' },
+  { value: 'satin_alindi', label: 'Satın Alındı' },
+  { value: 'fatura_onay_bekliyor', label: 'Fatura Onayında' },
   { value: 'faturasi_kesildi', label: 'Faturası Kesildi' },
-  { value: 'tamamlandi', label: 'Tamamlandı' },
 ]
 
 const VISIBLE_ROWS = 7
@@ -72,9 +75,10 @@ function InvoiceStatusBadge({ status }) {
   const normalized = normalizeStatus(status)
   const info = {
     onaylandi: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura Bekliyor' },
-    faturada: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Sürecinde' },
+    satin_alindi: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura Bekliyor' },
+    fatura_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Sürecinde' },
+    fatura_onay_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Onayında' },
     faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Faturası Kesildi' },
-    tamamlandi: { bg: '#E5E7EB', color: '#374151', label: 'Fatura Tamam' },
     red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Red Edildi' },
   }[normalized] || { bg: '#F3F4F6', color: '#64748B', label: 'Fatura Yok' }
 
@@ -102,16 +106,18 @@ function RiskBadge({ state }) {
 }
 
 export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = false, procurement, projectId }) {
-  const { role } = useAuth()
+  const { role, isAdmin, isMuhasebe } = useAuth()
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState(onlyPending ? 'bekliyor' : 'all')
   const [showNew, setShowNew] = useState(false)
   const [selected, setSelected] = useState(null)
+  const [faturaRequest, setFaturaRequest] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
   const [errorMessage, setErrorMessage] = useState('')
 
   const canCreate = role !== 'muhasebe'
+  const canInvoice = isAdmin || isMuhasebe
 
   useEffect(() => { fetchData() }, [onlyPending, projectId])
 
@@ -303,6 +309,13 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                             {actionLoading === request.id ? '…' : 'Reddet'}
                           </button>
                         </div>
+                      ) : canInvoice && isAwaitingInvoice(request) ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+                          <InvoiceStatusBadge status={request.status} />
+                          <button onClick={event => { event.stopPropagation(); setFaturaRequest(request) }} style={{ background: '#EDE9FE', color: '#5B21B6', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            Fatura Oluştur
+                          </button>
+                        </div>
                       ) : (
                         <InvoiceStatusBadge status={request.status} />
                       )}
@@ -328,6 +341,13 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
           materialPlan={materialPlanByProject.get(selected.project_id) || EMPTY_MAP}
           requestedTotals={requestedTotalsByProject.get(selected.project_id) || EMPTY_MAP}
           onClose={() => { setSelected(null); fetchData(); onChanged?.() }}
+        />
+      )}
+      {faturaRequest && (
+        <FaturaOlusturModal
+          request={faturaRequest}
+          onClose={() => setFaturaRequest(null)}
+          onSaved={() => { fetchData(); onChanged?.() }}
         />
       )}
     </div>

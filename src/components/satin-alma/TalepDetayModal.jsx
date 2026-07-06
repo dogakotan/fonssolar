@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { riskBreakdownForItems } from '../../utils/satinAlma'
+import { riskBreakdownForItems, normalizeStatus, isAwaitingInvoice } from '../../utils/satinAlma'
+import FaturaOlusturModal from './FaturaOlusturModal'
 
 const fmtQty = (value) =>
   Number(value || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
@@ -9,24 +10,15 @@ const fmtQty = (value) =>
 const fmtDate = (date) =>
   date ? new Date(date).toLocaleDateString('tr-TR') : '-'
 
-const normalizeStatus = (status) => {
-  const value = String(status || '').trim().toLocaleLowerCase('tr-TR').replace(/\s+/g, '_')
-  if (!value || ['bekliyor', 'beklemede', 'talep_olusturuldu', 'talep_oluşturuldu'].includes(value)) return 'bekliyor'
-  if (['onaylandı', 'onaylandi', 'approved'].includes(value)) return 'onaylandi'
-  if (['red_edildi', 'reddedildi', 'rejected'].includes(value)) return 'red_edildi'
-  if (['faturada', 'fatura_bekleniyor'].includes(value)) return 'faturada'
-  if (['fatura_kesildi', 'faturası_kesildi', 'faturasi_kesildi'].includes(value)) return 'faturasi_kesildi'
-  if (['satın_alındı', 'satin_alindi', 'tamamlandı', 'tamamlandi'].includes(value)) return 'tamamlandi'
-  return value
-}
-
 const STATUS_META = {
   bekliyor: { bg: '#FEF3C7', color: '#92400E', label: 'Bekliyor' },
   onaylandi: { bg: '#D1FAE5', color: '#065F46', label: 'Onaylandı' },
   red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Red Edildi' },
-  faturada: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Sürecinde' },
+  satin_alindi: { bg: '#DBEAFE', color: '#1E40AF', label: 'Satın Alındı' },
+  fatura_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Sürecinde' },
+  fatura_onay_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Onayında' },
   faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Faturası Kesildi' },
-  tamamlandi: { bg: '#E5E7EB', color: '#374151', label: 'Tamamlandı' },
+  iptal: { bg: '#E5E7EB', color: '#374151', label: 'İptal Edildi' },
 }
 
 const CARD = { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: 14, minWidth: 0 }
@@ -70,12 +62,13 @@ function Step({ done, active, label, sub, last = false }) {
 const emptyMap = new Map()
 
 export default function TalepDetayModal({ request, talepId, materialPlan = emptyMap, requestedTotals = emptyMap, onClose }) {
-  const { isAdmin, user } = useAuth()
+  const { isAdmin, isMuhasebe, user } = useAuth()
   const [data, setData] = useState(request || null)
   const [items, setItems] = useState(request?.purchase_request_items || [])
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [showFaturaModal, setShowFaturaModal] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -104,9 +97,11 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const type = requestType(req, items)
   const anyTracked = breakdown.some(row => !(type === 'Malzeme' && row.planned <= 0))
   const approvalDate = req.approved_at || req.updated_at
-  const invoiceDone = ['faturasi_kesildi', 'tamamlandi'].includes(status)
-  const approvalDone = ['onaylandi', 'faturada', 'faturasi_kesildi', 'tamamlandi'].includes(status)
+  const invoiceDone = status === 'faturasi_kesildi'
+  const invoiceActive = ['fatura_bekliyor', 'fatura_onay_bekliyor'].includes(status)
+  const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const isRejected = status === 'red_edildi'
+  const canInvoice = (isAdmin || isMuhasebe) && isAwaitingInvoice(req)
 
   async function updateStatus(nextStatus) {
     setSaving(true)
@@ -175,10 +170,10 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                       : 'Şu anki adım'}
                 />
                 <Step
-                  active={status === 'faturada'}
+                  active={invoiceActive}
                   done={invoiceDone}
                   label="Fatura Bekleniyor"
-                  sub={status === 'faturada' ? 'Muhasebe takibinde' : 'Onay sonrası başlar'}
+                  sub={invoiceActive ? 'Muhasebe/onay sürecinde' : invoiceDone ? 'Tamamlandı' : 'Onay sonrası başlar'}
                 />
                 <Step
                   done={invoiceDone}
@@ -263,8 +258,25 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
               </div>
             </section>
           )}
+
+          {canInvoice && (
+            <section style={{ ...CARD, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <p style={{ margin: 0, fontSize: 12.5, color: '#64748B' }}>Talep onaylandı, henüz faturası kesilmedi.</p>
+              <button onClick={() => setShowFaturaModal(true)} style={{ background: '#5B21B6', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+                Fatura Oluştur
+              </button>
+            </section>
+          )}
         </div>
       </div>
+
+      {showFaturaModal && (
+        <FaturaOlusturModal
+          request={req}
+          onClose={() => setShowFaturaModal(false)}
+          onSaved={() => { setShowFaturaModal(false); onClose() }}
+        />
+      )}
     </div>
   )
 }

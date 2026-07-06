@@ -49,7 +49,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate }) {
   const kpi = {
     pending: pendingRequests.length,
     risky: tedarik.excess,
-    invoicePending: requests.filter(r => ['faturada', 'onaylandi'].includes(normalizeStatus(r.status))).length,
+    invoicePending: requests.filter(r => ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(normalizeStatus(r.status))).length,
     monthOpened: requests.filter(r => r.created_at && new Date(r.created_at) >= monthStart).length,
   }
   const recent = [...requests]

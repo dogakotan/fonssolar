@@ -1216,8 +1216,26 @@
   align-items: stretch;
   margin-bottom: 18px;
 }
-/* ── Finans Genel sekmesi — 4 eşit sütun, Proje Özeti 2 sütun kaplar (4 üstte + 4 altta okunaklı düzen). ── */
+/* ── Finans Genel sekmesi — üst satır (Proje Finans Özeti + Bütçe Kullanımı + Kur) — Kur Bilgisi
+   sadece küçük bir bilgi kartı olduğu için en dar sütun, Bütçe Kullanımı daha geniş. Grafik satırı
+   (Harcama Dağılımı, Grafik, Sapma&Maliyet, Son İşlemler) ayrı bir grid — Sapma&Maliyet 2 metriği
+   yan yana barındırdığı için diğerlerinden biraz daha geniş bir sütun oranı kullanır. ── */
 .finans-panel-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.3fr) minmax(0, .7fr);
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 12px;
+}
+.finans-ozet-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem; }
+.finans-ozet-columns > div:first-child { padding-right: .2rem; border-right: 1px solid #f1f5f9; }
+/* Kart genişledi (2 sütun) — içindeki yazılar da diğer Genel Proje kartlarına göre biraz büyük olsun. */
+.finans-ozet-card .project-card-title h3 { font-size: .98rem; }
+.finans-ozet-card .project-detail-row { padding: .5rem 0; }
+.finans-ozet-card .project-detail-row span { font-size: .8rem; }
+.finans-ozet-card .project-detail-row strong { font-size: .82rem; }
+
+.finans-row2-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
@@ -1242,6 +1260,11 @@
   .gantt-detail-panel { position: static; max-height: none; min-height: 0; }
   .sa-overview-grid { grid-template-columns: repeat(3, 1fr); }
   .finans-panel-grid { grid-template-columns: repeat(2, 1fr); }
+  .finans-row2-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 700px) {
+  .finans-ozet-columns { grid-template-columns: 1fr; gap: 0; }
+  .finans-ozet-columns > div:first-child { border-right: 0; padding-right: 0; }
 }
 @media (max-width: 900px) {
   .gantt-card-header { flex-direction: column; }
@@ -1257,6 +1280,8 @@
   .gantt-detail-row strong { max-width: 190px; }
   .sa-overview-grid { grid-template-columns: 1fr; }
   .finans-panel-grid { grid-template-columns: 1fr; }
+  .finans-ozet-card { grid-column: span 1; }
+  .finans-row2-grid { grid-template-columns: 1fr; }
 }
 
 /* ── Proje liste satırı — responsive ── */

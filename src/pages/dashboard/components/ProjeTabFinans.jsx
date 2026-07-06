@@ -2,24 +2,26 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import { supabase } from '../../../lib/supabase'
 import { fetchDoviz } from '../../../utils/exchangeRates'
-import { curvePointLabel, buildDagilimItems, formatRecentActivity, CATEGORY_META } from '../../../utils/finans'
+import { curvePointLabel, buildDagilimItems, formatRecentActivity } from '../../../utils/finans'
 import ProjeTabFinansOzet from './ProjeTabFinansOzet'
-import ProjeTabFinansSidebar from './ProjeTabFinansSidebar'
-import ProjeTabFinansYanPanel from './ProjeTabFinansYanPanel'
-import CostBucketTable from './CostBucketTable'
+import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
+import ProjeTabFinansYanPanel, { KurCard } from './ProjeTabFinansYanPanel'
+import MaliyetOzetTable from './MaliyetOzetTable'
 import ProjeTabFaturaListesi from './ProjeTabFaturaListesi'
 import ProjeTabOnayKuyrugu from './ProjeTabOnayKuyrugu'
 import ProjeTabMaliyetTablosu from './ProjeTabMaliyetTablosu'
 
 const EMPTY_KPI = {
-  pendingCount: 0, pendingAmount: 0, totalPlanned: 0, totalActual: 0, totalActualInclVat: 0,
-  remainingBudget: 0, usagePct: 0, remainingPct: 0, thisMonthActual: 0, remainingDays: null,
-  costPerKwp: null, plannedCostPerKwp: null, capacityKwp: 0,
+  pendingCount: 0, pendingAmount: 0, totalPlanned: 0, totalActual: 0,
+  remainingBudget: 0, availableBudget: 0, thisMonthActual: 0, remainingDays: null,
 }
 const EMPTY_SAPMA = { amount: 0, pct: 0, plannedToDate: 0 }
 const EMPTY_CPI = { ev: 0, cpi: null }
 const EMPTY_COST_BUCKETS = { buckets: [], totalPlanned: 0, totalActual: 0, totalSapma: 0, totalPct: 0 }
-const EMPTY_QUICK_FACTS = { pendingCount: 0, pendingAmount: 0, overBudgetCount: 0, savingsAmount: 0 }
+const EMPTY_QUICK_FACTS = { pendingCount: 0, pendingAmount: 0, overBudgetCount: 0 }
+const EMPTY_ACTION_ITEMS = {
+  muhasebeOnayi: { count: 0, amount: 0 }, yoneticiOnayi: { count: 0, amount: 0 },
+}
 
 export default function ProjeTabFinans({ projectId, filterDate }) {
   const { isAdmin } = useAuth()
@@ -54,10 +56,12 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   const cpi = overview?.cpi || EMPTY_CPI
   const costBuckets = overview?.costBuckets || EMPTY_COST_BUCKETS
   const quickFacts = overview?.quickFacts || EMPTY_QUICK_FACTS
-  const curve = (overview?.curve || []).map(point => ({ label: curvePointLabel(point.month), planned: point.planned, actual: point.actual }))
+  const actionItems = overview?.actionItems || EMPTY_ACTION_ITEMS
+  const curve = (overview?.curve || []).map(point => ({
+    label: curvePointLabel(point.month), planned: point.planned, actual: point.actual, pendingSnapshot: point.pendingSnapshot,
+  }))
   const dagilim = buildDagilimItems(overview?.dagilim)
   const recentActivity = formatRecentActivity(overview?.recentActivity)
-  const displayBuckets = costBuckets.buckets.map(b => ({ ...b, ...CATEGORY_META[b.key] }))
 
   const TABS = [
     { key: 'genel',      label: 'Genel' },
@@ -87,34 +91,29 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
         <>
           <div className="finans-panel-grid">
             <ProjeTabFinansOzet kpi={kpi} quickFacts={quickFacts} loading={loading} />
-            <ProjeTabFinansSidebar kpi={kpi} curve={curve} dagilim={dagilim} sapma={sapma} cpi={cpi} loading={loading} />
-            <ProjeTabFinansYanPanel doviz={doviz} recentActivity={recentActivity} loading={loading} />
+            <BudgetUsageCard kpi={kpi} />
+            <KurCard doviz={doviz} />
           </div>
-          {!loading && (
-            <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
-              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', margin: 0, flex: 1 }}>Maliyet Kalemleri Özeti</h3>
-                {isAdmin && (
-                  <button onClick={() => setTab('maliyet')} style={{
-                    background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 13, fontWeight: 600,
-                    cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                  }}>
-                    Detaylı Maliyet Tablosu →
-                  </button>
-                )}
-              </div>
-              <div style={{ overflowX: 'auto' }}>
-                <CostBucketTable
-                  buckets={displayBuckets}
-                  totalPlanned={costBuckets.totalPlanned}
-                  totalActual={costBuckets.totalActual}
-                  totalSapma={costBuckets.totalSapma}
-                  totalPct={costBuckets.totalPct}
-                  compact
-                />
-              </div>
+          <div className="finans-row2-grid">
+            <ProjeTabFinansSidebar curve={curve} dagilim={dagilim} sapma={sapma} cpi={cpi} loading={loading} />
+            <ProjeTabFinansYanPanel actionItems={actionItems} recentActivity={recentActivity} onNavigate={setTab} loading={loading} />
+          </div>
+          <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', margin: 0, flex: 1 }}>Maliyet Kalemi Özeti</h3>
+              {isAdmin && (
+                <button onClick={() => setTab('maliyet')} style={{
+                  background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 13, fontWeight: 600,
+                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
+                }}>
+                  Tüm maliyet tablosunu görüntüle →
+                </button>
+              )}
             </div>
-          )}
+            <div style={{ overflowX: 'auto' }}>
+              <MaliyetOzetTable costBuckets={costBuckets} loading={loading} />
+            </div>
+          </div>
         </>
       )}
       {tab === 'faturalar' && <ProjeTabFaturaListesi projectId={projectId} filterDate={filterDate} />}

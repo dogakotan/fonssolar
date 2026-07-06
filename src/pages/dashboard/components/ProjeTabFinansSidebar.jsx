@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { maliyetDurumu } from '../../../utils/finans'
 
 const formatTRY = (amount) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
@@ -15,7 +16,9 @@ function StatusDot({ color }) {
   return <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0 }} />
 }
 
-// Küçük "i" ikonu — üstüne gelince metriğin nasıl hesaplandığını açıklayan bir balon gösterir.
+// Küçük "i" ikonu — üstüne gelince açıklama balonu gösterir. Balon sağ kenarı ikonla hizalanıp
+// SOLA doğru açılır (translateX ile ortalamaz) — böylece kartın sağ kenarını taşıp komşu karta
+// binmiyor; genişliği de kart genişliğinin altında tutuluyor.
 function InfoTooltip({ text, color }) {
   const [show, setShow] = useState(false)
   return (
@@ -25,16 +28,16 @@ function InfoTooltip({ text, color }) {
       onMouseLeave={() => setShow(false)}
     >
       <span style={{
-        width: 12, height: 12, borderRadius: '50%', border: '1.5px solid var(--color-muted-light)',
-        color: 'var(--color-muted-light)', fontSize: 8.5, fontWeight: 700, fontStyle: 'italic',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'help', flexShrink: 0,
+        width: 13, height: 13, borderRadius: '50%', border: '1.5px solid var(--color-muted-light)',
+        color: 'var(--color-muted-light)', fontSize: 9, fontWeight: 700, fontFamily: 'Georgia, serif', fontStyle: 'italic',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'help', flexShrink: 0, lineHeight: 1,
       }}>i</span>
       {show && (
         <div style={{
-          position: 'absolute', left: '50%', bottom: 'calc(100% + 8px)', transform: 'translateX(-50%)',
-          width: 200, background: '#fff', border: `1px solid ${color}`, borderRadius: 10, padding: '9px 11px',
+          position: 'absolute', right: 0, bottom: 'calc(100% + 8px)', zIndex: 30,
+          width: 190, maxWidth: '80vw', background: '#fff', border: `1px solid ${color}`, borderRadius: 10, padding: '9px 11px',
           boxShadow: '0 14px 28px rgba(15,23,42,0.14)', fontSize: 11, lineHeight: 1.45, color: 'var(--color-text-sub)',
-          fontWeight: 500, textAlign: 'left', zIndex: 30, whiteSpace: 'normal',
+          fontWeight: 500, textAlign: 'left', whiteSpace: 'normal',
         }}>
           {text}
         </div>
@@ -43,9 +46,8 @@ function InfoTooltip({ text, color }) {
   )
 }
 
-// Satın Alma sekmesindeki donut ile aynı görsel dil — burada değişken sayıda dilim (malzeme/işçilik/diğer)
-// destekliyor. centerValue verilirse ortada büyük puntoyla gösterilir (ör. bütçe kullanım yüzdesi).
-function PercentDonut({ total, totalLabel, centerValue, items, size = 88, thickness = 15 }) {
+// Satın Alma sekmesindeki donut ile aynı görsel dil — Harcama Dağılımı'nda GES maliyet kalemleri için kullanılıyor.
+function PercentDonut({ total, totalLabel, centerValue, items, size = 112, thickness = 19 }) {
   const [hovered, setHovered] = useState(null)
   const r = (size - thickness) / 2
   const cx = size / 2
@@ -91,21 +93,41 @@ function PercentDonut({ total, totalLabel, centerValue, items, size = 88, thickn
         }}>
           <div style={{ width: holeSize, height: holeSize, borderRadius: '50%', background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0 0 0 1px var(--color-border-md)' }}>
             {centerValue != null && (
-              <strong style={{ fontSize: 15, fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.1 }}>{centerValue}</strong>
+              <strong style={{ fontSize: 19, fontWeight: 800, color: 'var(--color-text)', lineHeight: 1.1 }}>{centerValue}</strong>
             )}
-            <span style={{ fontSize: 8.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{totalLabel}</span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.3px',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: holeSize - 10,
+            }}>{totalLabel}</span>
           </div>
         </div>
-        {hovered && arcs.filter(arc => arc.label === hovered).map(arc => (
-          <div key={arc.label} style={{
-            position: 'absolute', left: '50%', top: 'calc(100% + 10px)', transform: 'translateX(-50%)', zIndex: 20, width: 148,
-            background: '#fff', border: `1px solid ${arc.color}`, borderRadius: 10, padding: '8px 11px',
-            boxShadow: '0 14px 28px rgba(15,23,42,0.14)', fontSize: 12, whiteSpace: 'nowrap',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--color-text-sub)', fontWeight: 700 }}><StatusDot color={arc.color} /> {arc.label}</span>
-              <strong style={{ color: arc.color, fontWeight: 800 }}>{formatTRY(arc.value)} · %{arc.pct}</strong>
+      </div>
+    </div>
+  )
+}
+
+// Bütçe Kullanımı kartındaki tek satırlık yatay stacked bar — Gerçekleşen/Onay Bekleyen/Kullanılabilir
+// bütçenin toplam bütçe içindeki payını tek bakışta gösterir (kalan bütçeyi tek başına göstermek
+// yanıltıcı olabilir çünkü onay bekleyen faturalar da yakında bütçeden düşecek).
+function StackedBudgetBar({ segments, total }) {
+  return (
+    <div>
+      <div style={{ display: 'flex', height: 24, borderRadius: 8, overflow: 'hidden', background: 'var(--color-bg)' }}>
+        {segments.map(seg => {
+          const width = percent(Math.max(0, seg.value), total)
+          return width > 0 ? (
+            <div key={seg.label} title={`${seg.label}: ${formatTRY(seg.value)}`} style={{ width: `${width}%`, background: seg.color, transition: 'width .3s ease' }} />
+          ) : null
+        })}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginTop: 14 }}>
+        {segments.map(seg => (
+          <div key={seg.label}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <StatusDot color={seg.color} />
+              <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-sub)' }}>{seg.label}</span>
             </div>
+            <p style={{ margin: '3px 0 0 12px', fontSize: 12.5, fontWeight: 800, color: 'var(--color-text)' }}>{formatTRY(seg.value)}</p>
           </div>
         ))}
       </div>
@@ -117,7 +139,7 @@ const sectionBase = {
   background: 'var(--color-surface)',
   border: '1px solid var(--color-border-md)',
   borderRadius: 10,
-  padding: '11px 14px',
+  padding: '17px 19px',
   boxSizing: 'border-box',
   boxShadow: 'var(--shadow-card)',
   display: 'flex',
@@ -127,63 +149,58 @@ const sectionBase = {
 const sectionBody = { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }
 
 const sectionTitle = {
-  margin: 0, fontSize: 10.5, fontWeight: 700, color: 'var(--color-muted-light)',
+  margin: 0, fontSize: 12.5, fontWeight: 700, color: 'var(--color-muted-light)',
   textTransform: 'uppercase', letterSpacing: '0.5px',
 }
 
-const sectionDivider = { height: 1, background: 'var(--color-border-md)', margin: '7px 0' }
+const sectionDivider = { height: 1, background: 'var(--color-border-md)', margin: '10px 0' }
 
-export default function ProjeTabFinansSidebar({ kpi, curve, dagilim, sapma, cpi, loading }) {
-  const dagilimTotal = dagilim.reduce((s, item) => s + item.value, 0)
-  const usageItems = [
+// "Bütçe Kullanımı" kartı — Proje Finans Özeti ve Kur ile birlikte üst satırda (finans-panel-grid)
+// yer alması için ayrı export edildi (ana satır ile grafik satırı artık farklı grid oranları kullanıyor).
+export function BudgetUsageCard({ kpi }) {
+  const segments = [
     { label: 'Gerçekleşen Harcama', value: Math.max(0, kpi.totalActual), color: 'var(--color-primary)' },
-    { label: 'Kalan Bütçe', value: Math.max(0, kpi.remainingBudget), color: 'var(--color-border-md)' },
+    { label: 'Onay Bekleyen', value: Math.max(0, kpi.pendingAmount), color: 'var(--color-warning)' },
+    { label: 'Kullanılabilir Bütçe', value: Math.max(0, kpi.availableBudget), color: 'var(--color-success)' },
   ]
-  const usageTotal = usageItems.reduce((s, item) => s + item.value, 0)
+  return (
+    <section className="sa-card" style={{ ...sectionBase, borderTop: '3px solid var(--color-primary)' }}>
+      <h3 style={sectionTitle}>Bütçe Kullanımı</h3>
+      <div style={sectionDivider} />
+      <div style={sectionBody}>
+        <p style={{ margin: '0 0 12px', fontSize: 11.5, color: 'var(--color-muted)' }}>
+          Toplam Bütçe <strong style={{ fontSize: 12.5, color: 'var(--color-text)', fontWeight: 800 }}>{formatTRY(kpi.totalPlanned)}</strong>
+        </p>
+        <StackedBudgetBar segments={segments} total={kpi.totalPlanned} />
+      </div>
+    </section>
+  )
+}
+
+export default function ProjeTabFinansSidebar({ curve, dagilim, sapma, cpi, loading }) {
+  const dagilimTotal = dagilim.reduce((s, item) => s + item.value, 0)
   const sapmaColor = sapma.amount > 0 ? 'var(--color-danger)' : sapma.amount < 0 ? 'var(--color-success)' : 'var(--color-muted)'
-  const sapmaSign = sapma.amount > 0 ? '+' : sapma.amount < 0 ? '−' : ''
+  const durum = maliyetDurumu(sapma.pct)
   const actualToDate = sapma.plannedToDate + sapma.amount
-  const cpiColor = cpi?.cpi == null ? 'var(--color-muted)' : cpi.cpi >= 1 ? 'var(--color-success)' : 'var(--color-danger)'
-  const cpiNote = cpi?.cpi == null ? 'Fiziksel ilerleme verisi yok' : cpi.cpi >= 1 ? 'Yapılan işe göre bütçenin altında' : 'Yapılan işe göre bütçenin üstünde'
+  const sapmaText = sapma.amount === 0
+    ? 'Harcama planlanan tutarla birebir aynı.'
+    : `Planlanana göre ${formatTRY(Math.abs(sapma.amount))} daha ${sapma.amount < 0 ? 'az' : 'fazla'} harcandı.`
 
   return (
     <>
-      <section className="sa-card" style={{ ...sectionBase, borderTop: '3px solid var(--color-primary)', order: 1 }}>
-        <h3 style={sectionTitle}>Bütçe Kullanımı</h3>
-        <div style={sectionDivider} />
-        <div style={sectionBody}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
-            <PercentDonut total={usageTotal} totalLabel="Bütçe Kullanımı" centerValue={`%${kpi.usagePct}`} items={usageItems} />
-            <div style={{ display: 'grid', gap: 7 }}>
-              {usageItems.map(item => (
-                <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <StatusDot color={item.color} />
-                  <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-sub)' }}>{item.label}</p>
-                    <p style={{ margin: 0, fontSize: 9.5, color: 'var(--color-muted)' }}>
-                      {formatTRY(item.value)} · %{percent(item.value, usageTotal)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="sa-card" style={{ ...sectionBase, borderTop: '3px solid var(--color-success)', order: 3 }}>
+      <section className="sa-card" style={{ ...sectionBase, borderTop: '3px solid var(--color-success)', order: 1 }}>
         <h3 style={sectionTitle}>Harcama Dağılımı</h3>
         <div style={sectionDivider} />
         <div style={sectionBody}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
             <PercentDonut total={dagilimTotal} totalLabel="harcama" items={dagilim} />
-            <div style={{ display: 'grid', gap: 7 }}>
+            <div style={{ display: 'grid', gap: 8 }}>
               {dagilim.map(item => (
                 <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <StatusDot color={item.color} />
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-sub)' }}>{item.label}</p>
-                    <p style={{ margin: 0, fontSize: 9.5, color: 'var(--color-muted)' }}>
+                    <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{item.label}</p>
+                    <p style={{ margin: 0, fontSize: 11.5, color: 'var(--color-muted)', whiteSpace: 'nowrap' }}>
                       {formatTRY(item.value)} · %{percent(item.value, dagilimTotal)}
                     </p>
                   </div>
@@ -194,12 +211,13 @@ export default function ProjeTabFinansSidebar({ kpi, curve, dagilim, sapma, cpi,
         </div>
       </section>
 
-      <section className="sa-card" style={{ ...sectionBase, borderTop: '3px solid var(--color-primary)', order: 4 }}>
+      <section className="sa-card" style={{ ...sectionBase, borderTop: '3px solid var(--color-primary)', order: 2 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-          <h3 style={sectionTitle}>Planlanan vs Gerçekleşen</h3>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 600, color: 'var(--color-muted)' }}><StatusDot color="#3b82f6" /> Planlanan</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 9, fontWeight: 600, color: 'var(--color-muted)' }}><StatusDot color="#22c55e" /> Gerçekleşen</span>
+          <h3 style={sectionTitle}>Aylık Maliyet Akışı</h3>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 600, color: 'var(--color-muted)' }}><StatusDot color="#3b82f6" /> Planlanan</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 600, color: 'var(--color-muted)' }}><StatusDot color="#22c55e" /> Gerçekleşen</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 600, color: 'var(--color-muted)' }}><StatusDot color="#f97316" /> Onay Bekleyen</span>
           </div>
         </div>
         <div style={sectionDivider} />
@@ -209,58 +227,55 @@ export default function ProjeTabFinansSidebar({ kpi, curve, dagilim, sapma, cpi,
               {loading ? '…' : 'Proje tarihleri veya bütçesi tanımlı değil.'}
             </p>
           ) : (
-            <ResponsiveContainer width="100%" height={150}>
+            <ResponsiveContainer width="100%" height={195}>
               <LineChart data={curve} margin={{ top: 4, right: 6, bottom: 0, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="label" tick={{ fontSize: 8.5 }} interval="preserveStartEnd" />
-                <YAxis tick={{ fontSize: 8.5 }} tickFormatter={formatTRYShort} width={40} />
-                <Tooltip formatter={(value) => formatTRY(value)} labelStyle={{ fontSize: 10.5 }} contentStyle={{ fontSize: 10.5 }} />
+                <XAxis dataKey="label" tick={{ fontSize: 10.5 }} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 10.5 }} tickFormatter={formatTRYShort} width={46} />
+                <Tooltip formatter={(value) => formatTRY(value)} labelStyle={{ fontSize: 12.5 }} contentStyle={{ fontSize: 12.5 }} />
                 <Line type="monotone" dataKey="planned" stroke="#3b82f6" dot={false} strokeWidth={2} name="Planlanan" />
                 <Line type="monotone" dataKey="actual" stroke="#22c55e" dot={{ r: 3 }} strokeWidth={2} name="Gerçekleşen" connectNulls={false} />
+                <Line dataKey="pendingSnapshot" stroke="#f97316" strokeDasharray="4 4" dot={{ r: 5, fill: '#f97316' }} strokeWidth={0} name="Onay Bekleyen (bugün itibarıyla)" connectNulls={false} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
       </section>
 
-      <section className="sa-card" style={{ ...sectionBase, borderTop: `3px solid ${sapmaColor}`, order: 5 }}>
-        <h3 style={sectionTitle}>Sapma &amp; Maliyet Performansı</h3>
+      <section className="sa-card" style={{ ...sectionBase, borderTop: `3px solid ${durum.color}`, order: 3 }}>
+        <h3 style={sectionTitle}>Maliyet Durumu</h3>
         <div style={sectionDivider} />
-        <div style={{ ...sectionBody, gap: 7 }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-muted-light)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>Sapma</span>
-              <InfoTooltip
-                color={sapmaColor}
-                text={`Bugüne kadar olması gereken: ${formatTRY(sapma.plannedToDate)}. Gerçekleşen: ${formatTRY(actualToDate)}. Sapma = Gerçekleşen − Olması gereken. Pozitif = bütçe aşımı, negatif = bütçenin altında.`}
-              />
+        <div style={sectionBody}>
+          <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: 'var(--color-text)', lineHeight: 1.4 }}>
+            {loading ? '…' : sapmaText}
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <span style={{ background: durum.color, color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20 }}>
+              {durum.durum}
+            </span>
+            <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20 }}>
+              Risk: {durum.risk}
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+            <div>
+              <p style={{ margin: 0, fontSize: 10, color: 'var(--color-muted)' }}>Planlanan Harcama</p>
+              <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-sub)' }}>{formatTRY(sapma.plannedToDate)}</p>
             </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 5, marginTop: 2 }}>
-              <strong style={{ fontSize: 16, fontWeight: 800, color: sapmaColor }}>
-                {loading ? '…' : `${sapmaSign}%${Math.abs(sapma.pct)}`}
-              </strong>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: sapmaColor }}>
-                {loading ? '' : `${sapmaSign}${formatTRY(Math.abs(sapma.amount))}`}
-              </span>
+            <div>
+              <p style={{ margin: 0, fontSize: 10, color: 'var(--color-muted)' }}>Gerçekleşen Harcama</p>
+              <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: 'var(--color-text-sub)' }}>{formatTRY(actualToDate)}</p>
             </div>
           </div>
-          <div style={{ height: 1, background: 'var(--color-border-md)' }} />
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-muted-light)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>CPI</span>
-              <InfoTooltip
-                color={cpiColor}
-                text={`Maliyet Performans Endeksi = Kazanılan Değer ÷ Gerçekleşen Harcama.${cpi?.ev ? ` Kazanılan Değer: ${formatTRY(cpi.ev)}.` : ''} 1'in üzeri = yapılan işe göre bütçenin altında (verimli); 1'in altı = üstünde.`}
-              />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 5, marginTop: 2 }}>
-              <strong style={{ fontSize: 16, fontWeight: 800, color: cpiColor }}>
-                {loading ? '…' : cpi?.cpi == null ? '—' : cpi.cpi.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </strong>
-              <span style={{ fontSize: 10.5, fontWeight: 700, color: cpiColor }}>
-                {loading ? '' : cpiNote}
-              </span>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--color-border-md)' }}>
+            <span style={{ fontSize: 9.5, color: 'var(--color-muted-light)' }}>
+              Sapma: {sapma.amount > 0 ? '+' : sapma.amount < 0 ? '−' : ''}%{Math.abs(sapma.pct)}
+              {cpi?.cpi != null && ` · Maliyet Performans Endeksi (CPI): ${cpi.cpi.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            </span>
+            <InfoTooltip
+              color={durum.color}
+              text={`Sapma = Gerçekleşen − Olması gereken (bugüne kadar planlanan ${formatTRY(sapma.plannedToDate)}). ${cpi?.ev ? `CPI = Kazanılan Değer (${formatTRY(cpi.ev)}) ÷ Gerçekleşen Harcama — 1'in üzeri bütçenin altında (verimli), 1'in altı üstünde demektir.` : ''}`}
+            />
           </div>
         </div>
       </section>
