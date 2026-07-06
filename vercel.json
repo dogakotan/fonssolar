@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/tcmb-kurlar/:path*", "destination": "https://www.tcmb.gov.tr/kurlar/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
