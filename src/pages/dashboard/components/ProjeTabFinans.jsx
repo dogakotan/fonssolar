@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
-import { supabase } from '../../../lib/supabase'
 import { fetchDoviz } from '../../../utils/exchangeRates'
+import { useDashboardData } from '../../../hooks/useDashboardData'
+import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
+import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
+import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 import { curvePointLabel, buildDagilimItems, formatRecentActivity } from '../../../utils/finans'
 import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
@@ -26,30 +29,32 @@ const EMPTY_ACTION_ITEMS = {
 export default function ProjeTabFinans({ projectId, filterDate }) {
   const { isAdmin } = useAuth()
   const [tab, setTab] = useState('genel')
-  const [loading, setLoading] = useState(true)
-  const [overview, setOverview] = useState(null)
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
   const asOfDate = filterDate || new Date().toISOString().split('T')[0]
 
+  // Tüm KPI/kova/sapma/CPI hesapları get_finans_overview RPC'sinde (Postgres) yapılır —
+  // frontend sadece hazır sonucu görüntülemek için biçimlendirir, yeniden sorgulamaz.
+  const { data: overview, loading, refreshing, error, refetch } = useDashboardData(
+    'get_finans_overview',
+    { p_project_id: projectId, p_as_of_date: asOfDate },
+    { enabled: !!projectId }
+  )
+  const authorized = overview?.authorized ?? true
+  const realtime = useRealtimeRefresh(
+    ['invoices'],
+    refetch,
+    { enabled: !!projectId, filter: { column: 'project_id', value: projectId } }
+  )
+
   useEffect(() => {
-    if (!projectId) return
     let alive = true
-    setLoading(true)
-    // Tüm KPI/kova/sapma/CPI hesapları get_finans_overview RPC'sinde (Postgres) yapılır —
-    // frontend sadece hazır sonucu görüntülemek için biçimlendirir, yeniden sorgulamaz.
-    supabase.rpc('get_finans_overview', { p_project_id: projectId, p_as_of_date: asOfDate }).then(res => {
-      if (!alive) return
-      if (res.error) console.error('get_finans_overview error:', res.error)
-      setOverview(res.data || null)
-      setLoading(false)
-    })
     // TCMB kur servisi yavaş/erişilemez olabilir; ana veriyi bekletmemesi için ayrı yükleniyor.
     fetchDoviz().then(kurData => {
       if (alive && kurData) setDoviz({ usd: kurData.usd, eur: kurData.eur, date: kurData.date })
     })
     return () => { alive = false }
-  }, [projectId, asOfDate])
+  }, [])
 
   const kpi = overview?.kpi || EMPTY_KPI
   const sapma = overview?.sapma || EMPTY_SAPMA
@@ -70,8 +75,16 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
     ...(isAdmin ? [{ key: 'maliyet', label: 'Maliyet Tablosu' }] : []),
   ]
 
+  if (!loading && !authorized) {
+    return <UnauthorizedScopeNotice />
+  }
+
   return (
     <div>
+      <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
+      </div>
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{

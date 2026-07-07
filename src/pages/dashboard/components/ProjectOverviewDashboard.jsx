@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useWeather } from '../../../hooks/useWeather'
+import { useDashboardData } from '../../../hooks/useDashboardData'
+import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
+import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
+import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 
 const TYPE_LABEL = {
   arazi_ges: 'Arazi GES',
@@ -247,7 +251,6 @@ export default function ProjectOverviewDashboard({
   onGoTab,
   progressSummary: progressSummaryProp,
 }) {
-  const [loading, setLoading]           = useState(true)
   const [projectDetails, setProjectDetails] = useState(null)
   const [report, setReport]             = useState(null)   // seçili tarihe en yakın rapor
   const [personnel, setPersonnel]       = useState([])
@@ -281,36 +284,32 @@ export default function ProjectOverviewDashboard({
     return filterDate
   }, [filterDate, reportPeriod])
 
+  const { data: byDateData, loading, refreshing, error, refetch } = useDashboardData(
+    'get_project_by_date',
+    { p_project_id: projectId, p_date: effectiveDate },
+    { enabled: !!projectId }
+  )
+  const authorized = byDateData?.authorized ?? true
+  const realtime = useRealtimeRefresh(
+    ['daily_reports', 'progress_items', { table: 'progress_daily', filterColumn: null }, 'project_tasks', 'tickets', 'purchase_requests', 'invoices'],
+    refetch,
+    { enabled: !!projectId, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
+  )
+
   useEffect(() => {
-    if (!projectId) return
-    let alive = true
-    setLoading(true)
-
-    supabase.rpc('get_project_by_date', {
-      p_project_id: projectId,
-      p_date:       effectiveDate,
-    }).then(({ data, error }) => {
-      if (!alive) return
-      if (error) { console.error('get_project_by_date error:', error); setLoading(false); return }
-      setProjectDetails(data.project || null)
-      setReport(data.report || null)
-      setPersonnel(data.personnel || [])
-      setMachinery(data.machinery || [])
-      setProgressItems(data.progress_items || [])
-      setOverallProgressPct(data.overall_pct ?? null)
-      setTickets(data.tickets || [])
-      setPurchases(data.purchases || [])
-      setBudgetLines(data.budget_lines || [])
-      setInvoices(data.invoices || [])
-      setLostDays(Number(data.weather_lost_days || 0))
-      setLoading(false)
-    }).catch(err => {
-      console.error('get_project_by_date error:', err)
-      if (alive) setLoading(false)
-    })
-
-    return () => { alive = false }
-  }, [projectId, effectiveDate])
+    if (!byDateData || byDateData.authorized === false) return
+    setProjectDetails(byDateData.project || null)
+    setReport(byDateData.report || null)
+    setPersonnel(byDateData.personnel || [])
+    setMachinery(byDateData.machinery || [])
+    setProgressItems(byDateData.progress_items || [])
+    setOverallProgressPct(byDateData.overall_pct ?? null)
+    setTickets(byDateData.tickets || [])
+    setPurchases(byDateData.purchases || [])
+    setBudgetLines(byDateData.budget_lines || [])
+    setInvoices(byDateData.invoices || [])
+    setLostDays(Number(byDateData.weather_lost_days || 0))
+  }, [byDateData])
 
   useEffect(() => {
     if (!projectId || !filterDate) return
@@ -418,8 +417,16 @@ export default function ProjectOverviewDashboard({
     )
   }
 
+  if (projectId && !authorized) {
+    return <UnauthorizedScopeNotice />
+  }
+
   return (
     <div className="project-overview">
+      <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
+      </div>
       <div className="project-top-grid">
         <div className="card project-overview-card project-detail-card">
           <div className="project-card-title"><h3>Proje Detayları</h3></div>

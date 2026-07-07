@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
-import { supabase } from '../../../lib/supabase'
 import { fetchDoviz } from '../../../utils/exchangeRates'
+import { useDashboardData } from '../../../hooks/useDashboardData'
+import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
+import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
+import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 import { classifyMaterials, classifyRequestTypes, buildMaterialListRows, normalizeStatus } from '../../../utils/satinAlma'
 import ProjeTabSatinAlmaStats from './ProjeTabSatinAlmaStats'
 import ProjeTabTalepListesi from './ProjeTabTalepListesi'
@@ -12,31 +15,31 @@ import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 export default function ProjeTabSatinAlma({ projectId, filterDate }) {
   const { isAdmin } = useAuth()
   const [tab, setTab] = useState('talepler')
-  const [refreshKey, setRefreshKey] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [requests, setRequests] = useState([])
-  const [procurement, setProcurement] = useState([])
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
-  const refresh = () => setRefreshKey(key => key + 1)
+  const { data: overview, loading, refreshing, error, refetch } = useDashboardData(
+    'get_satin_alma_overview',
+    { p_project_id: projectId },
+    { enabled: !!projectId }
+  )
+  const authorized = overview?.authorized ?? true
+  const requests = overview?.requests || []
+  const procurement = overview?.procurement_items || []
+  const refresh = refetch
+  const realtime = useRealtimeRefresh(
+    ['purchase_requests'],
+    refetch,
+    { enabled: !!projectId, filter: { column: 'project_id', value: projectId } }
+  )
 
   useEffect(() => {
-    if (!projectId) return
     let alive = true
-    setLoading(true)
-    supabase.rpc('get_satin_alma_overview', { p_project_id: projectId }).then(overviewRes => {
-      if (!alive) return
-      if (overviewRes.error) console.error('get_satin_alma_overview error:', overviewRes.error)
-      setRequests(overviewRes.data?.requests || [])
-      setProcurement(overviewRes.data?.procurement_items || [])
-      setLoading(false)
-    })
     // TCMB kur servisi yavaş/erişilemez olabilir; ana veriyi bekletmemesi için ayrı yükleniyor.
     fetchDoviz().then(kurData => {
       if (alive && kurData) setDoviz({ usd: kurData.usd, eur: kurData.eur, date: kurData.date })
     })
     return () => { alive = false }
-  }, [projectId, refreshKey])
+  }, [])
 
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -62,8 +65,16 @@ export default function ProjeTabSatinAlma({ projectId, filterDate }) {
     { key: 'malzeme', label: 'Malzeme Listesi' },
   ]
 
+  if (!loading && !authorized) {
+    return <UnauthorizedScopeNotice />
+  }
+
   return (
     <div>
+      <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
+      </div>
       <div className="sa-overview-grid">
         <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
         <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} recent={recent} doviz={doviz} loading={loading} />

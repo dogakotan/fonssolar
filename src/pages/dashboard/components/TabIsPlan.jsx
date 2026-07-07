@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { useDashboardData } from '../../../hooks/useDashboardData'
+import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
+import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
+import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 
 const GROUP_ORDER = [
   'Projelendirme & İzinler',
@@ -188,79 +192,29 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     [filterDate, reportPeriod]
   )
 
+  const { data: ganttData, loading: ganttLoading, refreshing, error, refetch } = useDashboardData(
+    'get_project_gantt',
+    { p_project_id: projectId, p_filter_date: effectiveDate },
+    { enabled: !!projectId }
+  )
+  const authorized = ganttData?.authorized ?? true
+  const realtime = useRealtimeRefresh(
+    ['project_tasks', 'progress_items', { table: 'progress_daily', filterColumn: null }, 'daily_reports', 'purchase_requests'],
+    refetch,
+    { enabled: !!projectId, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
+  )
+
+  // Proje seçili değilken (genel görünüm) RPC yerine ham sorgu kullanılır — get_project_gantt tek proje ister.
   useEffect(() => {
+    if (projectId) return
+    let alive = true
     setLoading(true)
-
-    async function load() {
-      if (projectId) {
-        const { data, error } = await supabase.rpc('get_project_gantt', {
-          p_project_id:  projectId,
-          p_filter_date: effectiveDate,
-        })
-
-        if (error) {
-          console.error('get_project_gantt error:', error)
-          setLoading(false)
-          return
-        }
-
-        const progressByDate = data.task_progress || {}
-        const normalizedTasks = (data.tasks || []).map(task => {
-          const pct = progressFor(task, progressByDate)
-          return {
-            ...task,
-            progress_pct: pct,
-            status: deriveTaskStatusAt(task, pct, effectiveDate),
-          }
-        })
-
-        setProject(data.project || null)
-        setTasks(normalizedTasks)
-        const codes = new Set((data.critical_codes || []).filter(Boolean))
-        setCriticalCodes(codes)
-        setCritCount(codes.size)
-        setTaskProgressByDate(progressByDate)
-
-        const [chiefRes, itemsRes, reportRes] = await Promise.all([
-          supabase
-            .from('profiles')
-            .select('full_name, email')
-            .eq('project_id', projectId)
-            .eq('role_key', 'santiye_sefi')
-            .limit(1)
-            .maybeSingle(),
-          supabase
-            .from('progress_items')
-            .select('id, target_qty, total_progress')
-            .eq('project_id', projectId),
-          supabase
-            .from('daily_reports')
-            .select('id')
-            .eq('project_id', projectId)
-            .eq('report_date', effectiveDate)
-            .maybeSingle(),
-        ])
-
-        const progressItems = itemsRes.data || []
-        let dailyProgressRows = []
-        if (reportRes.data?.id) {
-          const { data: progressRows } = await supabase
-            .from('progress_daily')
-            .select('qty_added')
-            .eq('report_id', reportRes.data.id)
-          dailyProgressRows = progressRows || []
-        }
-
-        setSiteChief(chiefRes.data?.full_name || chiefRes.data?.email || null)
-        setProgressSummary({
-          cumulative: pctFromProgressItems(progressItems),
-          daily: pctFromDailyProgress(progressItems, dailyProgressRows),
-        })
-      } else {
-        const { data: tasksData } = await supabase
-          .from('project_tasks')
-          .select('id, task_code, task_name, group_label, category, planned_start, planned_end, progress_pct, status')
-          .order('planned_start', { ascending: true })
+    supabase
+      .from('project_tasks')
+      .select('id, task_code, task_name, group_label, category, planned_start, planned_end, progress_pct, status')
+      .order('planned_start', { ascending: true })
+      .then(({ data: tasksData }) => {
+        if (!alive) return
         setTasks((tasksData || []).map(task => ({
           ...task,
           status: deriveTaskStatusAt(task, Number(task.progress_pct || 0), effectiveDate),
@@ -268,12 +222,80 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
         setCritCount(0)
         setSiteChief(null)
         setProgressSummary({ cumulative: 0, daily: 0 })
+        setLoading(false)
+      })
+    return () => { alive = false }
+  }, [projectId, effectiveDate])
+
+  useEffect(() => {
+    if (!projectId) return
+    if (ganttLoading) { setLoading(true); return }
+    if (!ganttData || ganttData.authorized === false) { setLoading(false); return }
+
+    let alive = true
+    setLoading(true)
+
+    async function load() {
+      const progressByDate = ganttData.task_progress || {}
+      const normalizedTasks = (ganttData.tasks || []).map(task => {
+        const pct = progressFor(task, progressByDate)
+        return {
+          ...task,
+          progress_pct: pct,
+          status: deriveTaskStatusAt(task, pct, effectiveDate),
+        }
+      })
+
+      setProject(ganttData.project || null)
+      setTasks(normalizedTasks)
+      const codes = new Set((ganttData.critical_codes || []).filter(Boolean))
+      setCriticalCodes(codes)
+      setCritCount(codes.size)
+      setTaskProgressByDate(progressByDate)
+
+      const [chiefRes, itemsRes, reportRes] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('project_id', projectId)
+          .eq('role_key', 'santiye_sefi')
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from('progress_items')
+          .select('id, target_qty, total_progress')
+          .eq('project_id', projectId),
+        supabase
+          .from('daily_reports')
+          .select('id')
+          .eq('project_id', projectId)
+          .eq('report_date', effectiveDate)
+          .maybeSingle(),
+      ])
+
+      if (!alive) return
+
+      const progressItems = itemsRes.data || []
+      let dailyProgressRows = []
+      if (reportRes.data?.id) {
+        const { data: progressRows } = await supabase
+          .from('progress_daily')
+          .select('qty_added')
+          .eq('report_id', reportRes.data.id)
+        dailyProgressRows = progressRows || []
       }
+
+      setSiteChief(chiefRes.data?.full_name || chiefRes.data?.email || null)
+      setProgressSummary({
+        cumulative: pctFromProgressItems(progressItems),
+        daily: pctFromDailyProgress(progressItems, dailyProgressRows),
+      })
       setLoading(false)
     }
 
-    load().catch(() => setLoading(false))
-  }, [projectId, effectiveDate])
+    load().catch(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [projectId, ganttData, ganttLoading, effectiveDate])
 
   const today = useMemo(() => {
     const date = effectiveDate ? new Date(`${effectiveDate}T00:00:00`) : new Date()
@@ -315,11 +337,19 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     )
   }
 
+  if (projectId && !ganttLoading && !authorized) {
+    return <UnauthorizedScopeNotice />
+  }
+
   const selectedTask = withDates.find(task => task.id === selectedTaskId) || null
 
   if (withDates.length === 0) {
     return (
       <div className="gantt-page">
+        <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
+        </div>
         <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={critCount} />
         <GanttShell
           project={project}
@@ -425,6 +455,10 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
 
   return (
     <div className="gantt-page">
+      <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
+      </div>
       <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={critCount} />
 
       <div className={`gantt-workspace${panelOpen ? ' has-panel' : ''}`}>

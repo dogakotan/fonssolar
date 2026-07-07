@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useWeather } from '../hooks/useWeather'
 import { useSantiyeData } from '../hooks/useSantiyeData'
+import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
+import RealtimeStatusIndicator from '../components/ui/RealtimeStatusIndicator'
 import YeniTicketModal from '../components/tickets/YeniTicketModal'
 import YeniTalepModal from '../components/satin-alma/YeniTalepModal'
 import TicketDetayModal from '../components/tickets/TicketDetayModal'
@@ -109,7 +111,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   const [detayTalep, setDetayTalep]   = useState(null)
   const [toast, setToast] = useState('')
 
-  const { project, openPurchaseRequests, openTickets, todayReport, recentReports, stats, progressSummary, progressItems, refetch } = useSantiyeData(projectId)
+  const { project, openPurchaseRequests, openTickets, todayReport, recentReports, stats, progressSummary, progressItems, refetch, loading: dataLoading, refreshing, error, authorized, realtimeStatus, realtimeLastUpdated } = useSantiyeData(projectId)
   const weatherCity = extractWeatherCity(project)
   const weather     = useWeather(weatherCity)
 
@@ -144,8 +146,16 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
     document.getElementById('taleplerim')?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  if (projectId && !dataLoading && !authorized) {
+    return <UnauthorizedScopeNotice />
+  }
+
   return (
     <div style={{ minHeight: '100%' }}>
+      <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <RealtimeStatusIndicator status={realtimeStatus} lastUpdated={realtimeLastUpdated} />
+      </div>
 
       {toast && (
         <div style={{
@@ -241,7 +251,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
             Hava{weatherCity ? ` — ${weatherCity}` : ''}
           </span>
           {!weatherCity ? (
-            <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>Konum tanımsız</p>
+            <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>{dataLoading ? 'Yükleniyor…' : 'Konum tanımsız'}</p>
           ) : weather.loading || !weather.current ? (
             <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>Yükleniyor…</p>
           ) : weather.error ? (

@@ -104,7 +104,7 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
   ]
 
-  const visibleItems = role ? items.filter(item => item.roles.includes(role)) : items
+  const visibleItems = role ? items.filter(item => item.roles.includes(role)) : []
 
   return (
     <aside className={`sidebar${collapsed ? ' collapsed' : ''}${isOpen ? ' open' : ''}`}>

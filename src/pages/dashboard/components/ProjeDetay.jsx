@@ -6,6 +6,10 @@ import ProjeTabSatinAlma from './ProjeTabSatinAlma'
 import ProjeTabFinans from './ProjeTabFinans'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
+import { useDashboardData } from '../../../hooks/useDashboardData'
+import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
+import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
+import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import TabIsPlan from './TabIsPlan'
 import ProjectOverviewDashboard from './ProjectOverviewDashboard'
 import DailyReportList from '../../DailyReportList'
@@ -963,29 +967,46 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   }
 
 
+  const { data: detayData, loading: detayLoading, refreshing, error, refetch } = useDashboardData(
+    'get_proje_detay',
+    { p_project_id: projectId },
+    { enabled: !!projectId }
+  )
+  const authorized = detayData?.authorized ?? true
+  const realtime = useRealtimeRefresh(
+    ['project_tasks'],
+    refetch,
+    { enabled: !!projectId, filter: { column: 'project_id', value: projectId } }
+  )
+
   useEffect(() => {
     if (!projectId) return
-    let alive = true
-    supabase.rpc('get_proje_detay', { p_project_id: projectId }).then(({ data, error }) => {
-      if (!alive) return
-      if (error) { console.error('get_proje_detay error:', error); setLoading(false); return }
-      setProject(data.project || null)
-      setProgressSummary(data.progress_summary || null)
-      const seen = new Set()
-      const deduped = (data.work_packages || []).filter(w => {
-        const key = (w.name || w.title || '').trim().toLowerCase()
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
-      })
-      setWPs(deduped)
-      setLoading(false)
-    }).catch(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
-  }, [projectId])
+    if (detayLoading) { setLoading(true); return }
+    if (!detayData || detayData.authorized === false) { setLoading(false); return }
+
+    setProject(detayData.project || null)
+    setProgressSummary(detayData.progress_summary || null)
+    const seen = new Set()
+    const deduped = (detayData.work_packages || []).filter(w => {
+      const key = (w.name || w.title || '').trim().toLowerCase()
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    setWPs(deduped)
+    setLoading(false)
+  }, [projectId, detayData, detayLoading])
+
+  if (projectId && !detayLoading && !authorized) {
+    return <UnauthorizedScopeNotice />
+  }
 
   return (
     <div>
+      <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
+      </div>
       {/* Eylem çubuğu */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
         <button onClick={onBack} style={backBtn}>← Projelere Dön</button>

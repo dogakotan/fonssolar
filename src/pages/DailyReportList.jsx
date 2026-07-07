@@ -1,7 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { unzipSync, strFromU8, strToU8 } from 'fflate'
 import { supabase } from '../lib/supabase'
-import { useAuth } from '../context/AuthContext'
+import { useScope } from '../context/ScopeContext'
+import { useDashboardData } from '../hooks/useDashboardData'
+import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
+import RealtimeStatusIndicator from '../components/ui/RealtimeStatusIndicator'
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import DailyReportDetail from './DailyReportDetail'
 import { exportToExcel, exportToPdf } from '../utils/exportUtils'
 import {
@@ -130,12 +134,12 @@ function buildCalendarDays(monthDate) {
 }
 
 export default function DailyReportList({ onNewReport, onEditReport, projectId: projectIdOverride, title = 'Günlük Raporlarım', showHeader = true }) {
-  const { projectId: authProjectId } = useAuth()
-  const projectId = projectIdOverride || authProjectId
+  const { scopeProjectId, loadingProjects: scopeLoading } = useScope()
+  const projectId = projectIdOverride || scopeProjectId
+  // "Tüm Projeler" yalnızca kapsam seçicisinden gelen NULL modunda geçerli —
+  // dışarıdan projectId zorlanmışsa (örn. ProjeDetay içinde) her zaman tek-proje.
+  const isAllProjectsMode = !projectIdOverride && !projectId
 
-  const [loading, setLoading]       = useState(true)
-  const [reports, setReports]       = useState([])
-  const [totalCount, setTotalCount] = useState(0)
   const [page, setPage]             = useState(0)
   const [filterMode, setFilterMode] = useState('monthly')
   const [filterActive, setFilterActive] = useState(true)
@@ -147,43 +151,30 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
   })
   const [detailId, setDetailId]     = useState(null)
   const [exportingId, setExportingId] = useState(null)
-  const [loadError, setLoadError]   = useState('')
   const selectedRange = useMemo(() => getDateRange(anchorDate, filterMode, filterActive), [anchorDate, filterMode, filterActive])
   const calendarDays = useMemo(() => buildCalendarDays(calendarMonth), [calendarMonth])
 
-  const fetchReports = useCallback(async () => {
-    if (!projectId) {
-      setLoading(false)
-      setReports([])
-      setTotalCount(0)
-      return
-    }
-    setLoading(true)
-    setLoadError('')
-    try {
-      const { data, error } = await supabase.rpc('get_daily_reports_list', {
-        p_project_id: projectId,
-        p_start_date: selectedRange.start || null,
-        p_end_date:   selectedRange.end   || null,
-        p_page:       page,
-        p_page_size:  PAGE_SIZE,
-      })
+  useEffect(() => { setPage(0) }, [projectId])
 
-      if (error) {
-        setReports([])
-        setTotalCount(0)
-        setLoadError(error.message || 'Raporlar yuklenemedi.')
-        return
-      }
-
-      setReports(data.reports || [])
-      setTotalCount(data.total_count || 0)
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId, selectedRange.start, selectedRange.end, page])
-
-  useEffect(() => { fetchReports() }, [fetchReports])
+  const { data, loading, refreshing, error, refetch } = useDashboardData(
+    'get_daily_reports_list',
+    {
+      p_project_id: projectId,
+      p_start_date: selectedRange.start || null,
+      p_end_date:   selectedRange.end   || null,
+      p_page:       page,
+      p_page_size:  PAGE_SIZE,
+    },
+    { enabled: !!projectIdOverride || !scopeLoading }
+  )
+  const authorized = data?.authorized ?? true
+  const realtime = useRealtimeRefresh(
+    ['daily_reports'],
+    refetch,
+    { filter: projectId ? { column: 'project_id', value: projectId } : undefined }
+  )
+  const reports = data?.reports || []
+  const totalCount = data?.total_count || 0
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
@@ -225,7 +216,8 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     return { rows, projectName: project.name || 'Proje', titleDate }
   }
 
-  async function buildReportExcelById(reportId) {
+  async function buildReportExcelById(reportId, reportProjectId) {
+    const exportProjectId = reportProjectId || projectId
     const templateBuffer = await fetchXlsxTemplate([
       '/excel/fons-solar-gunluk-rapor.xlsx',
       '/fons-solar-gunluk-rapor.xlsx',
@@ -253,13 +245,13 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
       issuesRes,
       creatorRes,
     ] = await Promise.all([
-      supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
-      supabase.from('progress_items').select('*').eq('project_id', projectId).order('order_index'),
-      supabase.from('purchase_requests').select('*').eq('project_id', projectId)
+      supabase.from('projects').select('*').eq('id', exportProjectId).maybeSingle(),
+      supabase.from('progress_items').select('*').eq('project_id', exportProjectId).order('order_index'),
+      supabase.from('purchase_requests').select('*').eq('project_id', exportProjectId)
         .gte('created_at', `${selectedDay}T00:00:00`)
         .lte('created_at', `${selectedDay}T23:59:59`)
         .order('created_at', { ascending: true }).limit(6),
-      supabase.from('tickets').select('*').eq('project_id', projectId)
+      supabase.from('tickets').select('*').eq('project_id', exportProjectId)
         .gte('created_at', `${selectedDay}T00:00:00`)
         .lte('created_at', `${selectedDay}T23:59:59`)
         .order('created_at', { ascending: true }).limit(6),
@@ -275,7 +267,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     ])
 
     const { data: prevReports } = await supabase
-      .from('daily_reports').select('id').eq('project_id', projectId).lte('report_date', previousDay)
+      .from('daily_reports').select('id').eq('project_id', exportProjectId).lte('report_date', previousDay)
     const prevIds = (prevReports || []).map(r => r.id).filter(Boolean)
     const previousTotals = new Map()
     if (prevIds.length) {
@@ -296,7 +288,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     let xml = strFromU8(files['xl/worksheets/sheet1.xml'])
     const put = (cell, value) => { xml = setExcelTemplateCell(xml, cell, value ?? '') }
 
-    put('B5', projectData.name || projectId)
+    put('B5', projectData.name || exportProjectId)
     put('E5', formatExcelDate(report.report_date))
     put('H5', String(report.id).slice(0, 8).toUpperCase())
     put('J5', report.weather || '')
@@ -408,7 +400,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
       files,
       reportDate: selectedDay,
       metadata: {
-        projectName: projectData.name || projectId,
+        projectName: projectData.name || exportProjectId,
         reportNo: String(report.id).slice(0, 8).toUpperCase(),
         weather: report.weather || '',
         creatorName,
@@ -416,15 +408,16 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     }
   }
 
-  async function handleExport(reportId, type) {
+  async function handleExport(reportId, type, reportProjectId) {
+    const exportProjectId = reportProjectId || projectId
     setExportingId(`${type}-${reportId}`)
     try {
       if (type === 'pdf') {
-        const { files, reportDate, metadata } = await buildReportExcelById(reportId)
+        const { files, reportDate, metadata } = await buildReportExcelById(reportId, exportProjectId)
         const blob = xlsxZipBlob(files)
         const form = new FormData()
         form.append('excel', blob, `rapor-${reportDate}.xlsx`)
-        form.append('proje_id', projectId)
+        form.append('proje_id', exportProjectId)
         form.append('tarih', reportDate)
         form.append('proje_adi', metadata.projectName)
         form.append('rapor_no', metadata.reportNo)
@@ -436,7 +429,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
         const url = URL.createObjectURL(pdfBlob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `gunluk-rapor-${projectId}-${reportDate}.pdf`
+        a.download = `gunluk-rapor-${exportProjectId}-${reportDate}.pdf`
         a.click()
         URL.revokeObjectURL(url)
         return
@@ -494,8 +487,16 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     setPage(0)
   }
 
+  if (!loading && !authorized) {
+    return <UnauthorizedScopeNotice />
+  }
+
   return (
     <div style={{ fontFamily: 'inherit' }}>
+      <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
+      </div>
 
       {showHeader && (
         <div style={{
@@ -602,10 +603,6 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
           <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>
             Yükleniyor…
           </div>
-        ) : loadError ? (
-          <div style={{ padding: 40, textAlign: 'center', color: '#dc2626', fontSize: 13 }}>
-            Raporlar yüklenemedi: {loadError}
-          </div>
         ) : reports.length === 0 ? (
           <div style={{ padding: 60, textAlign: 'center', color: '#9CA3AF' }}>
             <p style={{ fontSize: 32, margin: '0 0 12px' }}>📋</p>
@@ -618,6 +615,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
               <thead>
                 <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
                   <th style={TH}>Tarih</th>
+                  {isAllProjectsMode && <th style={{ ...TH, textAlign: 'left' }}>Proje</th>}
                   <th style={TH}>Hava</th>
                   <th style={TH}>Durum</th>
                   <th style={TH}>Toplam Personel</th>
@@ -636,6 +634,11 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
                     <td style={{ ...TD, fontWeight: 600, whiteSpace: 'nowrap', color: '#111827' }}>
                       {new Date(r.report_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
                     </td>
+                    {isAllProjectsMode && (
+                      <td style={{ ...TD, textAlign: 'left', color: '#374151', fontWeight: 600 }}>
+                        {r.project_name || '—'}
+                      </td>
+                    )}
                     <td style={{ ...TD, whiteSpace: 'nowrap' }}>
                       <span style={{ fontSize: 16 }}>{WEATHER_EMOJI[r.weather] || '—'}</span>
                       <span style={{ fontSize: 11, color: '#6B7280', marginLeft: 4 }}>{r.weather || '—'}</span>
@@ -672,14 +675,14 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
                           Görüntüle
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleExport(r.id, 'excel') }}
+                          onClick={(e) => { e.stopPropagation(); handleExport(r.id, 'excel', r.project_id) }}
                           disabled={exportingId === `excel-${r.id}`}
                           style={{ ...BTN_SMALL, background: '#F0FDF4', color: '#166534', border: '1px solid #BBF7D0', opacity: exportingId === `excel-${r.id}` ? 0.6 : 1 }}
                         >
                           Excel
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleExport(r.id, 'pdf') }}
+                          onClick={(e) => { e.stopPropagation(); handleExport(r.id, 'pdf', r.project_id) }}
                           disabled={exportingId === `pdf-${r.id}`}
                           style={{ ...BTN_SMALL, background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA', opacity: exportingId === `pdf-${r.id}` ? 0.6 : 1 }}
                         >

@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { useDashboardData } from '../hooks/useDashboardData'
+import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
+import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
+import RealtimeStatusIndicator from '../components/ui/RealtimeStatusIndicator'
 
 const PRIORITY_COLORS = {
   kritik: { bg: '#FEE2E2', color: '#991B1B' },
@@ -25,38 +28,28 @@ function Badge({ text, style }) {
 }
 
 export default function DailyReportDetail({ reportId, onClose, onEdit }) {
-  const [loading, setLoading] = useState(true)
-  const [report, setReport]   = useState(null)
-  const [personnel, setPersonnel] = useState([])
-  const [machinery, setMachinery] = useState([])
-  const [progress, setProgress]   = useState([])
-  const [materials, setMaterials] = useState([])
-  const [photos, setPhotos]       = useState([])
-  const [issues, setIssues]       = useState([])
+  const { data, loading, refreshing, error, refetch } = useDashboardData(
+    'get_daily_report_detail',
+    { p_report_id: reportId },
+    { enabled: !!reportId }
+  )
+  const authorized = data?.authorized ?? true
+  const report     = data?.report     || null
+  const personnel  = data?.personnel  || []
+  const machinery  = data?.machinery  || []
+  const progress   = data?.progress   || []
+  const materials  = data?.materials  || []
+  const photos     = data?.photos     || []
+  const issues     = data?.issues     || []
 
-  useEffect(() => {
-    if (reportId) loadAll()
-  }, [reportId])
-
-  async function loadAll() {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.rpc('get_daily_report_detail', {
-        p_report_id: reportId,
-      })
-      if (error) { console.error('get_daily_report_detail error:', error); return }
-
-      setReport(data.report || null)
-      setPersonnel(data.personnel || [])
-      setMachinery(data.machinery || [])
-      setProgress(data.progress || [])
-      setMaterials(data.materials || [])
-      setPhotos(data.photos || [])
-      setIssues(data.issues || [])
-    } finally {
-      setLoading(false)
+  const realtime = useRealtimeRefresh(
+    ['daily_reports', { table: 'progress_daily', filterColumn: null }, 'progress_items'],
+    refetch,
+    {
+      enabled: !!reportId,
+      filter: report?.project_id ? { column: 'project_id', value: report.project_id } : undefined,
     }
-  }
+  )
 
   if (!reportId) return null
 
@@ -107,10 +100,16 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {loading ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Yükleniyor…</div>
+          ) : !authorized ? (
+            <UnauthorizedScopeNotice />
           ) : !report ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Rapor bulunamadı.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: -12 }}>
+                <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
+              </div>
 
               {/* 1. Genel Bilgiler */}
               <section>

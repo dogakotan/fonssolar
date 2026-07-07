@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, signOut } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { useScope } from '../../context/ScopeContext'
 import Sidebar from '../../components/layouts/Sidebar'
 import TabGenel from './components/TabGenel'
 import TabProjeler from './components/TabProjeler'
@@ -65,7 +66,8 @@ function projectIdLabel(projectId) {
 }
 
 export default function Dashboard() {
-  const { user, role, isAdmin, projectId } = useAuth()
+  const { user, role, isAdmin, projectId, loading: authLoading } = useAuth()
+  const { projects: scopeProjects, showAllOption, scopeProjectId, setScopeProjectId } = useScope()
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [openTicketCount,     setOpenTicketCount]     = useState(0)
   const [activeTab,           setActiveTab]           = useState(() => {
@@ -104,32 +106,13 @@ export default function Dashboard() {
     setAssignedProjectLoaded(false)
     async function loadAssignedProjectName() {
       try {
-        const byId = await supabase
+        const { data } = await supabase
           .from('projects')
-          .select('*')
+          .select('name')
           .eq('id', projectId)
           .maybeSingle()
 
-        if (byId.data?.name) {
-          setAssignedProjectName(byId.data.name)
-          return
-        }
-
-        if (projectIdLabel(projectId)) {
-          const byName = await supabase
-            .from('projects')
-            .select('*')
-            .ilike('name', `%${String(projectId).replace(/[-_]+/g, ' ')}%`)
-            .limit(1)
-            .maybeSingle()
-
-          if (byName.data?.name) {
-            setAssignedProjectName(byName.data.name)
-            return
-          }
-        }
-
-        setAssignedProjectName(projectIdLabel(projectId))
+        setAssignedProjectName(data?.name || projectIdLabel(projectId))
       } finally {
         setAssignedProjectLoaded(true)
       }
@@ -183,6 +166,31 @@ export default function Dashboard() {
     setReportViewKey(k => k + 1)
   }
 
+  if (!authLoading && role === null) {
+    return (
+      <div style={{
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', height: '100vh', background: '#F8F9FA',
+        textAlign: 'center', padding: 24,
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>Profiliniz Bulunamadı</h1>
+        <p style={{ fontSize: 14, color: '#6B7280', margin: '0 0 24px', maxWidth: 340 }}>
+          Hesabınıza atanmış bir rol bulunamadı. Lütfen yöneticinizle iletişime geçin.
+        </p>
+        <button
+          onClick={async () => { await signOut(); navigate('/login') }}
+          style={{
+            background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8,
+            padding: '10px 28px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          Çıkış Yap
+        </button>
+      </div>
+    )
+  }
+
   const showingDetail = activeTab === 'projeler' && showProjectDetail
   const headerTitle = role === 'santiye_sefi' && activeTab === 'genel'
     ? (assignedProjectName || (projectId && !assignedProjectLoaded ? 'Proje yükleniyor...' : 'Proje atanmadı'))
@@ -224,6 +232,23 @@ export default function Dashboard() {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
+            {showAllOption && (
+              <select
+                value={scopeProjectId || ''}
+                onChange={(e) => setScopeProjectId(e.target.value || null)}
+                title="Görüntülenecek proje kapsamı"
+                style={{
+                  background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8,
+                  padding: '7px 10px', fontSize: 12.5, fontWeight: 600, color: 'var(--color-text)',
+                  cursor: 'pointer', fontFamily: 'inherit', maxWidth: 180,
+                }}
+              >
+                <option value="">Tüm Projeler</option>
+                {scopeProjects.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
             <button
               onClick={() => handleTabChange('tickets')}
               style={{
@@ -288,7 +313,7 @@ export default function Dashboard() {
             onEditReport={(id) => openReportModal(id)}
           />
         )}
-        {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
+        {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
         {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'     && showProjectDetail  && (
           <ProjeDetay

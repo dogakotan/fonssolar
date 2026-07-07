@@ -55,8 +55,7 @@ export function AuthProvider({ children }) {
   }
 
   const role       = profile?.role_key ?? null
-  // role null ise (profiles'da kayıt yoksa) tam erişim — sadece 'muhasebe' açıkça set edilince kısıtla
-  const isAdmin    = role === null || role === 'admin'
+  const isAdmin    = role === 'admin'
   const isMuhasebe = role === 'muhasebe'
   const projectId  = profile?.project_id ?? null
 

@@ -9,6 +9,10 @@ import {
 import ProgBar from '../../../components/ui/ProgBar'
 import ExportButton from '../../../components/ui/ExportButton'
 import DateNavigator from '../../../components/ui/DateNavigator'
+import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
+import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
+import { useDashboardData } from '../../../hooks/useDashboardData'
+import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import { useWeather } from '../../../hooks/useWeather'
 import { dateFilter } from '../../../utils/exportUtils'
 import {
@@ -192,20 +196,30 @@ function buildScurve(tasks, startDate, endDate, actualPct) {
 // ─────────────────────────────────────────────────────────
 //  Proje Listesi (projectId yokken)
 // ─────────────────────────────────────────────────────────
-function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTabChange }) {
+function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSelectedDate, onTabChange }) {
   const [projects, setProjects] = useState([])
   const [loading, setLoading]   = useState(true)
   const [konum, setKonum]       = useState(null)
   const [showCal, setShowCal]   = useState(false)
   const [calPos, setCalPos]     = useState({ top: 0, right: 0 })
-  const [openTickets, setOpenTickets]         = useState(null)
-  const [criticalTickets, setCriticalTickets] = useState(null)
   const [filteredPurchases, setFilteredPurchases] = useState(null)
-  const [totalBudget, setTotalBudget]             = useState(null)
-  const [spentAmount, setSpentAmount]             = useState(null)
-  const [pendingInvoices, setPendingInvoices]     = useState(null)
-  const [recentNotifications, setRecentNotifications] = useState([])
   const [showApprovalMenu, setShowApprovalMenu] = useState(false)
+
+  // Genel Bakış KPI özeti — kapsam seçicideki proje (veya Tüm Projeler) için canlı çekilir.
+  const { data: summary, refreshing: summaryRefreshing, error: summaryError, refetch: refetchSummary } =
+    useDashboardData('get_dashboard_summary', { p_project_id: scopeProjectId })
+  const realtime = useRealtimeRefresh(
+    ['tickets', 'invoices'],
+    refetchSummary,
+    { filter: scopeProjectId ? { column: 'project_id', value: scopeProjectId } : undefined }
+  )
+  const authorized          = summary?.authorized ?? true
+  const openTickets         = summary?.open_tickets ?? null
+  const criticalTickets     = summary?.critical_tickets ?? null
+  const totalBudget         = summary?.total_budget ?? null
+  const spentAmount         = summary?.spent_amount ?? null
+  const pendingInvoices     = summary?.pending_invoices ?? null
+  const recentNotifications = summary?.recent_notifications ?? []
   const approvalRef = useRef(null)
   const calRef      = useRef(null)
   const calBtnRef   = useRef(null)
@@ -297,13 +311,10 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTab
     })
   }
 
-  // Başlangıç yüklemesi — projeler + biletler
+  // Başlangıç yüklemesi — proje listesi (KPI özeti artık ayrı useDashboardData ile çekiliyor)
   useEffect(() => {
     async function load() {
-      const [{ data: projData }, { data: summary, error: summaryErr }] = await Promise.all([
-        getProjects(),
-        supabase.rpc('get_dashboard_summary'),
-      ])
+      const { data: projData } = await getProjects()
       let projectRows = projData || []
       const projectIds = projectRows.map(p => p.id).filter(Boolean)
 
@@ -333,14 +344,6 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTab
       }
 
       setProjects(projectRows)
-      if (!summaryErr && summary) {
-        setOpenTickets(summary.open_tickets ?? 0)
-        setCriticalTickets(summary.critical_tickets ?? 0)
-        setTotalBudget(summary.total_budget ?? 0)
-        setSpentAmount(summary.spent_amount ?? 0)
-        setPendingInvoices(summary.pending_invoices ?? 0)
-        setRecentNotifications(summary.recent_notifications || [])
-      }
       setLoading(false)
     }
     load().catch(() => setLoading(false))
@@ -386,8 +389,16 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTab
     ? projects.filter(p => p.created_at && new Date(p.created_at) <= new Date(selectedDate))
     : projects
 
+  if (!authorized) {
+    return <UnauthorizedScopeNotice />
+  }
+
   return (
     <>
+      <DataStatusBanner error={summaryError} refreshing={summaryRefreshing} onRetry={refetchSummary} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
+      </div>
       <div className="stats-grid" style={{ marginBottom: '1.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
 
         {/* KPI 1: Proje Özeti */}
@@ -403,7 +414,7 @@ function ProjectListView({ onSelectProject, selectedDate, setSelectedDate, onTab
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
               <span style={{ color: 'var(--color-muted)' }}>Kritik Risk</span>
               <strong style={{ color: (criticalTickets ?? 0) > 0 ? '#ef4444' : 'var(--color-text)' }}>
-                {loading ? '…' : (criticalTickets ?? 0)} proje
+                {criticalTickets === null ? '…' : criticalTickets} proje
               </strong>
             </div>
           </div>
@@ -1808,12 +1819,13 @@ function ProjectDashboard({ projectId, filterDate }) {
 // ─────────────────────────────────────────────────────────
 //  Ana Export
 // ─────────────────────────────────────────────────────────
-export default function TabGenel({ projectId, onSelectProject, selectedDate, setSelectedDate, filterDate, onTabChange }) {
+export default function TabGenel({ projectId, scopeProjectId, onSelectProject, selectedDate, setSelectedDate, filterDate, onTabChange }) {
   if (projectId) {
     return <ProjectDashboard projectId={projectId} filterDate={filterDate} />
   }
   return (
     <ProjectListView
+      scopeProjectId={scopeProjectId}
       onSelectProject={onSelectProject}
       selectedDate={selectedDate}
       setSelectedDate={setSelectedDate}
