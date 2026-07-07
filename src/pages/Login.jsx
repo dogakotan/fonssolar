@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { signIn, supabase } from '../lib/supabase'
+import { getAuthRedirectUrl } from '../lib/authRedirect'
 import './Login.css'
-
-const RESET_REDIRECT = 'https://fonssolar-dq9j5zmfj-fons-solar.vercel.app/dashboard'
 
 export default function Login() {
   const [email, setEmail]               = useState('')
@@ -42,7 +41,7 @@ export default function Login() {
     setResetErr('')
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: RESET_REDIRECT,
+        redirectTo: getAuthRedirectUrl('/dashboard'),
       })
       if (resetError) throw resetError
       setResetSent(true)

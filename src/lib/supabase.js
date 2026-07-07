@@ -3,11 +3,12 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl     = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('VITE_SUPABASE_URL ve VITE_SUPABASE_ANON_KEY env değişkenleri tanımlı değil.')
-}
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(
+  supabaseUrl || 'https://missing-supabase-url.supabase.co',
+  supabaseAnonKey || 'missing-supabase-anon-key',
+)
 
 export const signIn = (email, password) =>
   supabase.auth.signInWithPassword({ email, password })

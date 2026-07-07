@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
+import { getAuthRedirectUrl } from '../../../lib/authRedirect'
 
 const SIRKET_GENELI = ['admin', 'muhasebe', 'satin_alma_uzmani']
 
@@ -69,8 +70,6 @@ const ROL_RENK = {
   proje_koordinatoru:          { bg: '#FDF2F8', color: '#9D174D' },
   proje_tasarim_sorumlusu:     { bg: '#F5F3FF', color: '#6D28D9' },
 }
-
-const RESET_REDIRECT = 'https://fonssolar-dq9j5zmfj-fons-solar.vercel.app/dashboard'
 
 function getRenk(role_key)    { return ROL_RENK[role_key] || { bg: '#F3F4F6', color: '#374151' } }
 function getRolEtiket(role_key) { return ROL_ETIKET[role_key] || (role_key || '—').replace(/_/g, ' ') }
@@ -266,7 +265,7 @@ function SifreSifirlaModal({ user: targetUser, onClose }) {
     setLoading(true)
     setErr('')
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(targetUser.email, { redirectTo: RESET_REDIRECT })
+      const { error } = await supabase.auth.resetPasswordForEmail(targetUser.email, { redirectTo: getAuthRedirectUrl('/dashboard') })
       if (error) throw error
       setSent(true)
     } catch (err) {
