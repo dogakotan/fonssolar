@@ -16,7 +16,10 @@ export function AuthProvider({ children }) {
         if (!active) return
         const u = session?.user ?? null
         setUser(u)
-        if (u) fetchProfile(u.id)
+        if (u) {
+          setLoading(true)
+          fetchProfile(u)
+        }
         else setLoading(false)
       })
       .catch(() => {
@@ -29,7 +32,10 @@ export function AuthProvider({ children }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null
       setUser(u)
-      if (u) fetchProfile(u.id)
+      if (u) {
+        setLoading(true)
+        fetchProfile(u)
+      }
       else { setProfile(null); setLoading(false) }
     })
 
@@ -39,14 +45,33 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  async function fetchProfile(userId) {
+  async function fetchProfile(authUser) {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('id, email, full_name, role_key, project_id')
-        .eq('id', userId)
-        .single()
-      setProfile(data ?? null)
+        .eq('id', authUser.id)
+        .maybeSingle()
+
+      if (error) throw error
+      if (data) {
+        setProfile(data)
+        return
+      }
+
+      if (authUser.email) {
+        const { data: byEmail, error: emailError } = await supabase
+          .from('profiles')
+          .select('id, email, full_name, role_key, project_id')
+          .eq('email', authUser.email)
+          .maybeSingle()
+
+        if (emailError) throw emailError
+        setProfile(byEmail ?? null)
+        return
+      }
+
+      setProfile(null)
     } catch {
       setProfile(null)
     } finally {
