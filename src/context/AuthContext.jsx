@@ -47,31 +47,29 @@ export function AuthProvider({ children }) {
 
   async function fetchProfile(authUser) {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, role_key, project_id')
-        .eq('id', authUser.id)
-        .maybeSingle()
+      const [{ data: roleData, error: roleError }, { data: projectData }] = await Promise.all([
+        supabase.rpc('get_my_role'),
+        supabase.rpc('get_my_projects'),
+      ])
 
-      if (error) throw error
-      if (data) {
-        setProfile(data)
+      if (roleError) throw roleError
+
+      const roleKey = normalizeRole(roleData)
+      if (!roleKey) {
+        setProfile(null)
         return
       }
 
-      if (authUser.email) {
-        const { data: byEmail, error: emailError } = await supabase
-          .from('profiles')
-          .select('id, email, full_name, role_key, project_id')
-          .eq('email', authUser.email)
-          .maybeSingle()
+      const projects = Array.isArray(projectData) ? projectData : []
+      const assignedProjectId = projects.length === 1 ? projects[0]?.id ?? null : null
 
-        if (emailError) throw emailError
-        setProfile(byEmail ?? null)
-        return
-      }
-
-      setProfile(null)
+      setProfile({
+        id: authUser.id,
+        email: authUser.email,
+        full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email,
+        role_key: roleKey,
+        project_id: assignedProjectId,
+      })
     } catch {
       setProfile(null)
     } finally {
@@ -95,4 +93,11 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   return useContext(AuthContext)
+}
+
+function normalizeRole(value) {
+  if (!value) return null
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return normalizeRole(value[0])
+  return value.role_key || value.role || value.get_my_role || null
 }
