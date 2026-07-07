@@ -7,6 +7,7 @@ export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState('')
 
   useEffect(() => {
     let active = true
@@ -26,6 +27,7 @@ export function AuthProvider({ children }) {
         if (!active) return
         setUser(null)
         setProfile(null)
+        setAuthError('Oturum bilgisi okunamadi.')
         setLoading(false)
       })
 
@@ -47,6 +49,7 @@ export function AuthProvider({ children }) {
 
   async function fetchProfile(authUser) {
     try {
+      setAuthError('')
       const [{ data: roleData, error: roleError }, { data: projectData }] = await Promise.all([
         supabase.rpc('get_my_role'),
         supabase.rpc('get_my_projects'),
@@ -56,6 +59,7 @@ export function AuthProvider({ children }) {
 
       const roleKey = normalizeRole(roleData)
       if (!roleKey) {
+        setAuthError('Hesap icin rol bulunamadi. get_my_role bos dondu.')
         setProfile(null)
         return
       }
@@ -70,7 +74,8 @@ export function AuthProvider({ children }) {
         role_key: roleKey,
         project_id: assignedProjectId,
       })
-    } catch {
+    } catch (err) {
+      setAuthError(err?.message || 'Profil ve rol bilgisi yuklenemedi.')
       setProfile(null)
     } finally {
       setLoading(false)
@@ -82,7 +87,7 @@ export function AuthProvider({ children }) {
   const isMuhasebe = role === 'muhasebe'
   const projectId  = profile?.project_id ?? null
 
-  const value = { user, profile, role, isAdmin, isMuhasebe, loading, projectId }
+  const value = { user, profile, role, isAdmin, isMuhasebe, loading, projectId, authError }
 
   return (
     <AuthContext.Provider value={value}>
@@ -99,5 +104,5 @@ function normalizeRole(value) {
   if (!value) return null
   if (typeof value === 'string') return value
   if (Array.isArray(value)) return normalizeRole(value[0])
-  return value.role_key || value.role || value.get_my_role || null
+  return value.role_key || value.role || value.get_my_role || value.name || value.key || null
 }

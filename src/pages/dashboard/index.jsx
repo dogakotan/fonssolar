@@ -66,7 +66,7 @@ function projectIdLabel(projectId) {
 }
 
 export default function Dashboard() {
-  const { user, role, isAdmin, projectId, loading: authLoading } = useAuth()
+  const { user, role, isAdmin, projectId, loading: authLoading, authError } = useAuth()
   const { projects: scopeProjects, showAllOption, scopeProjectId, setScopeProjectId } = useScope()
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [openTicketCount,     setOpenTicketCount]     = useState(0)
@@ -178,6 +178,15 @@ export default function Dashboard() {
         <p style={{ fontSize: 14, color: '#6B7280', margin: '0 0 24px', maxWidth: 340 }}>
           Hesabınıza atanmış bir rol bulunamadı. Lütfen yöneticinizle iletişime geçin.
         </p>
+        {authError && (
+          <p style={{
+            fontSize: 12, color: '#991B1B', background: '#FEE2E2',
+            border: '1px solid #FCA5A5', borderRadius: 8, padding: '10px 12px',
+            margin: '0 0 18px', maxWidth: 420, wordBreak: 'break-word',
+          }}>
+            {authError}
+          </p>
+        )}
         <button
           onClick={async () => { await signOut(); navigate('/login') }}
           style={{
