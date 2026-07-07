@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { signIn, supabase } from '../lib/supabase'
 import { getAuthRedirectUrl } from '../lib/authRedirect'
 import './Login.css'
@@ -17,17 +16,21 @@ export default function Login() {
   const [resetLoading, setResetLoading] = useState(false)
   const [resetErr, setResetErr]         = useState('')
 
-  const navigate = useNavigate()
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
     try {
-      const { data, error: authError } = await signIn(email, password)
+      const { data, error: authError } = await signIn(email.trim(), password)
       if (authError) throw authError
-      if (data.user) navigate('/dashboard', { replace: true })
+      if (!data.user) throw new Error('Oturum baslatilamadi.')
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) throw sessionError
+      if (!sessionData.session) throw new Error('Oturum dogrulanamadi.')
+
+      window.location.assign('/dashboard')
     } catch (err) {
       setError(err.message || 'E-posta veya şifre hatalı.')
     } finally {
