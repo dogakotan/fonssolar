@@ -14,6 +14,7 @@ import TabKullanicilar from './components/TabKullanicilar'
 import ProjeDetay from './components/ProjeDetay'
 import TabProjeYonetimi from './components/TabProjeYonetimi'
 import FloatingAgent from '../../components/agent/FloatingAgent'
+import NotificationBell from '../../components/ui/NotificationBell'
 import DailyReportForm from '../../components/daily-report/DailyReportForm'
 import DailyReportList from '../DailyReportList'
 import './Dashboard.css'
@@ -258,6 +259,7 @@ export default function Dashboard() {
                 ))}
               </select>
             )}
+            <NotificationBell onNavigate={handleTabChange} />
             <button
               onClick={() => handleTabChange('tickets')}
               style={{
