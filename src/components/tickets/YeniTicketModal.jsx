@@ -33,6 +33,17 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
   const [description, setDescription] = useState('')
   const [saving, setSaving]           = useState(false)
   const [error, setError]             = useState(null)
+  const [files, setFiles]             = useState([])
+
+  const hasFixedProject = !!(defaultProject || projectId)
+  const [projectOptions, setProjectOptions] = useState([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+
+  useEffect(() => {
+    if (hasFixedProject) return
+    supabase.from('projects').select('id, name').order('name')
+      .then(({ data }) => setProjectOptions(data || []))
+  }, [hasFixedProject])
 
   useEffect(() => {
     if (defaultProject) {
@@ -67,15 +78,21 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
     loadProject()
   }, [projectId, defaultProject])
 
+  const needsProjectPick = !hasFixedProject && category !== 'genel'
+
   async function handleSubmit() {
     if (!description.trim()) return
+    if (needsProjectPick && !selectedProjectId) {
+      setError('Bu ticket cinsi için proje seçimi zorunludur.')
+      return
+    }
     setSaving(true)
     setError(null)
 
-    const effectiveProjectId = projectId || null
+    const effectiveProjectId = hasFixedProject ? (projectId || null) : (selectedProjectId || null)
     const ticketLocation = project?.location || null
 
-    const { error: err } = await supabase.from('tickets').insert({
+    const { data: inserted, error: err } = await supabase.from('tickets').insert({
       project_id:  effectiveProjectId,
       created_by:  user.id,
       title:       description.trim().slice(0, 60),
@@ -84,9 +101,23 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
       severity,
       status:      'gönderildi',
       location:    ticketLocation,
-    })
+    }).select('id').single()
+
+    if (err) { setError('Ticket oluşturulamadı. Lütfen tekrar deneyin.'); setSaving(false); return }
+
+    for (const file of files) {
+      const path = `${inserted.id}/${Date.now()}-${file.name}`
+      const { error: uploadErr } = await supabase.storage.from('ticket-ekleri').upload(path, file)
+      if (!uploadErr) {
+        await supabase.from('ticket_attachments').insert({
+          ticket_id: inserted.id,
+          storage_path: path,
+          uploaded_by: user.id,
+        })
+      }
+    }
+
     setSaving(false)
-    if (err) { setError('Ticket oluşturulamadı. Lütfen tekrar deneyin.'); return }
     onSaved()
   }
 
@@ -108,14 +139,26 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
 
           {/* Satır satır bilgi + Ticket Cinsi + Aciliyet */}
           <div>
-            <div style={ROW}>
-              <span style={ROW_LABEL}>Proje</span>
-              <span style={ROW_VALUE}>{projeAdi}</span>
-            </div>
-            <div style={ROW}>
-              <span style={ROW_LABEL}>Lokasyon</span>
-              <span style={ROW_VALUE}>{lokasyon}</span>
-            </div>
+            {hasFixedProject ? (
+              <>
+                <div style={ROW}>
+                  <span style={ROW_LABEL}>Proje</span>
+                  <span style={ROW_VALUE}>{projeAdi}</span>
+                </div>
+                <div style={ROW}>
+                  <span style={ROW_LABEL}>Lokasyon</span>
+                  <span style={ROW_VALUE}>{lokasyon}</span>
+                </div>
+              </>
+            ) : needsProjectPick && (
+              <div style={ROW}>
+                <span style={ROW_LABEL}>Proje *</span>
+                <select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)} style={SELECT_STYLE}>
+                  <option value="">— Proje seçin —</option>
+                  {projectOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+            )}
             <div style={ROW}>
               <span style={ROW_LABEL}>Tarih</span>
               <span style={ROW_VALUE}>{today}</span>
@@ -159,6 +202,23 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
               }}
             />
           </div>
+
+          {/* Dosya/Foto ekle */}
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 6 }}>
+              DOSYA / FOTO EKLE
+            </label>
+            <input
+              type="file"
+              multiple
+              accept="image/*,.pdf"
+              onChange={e => setFiles(Array.from(e.target.files || []))}
+              style={{ fontSize: 13, fontFamily: 'inherit' }}
+            />
+            {files.length > 0 && (
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: '#6B7280' }}>{files.length} dosya seçildi</p>
+            )}
+          </div>
         </div>
 
         {error && (
@@ -173,8 +233,8 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={saving || !description.trim()}
-            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: description.trim() ? 1 : 0.5 }}
+            disabled={saving || !description.trim() || (needsProjectPick && !selectedProjectId)}
+            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: (description.trim() && !(needsProjectPick && !selectedProjectId)) ? 1 : 0.5 }}
           >
             {saving ? 'Kaydediliyor…' : 'Ticket Oluştur'}
           </button>

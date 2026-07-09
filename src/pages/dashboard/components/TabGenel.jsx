@@ -220,6 +220,10 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
   const spentAmount         = summary?.spent_amount ?? null
   const pendingInvoices     = summary?.pending_invoices ?? null
   const recentNotifications = summary?.recent_notifications ?? []
+
+  // Riskli gecikmeler — yalnızca iç yönetici dashboard'u, vw_delayed_tasks (personel adı dahil) hiçbir export'a gitmez.
+  const { data: delayedData } = useDashboardData('get_delayed_tasks_scoped', { p_project_id: scopeProjectId })
+  const delayedTasks = delayedData?.tasks ?? []
   const approvalRef = useRef(null)
   const calRef      = useRef(null)
   const calBtnRef   = useRef(null)
@@ -519,6 +523,30 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
                   color: 'var(--color-text)', fontWeight: 500,
                 }}>
                   {n.title}
+                </div>
+              ))
+            }
+          </div>
+        </div>
+
+        {/* KPI: Riskli Gecikmeler — sadece yönetici dashboard'u, export'a girmez */}
+        <div className="stat-card" style={{ borderTop: '3px solid #ef4444' }}>
+          <p className="stat-label">⏰ Riskli Gecikmeler</p>
+          <p className="stat-value" style={{ color: delayedTasks.length > 0 ? '#dc2626' : undefined }}>
+            {delayedTasks.length}
+          </p>
+          <div style={{ maxHeight: 100, overflowY: 'auto', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {delayedTasks.length === 0
+              ? <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>Gecikmiş görev yok</p>
+              : delayedTasks.slice(0, 6).map(t => (
+                <div key={t.id} style={{
+                  fontSize: 10, padding: '4px 6px', borderRadius: 6,
+                  background: '#f8fafc',
+                  borderLeft: `3px solid ${t.delaySeverity === 'kritik' ? '#ef4444' : t.delaySeverity === 'yüksek' ? '#f59e0b' : '#94a3b8'}`,
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  color: 'var(--color-text)', fontWeight: 500,
+                }}>
+                  {t.taskName} · {t.daysOverdue}g {!scopeProjectId ? `· ${t.projectName}` : ''}
                 </div>
               ))
             }

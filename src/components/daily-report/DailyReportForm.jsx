@@ -18,12 +18,12 @@ const STEPS = [
 ]
 
 const WEATHER_OPTIONS = ['açık', 'parçalı bulutlu', 'bulutlu', 'yağmurlu', 'karlı', 'fırtınalı']
-const STATUS_OPTIONS  = ['iyi', 'normal', 'sorunlu']
+const STATUS_OPTIONS  = ['normal', 'dikkat', 'kritik']
 const SHIFTS          = ['mühendis', 'usta', 'işçi']
 const DEPARTMENTS     = ['idari', 'mekanik', 'elektrik', 'yevmiyeci']
 const SHIFT_LABELS    = { mühendis: 'Mühendis', usta: 'Usta', işçi: 'İşçi' }
 const DEPT_LABELS     = { idari: 'İdari', mekanik: 'Mekanik', elektrik: 'Elektrik', yevmiyeci: 'Yevmiyeci' }
-const MACH_STATUS     = ['çalışıyor', 'bekliyor', 'arızalı']
+const MACH_STATUS     = ['çalışıyor', 'arızalı', 'beklemede']
 const MACHINERY_PRESETS = ['ekskavatör', 'jcb', 'loader', 'rok_delim', 'gayk_delici', 'vinç', 'kamyon', 'traktör']
 const MACHINE_LABELS = {
   ekskavatör: 'Ekskavatör',
@@ -54,7 +54,7 @@ const MACHINE_TYPE_ALIASES = {
 }
 const UNIT_OPTIONS    = ['Adet', 'm', 'm²', 'm³', 'kg', 'ton', 'rulo', 'kutu']
 const PRIORITY_OPTIONS = ['düşük', 'orta', 'yüksek', 'kritik']
-const RESOLUTION_OPTIONS = ['açık', 'devam', 'çözüldü']
+const RESOLUTION_OPTIONS = ['açık', 'devam ediyor', 'çözüldü']
 
 function normalizeWeather(value) {
   const v = String(value || '').toLocaleLowerCase('tr-TR')
@@ -78,6 +78,17 @@ function formatWeatherNote(current) {
 function normalizeMachineType(value) {
   const key = String(value || '').trim().toLocaleLowerCase('tr-TR')
   return MACHINE_TYPE_ALIASES[key] || (MACHINERY_PRESETS.includes(key) ? key : '')
+}
+
+function toUserMessage(e) {
+  const m = (e?.message || '').toLowerCase()
+  if (m.includes('general_status')) return 'Genel durum geçersiz. Lütfen listeden seçin.'
+  if (m.includes('machinery_logs_status') || m.includes('machine')) return 'Makine durumu geçersiz. Lütfen listeden seçin.'
+  if (m.includes('weather')) return 'Hava durumu geçersiz. Lütfen listeden seçin.'
+  if (m.includes('department') || m.includes('shift')) return 'Personel bilgisi geçersiz. Lütfen listeden seçin.'
+  if (m.includes('row-level security') || m.includes('permission')) return 'Bu işlem için yetkiniz yok.'
+  if (m.includes('duplicate') || m.includes('unique')) return 'Bu tarih için zaten bir rapor var.'
+  return 'Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.'
 }
 
 const CATEGORY_LABELS = {
@@ -241,7 +252,10 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   useEffect(() => { loadAll() }, [])
 
   useEffect(() => {
-    if (!initialReportId && liveWeather.current?.label) {
+    // alreadyExists true ise formda yüklenmiş gerçek bir rapor var — canlı hava
+    // durumu onun weather alanının üzerine yazmamalı (aksi halde tarih değişince
+    // yüklenen geçmiş rapor, o günün havasıyla değil bugünün canlı havasıyla görünür).
+    if (!initialReportId && !alreadyExists && liveWeather.current?.label) {
       const weatherNote = formatWeatherNote(liveWeather.current)
       setFormData(f => ({
         ...f,
@@ -251,11 +265,214 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     }
   }, [
     initialReportId,
+    alreadyExists,
     liveWeather.current?.label,
     liveWeather.current?.temp,
     liveWeather.current?.wind,
     liveWeather.current?.humidity,
   ])
+
+  // Tarih art arda hızlı değiştiğinde (örn. gün/ay/yıl segmentleri tek tek
+  // düzenlenirken) birden çok checkDateAndLoad çağrısı çakışabilir. Ağdan en son
+  // dönen değil, en son BAŞLATILAN çağrı geçerli olmalı — aksi halde eski bir
+  // yanıt yeni yüklenen veriyi ezip formu yanlışlıkla boşaltabilir.
+  const dateCheckSeqRef = useRef(0)
+
+  // Bir raporun tüm alt tablolarını çekip formu doldurur — hem "reportId ile
+  // düzenle" hem "bu tarihte zaten rapor var" akışı bunu kullanır. İkisinin
+  // ayrı ayrı (ve birbirinden sapan) kopyaları olması önceki hatanın kaynağıydı:
+  // "zaten var" durumunda form hiç doldurulmuyor, Kaydet o günün verisini siliyordu.
+  async function loadReportInto(id, seq) {
+    const [repRes, persRes, machRes, progRes, taskRes, matRes, photoRes, issueRes] = await Promise.all([
+      supabase.from('daily_reports').select('*').eq('id', id).single(),
+      supabase.from('personnel_log_entries').select('*').eq('report_id', id),
+      supabase.from('machinery_logs').select('*').eq('report_id', id),
+      supabase.from('progress_daily').select('*').eq('report_id', id),
+      supabase.from('daily_tasks').select('*').eq('report_id', id).order('order_index'),
+      supabase.from('daily_report_material_usage').select('*').eq('report_id', id),
+      supabase.from('daily_report_photos').select('*').eq('report_id', id),
+      supabase.from('daily_report_issues').select('*').eq('report_id', id),
+    ])
+
+    if (seq !== undefined && seq !== dateCheckSeqRef.current) return // daha yeni bir tarih değişikliği bunu geçersiz kıldı
+
+    if (repRes.data) {
+      const r = repRes.data
+      const reportNotes = decodeMeta(REPORT_NOTES_META_PREFIX, r.notes)
+      setFormData({
+        report_date:    r.report_date || todayStr(),
+        weather:        normalizeWeather(r.weather || 'açık'),
+        weather_note:   r.weather_note   || '',
+        general_status: r.general_status || 'normal',
+        worker_count:   r.worker_count   || 0,
+        isg_notes:      reportNotes.isg_notes || '',
+        incident_notes: reportNotes.incident_notes || '',
+        notes:          reportNotes.description || '',
+      })
+    }
+
+    // Personnel
+    if (persRes.data && persRes.data.length > 0) {
+      const pRows = initPersonnel()
+      persRes.data.forEach(e => {
+        const row = pRows.find(r => r.shift === e.shift)
+        if (row && DEPARTMENTS.includes(e.department)) row[e.department] = e.count || 0
+      })
+      setPersonnel(pRows)
+    } else {
+      setPersonnel(initPersonnel())
+    }
+
+    // Machinery
+    if (machRes.data && machRes.data.length > 0) {
+      const presetRows = initMachinery()
+      const customRows = []
+      machRes.data.forEach(m => {
+        const row = {
+          machine_type: m.machine_type || '',
+          count:        m.count        || 0,
+          status:       m.status       || 'çalışıyor',
+          notes:        m.notes        || '',
+        }
+        const preset = presetRows.find(p => p.machine_type === row.machine_type)
+        if (preset) Object.assign(preset, row)
+        else customRows.push(row)
+      })
+      setMachinery([...presetRows, ...customRows])
+    } else {
+      setMachinery(initMachinery())
+    }
+
+    // Progress qtys
+    const eQtys = {}
+    ;(progRes.data || []).forEach(e => { eQtys[e.item_id] = Number(e.qty_added) || 0 })
+    setExistingQtys(eQtys)
+    setTodayQty({ ...eQtys })
+
+    const taskRows = taskRes.data || []
+    const loadedDone = taskRows
+      .filter(t => ['tamamlandı', 'tamamlandi', 'done'].includes(String(t.type || '').toLocaleLowerCase('tr-TR')))
+      .map(t => ({ description: t.description || '' }))
+    const loadedPlanned = taskRows
+      .filter(t => ['planlandı', 'planlandi', 'planned'].includes(String(t.type || '').toLocaleLowerCase('tr-TR')))
+      .map(t => ({ description: t.description || '' }))
+    setDoneTasks(loadedDone.length ? loadedDone : [newTaskRow()])
+    setPlannedTasks(loadedPlanned.length ? loadedPlanned : [newTaskRow()])
+
+    // Materials
+    if (matRes.data && matRes.data.length > 0) {
+      setMaterials(matRes.data.map(m => {
+        const meta = decodeMeta(MATERIAL_META_PREFIX, m.description)
+        return {
+          progress_item_id: m.progress_item_id || '',
+          material_name:    m.material_name    || '',
+          quantity_used:    m.quantity_used     || '',
+          unit:             m.unit              || 'Adet',
+          supplier:         meta.supplier       || '',
+          waybill_no:       meta.waybill_no     || '',
+          delivery_date:    meta.delivery_date  || '',
+          storage_location: meta.storage_location || '',
+          description:      meta.description    || '',
+          reason:           m.reason            || '',
+        }
+      }))
+    } else {
+      setMaterials([newMaterialRow()])
+    }
+
+    // Existing photos
+    setExistingPhotos(photoRes.data || [])
+
+    // Issues
+    if (issueRes.data && issueRes.data.length > 0) {
+      setIssues(issueRes.data.map(i => {
+        const meta = decodeMeta(ISSUE_META_PREFIX, i.description)
+        return {
+          topic:             i.topic             || '',
+          category:          meta.category        || '',
+          priority:          i.priority          || 'orta',
+          assigned_to:       i.assigned_to       || '',
+          description:       meta.description    || '',
+          resolution_status: i.resolution_status || 'açık',
+          closed_at:         meta.closed_at      || '',
+          notes:             meta.notes          || '',
+        }
+      }))
+    } else {
+      setIssues([newIssueRow()])
+    }
+  }
+
+  // Seçilen tarih için hiç rapor yoksa formu o tarihle boşa döner.
+  function resetToBlank(date) {
+    photos.forEach(p => URL.revokeObjectURL(p.preview))
+    setFormData({
+      report_date:    date,
+      weather:        'açık',
+      weather_note:   '',
+      general_status: 'normal',
+      worker_count:   0,
+      isg_notes:      '',
+      incident_notes: '',
+      notes:          '',
+    })
+    setPersonnel(initPersonnel())
+    setMachinery(initMachinery())
+    setExistingQtys({})
+    setTodayQty({})
+    setDoneTasks([newTaskRow()])
+    setPlannedTasks([newTaskRow()])
+    setMaterials([newMaterialRow()])
+    setPhotos([])
+    setExistingPhotos([])
+    setIssues([newIssueRow()])
+  }
+
+  // Create-mode'da: seçilen tarihte zaten rapor var mı diye bakar. Varsa
+  // formu o raporla doldurur (Kaydet artık güncelleme olur, silme değil).
+  // Yoksa formu o tarih için temiz bırakır.
+  async function checkDateAndLoad(date, effectiveProjectId) {
+    const seq = ++dateCheckSeqRef.current
+
+    const { data: existing } = await supabase
+      .from('daily_reports')
+      .select('id')
+      .eq('project_id', effectiveProjectId)
+      .eq('report_date', date)
+      .maybeSingle()
+
+    let found = existing
+    if (!found && effectiveProjectId !== projectId) {
+      const { data: legacy } = await supabase
+        .from('daily_reports')
+        .select('id')
+        .eq('project_id', projectId)
+        .eq('report_date', date)
+        .maybeSingle()
+      found = legacy
+    }
+
+    if (seq !== dateCheckSeqRef.current) return // daha yeni bir tarih değişikliği bunu geçersiz kıldı
+
+    if (found) {
+      setAlreadyExists(true)
+      setReportId(found.id)
+      await loadReportInto(found.id, seq)
+      if (seq !== dateCheckSeqRef.current) return
+      showToast('Bu tarihte kayıtlı rapor yüklendi')
+    } else {
+      setAlreadyExists(false)
+      setReportId(null)
+      resetToBlank(date)
+    }
+  }
+
+  async function handleDateChange(newDate) {
+    setFormData(f => ({ ...f, report_date: newDate }))
+    const effectiveProjectId = resolvedProjectId || project?.id || projectId
+    if (!effectiveProjectId) return
+    await checkDateAndLoad(newDate, effectiveProjectId)
+  }
 
   async function loadAll() {
     setLoading(true)
@@ -281,141 +498,9 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       setPreparedBy(profileRes.data?.full_name || user?.email || '')
 
       if (initialReportId) {
-        // Edit mode — load existing report
-        const [repRes, persRes, machRes, progRes, taskRes, matRes, photoRes, issueRes] = await Promise.all([
-          supabase.from('daily_reports').select('*').eq('id', initialReportId).single(),
-          supabase.from('personnel_log_entries').select('*').eq('report_id', initialReportId),
-          supabase.from('machinery_logs').select('*').eq('report_id', initialReportId),
-          supabase.from('progress_daily').select('*').eq('report_id', initialReportId),
-          supabase.from('daily_tasks').select('*').eq('report_id', initialReportId).order('order_index'),
-          supabase.from('daily_report_material_usage').select('*').eq('report_id', initialReportId),
-          supabase.from('daily_report_photos').select('*').eq('report_id', initialReportId),
-          supabase.from('daily_report_issues').select('*').eq('report_id', initialReportId),
-        ])
-
-        if (repRes.data) {
-          const r = repRes.data
-          const reportNotes = decodeMeta(REPORT_NOTES_META_PREFIX, r.notes)
-          setFormData({
-            report_date:    r.report_date || todayStr(),
-            weather:        normalizeWeather(r.weather || 'açık'),
-            weather_note:   r.weather_note   || '',
-            general_status: r.general_status || 'normal',
-            worker_count:   r.worker_count   || 0,
-            isg_notes:      reportNotes.isg_notes || '',
-            incident_notes: reportNotes.incident_notes || '',
-            notes:          reportNotes.description || '',
-          })
-        }
-
-        // Populate personnel from personnel_log_entries
-        if (persRes.data && persRes.data.length > 0) {
-          const pRows = initPersonnel()
-          persRes.data.forEach(e => {
-            const row = pRows.find(r => r.shift === e.shift)
-            if (row && DEPARTMENTS.includes(e.department)) row[e.department] = e.count || 0
-          })
-          setPersonnel(pRows)
-        }
-
-        // Machinery
-        if (machRes.data && machRes.data.length > 0) {
-          const presetRows = initMachinery()
-          const customRows = []
-          machRes.data.forEach(m => {
-            const row = {
-              machine_type: m.machine_type || '',
-              count:        m.count        || 0,
-              status:       m.status       || 'çalışıyor',
-              notes:        m.notes        || '',
-            }
-            const preset = presetRows.find(p => p.machine_type === row.machine_type)
-            if (preset) Object.assign(preset, row)
-            else customRows.push(row)
-          })
-          setMachinery([...presetRows, ...customRows])
-        }
-
-        // Progress qtys
-        const eQtys = {}
-        ;(progRes.data || []).forEach(e => { eQtys[e.item_id] = Number(e.qty_added) || 0 })
-        setExistingQtys(eQtys)
-        setTodayQty({ ...eQtys })
-
-        const taskRows = taskRes.data || []
-        const loadedDone = taskRows
-          .filter(t => ['tamamlandı', 'tamamlandi', 'done'].includes(String(t.type || '').toLocaleLowerCase('tr-TR')))
-          .map(t => ({ description: t.description || '' }))
-        const loadedPlanned = taskRows
-          .filter(t => ['planlandı', 'planlandi', 'planned'].includes(String(t.type || '').toLocaleLowerCase('tr-TR')))
-          .map(t => ({ description: t.description || '' }))
-        setDoneTasks(loadedDone.length ? loadedDone : [newTaskRow()])
-        setPlannedTasks(loadedPlanned.length ? loadedPlanned : [newTaskRow()])
-
-        // Materials
-        if (matRes.data && matRes.data.length > 0) {
-          setMaterials(matRes.data.map(m => {
-            const meta = decodeMeta(MATERIAL_META_PREFIX, m.description)
-            return {
-              progress_item_id: m.progress_item_id || '',
-              material_name:    m.material_name    || '',
-              quantity_used:    m.quantity_used     || '',
-              unit:             m.unit              || 'Adet',
-              supplier:         meta.supplier       || '',
-              waybill_no:       meta.waybill_no     || '',
-              delivery_date:    meta.delivery_date  || '',
-              storage_location: meta.storage_location || '',
-              description:      meta.description    || '',
-              reason:           m.reason            || '',
-            }
-          }))
-        }
-
-        // Existing photos
-        setExistingPhotos(photoRes.data || [])
-
-        // Issues
-        if (issueRes.data && issueRes.data.length > 0) {
-          setIssues(issueRes.data.map(i => {
-            const meta = decodeMeta(ISSUE_META_PREFIX, i.description)
-            return {
-              topic:             i.topic             || '',
-              category:          meta.category        || '',
-              priority:          i.priority          || 'orta',
-              assigned_to:       i.assigned_to       || '',
-              description:       meta.description    || '',
-              resolution_status: i.resolution_status || 'açık',
-              closed_at:         meta.closed_at      || '',
-              notes:             meta.notes          || '',
-            }
-          }))
-        }
-
+        await loadReportInto(initialReportId)
       } else {
-        // Create mode — check if today's report already exists
-        const { data: existing } = await supabase
-          .from('daily_reports')
-          .select('id')
-          .eq('project_id', effectiveProjectId)
-          .eq('report_date', todayStr())
-          .maybeSingle()
-
-        if (existing) {
-          setAlreadyExists(true)
-          setReportId(existing.id)
-        } else if (effectiveProjectId !== projectId) {
-          const { data: legacy } = await supabase
-            .from('daily_reports')
-            .select('id')
-            .eq('project_id', projectId)
-            .eq('report_date', todayStr())
-            .maybeSingle()
-
-          if (legacy) {
-            setAlreadyExists(true)
-            setReportId(legacy.id)
-          }
-        }
+        await checkDateAndLoad(formData.report_date, effectiveProjectId)
       }
     } catch (e) {
       setError(e.message)
@@ -659,7 +744,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       setTimeout(() => onSaved?.(), 900)
 
     } catch (e) {
-      setError(e.message || 'Kayıt sırasında hata oluştu.')
+      setError(toUserMessage(e))
     } finally {
       setSaving(false)
     }
@@ -791,9 +876,9 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                 <input
                   type="date"
                   value={formData.report_date}
-                  onChange={e => setFormData(f => ({ ...f, report_date: e.target.value }))}
-                  disabled
-                  style={{ ...INPUT, background: '#F9FAFB', color: '#6B7280' }}
+                  onChange={e => handleDateChange(e.target.value)}
+                  disabled={!!initialReportId}
+                  style={initialReportId ? { ...INPUT, background: '#F9FAFB', color: '#6B7280' } : INPUT}
                 />
               </div>
 

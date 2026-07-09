@@ -20,6 +20,7 @@ import {
   xlsxZipBlob,
   formatExcelDate,
 } from '../../../utils/excelUtils'
+import { importProjectExcel, exportProjectExcelBlob, downloadBlob, formatImportSummary } from '../../../utils/projectExcelBridge'
 
 // ── Periyot yardımcıları ──────────────────────────────────────────────────────
 const PERIODS = [
@@ -513,6 +514,104 @@ function decodeStoredMeta(prefix, value) {
   }
 }
 
+// Haftalık/aylık müşteri raporu için dönem verisini toplar — bilinçli olarak
+// maliyet/tedarik/talep/fatura ve kişi adı (assigned_to vb.) hiç sorgulanmaz.
+async function buildPeriodReportData(projectId, startDate, endDate) {
+  const { data: reportsData } = await supabase
+    .from('daily_reports')
+    .select('id, report_date, notes')
+    .eq('project_id', projectId)
+    .gte('report_date', startDate)
+    .lte('report_date', endDate)
+    .order('report_date')
+  const periodReports = reportsData || []
+  const reportIds = periodReports.map(r => r.id)
+  const activeDays = new Set(periodReports.map(r => r.report_date)).size
+
+  const { data: priorReportsData } = await supabase
+    .from('daily_reports')
+    .select('id')
+    .eq('project_id', projectId)
+    .lt('report_date', startDate)
+  const priorReportIds = (priorReportsData || []).map(r => r.id)
+
+  const empty = Promise.resolve({ data: [] })
+  const [personnelRes, machineryRes, tasksRes, issuesRes, progressDailyRes, priorProgressRes, progressItemsRes, photosRes] =
+    await Promise.all([
+      reportIds.length ? supabase.from('personnel_log_entries').select('department, shift, count').in('report_id', reportIds) : empty,
+      reportIds.length ? supabase.from('machinery_logs').select('machine_type, count').in('report_id', reportIds) : empty,
+      reportIds.length ? supabase.from('daily_tasks').select('report_id, description').in('report_id', reportIds).eq('type', 'tamamlandı').order('order_index') : empty,
+      reportIds.length ? supabase.from('daily_report_issues').select('report_id, topic, description').in('report_id', reportIds) : empty,
+      reportIds.length ? supabase.from('progress_daily').select('item_id, qty_added').in('report_id', reportIds) : empty,
+      priorReportIds.length ? supabase.from('progress_daily').select('item_id, qty_added').in('report_id', priorReportIds) : empty,
+      supabase.from('progress_items').select('id, name, category, unit, target_qty, order_index').eq('project_id', projectId).order('order_index'),
+      supabase.from('daily_report_photos').select('storage_path, report_date').eq('project_id', projectId).gte('report_date', startDate).lte('report_date', endDate).order('report_date').limit(9),
+    ])
+
+  const personnel = {}
+  ;(personnelRes.data || []).forEach(row => {
+    const dep = norm(row.department)
+    const key = ['idari', 'teknik'].some(k => dep.includes(k)) ? 'idari'
+      : dep.includes('mekanik') ? 'mekanik'
+      : dep.includes('elektrik') ? 'elektrik'
+      : dep.includes('yevmiyeci') ? 'yevmiyeci'
+      : 'diger'
+    const shift = norm(row.shift)
+    const role = ['mühendis', 'muhendis', 'tekniker'].some(k => shift.includes(k)) ? 'muhendis'
+      : ['usta', 'teknisyen'].some(k => shift.includes(k)) ? 'usta'
+      : 'isci'
+    personnel[key] = personnel[key] || { muhendis: 0, usta: 0, isci: 0 }
+    personnel[key][role] += Number(row.count || 0)
+  })
+
+  const equipmentMap = new Map()
+  ;(machineryRes.data || []).forEach(row => {
+    const key = row.machine_type || 'Diğer'
+    equipmentMap.set(key, (equipmentMap.get(key) || 0) + Number(row.count || 0))
+  })
+  const equipment = Array.from(equipmentMap.entries())
+    .filter(([, total]) => total > 0)
+    .map(([type, total]) => ({ type, total }))
+
+  const completedTasks = (tasksRes.data || []).map(t => t.description).filter(Boolean).slice(0, 40)
+
+  const priorTotals = new Map()
+  ;(priorProgressRes.data || []).forEach(row => {
+    priorTotals.set(row.item_id, (priorTotals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+  })
+  const periodTotals = new Map()
+  ;(progressDailyRes.data || []).forEach(row => {
+    periodTotals.set(row.item_id, (periodTotals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+  })
+  const progressItems = (progressItemsRes.data || [])
+    .map(item => {
+      const before = Number(priorTotals.get(item.id) || 0)
+      const added = Number(periodTotals.get(item.id) || 0)
+      const after = before + added
+      const target = Number(item.target_qty || 0)
+      const pct = target > 0 ? Math.round(Math.min(1, after / target) * 100) : 0
+      return { name: item.name, category: item.category, unit: item.unit, target, before, added, after, pct }
+    })
+    .filter(item => item.added > 0 || item.before > 0)
+
+  const reportDateById = new Map(periodReports.map(r => [r.id, r.report_date]))
+  const notes = []
+  periodReports.forEach(r => {
+    const meta = decodeStoredMeta('__REPORT_NOTES_META__', r.notes)
+    if (meta.isg_notes) notes.push({ date: r.report_date, type: 'İSG', text: meta.isg_notes })
+    if (meta.incident_notes) notes.push({ date: r.report_date, type: 'Olağandışı Olay', text: meta.incident_notes })
+  })
+  ;(issuesRes.data || []).forEach(issue => {
+    if (!issue.description) return
+    notes.push({ date: reportDateById.get(issue.report_id) || '', type: issue.topic || 'Not', text: issue.description })
+  })
+  notes.sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+
+  const photos = (photosRes.data || []).map(p => p.storage_path)
+
+  return { reportCount: periodReports.length, activeDays, personnel, equipment, completedTasks, progressItems, notes, photos }
+}
+
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
 export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate }) {
   const [tab, setTab]                = useState('genel')
@@ -523,6 +622,9 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const [filterMode, setFilterMode]  = useState('gunluk')   // 'gunluk' | 'haftalik' | 'aylik'
   const [loading, setLoading]        = useState(true)
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [excelExporting, setExcelExporting] = useState(false)
+  const [excelImporting, setExcelImporting] = useState(false)
+  const excelImportRef = useRef(null)
   const [filterDate, setFilterDate]  = useState(todayStr())
   const [showCalendar, setShowCalendar] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -940,32 +1042,62 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     }
 
     if (period !== 'gunluk') {
-      const title = period === 'haftalik' ? 'Haftalık Proje Raporu' : 'Aylık Proje Raporu'
-      const columns = ['Alan', 'Değer']
-      const rows = [
-        ['Proje', project?.name || projectName || projectId],
-        ['Seçili Tarih', new Date(filterDate + 'T00:00:00').toLocaleDateString('tr-TR')],
-        ['İş Paketi', wps.length],
-        ['Ortalama İlerleme', `%${progressSummary?.actual_progress_pct ?? (wps.length ? Math.round(wps.reduce((s, w) => s + (w.progress || 0), 0) / wps.length) : 0)}`],
-        ['Not', 'Haftalık/aylık export altyapısı hazır; detay sorguları rapor backendine bağlanabilir.'],
-      ]
+      const periodLabel = period === 'haftalik' ? 'Haftalık' : 'Aylık'
+      const refDate = parseLocalDate(filterDate)
+      const rangeStart = period === 'haftalik' ? startOfWeek(refDate) : new Date(refDate.getFullYear(), refDate.getMonth(), 1)
+      const rangeEnd = period === 'haftalik' ? endOfWeek(refDate) : new Date(refDate.getFullYear(), refDate.getMonth() + 1, 0)
+      const startStr = toDateStr(rangeStart)
+      const endStr = toDateStr(rangeEnd)
+      const periodRangeLabel = `${rangeStart.toLocaleDateString('tr-TR')} – ${rangeEnd.toLocaleDateString('tr-TR')}`
+
+      const periodData = await buildPeriodReportData(projectId, startStr, endStr)
+      const projMeta = { name: project?.name || projectName, capacityKwp: project?.capacity_kwp, progress: project?.progress }
+
       if (type === 'pdf') {
-        const { exportToPdf } = await import('../../../utils/exportUtils')
-        exportToPdf(title, period, columns, rows, { projectName: project?.name || projectName })
+        const { exportPeriodReportPdf } = await import('../../../utils/exportUtils')
+        await exportPeriodReportPdf(projMeta, periodLabel, periodRangeLabel, periodData)
       } else {
-        const { exportToExcel } = await import('../../../utils/exportUtils')
-        exportToExcel(title, period, columns, rows)
+        const { exportPeriodReportExcel } = await import('../../../utils/exportUtils')
+        exportPeriodReportExcel(projMeta, periodLabel, periodRangeLabel, periodData)
       }
       return
     }
 
     if (type === 'pdf') {
-      exportGunlukRaporPdf(project, wps, ilerlemeData, personelData, opts)
+      await exportGunlukRaporPdf(project, wps, ilerlemeData, personelData, opts)
     } else {
       exportGunlukRaporExcel(project, wps, ilerlemeData, personelData, opts)
     }
   }
 
+
+  async function handleProjectExcelExport() {
+    setExcelExporting(true)
+    try {
+      const blob = await exportProjectExcelBlob(projectId)
+      downloadBlob(blob, `${projectId}_detayli_proje_takip.xlsx`)
+    } catch (error) {
+      alert(`Excel indirilemedi: ${error.message}`)
+    } finally {
+      setExcelExporting(false)
+    }
+  }
+
+  async function handleProjectExcelImportChange(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setExcelImporting(true)
+    try {
+      const result = await importProjectExcel(file)
+      alert(`Excel güncellendi.\n${formatImportSummary(result?.summary)}`)
+      refetch()
+    } catch (error) {
+      alert(`Excel güncellenemedi: ${error.message}`)
+    } finally {
+      setExcelImporting(false)
+    }
+  }
 
   const { data: detayData, loading: detayLoading, refreshing, error, refetch } = useDashboardData(
     'get_proje_detay',
@@ -1101,6 +1233,43 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
               </div>
             )}
           </div>
+
+          {/* Proje Excel köprüsü — tüm proje verisini içe/dışa aktarır */}
+          <input
+            ref={excelImportRef}
+            type="file"
+            accept=".xlsx"
+            style={{ display: 'none' }}
+            onChange={handleProjectExcelImportChange}
+          />
+          <button
+            onClick={() => excelImportRef.current?.click()}
+            disabled={excelImporting}
+            title="Bu projeyi doldurulmuş bir Excel şablonuyla güncelle"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', background: '#fff', color: 'var(--color-text)',
+              border: '1px solid var(--color-border)', borderRadius: 8,
+              fontSize: 13, fontWeight: 500, cursor: excelImporting ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: excelImporting ? 0.6 : 1,
+            }}
+          >
+            {excelImporting ? 'Güncelleniyor…' : 'Excel Güncelle'}
+          </button>
+          <button
+            onClick={handleProjectExcelExport}
+            disabled={excelExporting}
+            title="Bu projenin tüm verisini Excel olarak indir"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', background: '#fff', color: 'var(--color-text)',
+              border: '1px solid var(--color-border)', borderRadius: 8,
+              fontSize: 13, fontWeight: 500, cursor: excelExporting ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: excelExporting ? 0.6 : 1,
+            }}
+          >
+            {excelExporting ? 'İndiriliyor…' : 'Excel Olarak İndir'}
+          </button>
 
           {/* Dışa Aktar — İş Planı sade görünümünde gizli */}
           {!['tickets', 'satin-alma', 'finans', 'gantt', 'raporlar'].includes(tab) && (

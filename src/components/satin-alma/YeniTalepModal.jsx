@@ -4,6 +4,11 @@ import { useAuth } from '../../context/AuthContext'
 
 const UNITS = ['Adet', 'Metre', 'Kg', 'Lt', 'Rulo', 'Kutu', 'Takım', 'Ton', 'M²', 'M³']
 const OTHER_VALUE = '__diger__'
+const URGENCY_OPTIONS = [
+  { value: 'normal', label: 'Normal' },
+  { value: 'acil', label: 'Acil' },
+  { value: 'çok_acil', label: 'Çok Acil' },
+]
 
 const INPUT = {
   border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px',
@@ -31,8 +36,8 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
   const [materialOptions, setMaterialOptions] = useState([])
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState(null)
-  const [form, setForm] = useState({ project_id: defaultProjectId || '', title: '', category: 'malzeme', request_note: '' })
-  const [item, setItem] = useState({ name: '', quantity: 1, unit: 'Adet' })
+  const [form, setForm] = useState({ project_id: defaultProjectId || '', title: '', category: 'malzeme', urgency: 'normal', request_note: '' })
+  const [item, setItem] = useState({ name: '', quantity: 1, unit: 'Adet', bom_item_id: null })
   const [useOther, setUseOther] = useState(false)
   const [materialMenuOpen, setMaterialMenuOpen] = useState(false)
   const [materialMenuStyle, setMaterialMenuStyle] = useState(null)
@@ -77,8 +82,17 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
 
   useEffect(() => {
     if (!form.project_id) { setMaterialOptions([]); return }
-    supabase.from('procurement_items').select('equipment').eq('project_id', form.project_id)
-      .then(({ data }) => setMaterialOptions([...new Set((data || []).map(row => row.equipment).filter(Boolean))]))
+    supabase.from('procurement_items').select('id, equipment').eq('project_id', form.project_id)
+      .then(({ data }) => {
+        const seen = new Set()
+        const options = []
+        ;(data || []).forEach(row => {
+          if (!row.equipment || seen.has(row.equipment)) return
+          seen.add(row.equipment)
+          options.push({ id: row.id, equipment: row.equipment })
+        })
+        setMaterialOptions(options)
+      })
   }, [form.project_id])
 
   useEffect(() => {
@@ -128,16 +142,16 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
     setForm(f => ({ ...f, category: e.target.value }))
     setUseOther(false)
     setMaterialMenuOpen(false)
-    setItem(it => ({ ...it, name: '' }))
+    setItem(it => ({ ...it, name: '', bom_item_id: null }))
   }
 
-  function selectMaterial(value) {
-    if (value === OTHER_VALUE) {
+  function selectMaterial(option) {
+    if (option === OTHER_VALUE) {
       setUseOther(true)
-      updateItem('name', '')
+      setItem(it => ({ ...it, name: '', bom_item_id: null }))
     } else {
       setUseOther(false)
-      updateItem('name', value)
+      setItem(it => ({ ...it, name: option.equipment, bom_item_id: option.id }))
     }
     setMaterialMenuOpen(false)
   }
@@ -150,14 +164,15 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
     const { error } = await supabase.rpc('create_purchase_request_with_items', {
       p_project_id:   form.project_id,
       p_title:        form.title.trim(),
-      p_urgency:      'normal',
+      p_urgency:      form.urgency,
       p_category:     form.category,
       p_request_note: form.request_note.trim() || null,
       p_requested_by: user.id,
       p_items: [{
-        name:     item.name.trim(),
-        quantity: Number(item.quantity) || 1,
-        unit:     item.unit,
+        name:        item.name.trim(),
+        quantity:    Number(item.quantity) || 1,
+        unit:        item.unit,
+        bom_item_id: item.bom_item_id || null,
       }],
     })
 
@@ -203,12 +218,20 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
             />
           </div>
 
-          <div>
-            <label style={LABEL}>Tip</label>
-            <select value={form.category} onChange={handleCategoryChange} style={INPUT}>
-              <option value="malzeme">Malzeme</option>
-              <option value="hizmet">Hizmet</option>
-            </select>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div>
+              <label style={LABEL}>Tip</label>
+              <select value={form.category} onChange={handleCategoryChange} style={INPUT}>
+                <option value="malzeme">Malzeme</option>
+                <option value="hizmet">Hizmet</option>
+              </select>
+            </div>
+            <div>
+              <label style={LABEL}>Aciliyet</label>
+              <select value={form.urgency} onChange={setF('urgency')} style={INPUT}>
+                {URGENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
           </div>
 
           <div>
@@ -231,7 +254,7 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
                     autoFocus
                     placeholder="Malzeme adını yazın"
                     value={item.name}
-                    onChange={e => updateItem('name', e.target.value)}
+                    onChange={e => setItem(it => ({ ...it, name: e.target.value, bom_item_id: null }))}
                     style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit' }}
                   />
                 ) : (
@@ -257,15 +280,15 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
                         background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
                         overflowY: 'auto', boxShadow: '0 12px 28px rgba(15,23,42,0.16)',
                       }}>
-                        {materialOptions.map(name => (
+                        {materialOptions.map(option => (
                           <div
-                            key={name}
-                            onClick={() => selectMaterial(name)}
+                            key={option.id}
+                            onClick={() => selectMaterial(option)}
                             style={{ padding: '8px 10px', fontSize: 13, cursor: 'pointer', color: '#111827', borderBottom: '1px solid #F3F4F6' }}
                             onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
                             onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
                           >
-                            {name}
+                            {option.equipment}
                           </div>
                         ))}
                         <div

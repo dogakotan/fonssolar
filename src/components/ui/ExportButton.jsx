@@ -33,7 +33,7 @@ export default function ExportButton({ getData, title, disabled }) {
     setAcik(prev => !prev)
   }
 
-  function indir(tip) {
+  async function indir(tip) {
     if (disabled || yukleniyor) return
     setYukleniyor(true)
     try {
@@ -41,7 +41,7 @@ export default function ExportButton({ getData, title, disabled }) {
       if (tip === 'excel') {
         exportToExcel(title, periyot, columns, rows)
       } else {
-        exportToPdf(title, periyot, columns, rows)
+        await exportToPdf(title, periyot, columns, rows)
       }
     } catch (e) {
       // hata sessiz geç — kullanıcı deneyimini bozmaz

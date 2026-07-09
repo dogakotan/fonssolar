@@ -360,17 +360,17 @@ class HeaderFooter:
         canv.setFont(BASE_BOLD, 12)
         canv.drawCentredString(bx + 23*mm, by + bh - 10*mm, "FONS SOLAR")
         canv.setFont(BASE_FONT, 7)
-        canv.drawCentredString(bx + 23*mm, by + bh - 17*mm, "Santiye Yonetimi")
+        canv.drawCentredString(bx + 23*mm, by + bh - 17*mm, "Şantiye Yönetimi")
 
         canv.setFillColor(WHITE)
         canv.setFont(BASE_BOLD, 11)
-        canv.drawCentredString(W/2, by + bh - 10*mm, "GUNLUK SANTIYE RAPORU")
+        canv.drawCentredString(W/2, by + bh - 10*mm, "GÜNLÜK ŞANTİYE RAPORU")
         canv.setFont(BASE_FONT, 8)
         canv.drawCentredString(W/2, by + bh - 18*mm, str(self.proje))
 
         rx = W - m - 2*mm
         canv.setFont(BASE_BOLD, 7.5)
-        canv.drawRightString(rx, by + bh - 9*mm,  f"TARIH: {self.tarih}")
+        canv.drawRightString(rx, by + bh - 9*mm,  f"TARİH: {self.tarih}")
         canv.drawRightString(rx, by + bh - 16*mm, f"RAPOR NO: {self.rapor_no}")
         canv.setFont(BASE_FONT, 7)
         canv.drawRightString(rx, by + bh - 23*mm, f"HAVA: {self.hava or '-'}")
@@ -391,7 +391,7 @@ def build_personnel_table(d: ExcelData):
     uw = W - 2 * MARGIN
     cw = [uw * f for f in [0.27, 0.12, 0.12, 0.12, 0.12, 0.12, 0.13]]
 
-    header = col_hdr('Personel Tipi', 'Idari', 'Mekanik', 'Elektrik', 'Yevmiyeci', 'Diger', 'TOPLAM')
+    header = col_hdr('Personel Tipi', 'İdari', 'Mekanik', 'Elektrik', 'Yevmiyeci', 'Diğer', 'TOPLAM')
 
     def fmt(v):
         try:
@@ -401,9 +401,9 @@ def build_personnel_table(d: ExcelData):
 
     rows = [header]
     labels = [
-        ('muhendis', 'Muhendis / Tekniker'),
+        ('muhendis', 'Mühendis / Tekniker'),
         ('usta',     'Usta / Teknisyen'),
-        ('isci',     'Isci / Yardimci'),
+        ('isci',     'İşçi / Yardımcı'),
     ]
     for key, label in labels:
         pd = d.personel.get(key, {})
@@ -439,7 +439,7 @@ def build_personnel_table(d: ExcelData):
 def build_equipment_table(d: ExcelData):
     uw = W - 2 * MARGIN
     cw = [uw * f for f in [0.30, 0.08, 0.15, 0.26, 0.21]]
-    rows = [col_hdr('Ekipman', 'Adet', 'Durum', 'Kullanim Alani', 'Not')]
+    rows = [col_hdr('Ekipman', 'Adet', 'Durum', 'Kullanım Alanı', 'Not')]
 
     # Sadece o gun kullanilan ekipmanlar (adet > 0)
     aktif = [e for e in d.ekipman if e['adet'] and str(e['adet']).strip() not in ('', '0')]
@@ -448,7 +448,7 @@ def build_equipment_table(d: ExcelData):
         rows.append([
             P("—", 7, align=TA_CENTER),
             P("", 7), P("", 7),
-            P("Bugun aktif ekipman bulunmamaktadir.", 7, color=colors.gray),
+            P("Bugün aktif ekipman bulunmamaktadır.", 7, color=colors.gray),
             P("", 7),
         ])
     else:
@@ -484,7 +484,7 @@ def build_today_tomorrow(d):
             ('TOPPADDING',    (0,0),(-1,-1), 4),
             ('BOTTOMPADDING', (0,0),(-1,-1), 4),
         ]))
-        rows = [col_hdr('#', 'Aciklama')]
+        rows = [col_hdr('#', 'Açıklama')]
         for i, item in enumerate(items):
             rows.append([
                 P(str(i+1), 7, align=TA_CENTER),
@@ -497,8 +497,8 @@ def build_today_tomorrow(d):
         ]))
         return [hdr_t, body]
 
-    left  = make_list(d.bugun, "C   BUGUN YAPILAN ISLER")
-    right = make_list(d.yarin, "D   YARIN YAPILACAK ISLER")
+    left  = make_list(d.bugun, "   BUGÜN YAPILAN İŞLER")
+    right = make_list(d.yarin, "   YARIN YAPILACAK İŞLER")
 
     # Iki sutunu ayni satirda Table icerisinde birlestir
     wrapper = Table(
@@ -527,14 +527,14 @@ def build_progress_table(d: ExcelData):
     progressed = [item for item in d.e_data
                   if not item['is_cat'] and item.get('gunluk', 0) not in (0, '', None)]
 
-    rows = [col_hdr('#', 'Is Kalemi', 'Birim', 'Hedef', 'Gunluk\nIlerleme', 'Kumulatif', 'Ilerleme %', 'Aciklama')]
+    rows = [col_hdr('#', 'İş Kalemi', 'Birim', 'Hedef', 'Günlük\nİlerleme', 'Kümülatif', 'İlerleme %', 'Açıklama')]
     ts   = list(BASE_STYLE) + [('BACKGROUND', (0, 0), (-1, 0), MID_BLUE)]
     ri   = 1
 
     if not progressed:
         rows.append([
             P("—", 7, align=TA_CENTER),
-            P("Bugun icin ilerleme kaydedilmemistir.", 7, color=colors.gray),
+            P("Bugün için ilerleme kaydedilmemiştir.", 7, color=colors.gray),
             P(""), P(""), P(""), P(""), P(""), P("")
         ])
         ts += [('SPAN', (1, 1), (7, 1)), ('BACKGROUND', (0, 1), (-1, 1), L_GRAY)]
@@ -581,7 +581,7 @@ def build_progress_table(d: ExcelData):
         )
         rows.append([
             P(""),
-            P("GUNLUK TOPLAM ILERLEME", 7, bold=True),
+            P("GÜNLÜK TOPLAM İLERLEME", 7, bold=True),
             P(""), P(""),
             P(str(total_gunluk), 7, bold=True, align=TA_CENTER),
             P(""), P(""), P("")
@@ -601,11 +601,11 @@ def build_progress_table(d: ExcelData):
 def build_notes_block(d: ExcelData):
     uw = W - 2 * MARGIN
     rows = [
-        [P("ISG (Is Sagligi & Guvenligi)", 7, bold=True, color=NAVY),
-         P(d.isg or "Rutin kontrol ve tedbirlerle calismalara devam edilmistir.", 7)],
-        [P("Olagandisi Olay / Santiye Ziyaretleri", 7, bold=True, color=NAVY),
-         P(d.olaganDisi or "Olagan disi bir olay yasanmamistir.", 7)],
-        [P("Diger Notlar", 7, bold=True, color=NAVY),
+        [P("İSG (İş Sağlığı & Güvenliği)", 7, bold=True, color=NAVY),
+         P(d.isg or "Rutin kontrol ve tedbirlerle çalışmalara devam edilmiştir.", 7)],
+        [P("Olağandışı Olay / Şantiye Ziyaretleri", 7, bold=True, color=NAVY),
+         P(d.olaganDisi or "Olağan dışı bir olay yaşanmamıştır.", 7)],
+        [P("Diğer Notlar", 7, bold=True, color=NAVY),
          P(d.diger_not or "—", 7)],
     ]
     t = Table(rows, colWidths=[uw*0.30, uw*0.70])
@@ -622,11 +622,11 @@ def build_signature_row(d: ExcelData):
     uw = W - 2 * MARGIN
     t = Table(
         [[
-            P("Raporu Hazirlayan:", 7, bold=True),
+            P("Raporu Hazırlayan:", 7, bold=True),
             P(str(d.hazirlayan) if d.hazirlayan else str(d.olusturan), 7),
             P("Tarih:", 7, bold=True),
             P(d.tarih, 7),
-            P("Imza / Onay:", 7, bold=True),
+            P("İmza / Onay:", 7, bold=True),
             P("", 7),
         ]],
         colWidths=[uw*0.18, uw*0.22, uw*0.08, uw*0.14, uw*0.15, uw*0.23]
@@ -648,7 +648,7 @@ def build_photo_story(foto_dir, hazirlayan, photo_paths=None):
     story  = []
     uw     = W - 2 * MARGIN
 
-    story.append(section_header("G   SAHA FOTOGRAFLARI"))
+    story.append(section_header("   SAHA FOTOĞRAFLARI"))
 
     story.append(SP(3))
 
@@ -665,7 +665,7 @@ def build_photo_story(foto_dir, hazirlayan, photo_paths=None):
 
     if not photos:
         story.append(Paragraph(
-            "Fotograf bulunamadi. Supabase'e fotograf yuklediginden emin olun.",
+            "Fotoğraf bulunamadı. Supabase'e fotoğraf yüklediğinden emin olun.",
             ParagraphStyle('nophoto', fontName=BASE_ITAL, fontSize=8,
                            textColor=colors.gray, alignment=TA_CENTER, leading=13)
         ))
@@ -673,7 +673,7 @@ def build_photo_story(foto_dir, hazirlayan, photo_paths=None):
         for ri in range(2):
             row = []
             for ci in range(3):
-                row.append(P(f"Fotograf {ri*3+ci+1}", 8, color=colors.lightgrey, align=TA_CENTER))
+                row.append(P(f"Fotoğraf {ri*3+ci+1}", 8, color=colors.lightgrey, align=TA_CENTER))
             rows.append(row)
         ph = Table(rows, colWidths=[img_w]*3, rowHeights=[img_h]*2)
         ph.setStyle(TableStyle([
@@ -715,7 +715,7 @@ def build_photo_story(foto_dir, hazirlayan, photo_paths=None):
 
     story.append(SP(4))
     story.append(Table(
-        [[P(f"Raporu Hazirlayan:  {hazirlayan}", 8, bold=True, color=NAVY, align=TA_RIGHT)]],
+        [[P(f"Raporu Hazırlayan:  {hazirlayan}", 8, bold=True, color=NAVY, align=TA_RIGHT)]],
         colWidths=[uw]
     ))
     return story
@@ -767,12 +767,12 @@ def generate_pdf(excel_path: str, foto_dir: str = None, output_path: str = None,
 
     story = []
 
-    story.append(section_header("A   PERSONEL DURUMU"))
+    story.append(section_header("   PERSONEL DURUMU"))
     story.append(SP(1))
     story.append(build_personnel_table(d))
     story.append(SP(3))
 
-    story.append(section_header("B   IS MAKINALARI VE EKIPMAN"))
+    story.append(section_header("   İŞ MAKİNALARI VE EKİPMAN"))
     story.append(SP(1))
     story.append(build_equipment_table(d))
     story.append(SP(3))
@@ -780,12 +780,12 @@ def generate_pdf(excel_path: str, foto_dir: str = None, output_path: str = None,
     story.append(build_today_tomorrow(d))
     story.append(SP(3))
 
-    story.append(section_header("E   BUGUN ILERLEYEN IS KALEMLERI"))
+    story.append(section_header("   BUGÜN İLERLEYEN İŞ KALEMLERİ"))
     story.append(SP(1))
     story.append(build_progress_table(d))
     story.append(SP(3))
 
-    story.append(section_header("F   NOTLAR / ISG / OLAGANDISI OLAYLAR"))
+    story.append(section_header("   NOTLAR / İSG / OLAĞANDIŞI OLAYLAR"))
     story.append(SP(1))
     story.append(build_notes_block(d))
     story.append(SP(3))

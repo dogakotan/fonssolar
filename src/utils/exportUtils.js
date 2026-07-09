@@ -13,7 +13,7 @@ const BRAND = {
   border:    [226, 232, 240],  // #E2E8F0
 }
 
-const PERIYOT_LABEL = { gunluk: 'Günlük', haftalık: 'Haftalık', aylik: 'Aylık' }
+const PERIYOT_LABEL = { gunluk: 'Günlük', haftalik: 'Haftalık', aylik: 'Aylık' }
 
 function nowLabel() {
   return new Date().toLocaleDateString('tr-TR', {
@@ -24,6 +24,19 @@ function nowLabel() {
 
 function fileDate() {
   return new Date().toLocaleDateString('tr-TR').replace(/\./g, '-')
+}
+
+// jsPDF'in yerleşik 'helvetica' fontu Türkçe ş/ğ/ı/İ karakterlerini render edemiyor
+// (WinAnsi/Latin-1 kodlamasında yoklar) — Unicode TTF (Roboto, SIL OFL 1.1) gömülüyor.
+// Ayrı dosyadan dinamik import ediliyor ki bu ~650KB'lık font, PDF üretilmeyen
+// sayfalarda ana bundle'a dahil olmasın (yalnızca tıklanınca yüklensin).
+async function registerUnicodeFont(doc) {
+  const { ROBOTO_REGULAR_BASE64 } = await import('../assets/fonts/robotoBase64.js')
+  doc.addFileToVFS('Roboto-Regular.ttf', ROBOTO_REGULAR_BASE64)
+  for (const style of ['normal', 'bold', 'italic', 'bolditalic']) {
+    doc.addFont('Roboto-Regular.ttf', 'Roboto', style)
+  }
+  doc.setFont('Roboto', 'normal')
 }
 
 // ─── EXCEL EXPORT ─────────────────────────────────────────────────────────────
@@ -87,15 +100,17 @@ export function exportToExcel(title, periyot, columns, rows) {
 }
 
 // ─── PDF EXPORT ───────────────────────────────────────────────────────────────
-export function exportToPdf(title, periyot, columns, rows, opts = {}) {
+export async function exportToPdf(title, periyot, columns, rows, opts = {}) {
   const {
     orientation = 'landscape',
     subtitle = '',
     projectName = '',
+    footerText = 'Fons Solar Enerji A.Ş. — Gizli ve Şirkete Özeldir',
   } = opts
 
   const periyotLabel = PERIYOT_LABEL[periyot] || periyot
   const doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' })
+  await registerUnicodeFont(doc)
   const W = doc.internal.pageSize.getWidth()
 
   // ── Üst başlık bandı ────────────────────────────────────────────────────
@@ -103,13 +118,13 @@ export function exportToPdf(title, periyot, columns, rows, opts = {}) {
   doc.rect(0, 0, W, 22, 'F')
 
   // "FONS SOLAR" sol
-  doc.setFont('helvetica', 'bold')
+  doc.setFont('Roboto', 'bold')
   doc.setFontSize(14)
   doc.setTextColor(...BRAND.white)
   doc.text('FONS SOLAR', 14, 14)
 
   // Tarih sağ
-  doc.setFont('helvetica', 'normal')
+  doc.setFont('Roboto', 'normal')
   doc.setFontSize(8)
   doc.text(nowLabel(), W - 14, 14, { align: 'right' })
 
@@ -117,21 +132,21 @@ export function exportToPdf(title, periyot, columns, rows, opts = {}) {
   doc.setFillColor(...BRAND.secondary)
   doc.rect(0, 22, W, 11, 'F')
 
-  doc.setFont('helvetica', 'bold')
+  doc.setFont('Roboto', 'bold')
   doc.setFontSize(10)
   doc.setTextColor(...BRAND.white)
   doc.text(`${title}`, 14, 29.5)
 
   // Sağ: periyot + proje adı
   const metaRight = [periyotLabel, projectName].filter(Boolean).join(' | ')
-  doc.setFont('helvetica', 'normal')
+  doc.setFont('Roboto', 'normal')
   doc.setFontSize(8)
   doc.text(metaRight, W - 14, 29.5, { align: 'right' })
 
   // ── Opsiyonel alt başlık ───────────────────────────────────────────────
   let startY = 38
   if (subtitle) {
-    doc.setFont('helvetica', 'italic')
+    doc.setFont('Roboto', 'italic')
     doc.setFontSize(8)
     doc.setTextColor(...BRAND.muted)
     doc.text(subtitle, 14, 36)
@@ -144,6 +159,7 @@ export function exportToPdf(title, periyot, columns, rows, opts = {}) {
     head: [columns],
     body: rows,
     styles: {
+      font: 'Roboto',
       fontSize: 8,
       cellPadding: { top: 3, right: 4, bottom: 3, left: 4 },
       textColor: BRAND.dark,
@@ -151,6 +167,7 @@ export function exportToPdf(title, periyot, columns, rows, opts = {}) {
       lineWidth: 0.1,
     },
     headStyles: {
+      font: 'Roboto',
       fillColor: BRAND.primary,
       textColor: BRAND.white,
       fontStyle: 'bold',
@@ -173,10 +190,10 @@ export function exportToPdf(title, periyot, columns, rows, opts = {}) {
       doc.line(14, pageH - 10, pageW - 14, pageH - 10)
 
       // Sol: şirket adı
-      doc.setFont('helvetica', 'normal')
+      doc.setFont('Roboto', 'normal')
       doc.setFontSize(7)
       doc.setTextColor(...BRAND.muted)
-      doc.text('Fons Solar Enerji A.Ş. — Gizli ve Şirkete Özeldir', 14, pageH - 6)
+      doc.text(footerText, 14, pageH - 6)
 
       // Sağ: sayfa numarası
       const pageNum = `Sayfa ${data.pageNumber}`
@@ -200,9 +217,10 @@ export function exportToPdf(title, periyot, columns, rows, opts = {}) {
  *  • İş Paketleri tam listesi
  *  • Her sayfada footer
  */
-export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = [], personelRaporu = null, opts = {}) {
+export async function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = [], personelRaporu = null, opts = {}) {
   const { selectedDate = null } = opts
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  await registerUnicodeFont(doc)
   const W = doc.internal.pageSize.getWidth()   // 210 mm
 
   // ── Tarih etiketi ────────────────────────────────────────────────────────────
@@ -219,7 +237,7 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
     doc.setDrawColor(...BRAND.border)
     doc.setLineWidth(0.3)
     doc.line(14, pH - 10, W - 14, pH - 10)
-    doc.setFont('helvetica', 'normal')
+    doc.setFont('Roboto', 'normal')
     doc.setFontSize(7)
     doc.setTextColor(...BRAND.muted)
     doc.text('Fons Solar Enerji A.Ş. — Gizli ve Şirkete Özeldir', 14, pH - 6)
@@ -231,11 +249,11 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
   function sectionTitle(y, letter, text) {
     doc.setFillColor(...BRAND.primary)
     doc.roundedRect(14, y, 6, 6, 1, 1, 'F')
-    doc.setFont('helvetica', 'bold')
+    doc.setFont('Roboto', 'bold')
     doc.setFontSize(8)
     doc.setTextColor(...BRAND.white)
     doc.text(letter, 17, y + 4.5, { align: 'center' })
-    doc.setFont('helvetica', 'bold')
+    doc.setFont('Roboto', 'bold')
     doc.setFontSize(9)
     doc.setTextColor(...BRAND.dark)
     doc.text(text, 22, y + 4.5)
@@ -249,22 +267,22 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
   // Header bandı (mavi)
   doc.setFillColor(...BRAND.primary)
   doc.rect(0, 0, W, 22, 'F')
-  doc.setFont('helvetica', 'bold')
+  doc.setFont('Roboto', 'bold')
   doc.setFontSize(14)
   doc.setTextColor(...BRAND.white)
   doc.text('FONS SOLAR', 14, 14)
-  doc.setFont('helvetica', 'normal')
+  doc.setFont('Roboto', 'normal')
   doc.setFontSize(8)
   doc.text(rapTarih, W - 14, 14, { align: 'right' })
 
   // Alt bant (yeşil)
   doc.setFillColor(...BRAND.secondary)
   doc.rect(0, 22, W, 11, 'F')
-  doc.setFont('helvetica', 'bold')
+  doc.setFont('Roboto', 'bold')
   doc.setFontSize(10)
   doc.setTextColor(...BRAND.white)
   doc.text(projAd, 14, 29.5)
-  doc.setFont('helvetica', 'normal')
+  doc.setFont('Roboto', 'normal')
   doc.setFontSize(8)
   const rightMeta = ['Günlük Raporu', kapsite].filter(Boolean).join(' — ')
   doc.text(rightMeta, W - 14, 29.5, { align: 'right' })
@@ -292,11 +310,11 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
     doc.setDrawColor(...BRAND.border)
     doc.setLineWidth(0.2)
     doc.roundedRect(x, y, bw, 18, 2, 2, 'S')
-    doc.setFont('helvetica', 'normal')
+    doc.setFont('Roboto', 'normal')
     doc.setFontSize(7)
     doc.setTextColor(...BRAND.muted)
     doc.text(k.label, x + bw / 2, y + 6, { align: 'center' })
-    doc.setFont('helvetica', 'bold')
+    doc.setFont('Roboto', 'bold')
     doc.setFontSize(11)
     doc.setTextColor(...BRAND.primary)
     doc.text(k.value, x + bw / 2, y + 14, { align: 'center' })
@@ -335,7 +353,7 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
 
     autoTable(doc, {
       startY: y, head: persHead, body: persBody,
-      styles: { fontSize: 8, cellPadding: { top: 2.5, right: 3, bottom: 2.5, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+      styles: { font: 'Roboto', fontSize: 8, cellPadding: { top: 2.5, right: 3, bottom: 2.5, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
       headStyles: { fillColor: BRAND.primary, textColor: BRAND.white, fontStyle: 'bold' },
       alternateRowStyles: { fillColor: BRAND.lightBg },
       columnStyles: { 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center' }, 6: { halign: 'center', fontStyle: 'bold' } },
@@ -354,9 +372,9 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
         doc.roundedRect(mx, y, mw, 13, 1.5, 1.5, 'F')
         doc.setDrawColor(...BRAND.border); doc.setLineWidth(0.1)
         doc.roundedRect(mx, y, mw, 13, 1.5, 1.5, 'S')
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(...BRAND.muted)
+        doc.setFont('Roboto', 'normal'); doc.setFontSize(7); doc.setTextColor(...BRAND.muted)
         doc.text(m.label, mx + mw/2, y + 5, { align: 'center' })
-        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...BRAND.secondary)
+        doc.setFont('Roboto', 'bold'); doc.setFontSize(11); doc.setTextColor(...BRAND.secondary)
         doc.text(fmt0(m.val), mx + mw/2, y + 11, { align: 'center' })
       })
       y += 18
@@ -383,7 +401,7 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
         startY: y,
         head: [['#', 'İş Kalemi', 'Kategori', 'İlerleme']],
         body: bugunRows,
-        styles: { fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+        styles: { font: 'Roboto', fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
         headStyles: { fillColor: BRAND.secondary, textColor: BRAND.white, fontStyle: 'bold' },
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { cellWidth: 20, halign: 'center' } },
         alternateRowStyles: { fillColor: BRAND.lightBg },
@@ -401,7 +419,7 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
         startY: y,
         head: [['#', 'İş Kalemi', 'Kategori', 'İlerleme']],
         body: yarinRows,
-        styles: { fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+        styles: { font: 'Roboto', fontSize: 8, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
         headStyles: { fillColor: [245, 158, 11], textColor: BRAND.white, fontStyle: 'bold' },
         columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 3: { cellWidth: 20, halign: 'center' } },
         alternateRowStyles: { fillColor: BRAND.lightBg },
@@ -437,7 +455,7 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
       startY: y,
       head: [['Kategori', 'İş Kalemi', 'Miktar', 'Birim', 'Günlük', 'Toplam', '%']],
       body: rows,
-      styles: { fontSize: 7.5, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+      styles: { font: 'Roboto', fontSize: 7.5, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
       headStyles: { fillColor: BRAND.primary, textColor: BRAND.white, fontStyle: 'bold', fontSize: 8 },
       columnStyles: {
         0: { cellWidth: 22 },
@@ -475,7 +493,7 @@ export function exportGunlukRaporPdf(project, workPackages = [], ilerlemeData = 
       startY: y,
       head: [['#', 'İş Paketi', 'Kategori', 'Durum', 'Bitiş Tarihi', 'İlerleme']],
       body: rows,
-      styles: { fontSize: 7.5, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+      styles: { font: 'Roboto', fontSize: 7.5, cellPadding: { top: 2, right: 3, bottom: 2, left: 3 }, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
       headStyles: { fillColor: BRAND.primary, textColor: BRAND.white, fontStyle: 'bold', fontSize: 8 },
       columnStyles: {
         0: { cellWidth: 10, halign: 'center' },
@@ -649,6 +667,263 @@ export function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData 
   const tarihSlug  = (selectedDate ? new Date(selectedDate) : new Date()).toLocaleDateString('tr-TR').replace(/\./g, '-')
   const safeName   = projAd.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_ÇçĞğİıÖöŞşÜü]/g, '')
   XLSX.writeFile(wb, `FonsSolar_${safeName}_GunlukRapor_${tarihSlug}.xlsx`)
+}
+
+// ─── DÖNEM (HAFTALIK/AYLIK) İLERLEME RAPORU — MÜŞTERİ EXPORT'U ───────────────
+// Günlük rapor formatındaki gibi bölümlü (personel/ekipman/iş kalemi/notlar/
+// fotoğraf) ama dönem toplamı olarak. Maliyet/tedarik/talep/fatura ve kişi adı
+// hiç göstermez — sadece buildPeriodReportData()'nın topladığı veriyi render eder.
+async function fetchImageAsDataUrl(publicUrl) {
+  try {
+    const res = await fetch(publicUrl)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise(resolve => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
+export async function exportPeriodReportPdf(project, periodLabel, periodRangeLabel, data, opts = {}) {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  await registerUnicodeFont(doc)
+  const W = doc.internal.pageSize.getWidth()
+  const projAd = project?.name || opts.projectName || 'GES PROJESİ'
+  const kapsite = project?.capacityKwp ? `${Number(project.capacityKwp).toLocaleString('tr-TR')} kWp` : ''
+
+  function drawFooter() {
+    const pH = doc.internal.pageSize.getHeight()
+    doc.setDrawColor(...BRAND.border)
+    doc.setLineWidth(0.3)
+    doc.line(14, pH - 10, W - 14, pH - 10)
+    doc.setFont('Roboto', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(...BRAND.muted)
+    doc.text('Fons Solar Enerji A.Ş.', 14, pH - 6)
+    doc.text(`Sayfa ${doc.internal.getCurrentPageInfo().pageNumber}`, W - 14, pH - 6, { align: 'right' })
+  }
+
+  function sectionTitle(y, letter, text) {
+    doc.setFillColor(...BRAND.primary)
+    doc.roundedRect(14, y, 6, 6, 1, 1, 'F')
+    doc.setFont('Roboto', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...BRAND.white)
+    doc.text(letter, 17, y + 4.5, { align: 'center' })
+    doc.setFont('Roboto', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(...BRAND.dark)
+    doc.text(text, 22, y + 4.5)
+    return y + 10
+  }
+
+  function ensureSpace(y, needed) {
+    const remaining = doc.internal.pageSize.getHeight() - y - 20
+    if (remaining < needed) { doc.addPage(); return 20 }
+    return y
+  }
+
+  doc.setFillColor(...BRAND.primary)
+  doc.rect(0, 0, W, 22, 'F')
+  doc.setFont('Roboto', 'bold')
+  doc.setFontSize(14)
+  doc.setTextColor(...BRAND.white)
+  doc.text('FONS SOLAR', 14, 14)
+  doc.setFont('Roboto', 'normal')
+  doc.setFontSize(8)
+  doc.text(nowLabel(), W - 14, 14, { align: 'right' })
+
+  doc.setFillColor(...BRAND.secondary)
+  doc.rect(0, 22, W, 11, 'F')
+  doc.setFont('Roboto', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(...BRAND.white)
+  doc.text(`${periodLabel} İlerleme Raporu — ${projAd}`, 14, 29.5)
+  doc.setFont('Roboto', 'normal')
+  doc.setFontSize(8)
+  doc.text([kapsite, periodRangeLabel].filter(Boolean).join(' | '), W - 14, 29.5, { align: 'right' })
+
+  let y = 37
+
+  y = sectionTitle(y, 'A', 'PERSONEL DURUMU (DÖNEM TOPLAMI)')
+  const DEPT_LABELS = { idari: 'İDARİ', mekanik: 'MEKANİK', elektrik: 'ELEKTRİK', yevmiyeci: 'YEVMİYECİ', diger: 'DİĞER' }
+  const persRows = Object.entries(DEPT_LABELS).map(([key, label]) => {
+    const d = data.personnel?.[key] || { muhendis: 0, usta: 0, isci: 0 }
+    const total = d.muhendis + d.usta + d.isci
+    return [label, String(d.muhendis), String(d.usta), String(d.isci), String(total)]
+  })
+  autoTable(doc, {
+    startY: y,
+    head: [['Departman', 'Mühendis', 'Usta', 'İşçi', 'Toplam']],
+    body: persRows,
+    styles: { font: 'Roboto', fontSize: 8, cellPadding: 2.5, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+    headStyles: { font: 'Roboto', fillColor: BRAND.primary, textColor: BRAND.white, fontStyle: 'bold' },
+    columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center', fontStyle: 'bold' } },
+    alternateRowStyles: { fillColor: BRAND.lightBg },
+    margin: { left: 14, right: 14 },
+    didDrawPage: drawFooter,
+  })
+  y = doc.lastAutoTable.finalY + 6
+
+  y = ensureSpace(y, 30)
+  y = sectionTitle(y, 'B', 'İŞ MAKİNALARI VE EKİPMAN (DÖNEM TOPLAM ADET-GÜN)')
+  autoTable(doc, {
+    startY: y,
+    head: [['Ekipman', 'Toplam Adet-Gün']],
+    body: data.equipment?.length ? data.equipment.map(e => [e.type, String(e.total)]) : [['—', 'Dönemde aktif ekipman bulunmamaktadır.']],
+    styles: { font: 'Roboto', fontSize: 8, cellPadding: 2.5, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+    headStyles: { font: 'Roboto', fillColor: BRAND.primary, textColor: BRAND.white, fontStyle: 'bold' },
+    columnStyles: { 1: { halign: 'center' } },
+    alternateRowStyles: { fillColor: BRAND.lightBg },
+    margin: { left: 14, right: 14 },
+    didDrawPage: drawFooter,
+  })
+  y = doc.lastAutoTable.finalY + 6
+
+  y = ensureSpace(y, 30)
+  y = sectionTitle(y, 'C', 'DÖNEMDE TAMAMLANAN İŞLER')
+  autoTable(doc, {
+    startY: y,
+    head: [['#', 'İş Kalemi']],
+    body: data.completedTasks?.length ? data.completedTasks.map((t, i) => [String(i + 1), t]) : [['—', 'Dönemde tamamlanan iş kaydı bulunmamaktadır.']],
+    styles: { font: 'Roboto', fontSize: 8, cellPadding: 2.5, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+    headStyles: { font: 'Roboto', fillColor: BRAND.secondary, textColor: BRAND.white, fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 10, halign: 'center' } },
+    alternateRowStyles: { fillColor: BRAND.lightBg },
+    margin: { left: 14, right: 14 },
+    didDrawPage: drawFooter,
+  })
+  y = doc.lastAutoTable.finalY + 6
+
+  y = ensureSpace(y, 40)
+  y = sectionTitle(y, 'D', 'İLERLEME DURUMU (DÖNEM BAŞI → DÖNEM SONU)')
+  const fmt = v => Number(v || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
+  autoTable(doc, {
+    startY: y,
+    head: [['İş Kalemi', 'Birim', 'Hedef', 'Dönem Başı', 'Dönem İçi', 'Dönem Sonu', '%']],
+    body: data.progressItems?.length
+      ? data.progressItems.map(it => [it.name, it.unit || '', fmt(it.target), fmt(it.before), fmt(it.added), fmt(it.after), `%${it.pct}`])
+      : [['—', '', '', '', '', '', '']],
+    styles: { font: 'Roboto', fontSize: 7.5, cellPadding: 2, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+    headStyles: { font: 'Roboto', fillColor: BRAND.primary, textColor: BRAND.white, fontStyle: 'bold', fontSize: 8 },
+    columnStyles: {
+      2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' },
+      6: { halign: 'center', fontStyle: 'bold' },
+    },
+    alternateRowStyles: { fillColor: BRAND.lightBg },
+    margin: { left: 14, right: 14 },
+    didDrawPage: drawFooter,
+  })
+  y = doc.lastAutoTable.finalY + 6
+
+  y = ensureSpace(y, 30)
+  y = sectionTitle(y, 'E', 'NOTLAR / İSG / OLAĞANDIŞI OLAYLAR')
+  autoTable(doc, {
+    startY: y,
+    head: [['Tarih', 'Tip', 'Not']],
+    body: data.notes?.length
+      ? data.notes.map(n => [n.date ? new Date(n.date).toLocaleDateString('tr-TR') : '—', n.type, n.text])
+      : [['—', '—', 'Dönemde kayda değer bir not bulunmamaktadır.']],
+    styles: { font: 'Roboto', fontSize: 8, cellPadding: 2.5, textColor: BRAND.dark, lineColor: BRAND.border, lineWidth: 0.1 },
+    headStyles: { font: 'Roboto', fillColor: BRAND.primary, textColor: BRAND.white, fontStyle: 'bold' },
+    columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 32 } },
+    alternateRowStyles: { fillColor: BRAND.lightBg },
+    margin: { left: 14, right: 14 },
+    didDrawPage: drawFooter,
+  })
+
+  if (data.photos?.length) {
+    doc.addPage()
+    y = 20
+    y = sectionTitle(y, 'F', 'SAHA FOTOĞRAFLARI')
+    y += 4
+    const uw = W - 28
+    const imgW = (uw - 2 * 3) / 3
+    const imgH = imgW * 0.72
+    let x = 14
+    for (let i = 0; i < data.photos.length; i++) {
+      const url = `https://bshhgvdzemgfijkzhcrf.supabase.co/storage/v1/object/public/saha-fotolari/${data.photos[i]}`
+      const dataUrl = await fetchImageAsDataUrl(url)
+      if (dataUrl) {
+        try { doc.addImage(dataUrl, 'JPEG', x, y, imgW, imgH) } catch { /* bozuk goruntu, atla */ }
+      }
+      doc.setDrawColor(...BRAND.border)
+      doc.rect(x, y, imgW, imgH)
+      if ((i + 1) % 3 === 0) { x = 14; y += imgH + 3 } else { x += imgW + 3 }
+    }
+  }
+
+  drawFooter()
+  const safeName = projAd.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_ÇçĞğİıÖöŞşÜü]/g, '')
+  doc.save(`FonsSolar_${safeName}_${periodLabel}IlerlemeRaporu_${fileDate()}.pdf`)
+}
+
+export function exportPeriodReportExcel(project, periodLabel, periodRangeLabel, data) {
+  const wb = XLSX.utils.book_new()
+  const projAd = project?.name || 'GES PROJESİ'
+  const kapsite = project?.capacityKwp ? `${Number(project.capacityKwp).toLocaleString('tr-TR')} kWp` : ''
+
+  function buildSheet(title, colNames, rows) {
+    const aoa = [
+      ['FONS SOLAR'],
+      [`${projAd}${kapsite ? ' — ' + kapsite : ''}`],
+      [`${title} — ${periodLabel} (${periodRangeLabel})`],
+      [],
+      colNames,
+      ...rows,
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    const colCount = colNames.length
+    const widths = colNames.map(c => String(c).length)
+    rows.forEach(row => row.forEach((cell, i) => { const l = String(cell ?? '').length; if (l > (widths[i] || 0)) widths[i] = l }))
+    ws['!cols'] = widths.map(w => ({ wch: Math.max(w + 4, 12) }))
+    if (colCount > 1) {
+      ws['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
+      ]
+    }
+    const cr = (r, c) => XLSX.utils.encode_cell({ r, c })
+    const STYL = {
+      H1: { font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '185FA5' } } },
+      H2: { font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0F6E56' } } },
+      META: { font: { sz: 9, color: { rgb: '64748B' } }, fill: { fgColor: { rgb: 'F5F7FA' } } },
+      COL: { font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } },
+    }
+    if (ws[cr(0,0)]) ws[cr(0,0)].s = STYL.H1
+    if (ws[cr(1,0)]) ws[cr(1,0)].s = STYL.H2
+    if (ws[cr(2,0)]) ws[cr(2,0)].s = STYL.META
+    colNames.forEach((_, i) => { const ref = cr(4, i); if (ws[ref]) ws[ref].s = STYL.COL })
+    return ws
+  }
+
+  const DEPT_LABELS = { idari: 'İdari', mekanik: 'Mekanik', elektrik: 'Elektrik', yevmiyeci: 'Yevmiyeci', diger: 'Diğer' }
+  const persRows = Object.entries(DEPT_LABELS).map(([key, label]) => {
+    const d = data.personnel?.[key] || { muhendis: 0, usta: 0, isci: 0 }
+    return [label, d.muhendis, d.usta, d.isci, d.muhendis + d.usta + d.isci]
+  })
+  XLSX.utils.book_append_sheet(wb, buildSheet('Personel Durumu', ['Departman', 'Mühendis', 'Usta', 'İşçi', 'Toplam'], persRows), 'Personel')
+
+  const eqRows = (data.equipment || []).map(e => [e.type, e.total])
+  XLSX.utils.book_append_sheet(wb, buildSheet('Ekipman (Dönem Toplamı)', ['Ekipman', 'Toplam Adet-Gün'], eqRows), 'Ekipman')
+
+  const taskRows = (data.completedTasks || []).map((t, i) => [i + 1, t])
+  XLSX.utils.book_append_sheet(wb, buildSheet('Dönemde Tamamlanan İşler', ['#', 'İş Kalemi'], taskRows), 'Tamamlanan İşler')
+
+  const progRows = (data.progressItems || []).map(it => [it.name, it.unit || '', it.target, it.before, it.added, it.after, it.pct])
+  XLSX.utils.book_append_sheet(wb, buildSheet('İlerleme Durumu', ['İş Kalemi', 'Birim', 'Hedef', 'Dönem Başı', 'Dönem İçi', 'Dönem Sonu', 'İlerleme %'], progRows), 'İlerleme')
+
+  const noteRows = (data.notes || []).map(n => [n.date ? new Date(n.date).toLocaleDateString('tr-TR') : '—', n.type, n.text])
+  XLSX.utils.book_append_sheet(wb, buildSheet('Notlar / İSG', ['Tarih', 'Tip', 'Not'], noteRows), 'Notlar')
+
+  const safeName = projAd.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_ÇçĞğİıÖöŞşÜü]/g, '')
+  XLSX.writeFile(wb, `FonsSolar_${safeName}_${periodLabel}IlerlemeRaporu_${fileDate()}.xlsx`)
 }
 
 // ─── TARİH FİLTRESİ ──────────────────────────────────────────────────────────

@@ -65,18 +65,25 @@ sorgularında) yavaşlama görülürse ilk bakılacak yer burası — gerekirse
 
 ---
 
-## 4. "Harcanan" (actual) tanımı iki fonksiyonda farklı
+## 4. "Harcanan" (actual) tanımı iki fonksiyonda farklı — ÇÖZÜLDÜ (2026-07-09)
 
-**Tespit:** `get_dashboard_summary`'de `spent_amount` = `status IN
+**Tespit (geçmiş durum):** `get_dashboard_summary`'de `spent_amount` = `status IN
 ('ödendi','yönetici_onayında','muhasebe_onayında')` (onay sürecindeki
 faturalar da "harcanan" sayılıyor) — `get_finans_overview`/`get_finans_overview_all`'da
 `totalActual`/`kpi.totalActual` = `status IN ('onaylandı','ödendi')` (yalnızca
 tamamen onaylanmış/ödenmiş). Aynı proje için "Genel Bakış" ile "Finans"
-ekranları farklı bir "harcanan tutar" gösterebilir.
+ekranları farklı bir "harcanan tutar" gösterebiliyordu.
 
-**Karar:** İş kararı bekliyor — hangi tanım doğru kabul edilecek. Netleşince
-iki fonksiyon TEK migration'la hizalanacak. Şimdilik ikisinin de mevcut
-mantığına dokunulmadı (Dilim 2 kapsamı dışı, kullanıcı talimatıyla).
+**Karar (FAZ1-5 iş akışları görevi FAZ3'ünde alındı):** Kanonik tanım —
+gerçekleşen maliyet = `invoices.status IN ('onaylandı','ödendi')`, tutar =
+`total_amount` (KDV dahil; `get_finans_overview` ayrıca kendi içinde `amount`/
+`total_amount` taban tutarsızlığı da taşıyordu, o da hizalandı).
+`fix_dashboard_summary_spent_amount` + `align_finans_overview_total_amount`
+migration'larıyla uygulandı. Ayrıca `cost_allocations` tablosu artık
+`trg_invoice_cost_allocation` trigger'ıyla otomatik doluyor (onaylandı/ödendi
+→ upsert, reddedildi → silinir) — `project_cost_summary` view'ı bu sayede
+canlandı. Doğrulama: iki test projesinde de üç kaynak (`dashboard.spent_amount`,
+`sum(cost_allocations.amount)`, `get_finans_overview.totalActual`) birebir eşit.
 
 ---
 
@@ -220,3 +227,40 @@ bağlandı — DELETE gürültüsü bu ekranlarda kapatılmış durumda. Yalnız
 TabSatinAlma_all, DailyReportList Tüm Projeler modu) filtre kullanamıyor
 (tek bir project_id yok) — bu ekranlarda çapraz-proje DELETE'leri hâlâ
 gereksiz ama zararsız bir refetch tetikleyecek, kabul edilebilir.
+
+---
+
+## 9. `user_has_project_access()` — `profiles.project_id` eşleşmesini kontrol etmiyor — ÇÖZÜLDÜ (2026-07-09)
+
+**Tespit:** FAZ5 sırasında `vw_delayed_tasks`/`vw_weekly_progress`/`vw_monthly_progress`/
+`vw_progress_timeline`'a `security_invoker=on` verilirken (madde altında, anon'un
+bu view'ları kimliksiz okuyabildiği ciddi bir açık kapatılırken) ortaya çıktı:
+`project_tasks_select` policy'si `user_has_project_access(project_id)` kullanıyor,
+ama bu fonksiyon SADECE `user_project_access` tablosunu VEYA `get_my_role()='admin'`'i
+kontrol ediyor — `profiles.project_id` eşleşmesini hiç kontrol etmiyor (aynı ailedeki
+`projects_user_access` policy'si ve FAZ1'in `has_project_access()`'i bunu kontrol
+ediyor, bu fonksiyon etmiyor). Sonuç: `profiles.project_id` üzerinden projesine
+bağlı bir santiye_sefi, `project_tasks`'ı (veya onu kullanan bir view'ı) DOĞRUDAN
+sorgularsa 0 satır alır — kendi projesinin görevlerini bile göremez.
+
+**Düzeltme yanlıştı — gerçek etki tahmin edilenden büyük çıktı.** İlk tespitte
+"hiçbir frontend kodu doğrudan sorgulamıyor" denmişti, ama bu YANLIŞ: 10 dosya
+(`TabIsPlan.jsx`, `DailyReportForm.jsx`, `TabProjeYonetimi.jsx`, wizard adımları
+(`Adim2IsKalemleri`, `Adim3IlerlemeBilgileri`, `Adim4Riskler`), `ProjeDetay.jsx`,
+`TabGenel.jsx`, `DailyReportList.jsx` vb.) `project_tasks`/`progress_items`/
+`project_risks`'i **doğrudan** `supabase.from()` ile sorguluyor. `user_project_access`
+tablosu boş olduğu için bu 3 tablonun SELECT policy'si pratikte **sadece admin'e**
+izin veriyordu — `get_project_scope`'un kendi `p_project_id = v_own_project` yedek
+kontrolü sayesinde RPC'ler (get_dashboard_summary, get_finans_overview,
+get_delayed_tasks_scoped vb.) korunmuştu, ama bu 3 tabloyu doğrudan sorgulayan
+yukarıdaki dosyalarda admin-olmayan roller (santiye_sefi dahil) teorik olarak
+sıfır satır alıyor olmalıydı.
+
+**Çözüldü:** `fix_user_has_project_access_delegate_canonical` migration'ı —
+fonksiyon artık `has_project_access()`'e (FAZ1'in kanonik tanımı: is_manager OR
+cross_project OR profiles.project_id OR user_project_access) delege ediyor, tek
+satır. Doğrulama: İzmir santiye_sefi kimliğiyle `project_tasks`/`progress_items`/
+`project_risks`'te kendi projesi için önceden 0 iken artık sırasıyla 35/16/64 satır
+dönüyor; Kayseri (çapraz proje) hâlâ 0; admin hâlâ her iki projeyi de görüyor
+(regresyon yok). FAZ1'in "proje erişimi tek merkezden `has_project_access`" ilkesi
+artık gerçekten tamamlandı.

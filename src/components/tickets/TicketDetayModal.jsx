@@ -58,6 +58,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
   const [loadingTicket, setLoadingTicket]   = useState(false)
   const [notifications, setNotifications]  = useState([])
   const [history, setHistory]              = useState([])
+  const [attachments, setAttachments]      = useState([])
   const [commentText, setCommentText]      = useState('')
   const [updating, setUpdating]            = useState(false)
   const [error, setError]                  = useState(null)
@@ -69,6 +70,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
     fetchTicket()
     fetchNotifications()
     fetchHistory()
+    fetchAttachments()
   }, [initial?.id])
 
   async function fetchTicket() {
@@ -110,6 +112,25 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
       .eq('ticket_id', initial.id)
       .order('created_at', { ascending: true })
     setHistory(data || [])
+  }
+
+  async function fetchAttachments() {
+    const { data } = await supabase
+      .from('ticket_attachments')
+      .select('*')
+      .eq('ticket_id', initial.id)
+      .order('created_at', { ascending: true })
+    setAttachments(data || [])
+  }
+
+  function attachmentUrl(path) {
+    return supabase.storage.from('ticket-ekleri').getPublicUrl(path).data.publicUrl
+  }
+
+  async function deleteAttachment(att) {
+    await supabase.storage.from('ticket-ekleri').remove([att.storage_path])
+    await supabase.from('ticket_attachments').delete().eq('id', att.id)
+    setAttachments(prev => prev.filter(a => a.id !== att.id))
   }
 
   function initiateAction(type) {
@@ -215,6 +236,41 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                 {ticket.description || '—'}
               </p>
             </div>
+
+            {/* Ekler */}
+            {attachments.length > 0 && (
+              <div>
+                <p style={{ fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 8px' }}>
+                  Ekler ({attachments.length})
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {attachments.map(att => {
+                    const isImage = /\.(jpe?g|png|gif|webp)$/i.test(att.storage_path)
+                    const canDelete = user?.id === att.uploaded_by
+                    return (
+                      <div key={att.id} style={{ position: 'relative' }}>
+                        <a href={attachmentUrl(att.storage_path)} target="_blank" rel="noreferrer">
+                          {isImage ? (
+                            <img src={attachmentUrl(att.storage_path)} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid #E5E7EB' }} />
+                          ) : (
+                            <div style={{ width: 72, height: 72, borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
+                              📄
+                            </div>
+                          )}
+                        </a>
+                        {canDelete && (
+                          <button
+                            onClick={() => deleteAttachment(att)}
+                            title="Sil"
+                            style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: '#DC2626', color: '#fff', border: 'none', fontSize: 11, lineHeight: 1, cursor: 'pointer' }}
+                          >×</button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Bildirimler */}
             <div>
