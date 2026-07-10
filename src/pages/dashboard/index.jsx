@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase, signOut } from '../../lib/supabase'
+import { signOut } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useScope } from '../../context/ScopeContext'
 import Sidebar from '../../components/layouts/Sidebar'
@@ -11,6 +11,8 @@ import TabFinans from './components/TabFinans'
 import TabTickets from './components/TabTickets'
 import TabSantiyeSefi from './components/TabSantiyeSefi'
 import TabKullanicilar from './components/TabKullanicilar'
+import TabIsPlan from './components/TabIsPlan'
+import TabBildirimler from './components/TabBildirimler'
 import ProjeDetay from './components/ProjeDetay'
 import TabProjeYonetimi from './components/TabProjeYonetimi'
 import FloatingAgent from '../../components/agent/FloatingAgent'
@@ -29,12 +31,14 @@ const TABS = {
   'proje-ekle':     { title: 'Proje Yönetimi',    subtitle: 'Projeleri görüntüle, ekle ve düzenle' },
   'daily-report':    { title: 'Günlük Rapor Gir',  subtitle: 'Saha günlük raporu oluştur veya düzenle' },
   'rapor-listesi':   { title: 'Raporlarım',         subtitle: 'Geçmiş günlük raporlar' },
+  'is-plani':        { title: 'İş Planı',           subtitle: 'Proje iş programı ve görev takibi' },
+  bildirimler:       { title: 'Bildirimler',        subtitle: 'Tüm bildirimleriniz' },
 }
 
 const ROLE_TABS = {
-  muhasebe:          ['finans'],
-  satin_alma_uzmani: ['satin-alma'],
-  santiye_sefi:      ['genel', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets'],
+  muhasebe:          ['finans', 'bildirimler'],
+  satin_alma_uzmani: ['satin-alma', 'bildirimler'],
+  santiye_sefi:      ['genel', 'is-plani', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets', 'bildirimler'],
 }
 
 const ROLE_DEFAULT = {
@@ -57,20 +61,10 @@ function getHeaderInitials(name) {
   return name.split(/[\s@._-]+/).slice(0, 2).map(p => p[0]?.toUpperCase()).filter(Boolean).join('') || '?'
 }
 
-function projectIdLabel(projectId) {
-  if (!projectId || /^[0-9a-f-]{24,}$/i.test(String(projectId))) return ''
-  return String(projectId)
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
-}
-
 export default function Dashboard() {
   const { user, role, isAdmin, projectId, loading: authLoading, authError } = useAuth()
   const { projects: scopeProjects, showAllOption, scopeProjectId, setScopeProjectId } = useScope()
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
-  const [openTicketCount,     setOpenTicketCount]     = useState(0)
   const [activeTab,           setActiveTab]           = useState(() => {
     const saved = window.localStorage.getItem('dashboard-active-tab')
     return saved && TABS[saved] ? saved : 'genel'
@@ -80,47 +74,9 @@ export default function Dashboard() {
   const [reportViewKey, setReportViewKey] = useState(0)
   const [selectedProjectId,   setSelectedProjectId]   = useState(null)
   const [selectedProjectName, setSelectedProjectName] = useState('')
-  const [assignedProjectName, setAssignedProjectName] = useState('')
-  const [assignedProjectLoaded, setAssignedProjectLoaded] = useState(false)
   const [showProjectDetail,   setShowProjectDetail]   = useState(false)
   const [selectedDate,        setSelectedDate]        = useState(null)
   const navigate = useNavigate()
-
-  useEffect(() => {
-    let query = supabase
-      .from('tickets')
-      .select('id', { count: 'exact', head: true })
-      .in('status', ['gönderildi', 'açık', 'işlemde'])
-    if (role === 'santiye_sefi' && projectId) query = query.eq('project_id', projectId)
-    query
-      .then(({ count }) => setOpenTicketCount(count || 0))
-  }, [role, projectId])
-
-  useEffect(() => {
-    if (role !== 'santiye_sefi') return
-    if (!projectId) {
-      setAssignedProjectName('')
-      setAssignedProjectLoaded(true)
-      return
-    }
-    setAssignedProjectName('')
-    setAssignedProjectLoaded(false)
-    async function loadAssignedProjectName() {
-      try {
-        const { data } = await supabase
-          .from('projects')
-          .select('name')
-          .eq('id', projectId)
-          .maybeSingle()
-
-        setAssignedProjectName(data?.name || projectIdLabel(projectId))
-      } finally {
-        setAssignedProjectLoaded(true)
-      }
-    }
-
-    loadAssignedProjectName()
-  }, [role, projectId])
 
   // Kısıtlı roller → başlangıç sekmesi
   useEffect(() => {
@@ -202,12 +158,7 @@ export default function Dashboard() {
   }
 
   const showingDetail = activeTab === 'projeler' && showProjectDetail
-  const headerTitle = role === 'santiye_sefi' && activeTab === 'genel'
-    ? (assignedProjectName || (projectId && !assignedProjectLoaded ? 'Proje yükleniyor...' : 'Proje atanmadı'))
-    : showingDetail
-      ? selectedProjectName
-      : TABS[activeTab].title
-  const headerSubtitle = role === 'santiye_sefi' && activeTab === 'genel' ? 'Genel Bakış' : null
+  const headerTitle = showingDetail ? selectedProjectName : TABS[activeTab].title
 
   return (
     <div className="dashboard">
@@ -237,9 +188,6 @@ export default function Dashboard() {
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2>{headerTitle}</h2>
-            {headerSubtitle && (
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{headerSubtitle}</p>
-            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
             {showAllOption && (
@@ -260,33 +208,6 @@ export default function Dashboard() {
               </select>
             )}
             <NotificationBell onNavigate={handleTabChange} />
-            <button
-              onClick={() => handleTabChange('tickets')}
-              style={{
-                position: 'relative',
-                background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '50%',
-                width: 36, height: 36, display: 'flex', alignItems: 'center',
-                justifyContent: 'center', cursor: 'pointer', color: '#64748b', flexShrink: 0,
-                transition: 'border-color 0.15s, background 0.15s',
-              }}
-              title={`${openTicketCount} açık ticket`}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-              </svg>
-              {openTicketCount > 0 && (
-                <span style={{
-                  position: 'absolute', top: -3, right: -3,
-                  background: '#ef4444', color: '#fff', borderRadius: '50%',
-                  minWidth: 16, height: 16, fontSize: 9, fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  lineHeight: 1, padding: '0 3px',
-                }}>
-                  {openTicketCount > 99 ? '99+' : openTicketCount}
-                </span>
-              )}
-            </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }} className="desk-only">
               <div style={{
                 width: 36, height: 36, borderRadius: '50%',
@@ -324,6 +245,10 @@ export default function Dashboard() {
             onEditReport={(id) => openReportModal(id)}
           />
         )}
+        {activeTab === 'is-plani'     && role === 'santiye_sefi' && (
+          <TabIsPlan projectId={projectId} siteChiefView />
+        )}
+        {activeTab === 'bildirimler'  && <TabBildirimler onNavigate={handleTabChange} />}
         {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
         {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'     && showProjectDetail  && (

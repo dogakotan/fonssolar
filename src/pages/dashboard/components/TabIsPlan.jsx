@@ -134,6 +134,9 @@ function getEffectiveFilterDate(dateText, period) {
 }
 
 function deriveTaskStatusAt(task, pct, date) {
+  // Gerçek durum tamamlandı/iptal ise bu kesin kabul edilir — miktar tahmini asla ezmez
+  // (aksi halde hedefe tam ulaşmayan ama fiilen bitmiş bir görev "devam ediyor" görünür).
+  if (task.status === 'tamamlandi' || task.status === 'iptal') return task.status
   if (pct >= 100) return 'tamamlandi'
 
   const selected = new Date(`${date}T00:00:00`)
@@ -144,21 +147,14 @@ function deriveTaskStatusAt(task, pct, date) {
   return task.status || 'bekliyor'
 }
 
-function statusLabel(status) {
-  return STATUS_LABELS[status] || status?.replace(/_/g, ' ') || '-'
+function isTaskLate(task, today) {
+  if (!task.planned_end) return false
+  if (task.status === 'tamamlandi' || task.status === 'iptal') return false
+  return new Date(task.planned_end) < today
 }
 
-function pctFromProgressItems(items) {
-  const validItems = (items || []).filter(item => Number(item.target_qty || 0) > 0)
-  if (!validItems.length) return 0
-
-  const totalPct = validItems.reduce((sum, item) => {
-    const target = Number(item.target_qty || 0)
-    const done = Number(item.total_progress || 0)
-    return sum + Math.min(done / target, 1) * 100
-  }, 0)
-
-  return Math.round(totalPct / validItems.length)
+function statusLabel(status) {
+  return STATUS_LABELS[status] || status?.replace(/_/g, ' ') || '-'
 }
 
 function pctFromDailyProgress(items, dailyRows) {
@@ -169,11 +165,15 @@ function pctFromDailyProgress(items, dailyRows) {
   return Math.min(100, Math.round((dailyDone / totalTarget) * 100))
 }
 
-export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily' }) {
+export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily', siteChiefView = false }) {
   const [tasks, setTasks] = useState([])
   const [project, setProject] = useState(null)
   const [siteChief, setSiteChief] = useState(null)
-  const [progressSummary, setProgressSummary] = useState({ cumulative: 0, daily: 0 })
+  // Görev bazlı "Kümülatif/Günlük İlerleme" hesaplamak için ham veriler tutulur —
+  // önceden tek bir proje-geneli yüzde hesaplanıp HER görevin detay panelinde
+  // aynı (yanlış) sayı gösteriliyordu, task_id ile filtrelenmediği için.
+  const [progressItemsAll, setProgressItemsAll] = useState([])
+  const [dailyProgressRowsAll, setDailyProgressRowsAll] = useState([])
   const [criticalCodes, setCriticalCodes] = useState(new Set())
   const [critCount, setCritCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -182,7 +182,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const [groupFilter, setGroupFilter] = useState('all')
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [panelOpen, setPanelOpen] = useState(true)
-  const [taskProgressByDate, setTaskProgressByDate] = useState({})
   const topScrollRef = useRef(null)
   const bottomScrollRef = useRef(null)
   const bodyScrollRef = useRef(null)
@@ -217,11 +216,14 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
         if (!alive) return
         setTasks((tasksData || []).map(task => ({
           ...task,
+          // İlerleme her zaman günlük rapor/miktar verisinden gelir — durum etiketi
+          // (tamamlandı/devam ediyor) bunu ezmez, sadece ayrı bir alan olarak gösterilir.
           status: deriveTaskStatusAt(task, Number(task.progress_pct || 0), effectiveDate),
         })))
         setCritCount(0)
         setSiteChief(null)
-        setProgressSummary({ cumulative: 0, daily: 0 })
+        setProgressItemsAll([])
+        setDailyProgressRowsAll([])
         setLoading(false)
       })
     return () => { alive = false }
@@ -241,6 +243,8 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
         const pct = progressFor(task, progressByDate)
         return {
           ...task,
+          // İlerleme günlük rapor/miktar verisinden gelir (get_project_gantt'ın
+          // progress_daily geçmişinden hesapladığı pct) — durum etiketi bunu ezmez.
           progress_pct: pct,
           status: deriveTaskStatusAt(task, pct, effectiveDate),
         }
@@ -251,7 +255,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
       const codes = new Set((ganttData.critical_codes || []).filter(Boolean))
       setCriticalCodes(codes)
       setCritCount(codes.size)
-      setTaskProgressByDate(progressByDate)
 
       const [chiefRes, itemsRes, reportRes] = await Promise.all([
         supabase
@@ -263,7 +266,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           .maybeSingle(),
         supabase
           .from('progress_items')
-          .select('id, target_qty, total_progress')
+          .select('id, target_qty, total_progress, task_id')
           .eq('project_id', projectId),
         supabase
           .from('daily_reports')
@@ -280,16 +283,14 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
       if (reportRes.data?.id) {
         const { data: progressRows } = await supabase
           .from('progress_daily')
-          .select('qty_added')
+          .select('qty_added, item_id')
           .eq('report_id', reportRes.data.id)
         dailyProgressRows = progressRows || []
       }
 
       setSiteChief(chiefRes.data?.full_name || chiefRes.data?.email || null)
-      setProgressSummary({
-        cumulative: pctFromProgressItems(progressItems),
-        daily: pctFromDailyProgress(progressItems, dailyProgressRows),
-      })
+      setProgressItemsAll(progressItems)
+      setDailyProgressRowsAll(dailyProgressRows)
       setLoading(false)
     }
 
@@ -310,7 +311,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     if (statusFilter === 'devam') return task.status === 'devam_ediyor'
     if (statusFilter === 'tamamlandi') return task.status === 'tamamlandi'
     if (statusFilter === 'geciken') {
-      return task.planned_end && new Date(task.planned_end) < today && task.status !== 'tamamlandi'
+      return isTaskLate(task, today)
     }
     return true
   }), [groupFilter, statusFilter, tasks, today])
@@ -318,7 +319,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const withDates = filteredTasks.filter(t => t.planned_start && t.planned_end)
 
   const kpis = useMemo(() => {
-    const late = tasks.filter(t => t.planned_end && new Date(t.planned_end) < today && t.status !== 'tamamlandi').length
+    const late = tasks.filter(t => isTaskLate(t, today)).length
     const ongoing = tasks.filter(t => t.status === 'devam_ediyor').length
     return { late, ongoing }
   }, [tasks, today])
@@ -327,6 +328,18 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     if (!selectedTaskId && withDates[0]) setSelectedTaskId(withDates[0].id)
     if (selectedTaskId && !withDates.some(t => t.id === selectedTaskId)) setSelectedTaskId(withDates[0]?.id || null)
   }, [selectedTaskId, withDates])
+
+  const selectedTask = withDates.find(task => task.id === selectedTaskId) || null
+
+  // Görevin kendi bugünkü katkısı — proje-geneli değil, sadece bu göreve bağlı
+  // progress_items kalemlerine bugün girilen miktar üzerinden hesaplanır. Erken
+  // return'lerden (loading/authorized) ÖNCE çağrılmalı — aksi halde Hooks kuralı ihlal edilir.
+  const selectedTaskDailyPct = useMemo(() => {
+    if (!selectedTask) return 0
+    const taskItems = progressItemsAll.filter(i => i.task_id === selectedTask.id)
+    const taskDailyRows = dailyProgressRowsAll.filter(r => taskItems.some(i => i.id === r.item_id))
+    return pctFromDailyProgress(taskItems, taskDailyRows)
+  }, [selectedTask, progressItemsAll, dailyProgressRowsAll])
 
   if (loading) {
     return (
@@ -340,8 +353,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   if (projectId && !ganttLoading && !authorized) {
     return <UnauthorizedScopeNotice />
   }
-
-  const selectedTask = withDates.find(task => task.id === selectedTaskId) || null
 
   if (withDates.length === 0) {
     return (
@@ -519,7 +530,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                   const items = grouped[groupKey] || []
                   const isOpen = !collapsed.has(groupKey)
                   const avg = items.length
-                    ? Math.round(items.reduce((sum, task) => sum + progressFor(task, taskProgressByDate), 0) / items.length)
+                    ? Math.round(items.reduce((sum, task) => sum + Number(task.progress_pct || 0), 0) / items.length)
                     : 0
 
                   return (
@@ -536,9 +547,9 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                         const barEnd = timelineOffsetPct(task.planned_end, timelineStart, timelineUnits) + (100 / timelineUnits)
                         const barWidth = Math.max(1.2, barEnd - barLeft)
                         const duration = daysBetween(task.planned_start, task.planned_end)
-                        const pct = progressFor(task, taskProgressByDate)
+                        const pct = Math.round(Number(task.progress_pct || 0))
                         const isCrit = criticalCodes.has(task.task_code)
-                        const isLate = task.planned_end && new Date(task.planned_end) < today && task.status !== 'tamamlandi'
+                        const isLate = isTaskLate(task, today)
                         const isSelected = task.id === selectedTaskId
 
                         return (
@@ -590,9 +601,10 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           <TaskDetailPanel
             task={selectedTask}
             group={selectedTask ? resolveGroup(selectedTask) : null}
-            progressSummary={progressSummary}
+            dailyPct={selectedTaskDailyPct}
             siteChief={siteChief}
             isCritical={selectedTask ? criticalCodes.has(selectedTask.task_code) : false}
+            siteChiefView={siteChiefView}
             onClose={() => setPanelOpen(false)}
           />
         ) : (
@@ -696,7 +708,7 @@ function KpiIcon({ name }) {
   )
 }
 
-function TaskDetailPanel({ task, group, progressSummary, siteChief, isCritical, onClose }) {
+function TaskDetailPanel({ task, group, dailyPct, siteChief, isCritical, siteChiefView, onClose }) {
   if (!task) {
     return (
       <aside className="gantt-detail-panel">
@@ -715,13 +727,17 @@ function TaskDetailPanel({ task, group, progressSummary, siteChief, isCritical, 
   const rows = [
     ['Durum', statusLabel(task.status), task.status === 'devam_ediyor' ? 'blue' : 'muted'],
     ['Grup', group || '-', groupCfg.tone],
-    ['Sorumlu', siteChief || '-'],
+    // Şantiye şefi kendi projesini görüntülediği için "Sorumlu" satırı gereksiz — onun yerine
+    // sahada işe yarayan ekipman/genel notları gösterilir (get_project_gantt RPC'sinden gelir).
+    ...(siteChiefView ? [] : [['Sorumlu', siteChief || '-']]),
     ['Plan Başlangıç', fmtDate(task.planned_start)],
     ['Plan Bitiş', fmtDate(task.planned_end)],
     ['Süre', `${duration} gün`],
-    ['Kümülatif İlerleme', `%${progressSummary.cumulative || 0}`, 'blue'],
-    ['Günlük İlerleme', `%${progressSummary.daily || 0}`, progressSummary.daily > 0 ? 'green' : 'muted'],
+    ['Kümülatif İlerleme', `%${task.progress_pct || 0}`, 'blue'],
+    ['Günlük İlerleme', `%${dailyPct || 0}`, dailyPct > 0 ? 'green' : 'muted'],
     ['Kritiklik', isCritical ? 'Kritik Yol' : 'Normal', isCritical ? 'red' : 'muted'],
+    ...(siteChiefView && task.equipment_notes ? [['Ekipman Notu', task.equipment_notes]] : []),
+    ...(siteChiefView && task.notes ? [['Not', task.notes]] : []),
   ]
 
   return (

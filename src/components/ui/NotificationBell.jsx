@@ -7,6 +7,14 @@ const ENTITY_TAB = {
   invoice: 'finans',
   ticket: 'tickets',
   daily_report: 'rapor-listesi',
+  daily_report_reminder: 'daily-report',
+}
+
+// Günlük rapor hatırlatması: bekleyen (pending) sarı, çözülen (resolved) yeşil zeminli gösterilir.
+function reminderTone(n) {
+  if (n.entity_type !== 'daily_report_reminder') return null
+  if (n.event_type === 'resolved') return { bg: 'var(--color-success-bg)', dot: 'var(--color-success-text)' }
+  return { bg: 'var(--color-warning-bg)', dot: 'var(--color-warning-text)' }
 }
 
 function timeAgo(iso) {
@@ -135,20 +143,22 @@ export default function NotificationBell({ onNavigate }) {
               Henüz bildirim yok.
             </p>
           ) : (
-            items.map(n => (
+            items.map(n => {
+              const tone = reminderTone(n)
+              return (
               <button
                 key={n.id}
                 onClick={() => handleClick(n)}
                 style={{
                   display: 'block', width: '100%', textAlign: 'left', border: 'none',
                   borderBottom: '1px solid #f8fafc', cursor: 'pointer', fontFamily: 'inherit',
-                  background: n.is_read ? '#fff' : '#EFF6FF',
+                  background: tone ? tone.bg : (n.is_read ? '#fff' : '#EFF6FF'),
                   padding: '10px 14px',
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                   {!n.is_read && (
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--color-primary)', marginTop: 5, flexShrink: 0 }} />
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone ? tone.dot : 'var(--color-primary)', marginTop: 5, flexShrink: 0 }} />
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--color-text)' }}>{n.title}</p>
@@ -157,7 +167,8 @@ export default function NotificationBell({ onNavigate }) {
                   </div>
                 </div>
               </button>
-            ))
+              )
+            })
           )}
         </div>
       )}

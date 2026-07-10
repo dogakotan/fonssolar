@@ -9,14 +9,6 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const STEPS = [
-  { id: 1, label: 'Genel Bilgiler' },
-  { id: 2, label: 'Ekip & Makine' },
-  { id: 3, label: 'İmalat İlerlemesi' },
-  { id: 4, label: 'Malzeme Kullanımı' },
-  { id: 5, label: 'Fotoğraflar & Sorunlar' },
-]
-
 const WEATHER_OPTIONS = ['açık', 'parçalı bulutlu', 'bulutlu', 'yağmurlu', 'karlı', 'fırtınalı']
 const STATUS_OPTIONS  = ['normal', 'dikkat', 'kritik']
 const SHIFTS          = ['mühendis', 'usta', 'işçi']
@@ -24,6 +16,11 @@ const DEPARTMENTS     = ['idari', 'mekanik', 'elektrik', 'yevmiyeci']
 const SHIFT_LABELS    = { mühendis: 'Mühendis', usta: 'Usta', işçi: 'İşçi' }
 const DEPT_LABELS     = { idari: 'İdari', mekanik: 'Mekanik', elektrik: 'Elektrik', yevmiyeci: 'Yevmiyeci' }
 const MACH_STATUS     = ['çalışıyor', 'arızalı', 'beklemede']
+const MACH_STATUS_COLOR = {
+  çalışıyor: 'var(--color-success)',
+  arızalı:   'var(--color-danger)',
+  beklemede: 'var(--color-warning)',
+}
 const MACHINERY_PRESETS = ['ekskavatör', 'jcb', 'loader', 'rok_delim', 'gayk_delici', 'vinç', 'kamyon', 'traktör']
 const MACHINE_LABELS = {
   ekskavatör: 'Ekskavatör',
@@ -190,9 +187,9 @@ function reportNotesPayload(formData) {
 
 function InfoTile({ label, value }) {
   return (
-    <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 10, padding: '10px 12px' }}>
-      <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</p>
-      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111827', lineHeight: 1.4 }}>{value}</p>
+    <div style={{ background: 'var(--color-bg)', border: '1px solid var(--color-border-md)', borderRadius: 10, padding: '10px 12px' }}>
+      <p style={{ margin: '0 0 4px', fontSize: 10, fontWeight: 700, color: 'var(--color-muted-light)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</p>
+      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-text)', lineHeight: 1.4 }}>{value}</p>
     </div>
   )
 }
@@ -201,7 +198,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const { user, projectId } = useAuth()
   const fileInputRef = useRef(null)
 
-  const [step, setStep]             = useState(1)
+  const [openSection, setOpenSection] = useState(null) // null | 'materials' | 'photos' | 'issues'
   const [reportId, setReportId]     = useState(initialReportId || null)
   const [project, setProject]       = useState(null)
   const [resolvedProjectId, setResolvedProjectId] = useState(null)
@@ -283,21 +280,20 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   // ayrı ayrı (ve birbirinden sapan) kopyaları olması önceki hatanın kaynağıydı:
   // "zaten var" durumunda form hiç doldurulmuyor, Kaydet o günün verisini siliyordu.
   async function loadReportInto(id, seq) {
-    const [repRes, persRes, machRes, progRes, taskRes, matRes, photoRes, issueRes] = await Promise.all([
-      supabase.from('daily_reports').select('*').eq('id', id).single(),
-      supabase.from('personnel_log_entries').select('*').eq('report_id', id),
-      supabase.from('machinery_logs').select('*').eq('report_id', id),
-      supabase.from('progress_daily').select('*').eq('report_id', id),
+    // Personnel/machinery/progress/materials/photos/issues get_daily_report_detail RPC'sinden
+    // tek çağrıyla gelir (mevcut RPC, ayrı ayrı 7 supabase.from() sorgusuyla aynı veriyi döner).
+    // daily_tasks bu RPC'nin dönüşünde henüz yok, o yüzden ayrı sorgulanıyor.
+    const [detailRes, taskRes] = await Promise.all([
+      supabase.rpc('get_daily_report_detail', { p_report_id: id }),
       supabase.from('daily_tasks').select('*').eq('report_id', id).order('order_index'),
-      supabase.from('daily_report_material_usage').select('*').eq('report_id', id),
-      supabase.from('daily_report_photos').select('*').eq('report_id', id),
-      supabase.from('daily_report_issues').select('*').eq('report_id', id),
     ])
 
     if (seq !== undefined && seq !== dateCheckSeqRef.current) return // daha yeni bir tarih değişikliği bunu geçersiz kıldı
 
-    if (repRes.data) {
-      const r = repRes.data
+    const detail = detailRes.data?.authorized ? detailRes.data : null
+
+    if (detail?.report) {
+      const r = detail.report
       const reportNotes = decodeMeta(REPORT_NOTES_META_PREFIX, r.notes)
       setFormData({
         report_date:    r.report_date || todayStr(),
@@ -312,9 +308,10 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     }
 
     // Personnel
-    if (persRes.data && persRes.data.length > 0) {
+    const persRows = detail?.personnel || []
+    if (persRows.length > 0) {
       const pRows = initPersonnel()
-      persRes.data.forEach(e => {
+      persRows.forEach(e => {
         const row = pRows.find(r => r.shift === e.shift)
         if (row && DEPARTMENTS.includes(e.department)) row[e.department] = e.count || 0
       })
@@ -324,10 +321,11 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     }
 
     // Machinery
-    if (machRes.data && machRes.data.length > 0) {
+    const machRows = detail?.machinery || []
+    if (machRows.length > 0) {
       const presetRows = initMachinery()
       const customRows = []
-      machRes.data.forEach(m => {
+      machRows.forEach(m => {
         const row = {
           machine_type: m.machine_type || '',
           count:        m.count        || 0,
@@ -345,7 +343,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
     // Progress qtys
     const eQtys = {}
-    ;(progRes.data || []).forEach(e => { eQtys[e.item_id] = Number(e.qty_added) || 0 })
+    ;(detail?.progress || []).forEach(e => { eQtys[e.item_id] = Number(e.qty_added) || 0 })
     setExistingQtys(eQtys)
     setTodayQty({ ...eQtys })
 
@@ -360,8 +358,9 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setPlannedTasks(loadedPlanned.length ? loadedPlanned : [newTaskRow()])
 
     // Materials
-    if (matRes.data && matRes.data.length > 0) {
-      setMaterials(matRes.data.map(m => {
+    const matRows = detail?.materials || []
+    if (matRows.length > 0) {
+      setMaterials(matRows.map(m => {
         const meta = decodeMeta(MATERIAL_META_PREFIX, m.description)
         return {
           progress_item_id: m.progress_item_id || '',
@@ -381,11 +380,12 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     }
 
     // Existing photos
-    setExistingPhotos(photoRes.data || [])
+    setExistingPhotos(detail?.photos || [])
 
     // Issues
-    if (issueRes.data && issueRes.data.length > 0) {
-      setIssues(issueRes.data.map(i => {
+    const issueRows = detail?.issues || []
+    if (issueRows.length > 0) {
+      setIssues(issueRows.map(i => {
         const meta = decodeMeta(ISSUE_META_PREFIX, i.description)
         return {
           topic:             i.topic             || '',
@@ -518,10 +518,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const totalPersonnel = personnel.reduce((sum, row) =>
     sum + DEPARTMENTS.reduce((s, d) => s + (Number(row[d]) || 0), 0), 0)
 
-  // Step navigation
-  function goNext() { setStep(s => Math.min(5, s + 1)) }
-  function goBack() { setStep(s => Math.max(1, s - 1)) }
-
   // Personnel helpers
   function updatePersonnel(shiftIndex, dept, val) {
     setPersonnel(prev => prev.map((row, i) =>
@@ -595,149 +591,92 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       const effectiveProjectId = resolvedProjectId || project?.id || projectId
       if (!effectiveProjectId || !user?.id) throw new Error('Kullanıcı veya proje bilgisi yüklenemedi.')
 
-      // 1. Upsert daily_reports
-      const { data: rep, error: repErr } = await supabase
-        .from('daily_reports')
-        .upsert({
-          project_id:     effectiveProjectId,
-          created_by:     user?.id,
-          report_date:    formData.report_date,
-          weather:        formData.weather,
-          weather_note:   formData.weather_note  || null,
-          general_status: formData.general_status,
-          worker_count:   totalPersonnel,
-          notes:          reportNotesPayload(formData) || null,
-          updated_at:     new Date().toISOString(),
-        }, { onConflict: 'project_id,report_date' })
-        .select('id').single()
-
-      if (repErr) throw repErr
-      const rid = rep.id
-      setReportId(rid)
-
-      // 2. Personnel
-      const { error: persDeleteErr } = await supabase.from('personnel_log_entries').delete().eq('report_id', rid)
-      if (persDeleteErr) throw persDeleteErr
+      // Rapor + personel + makine + görevler + ilerleme + malzeme + sorunlar tek
+      // save_daily_report RPC çağrısıyla server tarafında bir transaction içinde
+      // atomik yazılır (önceden 15+ ayrı client-orkestrasyonlu delete/insert/update idi).
       const persRows = []
       personnel.forEach(row => {
         DEPARTMENTS.forEach(dept => {
           if (Number(row[dept]) > 0) {
-            persRows.push({ report_id: rid, shift: row.shift, department: dept, count: Number(row[dept]) })
+            persRows.push({ shift: row.shift, department: dept, count: Number(row[dept]) })
           }
         })
       })
-      if (persRows.length) {
-        const { error: persInsertErr } = await supabase.from('personnel_log_entries').insert(persRows)
-        if (persInsertErr) throw persInsertErr
-      }
 
-      // 3. Machinery
-      const { error: machDeleteErr } = await supabase.from('machinery_logs').delete().eq('report_id', rid)
-      if (machDeleteErr) throw machDeleteErr
       const validMach = machinery
         .map(r => ({ ...r, machine_type: normalizeMachineType(r.machine_type) }))
         .filter(r => r.machine_type && Number(r.count) > 0)
-      if (validMach.length) {
-        const { error: machInsertErr } = await supabase.from('machinery_logs').insert(
-          validMach.map(r => ({ report_id: rid, machine_type: r.machine_type, count: Number(r.count), status: r.status, notes: r.notes || null }))
-        )
-        if (machInsertErr) throw machInsertErr
-      }
+        .map(r => ({ machine_type: r.machine_type, count: Number(r.count), status: r.status, notes: r.notes || null }))
 
-      // 4. Daily tasks
-      const { error: taskDeleteErr } = await supabase.from('daily_tasks').delete().eq('report_id', rid)
-      if (taskDeleteErr) throw taskDeleteErr
       const taskRows = [
         ...doneTasks
           .filter(r => String(r.description || '').trim())
-          .map((r, index) => ({ report_id: rid, type: 'tamamlandı', description: r.description.trim(), order_index: index })),
+          .map((r, index) => ({ type: 'tamamlandı', description: r.description.trim(), order_index: index })),
         ...plannedTasks
           .filter(r => String(r.description || '').trim())
-          .map((r, index) => ({ report_id: rid, type: 'planlandı', description: r.description.trim(), order_index: index })),
+          .map((r, index) => ({ type: 'planlandı', description: r.description.trim(), order_index: index })),
       ]
-      if (taskRows.length) {
-        const { error: taskInsertErr } = await supabase.from('daily_tasks').insert(taskRows)
-        if (taskInsertErr) throw taskInsertErr
-      }
 
-      // 5. Progress items
-      const { error: progressDeleteErr } = await supabase.from('progress_daily').delete().eq('report_id', rid)
-      if (progressDeleteErr) throw progressDeleteErr
-      const toInsert = []
+      const progressRows = []
       for (const item of progressItems) {
         const newQty = Number(todayQty[item.id]) || 0
-        const oldQty = Number(existingQtys[item.id]) || 0
-        const diff   = newQty - oldQty
         if (newQty > 0) {
-          toInsert.push({ report_id: rid, item_id: item.id, qty_added: newQty, note: itemNotes[item.id] || null })
-        }
-        if (diff !== 0) {
-          const newTotal = Math.max(0, (Number(item.total_progress) || 0) + diff)
-          const { error: progressUpdateErr } = await supabase.from('progress_items').update({ total_progress: newTotal }).eq('id', item.id)
-          if (progressUpdateErr) throw progressUpdateErr
+          progressRows.push({ item_id: item.id, qty_added: newQty, note: itemNotes[item.id] || null })
         }
       }
-      if (toInsert.length) {
-        const { error: progressInsertErr } = await supabase.from('progress_daily').insert(toInsert)
-        if (progressInsertErr) throw progressInsertErr
-      }
 
-      // 6. Materials
-      const { error: matDeleteErr } = await supabase.from('daily_report_material_usage').delete().eq('report_id', rid)
-      if (matDeleteErr) throw matDeleteErr
-      const validMats = materials.filter(r => r.material_name)
-      if (validMats.length) {
-        const { error: matInsertErr } = await supabase.from('daily_report_material_usage').insert(
-          validMats.map(r => ({
-            report_id:       rid,
-            project_id:      effectiveProjectId,
-            progress_item_id: r.progress_item_id || null,
-            material_name:   r.material_name,
-            quantity_used:   Number(r.quantity_used) || 0,
-            unit:            r.unit || 'Adet',
-            description:     materialDescription(r) || null,
-            reason:          r.reason || null,
-          }))
-        )
-        if (matInsertErr) throw matInsertErr
-      }
+      const validMats = materials.filter(r => r.material_name).map(r => ({
+        progress_item_id: r.progress_item_id || null,
+        material_name:    r.material_name,
+        quantity_used:    Number(r.quantity_used) || 0,
+        unit:             r.unit || 'Adet',
+        description:      materialDescription(r) || null,
+        reason:           r.reason || null,
+      }))
 
-      // 7. Photos
+      const validIssues = issues.filter(r => r.topic).map(r => ({
+        topic:             r.topic,
+        priority:          r.priority,
+        assigned_to:       r.assigned_to || null,
+        description:       issueDescription(r) || null,
+        resolution_status: r.resolution_status,
+      }))
+
+      const { data: rid, error: saveErr } = await supabase.rpc('save_daily_report', {
+        p_project_id:     effectiveProjectId,
+        p_report_date:    formData.report_date,
+        p_created_by:     user?.id,
+        p_general_status: formData.general_status,
+        p_worker_count:   totalPersonnel,
+        p_weather:        formData.weather,
+        p_weather_note:   formData.weather_note || null,
+        p_notes:          reportNotesPayload(formData) || null,
+        p_personnel:      persRows,
+        p_machinery:      validMach,
+        p_progress:       progressRows,
+        p_daily_tasks:    taskRows,
+        p_materials:      validMats,
+        p_issues:         validIssues,
+      })
+      if (saveErr) throw saveErr
+      setReportId(rid)
+
+      // Fotoğraflar: Storage API'ye Postgres fonksiyonundan erişilemediği için
+      // yükleme + kayıt istemci tarafında ayrı kalır.
       for (const photo of photos) {
         const safeName = photo.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const path = `${effectiveProjectId}/${formData.report_date}/${Date.now()}_${safeName}`
         const { error: uploadErr } = await supabase.storage.from('saha-fotolari').upload(path, photo.file)
         if (uploadErr) throw uploadErr
-        if (!uploadErr) {
-          const { error: photoInsertErr } = await supabase.from('daily_report_photos').insert({
-            report_id:    rid,
-            project_id:   effectiveProjectId,
-            report_date:  formData.report_date,
-            storage_path: path,
-            caption:      photo.caption || null,
-            uploaded_by:  user?.id,
-          })
-          if (photoInsertErr) throw photoInsertErr
-        }
-      }
-
-      // 8. Issues
-      const { error: issueDeleteErr } = await supabase.from('daily_report_issues').delete().eq('report_id', rid)
-      if (issueDeleteErr) throw issueDeleteErr
-      const validIssues = issues.filter(r => r.topic)
-      if (validIssues.length) {
-        const { error: issueInsertErr } = await supabase.from('daily_report_issues').insert(
-          validIssues.map(r => ({
-            report_id:         rid,
-            project_id:        effectiveProjectId,
-            topic:             r.topic,
-            priority:          r.priority,
-            assigned_to:       r.assigned_to || null,
-            description:       issueDescription(r) || null,
-            resolution_status: r.resolution_status,
-          }))
-        )
-        if (issueInsertErr) throw issueInsertErr
+        const { error: photoInsertErr } = await supabase.from('daily_report_photos').insert({
+          report_id:    rid,
+          project_id:   effectiveProjectId,
+          report_date:  formData.report_date,
+          storage_path: path,
+          caption:      photo.caption || null,
+          uploaded_by:  user?.id,
+        })
+        if (photoInsertErr) throw photoInsertErr
       }
 
       showToast('Rapor kaydedildi ✓')
@@ -761,7 +700,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   // ─── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#9CA3AF', fontSize: 14 }}>
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>
         Yükleniyor…
       </div>
     )
@@ -774,8 +713,8 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       {toast && (
         <div style={{
           position: 'fixed', top: 16, right: 16, zIndex: 9999,
-          background: '#D1FAE5', color: '#065F46', padding: '10px 18px',
-          borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: '0 4px 20px rgba(0,0,0,.12)',
+          background: 'var(--color-success-bg)', color: 'var(--color-success-text)', padding: '10px 18px',
+          borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: 'var(--shadow-card)',
         }}>
           {toast}
         </div>
@@ -783,83 +722,42 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
       {/* Header bar */}
       <div style={{
-        background: '#fff', border: '1px solid #f1f5f9', borderRadius: 16,
+        background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 16,
         padding: '14px 20px', marginBottom: 20,
-        display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between',
-        boxShadow: '0 1px 3px rgba(0,0,0,.06)',
+        display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap',
+        boxShadow: 'var(--shadow-card)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button onClick={onBack} style={BTN_GHOST}>← Geri</button>
           <div>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>
               {initialReportId ? 'Raporu Düzenle' : 'Yeni Günlük Rapor'}
             </h2>
-            <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted-light)' }}>
               {new Date(formData.report_date).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
         </div>
-        {alreadyExists && !initialReportId && (
-          <div style={{
-            background: '#FEF3C7', color: '#92400E', borderRadius: 8,
-            padding: '6px 12px', fontSize: 12, fontWeight: 600,
-          }}>
-            ⚠ Bu tarih için rapor zaten mevcut — düzenleniyor
-          </div>
-        )}
-      </div>
-
-      {/* Step indicator */}
-      <div style={{
-        background: '#fff', border: '1px solid #f1f5f9', borderRadius: 16,
-        padding: '16px 20px', marginBottom: 20,
-        boxShadow: '0 1px 3px rgba(0,0,0,.06)',
-        overflowX: 'auto',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', minWidth: 400 }}>
-          {STEPS.map((s, i) => (
-            <div key={s.id} style={{ display: 'flex', alignItems: 'center', flex: i < STEPS.length - 1 ? '1' : undefined }}>
-              <div
-                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: step > s.id ? 'pointer' : 'default' }}
-                onClick={() => { if (step > s.id) setStep(s.id) }}
-              >
-                <div style={{
-                  width: 32, height: 32, borderRadius: '50%',
-                  background: step > s.id ? '#22c55e' : step === s.id ? '#003B8E' : '#E5E7EB',
-                  color: step >= s.id ? '#fff' : '#9CA3AF',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 12, fontWeight: 700, flexShrink: 0,
-                }}>
-                  {step > s.id ? '✓' : s.id}
-                </div>
-                <span style={{
-                  fontSize: 10, fontWeight: step === s.id ? 600 : 400,
-                  color: step === s.id ? '#003B8E' : step > s.id ? '#22c55e' : '#9CA3AF',
-                  whiteSpace: 'nowrap', textAlign: 'center',
-                }}>
-                  {s.label}
-                </span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div style={{ flex: 1, height: 2, background: step > s.id ? '#22c55e' : '#E5E7EB', margin: '0 4px', marginBottom: 20 }} />
-              )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+          {alreadyExists && !initialReportId && (
+            <div style={{
+              background: 'var(--color-warning-bg)', color: 'var(--color-warning-text)', borderRadius: 8,
+              padding: '6px 12px', fontSize: 12, fontWeight: 600,
+            }}>
+              ⚠ Bu tarih için rapor zaten mevcut — düzenleniyor
             </div>
-          ))}
+          )}
+          <button onClick={handleSave} disabled={saving} className="desk-only" style={{ ...BTN_PRIMARY, opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Kaydediliyor…' : '💾 Kaydet'}
+          </button>
         </div>
       </div>
 
-      {/* Step content */}
-      <div style={{
-        background: '#fff', border: '1px solid #f1f5f9', borderRadius: 16,
-        padding: '24px 24px', marginBottom: 20,
-        boxShadow: '0 1px 3px rgba(0,0,0,.06)',
-      }}>
-
-        {/* ── Step 1: Genel Bilgiler ── */}
-        {step === 1 && (
-          <div>
-            <h3 style={STEP_TITLE}>1. Genel Bilgiler</h3>
-            <div style={{
+      {/* Genel + Personel */}
+      <div className="ss-bottom-grid" style={{ marginBottom: 16 }}>
+        <div style={CARD}>
+          <h3 style={CARD_TITLE}>Genel</h3>
+          <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
               gap: 12,
@@ -878,7 +776,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                   value={formData.report_date}
                   onChange={e => handleDateChange(e.target.value)}
                   disabled={!!initialReportId}
-                  style={initialReportId ? { ...INPUT, background: '#F9FAFB', color: '#6B7280' } : INPUT}
+                  style={initialReportId ? { ...INPUT, background: 'var(--color-bg)', color: 'var(--color-muted)' } : INPUT}
                 />
               </div>
 
@@ -945,16 +843,11 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
               </div>
             </div>
           </div>
-        )}
 
-        {/* ── Step 2: Ekip & Makine ── */}
-        {step === 2 && (
-          <div>
-            <h3 style={STEP_TITLE}>2. Ekip & Makine Durumu</h3>
-
-            {/* Personnel */}
-            <p style={SECTION_LABEL}>Personel Durumu</p>
-            <div style={{ overflowX: 'auto', marginBottom: 28 }}>
+        <div style={CARD}>
+          <h3 style={CARD_TITLE}>Personel</h3>
+          <p style={SECTION_LABEL}>Personel Durumu</p>
+            <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
                 <thead>
                   <tr>
@@ -968,7 +861,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                     const rowTotal = DEPARTMENTS.reduce((s, d) => s + (Number(row[d]) || 0), 0)
                     return (
                       <tr key={row.shift}>
-                        <td style={{ ...TD, fontWeight: 600, color: '#374151', whiteSpace: 'nowrap' }}>{SHIFT_LABELS[row.shift] || row.shift}</td>
+                        <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{SHIFT_LABELS[row.shift] || row.shift}</td>
                         {DEPARTMENTS.map(dept => (
                           <td key={dept} style={TD}>
                             <input
@@ -979,7 +872,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                             />
                           </td>
                         ))}
-                        <td style={{ ...TD, fontWeight: 700, color: '#003B8E' }}>{rowTotal}</td>
+                        <td style={{ ...TD, fontWeight: 700, color: 'var(--color-primary)' }}>{rowTotal}</td>
                       </tr>
                     )
                   })}
@@ -989,16 +882,21 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                     <td style={{ ...TD, fontWeight: 700 }}>Genel Toplam</td>
                     {DEPARTMENTS.map(dept => {
                       const colTotal = personnel.reduce((s, r) => s + (Number(r[dept]) || 0), 0)
-                      return <td key={dept} style={{ ...TD, fontWeight: 700, color: '#003B8E' }}>{colTotal}</td>
+                      return <td key={dept} style={{ ...TD, fontWeight: 700, color: 'var(--color-primary)' }}>{colTotal}</td>
                     })}
-                    <td style={{ ...TD, fontWeight: 800, color: '#003B8E', background: '#EEF2FF' }}>{totalPersonnel}</td>
+                    <td style={{ ...TD, fontWeight: 800, color: 'var(--color-primary)', background: 'var(--color-primary-bg)' }}>{totalPersonnel}</td>
                   </tr>
                 </tfoot>
               </table>
             </div>
+        </div>
+      </div>
 
-            {/* Machinery */}
-            <p style={SECTION_LABEL}>İş Makineleri / Ekipman</p>
+      {/* Makine + İlerleme */}
+      <div className="ss-bottom-grid" style={{ marginBottom: 16 }}>
+        <div style={CARD}>
+          <h3 style={CARD_TITLE}>Makine</h3>
+          <p style={SECTION_LABEL}>İş Makineleri / Ekipman</p>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%', minWidth: 560 }}>
                 <thead>
@@ -1025,7 +923,11 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                         <input type="number" min={0} value={row.count} onChange={e => updateMachinery(i, 'count', e.target.value)} style={NUM_INPUT} />
                       </td>
                       <td style={TD}>
-                        <select value={row.status} onChange={e => updateMachinery(i, 'status', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
+                        <select
+                          value={row.status}
+                          onChange={e => updateMachinery(i, 'status', e.target.value)}
+                          style={{ ...INPUT, padding: '5px 8px', borderColor: MACH_STATUS_COLOR[row.status], color: MACH_STATUS_COLOR[row.status], fontWeight: 600 }}
+                        >
                           {MACH_STATUS.map(s => <option key={s}>{s}</option>)}
                         </select>
                       </td>
@@ -1041,13 +943,11 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
               </table>
             </div>
             <button onClick={addMachineryRow} style={{ ...BTN_GHOST, marginTop: 10 }}>+ Satır Ekle</button>
-          </div>
-        )}
+        </div>
 
-        {/* ── Step 3: İmalat İlerlemesi ── */}
-        {step === 3 && (
-          <div>
-            <h3 style={STEP_TITLE}>3. İmalat İlerlemesi</h3>
+        <div style={CARD}>
+          <h3 style={CARD_TITLE}>İlerleme</h3>
+          <p style={{ margin: '-6px 0 14px', fontSize: 11, color: 'var(--color-muted-light)' }}>Yüzde sistem tarafından hesaplanır — girilmez.</p>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 22 }}>
               <div>
@@ -1090,14 +990,14 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
             </div>
 
             {progressItems.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#9CA3AF' }}>
+              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--color-muted-light)' }}>
                 <p style={{ fontSize: 32, margin: '0 0 12px' }}>📋</p>
                 <p style={{ fontSize: 14, fontWeight: 600 }}>Bu projeye henüz iş kalemi tanımlanmamış</p>
                 <p style={{ fontSize: 12 }}>Proje yöneticisi iş kalemlerini tanımladıktan sonra bu bölüm aktif olacak.</p>
               </div>
             ) : (
               <div>
-                <p style={{ margin: '0 0 16px', fontSize: 12, color: '#9CA3AF' }}>Bugün tamamlanan miktarları girin. Yalnızca miktar girilen kalemler kaydedilir.</p>
+                <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--color-muted-light)' }}>Bugün tamamlanan miktarları girin. Yalnızca miktar girilen kalemler kaydedilir.</p>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 680 }}>
                     <thead>
@@ -1118,8 +1018,8 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                           <tr key={`cat-${cat}`}>
                             <td colSpan={8} style={{
                               padding: '8px 10px',
-                              background: CATEGORY_COLORS[cat] || '#9CA3AF',
-                              color: '#fff', fontSize: 11, fontWeight: 700,
+                              background: CATEGORY_COLORS[cat] || 'var(--color-muted-light)',
+                              color: 'var(--color-surface)', fontSize: 11, fontWeight: 700,
                               textTransform: 'uppercase', letterSpacing: '0.5px',
                             }}>
                               {CATEGORY_LABELS[cat] || cat}
@@ -1135,26 +1035,26 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                             const isOver = target > 0 && cumulative > target
 
                             return (
-                              <tr key={item.id} style={{ background: isOver ? '#FFF5F5' : undefined }}>
-                                <td style={{ ...TD, textAlign: 'left', color: '#111827', fontWeight: 500 }}>{item.name}</td>
-                                <td style={{ ...TD, color: '#6B7280' }}>{item.unit}</td>
-                                <td style={{ ...TD, color: '#6B7280' }}>{target}</td>
-                                <td style={{ ...TD, color: '#6B7280' }}>{prevTotal.toFixed(1)}</td>
+                              <tr key={item.id} style={{ background: isOver ? 'var(--color-danger-bg)' : undefined }}>
+                                <td style={{ ...TD, textAlign: 'left', color: 'var(--color-text)', fontWeight: 500 }}>{item.name}</td>
+                                <td style={{ ...TD, color: 'var(--color-muted)' }}>{item.unit}</td>
+                                <td style={{ ...TD, color: 'var(--color-muted)' }}>{target}</td>
+                                <td style={{ ...TD, color: 'var(--color-muted)' }}>{prevTotal.toFixed(1)}</td>
                                 <td style={TD}>
                                   <input
                                     type="number" min={0} step="0.01"
                                     value={todayQty[item.id] || ''}
                                     onChange={e => setTodayQty(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                    style={{ ...NUM_INPUT, width: 72, borderColor: isOver ? '#FCA5A5' : undefined }}
+                                    style={{ ...NUM_INPUT, width: 72, borderColor: isOver ? 'var(--color-danger)' : undefined }}
                                     placeholder="0"
                                   />
                                 </td>
-                                <td style={{ ...TD, fontWeight: 600, color: isOver ? '#EF4444' : '#111827' }}>
+                                <td style={{ ...TD, fontWeight: 600, color: isOver ? 'var(--color-danger)' : 'var(--color-text)' }}>
                                   {cumulative.toFixed(1)}
                                 </td>
                                 <td style={{
                                   ...TD, fontWeight: 600,
-                                  color: Number(pct) >= 100 ? '#22c55e' : Number(pct) >= 50 ? '#003B8E' : '#9CA3AF',
+                                  color: Number(pct) >= 100 ? 'var(--color-success)' : Number(pct) >= 50 ? 'var(--color-primary)' : 'var(--color-muted-light)',
                                 }}>
                                   {pct !== '—' ? `${pct}%` : '—'}
                                 </td>
@@ -1164,7 +1064,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                                     value={itemNotes[item.id] || ''}
                                     onChange={e => setItemNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
                                     placeholder={isOver ? 'Aşma sebebi...' : 'Not...'}
-                                    style={{ ...INPUT, padding: '4px 7px', fontSize: 11, borderColor: isOver && !itemNotes[item.id] ? '#FCA5A5' : undefined }}
+                                    style={{ ...INPUT, padding: '4px 7px', fontSize: 11, borderColor: isOver && !itemNotes[item.id] ? 'var(--color-danger)' : undefined }}
                                   />
                                 </td>
                               </tr>
@@ -1177,14 +1077,55 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                 </div>
               </div>
             )}
-          </div>
-        )}
+        </div>
+      </div>
 
-        {/* ── Step 4: Malzeme Kullanımı ── */}
-        {step === 4 && (
-          <div>
-            <h3 style={STEP_TITLE}>4. Malzeme Kullanımı</h3>
-            <p style={{ margin: '0 0 16px', fontSize: 12, color: '#9CA3AF' }}>Sahada kullanılan malzemeleri kaydedin.</p>
+      {/* 3 aksiyon kartı */}
+      <div className="gr-action-tiles" style={{ marginBottom: 90 }}>
+        <button type="button" className="gr-action-tile" onClick={() => setOpenSection('photos')}>
+          {(existingPhotos.length + photos.length) > 0 && (
+            <span className="gr-action-tile-badge">{existingPhotos.length + photos.length}</span>
+          )}
+          <span className="gr-action-tile-icon">📷</span>
+          <span className="gr-action-tile-label">Fotoğraf Ekle</span>
+        </button>
+        <button type="button" className="gr-action-tile" onClick={() => setOpenSection('issues')}>
+          {issues.filter(r => r.topic).length > 0 && (
+            <span className="gr-action-tile-badge">{issues.filter(r => r.topic).length}</span>
+          )}
+          <span className="gr-action-tile-icon">⚠️</span>
+          <span className="gr-action-tile-label">Sorun/Not Kaydı</span>
+        </button>
+        <button type="button" className="gr-action-tile" onClick={() => setOpenSection('materials')}>
+          {materials.filter(r => r.material_name).length > 0 && (
+            <span className="gr-action-tile-badge">{materials.filter(r => r.material_name).length}</span>
+          )}
+          <span className="gr-action-tile-icon">📦</span>
+          <span className="gr-action-tile-label">Malzeme Kullanımı</span>
+        </button>
+      </div>
+
+      {error && (
+        <p style={{ color: 'var(--color-danger)', fontSize: 12, margin: '0 0 16px' }}>{error}</p>
+      )}
+
+      {/* Mobil sticky Kaydet */}
+      <div className="mob-only" style={{ position: 'sticky', bottom: 0, paddingTop: 10, paddingBottom: 10, background: 'var(--color-bg)' }}>
+        <button onClick={handleSave} disabled={saving} style={{ ...BTN_PRIMARY, width: '100%', opacity: saving ? 0.7 : 1 }}>
+          {saving ? 'Kaydediliyor…' : '💾 Kaydet'}
+        </button>
+      </div>
+
+      {/* Malzeme Kullanımı modalı */}
+      {openSection === 'materials' && (
+        <div style={MODAL_OVERLAY} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpenSection(null) }}>
+          <div style={MODAL_BOX} onMouseDown={(e) => e.stopPropagation()}>
+            <div style={MODAL_HEADER}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>Malzeme Kullanımı</h3>
+              <button onClick={() => setOpenSection(null)} style={BTN_GHOST}>Kapat</button>
+            </div>
+            <div style={MODAL_BODY}>
+            <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--color-muted-light)' }}>Sahada kullanılan malzemeleri kaydedin.</p>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 1120 }}>
                 <thead>
@@ -1249,28 +1190,32 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
               </table>
             </div>
             <button onClick={addMaterialRow} style={{ ...BTN_GHOST, marginTop: 10 }}>+ Satır Ekle</button>
+            </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ── Step 5: Fotoğraflar & Sorunlar ── */}
-        {step === 5 && (
-          <div>
-            <h3 style={STEP_TITLE}>5. Fotoğraflar & Sorunlar</h3>
-
-            {/* Photos */}
-            <p style={SECTION_LABEL}>Saha Fotoğrafları</p>
+      {/* Fotoğraf modalı */}
+      {openSection === 'photos' && (
+        <div style={MODAL_OVERLAY} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpenSection(null) }}>
+          <div style={MODAL_BOX} onMouseDown={(e) => e.stopPropagation()}>
+            <div style={MODAL_HEADER}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>Saha Fotoğrafları</h3>
+              <button onClick={() => setOpenSection(null)} style={BTN_GHOST}>Kapat</button>
+            </div>
+            <div style={MODAL_BODY}>
 
             {/* Existing photos (edit mode) */}
             {existingPhotos.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 11, color: '#9CA3AF', margin: '0 0 8px' }}>Mevcut fotoğraflar:</p>
+                <p style={{ fontSize: 11, color: 'var(--color-muted-light)', margin: '0 0 8px' }}>Mevcut fotoğraflar:</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
                   {existingPhotos.map(photo => {
                     const url = supabase.storage.from('saha-fotolari').getPublicUrl(photo.storage_path).data.publicUrl
                     return (
                       <div key={photo.id} style={{ position: 'relative' }}>
-                        <img src={url} alt={photo.caption || ''} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid #E5E7EB' }} />
-                        {photo.caption && <p style={{ margin: '4px 0 0', fontSize: 10, color: '#9CA3AF', textAlign: 'center' }}>{photo.caption}</p>}
+                        <img src={url} alt={photo.caption || ''} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--color-border-md)' }} />
+                        {photo.caption && <p style={{ margin: '4px 0 0', fontSize: 10, color: 'var(--color-muted-light)', textAlign: 'center' }}>{photo.caption}</p>}
                       </div>
                     )
                   })}
@@ -1288,12 +1233,12 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
                 {photos.map((photo, i) => (
                   <div key={i} style={{ position: 'relative' }}>
-                    <img src={photo.preview} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #E5E7EB' }} />
+                    <img src={photo.preview} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--color-border-md)' }} />
                     <button
                       onClick={() => removePhoto(i)}
                       style={{
                         position: 'absolute', top: 4, right: 4,
-                        background: 'rgba(0,0,0,0.6)', color: '#fff', border: 'none',
+                        background: 'rgba(0,0,0,0.6)', color: 'var(--color-surface)', border: 'none',
                         borderRadius: '50%', width: 22, height: 22, fontSize: 12,
                         cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
@@ -1309,9 +1254,20 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                 ))}
               </div>
             )}
+            </div>
+          </div>
+        </div>
+      )}
 
-            {/* Issues */}
-            <p style={SECTION_LABEL}>Sorunlar / Blokerlar</p>
+      {/* Sorun/Not Kaydı modalı */}
+      {openSection === 'issues' && (
+        <div style={MODAL_OVERLAY} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpenSection(null) }}>
+          <div style={MODAL_BOX} onMouseDown={(e) => e.stopPropagation()}>
+            <div style={MODAL_HEADER}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>Sorunlar / Blokerlar</h3>
+              <button onClick={() => setOpenSection(null)} style={BTN_GHOST}>Kapat</button>
+            </div>
+            <div style={MODAL_BODY}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 980 }}>
                 <thead>
@@ -1367,52 +1323,41 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
               </table>
             </div>
             <button onClick={addIssueRow} style={{ ...BTN_GHOST, marginTop: 10 }}>+ Sorun Ekle</button>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Navigation footer */}
-      <div style={{
-        background: '#fff', border: '1px solid #f1f5f9', borderRadius: 16,
-        padding: '14px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        boxShadow: '0 1px 3px rgba(0,0,0,.06)',
-      }}>
-        <div>
-          {error && <p style={{ color: '#EF4444', fontSize: 12, margin: 0 }}>{error}</p>}
-          {!error && <span style={{ fontSize: 12, color: '#94a3b8' }}>
-            Toplam personel: <strong>{totalPersonnel}</strong> kişi
-          </span>}
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          {step > 1 && (
-            <button onClick={goBack} style={BTN_SECONDARY} disabled={saving}>← Geri</button>
-          )}
-          {step < 5 ? (
-            <button onClick={goNext} style={BTN_PRIMARY}>İleri →</button>
-          ) : (
-            <button onClick={handleSave} style={BTN_PRIMARY} disabled={saving}>
-              {saving ? 'Kaydediliyor…' : '💾 Raporu Kaydet'}
-            </button>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   )
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const STEP_TITLE = { margin: '0 0 20px', fontSize: 15, fontWeight: 700, color: '#0f172a', borderBottom: '1px solid #f1f5f9', paddingBottom: 12 }
-const SECTION_LABEL = { margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }
+const CARD = { background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, padding: '1rem 1.25rem' }
+const CARD_TITLE = { margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }
+const SECTION_LABEL = { margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: 'var(--color-text-sub)', textTransform: 'uppercase', letterSpacing: '0.5px' }
 
-const LABEL = { fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 5 }
+const LABEL = { fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 5 }
 const INPUT = {
-  width: '100%', boxSizing: 'border-box', border: '1px solid #E5E7EB', borderRadius: 8,
-  padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff',
+  width: '100%', boxSizing: 'border-box', border: '1px solid var(--color-border-md)', borderRadius: 8,
+  padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)',
 }
-const TH = { padding: '8px 10px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: '#6B7280', background: '#F9FAFB', border: '1px solid #E5E7EB', whiteSpace: 'nowrap' }
-const TD = { padding: '6px 8px', textAlign: 'center', border: '1px solid #E5E7EB' }
-const NUM_INPUT = { width: 64, textAlign: 'center', border: '1px solid #D1D5DB', borderRadius: 6, padding: '5px 6px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }
-const BTN_PRIMARY   = { background: '#003B8E', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 44 }
-const BTN_SECONDARY = { background: '#F3F4F6', color: '#374151', border: '1px solid #D1D5DB', borderRadius: 8, padding: '9px 22px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 44 }
-const BTN_GHOST     = { background: 'none', color: '#003B8E', border: '1px solid #003B8E', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
-const BTN_REMOVE    = { background: '#FEE2E2', color: '#EF4444', border: 'none', borderRadius: 6, width: 28, height: 28, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }
+const TH = { padding: '8px 10px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', background: 'var(--color-border)', border: '1px solid var(--color-border-md)', whiteSpace: 'nowrap' }
+const TD = { padding: '6px 8px', textAlign: 'center', border: '1px solid var(--color-border-md)' }
+const NUM_INPUT = { width: 64, textAlign: 'center', border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 6px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }
+const BTN_PRIMARY   = { background: 'var(--color-primary)', color: 'var(--color-surface)', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 44 }
+const BTN_GHOST     = { background: 'none', color: 'var(--color-primary)', border: '1px solid var(--color-primary)', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
+const MODAL_OVERLAY = {
+  position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.48)', zIndex: 1100,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18,
+}
+const MODAL_BOX = {
+  background: 'var(--color-surface)', borderRadius: 16, width: 'min(920px, 96vw)',
+  maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
+  boxShadow: '0 20px 60px rgba(0,0,0,0.22)',
+}
+const MODAL_HEADER = {
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+  padding: '14px 20px', borderBottom: '1px solid var(--color-border)', flexShrink: 0,
+}
+const MODAL_BODY = { padding: '18px 20px', overflowY: 'auto' }
+const BTN_REMOVE    = { background: 'var(--color-danger-bg)', color: 'var(--color-danger)', border: 'none', borderRadius: 6, width: 28, height: 28, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }

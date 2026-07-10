@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useWeather } from '../hooks/useWeather'
 import { useSantiyeData } from '../hooks/useSantiyeData'
@@ -8,44 +9,20 @@ import YeniTicketModal from '../components/tickets/YeniTicketModal'
 import YeniTalepModal from '../components/satin-alma/YeniTalepModal'
 import TicketDetayModal from '../components/tickets/TicketDetayModal'
 import TalepDetayModal from '../components/satin-alma/TalepDetayModal'
-
-const PR_STATUS = {
-  bekliyor:     { label: 'Bekliyor',     bg: '#DBEAFE', color: '#1D4ED8' },
-  onaylandı:    { label: 'Onaylandı',    bg: '#D1FAE5', color: '#065F46' },
-  reddedildi:   { label: 'Reddedildi',   bg: '#FEE2E2', color: '#991B1B' },
-  satın_alındı: { label: 'Satın Alındı', bg: '#F3F4F6', color: '#6B7280' },
-}
-const PR_URGENCY = {
-  normal:   { label: 'Normal',    bg: '#F3F4F6', color: '#6B7280' },
-  acil:     { label: 'Acil',      bg: '#FEF3C7', color: '#92400E' },
-  çok_acil: { label: 'Çok Acil', bg: '#FEE2E2', color: '#991B1B' },
-}
-const TK_STATUS = {
-  gönderildi: { label: 'Gönderildi', bg: '#DBEAFE', color: '#1D4ED8' },
-  açık:       { label: 'Açık',       bg: '#DBEAFE', color: '#1D4ED8' },
-  işlemde:    { label: 'İşlemde',    bg: '#FEF3C7', color: '#92400E' },
-  kapatıldı:  { label: 'Kapatıldı', bg: '#D1FAE5', color: '#065F46' },
-}
-const TK_SEVERITY = {
-  düşük:  { label: 'Düşük',   bg: '#F3F4F6', color: '#6B7280' },
-  orta:   { label: 'Orta',    bg: '#FEF3C7', color: '#D97706' },
-  yüksek: { label: 'Yüksek',  bg: '#FEE2E2', color: '#991B1B' },
-  kritik: { label: 'Kritik',  bg: '#FEE2E2', color: '#7F1D1D' },
-}
-
-function Badge({ map, value }) {
-  const b = map[value] || { label: value || '—', bg: '#F3F4F6', color: '#6B7280' }
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-      background: b.bg, color: b.color, whiteSpace: 'nowrap', flexShrink: 0,
-    }}>{b.label}</span>
-  )
-}
+import Badge, { TONE, PR_STATUS, PR_URGENCY, TK_STATUS, TK_SEVERITY } from '../components/ui/StatusBadge'
+import Pager from '../components/ui/Pager'
 
 function fmtDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
+}
+
+// KPI hover içeriğinde bölüm/personel etiketleri — DailyReportForm.jsx'teki DEPT_LABELS ile aynı sözlük.
+const DEPT_LABELS = { idari: 'İdari', mekanik: 'Mekanik', elektrik: 'Elektrik', yevmiyeci: 'Yevmiyeci' }
+
+function DEPT_TITLE(value) {
+  const text = String(value || '').replaceAll('_', ' ')
+  return text.charAt(0).toLocaleUpperCase('tr-TR') + text.slice(1)
 }
 
 const TURKEY_CITIES = [
@@ -100,11 +77,33 @@ function extractWeatherCity(project) {
   return null
 }
 
+// KPI kart satırındaki tekil bilgi kartı — tıklanabilirse buton, değilse div.
+function KpiCard({ label, value, tone = 'muted', onClick }) {
+  const t = TONE[tone] || TONE.muted
+  const Tag = onClick ? 'button' : 'div'
+  return (
+    <Tag
+      onClick={onClick}
+      style={{
+        background: t.bg, border: '1px solid var(--color-border-md)', borderRadius: 12,
+        padding: '12px 14px', textAlign: 'left', fontFamily: 'inherit',
+        cursor: onClick ? 'pointer' : 'default', minHeight: 76,
+        display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+      }}
+    >
+      <span style={{ fontSize: 13, color: 'var(--color-muted)', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 24, fontWeight: 500, color: t.text }}>{value}</span>
+    </Tag>
+  )
+}
+
+const PAGE_SIZE = 5
+
 export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditReport }) {
   const { projectId } = useAuth()
   const [talepTab, setTalepTab]   = useState('all')
-  const [requestLimit, setRequestLimit] = useState(5)
-  const [reportLimit, setReportLimit] = useState(5)
+  const [requestPage, setRequestPage] = useState(0)
+  const [reportPage, setReportPage] = useState(0)
   const [showTicket, setShowTicket] = useState(false)
   const [showTalep, setShowTalep]   = useState(false)
   const [detayTicket, setDetayTicket] = useState(null)
@@ -114,20 +113,121 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   const { project, openPurchaseRequests, openTickets, todayReport, recentReports, stats, progressSummary, progressItems, refetch, loading: dataLoading, refreshing, error, authorized, realtimeStatus, realtimeLastUpdated } = useSantiyeData(projectId)
   const weatherCity = extractWeatherCity(project)
   const weather     = useWeather(weatherCity)
+  const [machineDetail, setMachineDetail] = useState(null)
+  const [personnelDetail, setPersonnelDetail] = useState(null)
 
   useEffect(() => {
-    setReportLimit(5)
+    setReportPage(0)
   }, [projectId])
+
+  // Son rapordaki araç ve personel dökümü — RPC bunu döndürmüyor, KPI hover içeriği için
+  // hafif doğrudan sorgularla alınır (proje kuralı: küçük okuma sorguları için RPC şart değil).
+  const lastReportId = recentReports[0]?.id
+  useEffect(() => {
+    if (!lastReportId) { setMachineDetail(null); setPersonnelDetail(null); return }
+    let cancelled = false
+    Promise.all([
+      supabase.from('machinery_logs').select('machine_type, count, status').eq('report_id', lastReportId),
+      supabase.from('personnel_log_entries').select('department, count').eq('report_id', lastReportId),
+    ]).then(([machRes, persRes]) => {
+      if (cancelled) return
+      const machRows = machRes.data || []
+      setMachineDetail({
+        active: machRows.filter(r => r.status === 'çalışıyor').reduce((s, r) => s + (Number(r.count) || 0), 0),
+        broken: machRows.filter(r => r.status === 'arızalı').reduce((s, r) => s + (Number(r.count) || 0), 0),
+        rows: machRows,
+      })
+      const byDept = {}
+      ;(persRes.data || []).forEach(r => { byDept[r.department] = (byDept[r.department] || 0) + (Number(r.count) || 0) })
+      setPersonnelDetail(byDept)
+    })
+    return () => { cancelled = true }
+  }, [lastReportId])
+
+  // İş Planı'ndaki planlı tarihler — "İlerleme Kalemleri"nde geciken/aktif kalemleri öne çıkarmak için.
+  // progress_items.task_id dolduruldukça devreye girer; boşken sıralama düz % bazlı kalır (bkz. enrichedProgressItems).
+  const [projectTasks, setProjectTasks] = useState([])
+  useEffect(() => {
+    if (!projectId) { setProjectTasks([]); return }
+    let cancelled = false
+    supabase
+      .from('project_tasks')
+      .select('id, planned_start, planned_end, status')
+      .eq('project_id', projectId)
+      .then(({ data }) => { if (!cancelled) setProjectTasks(data || []) })
+    return () => { cancelled = true }
+  }, [projectId])
+
+  const lastReportDateLabel = recentReports[0]?.report_date
+    ? new Date(recentReports[0].report_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null
+
+  const machineTooltip = !lastReportId
+    ? 'Henüz rapor girilmedi'
+    : !machineDetail
+      ? 'Yükleniyor…'
+      : [
+          lastReportDateLabel ? `Rapor: ${lastReportDateLabel}` : null,
+          ...(machineDetail.rows.length
+            ? machineDetail.rows.map(r => `${DEPT_TITLE(r.machine_type)}: ${r.count} adet (${r.status})`)
+            : ['Araç/makine kaydı yok']),
+          machineDetail.broken > 0 ? `⚠ ${machineDetail.broken} araç arızalı` : null,
+        ].filter(Boolean).join('\n')
+
+  const personnelTooltip = !lastReportId
+    ? 'Henüz rapor girilmedi'
+    : !personnelDetail
+      ? 'Yükleniyor…'
+      : [
+          lastReportDateLabel ? `Rapor: ${lastReportDateLabel}` : null,
+          ...(Object.keys(personnelDetail).length
+            ? Object.entries(personnelDetail).map(([dept, count]) => `${DEPT_LABELS[dept] || DEPT_TITLE(dept)}: ${count} kişi`)
+            : ['Personel kaydı yok']),
+        ].filter(Boolean).join('\n')
 
   function showToast(msg) {
     setToast(msg)
     setTimeout(() => setToast(''), 3000)
   }
 
-  const CARD_BASE = {
-    background: '#fff', border: '1px solid #f1f5f9', borderRadius: 14,
-    padding: '14px 16px', boxShadow: '0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04)',
-  }
+  // "İlerleme Kalemleri" — task_id eşleşmesi varsa geciken/bugün-aktif kalemler öne alınır;
+  // eşleşme yoksa (backfill uygulanana kadar) düz % sıralamasına düşer, hiçbir kalem kaybolmaz.
+  const tasksById = Object.fromEntries(projectTasks.map(t => [t.id, t]))
+  const todayMidnight = new Date()
+  todayMidnight.setHours(0, 0, 0, 0)
+  const rankedProgressItems = progressItems
+    .map(item => {
+      const pct = item.target_qty > 0
+        ? Math.min(100, Math.round((Number(item.total_progress) / Number(item.target_qty)) * 100))
+        : 0
+      const task = item.task_id ? tasksById[item.task_id] : null
+      let scheduleState = 'none'
+      let overdueLabel = null
+      if (task) {
+        // Gecikme, kalemin kendi miktar yüzdesine değil GÖREVİN durumuna göre belirlenir
+        // (vw_project_progress_summary.delayed_tasks ile aynı kural) — aksi halde tamamlanmış
+        // bir görevin kalemi, hedef miktara tam ulaşmadığı için (örn. %92) yanlışlıkla "gecikti" görünür.
+        const taskDone = task.status === 'tamamlandi' || task.status === 'iptal'
+        const start = task.planned_start ? new Date(task.planned_start) : null
+        const end = task.planned_end ? new Date(task.planned_end) : null
+        if (!taskDone && end && end < todayMidnight) {
+          scheduleState = 'overdue'
+          overdueLabel = end.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })
+        } else if (!taskDone && start && end && start <= todayMidnight && todayMidnight <= end) {
+          scheduleState = 'active'
+        }
+      }
+      return { item, pct, scheduleState, overdueLabel }
+    })
+    // Sadece geciken veya o gün planlı olarak devam eden kalemler gösterilir —
+    // henüz başlamamış/plan dışı ("none") kalemlerle 6'ya tamamlanmaz, boş bırakılır.
+    .filter(x => x.scheduleState !== 'none')
+    .sort((a, b) => {
+      const rank = s => (s === 'overdue' ? 0 : s === 'active' ? 1 : 2)
+      const rankDiff = rank(a.scheduleState) - rank(b.scheduleState)
+      return rankDiff !== 0 ? rankDiff : a.pct - b.pct
+    })
+    .slice(0, 6)
 
   const requestItems = [
     ...openPurchaseRequests.map(item => ({ ...item, _type: 'purchase' })),
@@ -139,11 +239,20 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
     if (talepTab === 'ticket') return item._type === 'ticket'
     return true
   })
+  // Canlı güncelleme liste boyutunu küçültürse (örn. bir talep kapanınca) sayfa aralık dışı kalmasın.
+  const requestTotalPages = Math.max(1, Math.ceil(visibleRequests.length / PAGE_SIZE))
+  const safeRequestPage = Math.min(requestPage, requestTotalPages - 1)
+  const reportTotalPages = Math.max(1, Math.ceil(recentReports.length / PAGE_SIZE))
+  const safeReportPage = Math.min(reportPage, reportTotalPages - 1)
 
   function goRequests(tab = 'all') {
     setTalepTab(tab)
-    setRequestLimit(5)
+    setRequestPage(0)
     document.getElementById('taleplerim')?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  function openTodayReport() {
+    todayReport ? onEditReport?.(todayReport.id) : onNewReport?.()
   }
 
   if (projectId && !dataLoading && !authorized) {
@@ -160,124 +269,105 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
       {toast && (
         <div style={{
           position: 'fixed', top: 16, right: 16, zIndex: 9999,
-          background: '#D1FAE5', color: '#065F46', padding: '10px 18px',
+          background: 'var(--color-success-bg)', color: 'var(--color-success-text)', padding: '10px 18px',
           borderRadius: 10, fontSize: 13, fontWeight: 600,
-          boxShadow: '0 4px 20px rgba(0,0,0,.12)',
+          boxShadow: 'var(--shadow-card)',
         }}>
           {toast}
         </div>
       )}
 
-      {/* KPI Cards — auto-fill grid, wraps naturally on mobile */}
-      <div className="santiye-kpi-grid" style={{
-        display: 'grid',
-        gap: 12, marginBottom: 16,
-      }}>
-        {/* Günlük Rapor */}
-        <button
-          onClick={() => todayReport ? onEditReport?.(todayReport.id) : onNewReport?.()}
-          style={{
-            ...CARD_BASE, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-            borderLeft: `4px solid ${todayReport ? '#10B981' : '#F59E0B'}`,
-            background: todayReport ? '#F0FDF4' : '#FFFBEB',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Günlük Rapor
-            </span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10, flexShrink: 0,
-              background: todayReport ? '#D1FAE5' : '#FEF3C7',
-              color: todayReport ? '#065F46' : '#92400E',
-            }}>
-              {todayReport ? 'Girildi' : 'Bekliyor'}
-            </span>
-          </div>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: todayReport ? '#065F46' : '#92400E' }}>
-            {todayReport ? 'Görüntüle' : '+ Rapor Gir'}
-          </p>
-        </button>
+      {/* Proje bilgi şeridi — atanmış proje sabit, değiştirilemez */}
+      <div className="ss-project-bar">
+        <span title="Proje sabit atanmış">🔒</span>
+        <span className="ss-project-bar-name">{project?.name || projectId || 'Proje'}</span>
+        {(project?.location || weatherCity) && (
+          <>
+            <span className="ss-project-bar-sep">·</span>
+            <span className="ss-project-bar-loc">{project?.location || weatherCity}</span>
+          </>
+        )}
+        <span className="ss-project-bar-sep">·</span>
+        <span className="ss-project-bar-date">
+          {new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+        </span>
+      </div>
 
-        {/* Satın Alma Aç */}
-        <button
-          onClick={() => setShowTalep(true)}
-          style={{ ...CARD_BASE, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', borderLeft: '4px solid #185FA5' }}
-        >
-          <div style={{ marginBottom: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Satın Alma
-            </span>
-          </div>
-          <p style={{ margin: '8px 0 0', fontSize: 18, fontWeight: 800, color: '#185FA5', lineHeight: 1.15 }}>+ Talep Aç</p>
-        </button>
-
-        {/* Ticket Aç */}
-        <button
-          onClick={() => setShowTicket(true)}
-          style={{ ...CARD_BASE, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', borderLeft: '4px solid #7C3AED' }}
-        >
-          <div style={{ marginBottom: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Ticket
-            </span>
-          </div>
-          <p style={{ margin: '8px 0 0', fontSize: 18, fontWeight: 800, color: '#7C3AED', lineHeight: 1.15 }}>+ Ticket Aç</p>
-        </button>
-
-        {/* Açık Talepler */}
-        <button
-          onClick={() => goRequests('all')}
-          style={{ ...CARD_BASE, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left', borderLeft: '4px solid #003B8E' }}
-        >
-          <div style={{ marginBottom: 6 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-              Açık Talepler
-            </span>
-          </div>
-          <div style={{ display: 'grid', gap: 4 }}>
-            <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>
-              <strong style={{ color: '#185FA5', fontSize: 20 }}>{stats.prCount}</strong> satın alma
-            </p>
-            <p style={{ margin: 0, fontSize: 13, color: '#374151' }}>
-              <strong style={{ color: '#7C3AED', fontSize: 20 }}>{stats.ticketCount}</strong> ticket
-            </p>
-          </div>
-        </button>
+      {/* KPI Cards — 1.Bugünkü rapor 2.Açık talep 3.Açık ticket 4.Son rapor işçi 5.Son rapor araç 6.Hava */}
+      <div className="ss-kpi-grid-6" style={{ marginBottom: 16 }}>
+        <KpiCard
+          label="Bugünkü Rapor"
+          value={todayReport ? 'Girildi' : 'Bekliyor'}
+          tone={todayReport ? 'success' : 'warning'}
+          onClick={openTodayReport}
+        />
+        <KpiCard
+          label="Açık Satın Alma Talebi"
+          value={stats.prCount}
+          tone="primary"
+          onClick={() => goRequests('satin_alma')}
+        />
+        <KpiCard
+          label="Açık Ticket"
+          value={stats.ticketCount}
+          tone="primary"
+          onClick={() => goRequests('ticket')}
+        />
+        <div className="kpi-hover" data-tooltip={personnelTooltip} style={{ position: 'relative' }}>
+          <KpiCard
+            label="Son Rapor İşçi Sayısı"
+            value={recentReports[0]?.worker_count ?? '—'}
+            tone="muted"
+          />
+        </div>
+        <div className="kpi-hover" data-tooltip={machineTooltip} style={{ position: 'relative' }}>
+          <KpiCard
+            label="Son Rapor Aktif Araç"
+            value={machineDetail?.active ?? '—'}
+            tone="muted"
+          />
+        </div>
 
         {/* Hava Durumu */}
-        <div style={{ ...CARD_BASE, borderLeft: '4px solid #0EA5E9' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 8 }}>
+        <div style={{
+          background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12,
+          padding: '12px 14px', minHeight: 76, display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+        }}>
+          <span style={{ fontSize: 13, color: 'var(--color-muted)', fontWeight: 500 }}>
             Hava{weatherCity ? ` — ${weatherCity}` : ''}
           </span>
           {!weatherCity ? (
-            <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>{dataLoading ? 'Yükleniyor…' : 'Konum tanımsız'}</p>
+            <p style={{ fontSize: 12, color: 'var(--color-muted-light)', margin: 0 }}>{dataLoading ? 'Yükleniyor…' : 'Konum tanımsız'}</p>
           ) : weather.loading || !weather.current ? (
-            <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>Yükleniyor…</p>
+            <p style={{ fontSize: 12, color: 'var(--color-muted-light)', margin: 0 }}>Yükleniyor…</p>
           ) : weather.error ? (
-            <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>Alınamadı</p>
+            <p style={{ fontSize: 12, color: 'var(--color-muted-light)', margin: 0 }}>Alınamadı</p>
           ) : (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 24, lineHeight: 1 }}>{weather.current.emoji}</span>
-                <span style={{ fontSize: 22, fontWeight: 700, color: '#111827' }}>{weather.current.temp}°C</span>
-              </div>
-              <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9CA3AF' }}>
-                {weather.current.label} · 💨 {weather.current.wind} km/h
-              </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 18, lineHeight: 1 }}>{weather.current.emoji}</span>
+              <span style={{ fontSize: 18, fontWeight: 500, color: 'var(--color-text)' }}>{weather.current.temp}°C</span>
             </div>
           )}
         </div>
       </div>
 
+      {/* Aksiyon alanı — 3 buton yan yana, mobilde alt alta sarar */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
+        <button onClick={openTodayReport} style={{ ...BTN_ACTION_PRIMARY, width: 'auto', flex: '1 1 200px' }}>
+          📋 {todayReport ? 'Günlük Raporu Görüntüle' : 'Günlük Rapor Gir'}
+        </button>
+        <button onClick={() => setShowTalep(true)} style={{ ...BTN_ACTION_OUTLINE, width: 'auto', flex: '1 1 200px' }}>🛒 Satın Alma Talebi</button>
+        <button onClick={() => setShowTicket(true)} style={{ ...BTN_ACTION_OUTLINE, width: 'auto', flex: '1 1 200px' }}>🎫 Ticket Aç</button>
+      </div>
+
       {/* Proje İlerlemesi */}
       {(progressSummary || progressItems.length > 0) && (
         <div style={{ ...CARD_BASE, padding: 0, marginBottom: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
             <div>
-              <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', display: 'block' }}>Proje İlerlemesi</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)', display: 'block' }}>Proje İlerlemesi</span>
               {progressSummary && (
-                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                <span style={{ fontSize: 12, color: 'var(--color-muted-light)' }}>
                   Planlanan %{progressSummary.planned_progress_pct} · Gerçekleşen %{progressSummary.actual_progress_pct}
                 </span>
               )}
@@ -285,7 +375,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
             {progressSummary && progressSummary.progress_variance != null && (
               <span style={{
                 fontSize: 14, fontWeight: 700, flexShrink: 0,
-                color: Number(progressSummary.progress_variance) >= 0 ? '#16a34a' : '#dc2626',
+                color: Number(progressSummary.progress_variance) >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
               }}>
                 {Number(progressSummary.progress_variance) >= 0 ? '+' : ''}{progressSummary.progress_variance}%
               </span>
@@ -293,39 +383,39 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
           </div>
 
           {progressSummary && (
-            <div style={{ padding: '12px 18px', borderBottom: progressItems.length > 0 ? '1px solid #f9fafb' : 'none' }}>
+            <div style={{ padding: '12px 18px', borderBottom: progressItems.length > 0 ? '1px solid var(--color-border)' : 'none' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 11, color: '#64748b' }}>Genel İlerleme</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#0ea5e9' }}>%{progressSummary.actual_progress_pct}</span>
+                <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>Genel İlerleme</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-primary)' }}>%{progressSummary.actual_progress_pct}</span>
               </div>
-              <div style={{ position: 'relative', height: 10, background: '#f1f5f9', borderRadius: 5, overflow: 'hidden' }}>
+              <div style={{ position: 'relative', height: 10, background: 'var(--color-border)', borderRadius: 5, overflow: 'hidden' }}>
                 <div style={{
                   position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 5,
-                  background: '#0ea5e9', width: `${progressSummary.actual_progress_pct || 0}%`, transition: 'width .4s',
+                  background: 'var(--color-primary)', width: `${progressSummary.actual_progress_pct || 0}%`, transition: 'width .4s',
                 }} />
               </div>
               {progressSummary.planned_progress_pct > 0 && (
                 <div style={{ position: 'relative', height: 4, marginTop: 3 }}>
                   <div style={{
                     position: 'absolute', left: 0, top: 0, height: 2,
-                    background: '#cbd5e1', borderRadius: 2,
+                    background: 'var(--color-border-md)', borderRadius: 2,
                     width: `${progressSummary.planned_progress_pct || 0}%`,
                   }} />
-                  <span style={{ position: 'absolute', left: `${progressSummary.planned_progress_pct || 0}%`, top: -2, fontSize: 8, color: '#94a3b8', transform: 'translateX(-50%)' }}>▲</span>
+                  <span style={{ position: 'absolute', left: `${progressSummary.planned_progress_pct || 0}%`, top: -2, fontSize: 8, color: 'var(--color-muted-light)', transform: 'translateX(-50%)' }}>▲</span>
                 </div>
               )}
               <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, color: '#64748b' }}>
-                  <strong style={{ color: '#374151' }}>{progressSummary.completed_tasks}</strong>/{progressSummary.total_tasks} görev tamamlandı
+                <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+                  <strong style={{ color: 'var(--color-text-sub)' }}>{progressSummary.completed_tasks}</strong>/{progressSummary.total_tasks} görev tamamlandı
                 </span>
                 {progressSummary.delayed_tasks > 0 && (
-                  <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>
+                  <span style={{ fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}>
                     {progressSummary.delayed_tasks} geciken görev
                   </span>
                 )}
                 {progressSummary.days_remaining != null && (
-                  <span style={{ fontSize: 11, color: '#64748b' }}>
-                    <strong style={{ color: '#374151' }}>{progressSummary.days_remaining}</strong> gün kaldı
+                  <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+                    <strong style={{ color: 'var(--color-text-sub)' }}>{progressSummary.days_remaining}</strong> gün kaldı
                   </span>
                 )}
               </div>
@@ -333,31 +423,57 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
           )}
 
           {progressItems.length > 0 && (
-            <div style={{ padding: '12px 18px' }}>
-              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.04em' }}>İlerleme Kalemleri</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {progressItems.slice(0, 6).map(item => {
-                  const pct = item.target_qty > 0
-                    ? Math.min(100, Math.round((Number(item.total_progress) / Number(item.target_qty)) * 100))
-                    : 0
-                  const barColor = pct >= 100 ? '#22c55e' : pct > 60 ? '#0ea5e9' : pct > 30 ? '#f59e0b' : '#f97316'
-                  return (
-                    <div key={item.id}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3, gap: 8 }}>
-                        <span style={{ fontSize: 12, color: '#374151', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+            <div style={{ padding: '4px 18px 16px' }}>
+              <p style={{ margin: '12px 0 10px', fontSize: 11, fontWeight: 600, color: 'var(--color-muted-light)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                İlerleme Kalemleri · geciken ve bugün aktif olanlar
+              </p>
+              {rankedProgressItems.length === 0 ? (
+                <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted-light)' }}>
+                  Bugün için planlı olarak devam eden veya geciken kalem yok.
+                </p>
+              ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
+                {rankedProgressItems.map(({ item, pct, scheduleState, overdueLabel }) => {
+                    const tone = scheduleState === 'overdue'
+                      ? 'var(--color-danger)'
+                      : pct >= 70 ? 'var(--color-success)' : pct >= 35 ? 'var(--color-primary)' : 'var(--color-danger)'
+                    return (
+                      <div key={item.id} style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                        padding: '12px 6px', background: 'var(--color-surface)',
+                        border: scheduleState === 'overdue' ? '1px solid var(--color-danger)' : '1px solid var(--color-border)',
+                        borderRadius: 10, textAlign: 'center',
+                      }}>
+                        <div style={{
+                          width: 54, height: 54, borderRadius: '50%', display: 'grid', placeItems: 'center',
+                          background: `radial-gradient(circle at center, var(--color-surface) 0 62%, transparent 63%), conic-gradient(${tone} calc(${pct} * 1%), var(--color-border) 0)`,
+                        }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: tone }}>%{pct}</span>
+                        </div>
+                        <span style={{
+                          fontSize: 12, fontWeight: 600, color: 'var(--color-text)', maxWidth: '100%',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
                           {item.name}
                         </span>
-                        <span style={{ fontSize: 11, color: '#64748b', flexShrink: 0, whiteSpace: 'nowrap' }}>
-                          {Number(item.total_progress).toLocaleString('tr-TR')} / {Number(item.target_qty).toLocaleString('tr-TR')} {item.unit} · %{pct}
+                        <span style={{ fontSize: 10, color: 'var(--color-muted-light)' }}>
+                          {Number(item.total_progress).toLocaleString('tr-TR')}/{Number(item.target_qty).toLocaleString('tr-TR')} {item.unit}
                         </span>
+                        {scheduleState === 'overdue' && (
+                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-danger)' }}>
+                            ⚠ {overdueLabel} bitmeliydi
+                          </span>
+                        )}
+                        {scheduleState === 'active' && (
+                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-primary)' }}>
+                            ● Bugün aktif
+                          </span>
+                        )}
                       </div>
-                      <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', borderRadius: 3, background: barColor, width: `${pct}%`, transition: 'width .4s' }} />
-                      </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
               </div>
+              )}
             </div>
           )}
         </div>
@@ -368,18 +484,18 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
         ...CARD_BASE, padding: 0, marginBottom: 16, overflow: 'hidden',
       }}>
         <div style={{
-          padding: '14px 18px', borderBottom: '1px solid #f1f5f9',
+          padding: '14px 18px', borderBottom: '1px solid var(--color-border)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8,
         }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Taleplerim</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)' }}>Taleplerim</span>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button onClick={() => setShowTalep(true)} style={BTN_SM_PRIMARY}>+ Satın Alma</button>
-            <button onClick={() => setShowTicket(true)} style={{ ...BTN_SM_PRIMARY, background: '#7C3AED' }}>+ Ticket</button>
+            <button onClick={() => setShowTalep(true)} style={BTN_SM_OUTLINE}>+ Satın Alma</button>
+            <button onClick={() => setShowTicket(true)} style={BTN_SM_OUTLINE}>+ Ticket</button>
           </div>
         </div>
 
         {/* Sekme seçici */}
-        <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #f1f5f9', padding: '0 18px' }}>
+        <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid var(--color-border)', padding: '0 18px' }}>
           {[
             { key: 'all', label: `Tümü (${requestItems.length})` },
             { key: 'satin_alma', label: `Satın Alma (${openPurchaseRequests.length})` },
@@ -387,12 +503,12 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
           ].map(tab => (
             <button
               key={tab.key}
-              onClick={() => { setTalepTab(tab.key); setRequestLimit(5) }}
+              onClick={() => { setTalepTab(tab.key); setRequestPage(0) }}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                 fontSize: 13, fontWeight: 600, padding: '10px 16px', whiteSpace: 'nowrap',
-                color: talepTab === tab.key ? '#185FA5' : '#94a3b8',
-                borderBottom: talepTab === tab.key ? '2px solid #185FA5' : '2px solid transparent',
+                color: talepTab === tab.key ? 'var(--color-primary)' : 'var(--color-muted-light)',
+                borderBottom: talepTab === tab.key ? '2px solid var(--color-primary)' : '2px solid transparent',
                 marginBottom: -1, transition: 'color 0.1s, border-color 0.1s',
               }}
             >
@@ -403,29 +519,26 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
 
         <div style={{ padding: 16 }}>
           {visibleRequests.length === 0 ? (
-            <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '16px 0', margin: 0 }}>
+            <p style={{ textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 13, padding: '16px 0', margin: 0 }}>
               Açık talep bulunmuyor.
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {visibleRequests.slice(0, requestLimit).map(item => {
+            <div>
+              <div style={{ minHeight: PAGE_SIZE * 53 }}>
+              {visibleRequests.slice(safeRequestPage * PAGE_SIZE, safeRequestPage * PAGE_SIZE + PAGE_SIZE).map(item => {
                 const isPurchase = item._type === 'purchase'
                 return (
                   <button
                     key={`${item._type}-${item.id}`}
                     onClick={() => isPurchase ? setDetayTalep(item) : setDetayTicket(item)}
-                    style={ITEM_BTN}
+                    className="ss-list-row"
+                    style={{ width: '100%', border: 'none', background: 'none', borderBottom: '1px solid var(--color-border)', fontFamily: 'inherit' }}
                   >
                     <span style={{ fontSize: 18, flexShrink: 0 }}>{isPurchase ? '🛒' : '🎫'}</span>
-                    <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                      <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {item.title || item.description || 'Başlıksız talep'}
-                      </p>
-                      <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8' }}>
-                        {isPurchase ? 'Satın Alma' : 'Ticket'} · {fmtDate(item.created_at)}
-                      </p>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    <span className="ss-list-title">
+                      {item.title || item.description || 'Başlıksız talep'}
+                    </span>
+                    <span className="ss-list-badges">
                       {isPurchase ? (
                         <>
                           <Badge map={PR_URGENCY} value={item.urgency} />
@@ -437,15 +550,17 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
                           <Badge map={TK_STATUS} value={item.status} />
                         </>
                       )}
-                    </div>
+                    </span>
+                    <span className="ss-list-date">{fmtDate(item.created_at)}</span>
                   </button>
                 )
               })}
-              {visibleRequests.length > requestLimit && (
-                <button onClick={() => setRequestLimit(l => l + 5)} style={LOAD_MORE_BTN}>
-                  Daha Fazla Yükle ({visibleRequests.length - requestLimit} kaldı)
-                </button>
-              )}
+              </div>
+              <Pager
+                page={safeRequestPage}
+                totalPages={requestTotalPages}
+                onChange={setRequestPage}
+              />
             </div>
           )}
         </div>
@@ -456,51 +571,47 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
         ...CARD_BASE, padding: 0, marginBottom: 16, overflow: 'hidden',
       }}>
         <div style={{
-          padding: '14px 18px', borderBottom: '1px solid #f1f5f9',
+          padding: '14px 18px', borderBottom: '1px solid var(--color-border)',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
         }}>
           <div>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', display: 'block' }}>Son Raporlar</span>
-            <span style={{ fontSize: 12, color: '#94a3b8' }}>En son girilen günlük saha raporları</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)', display: 'block' }}>Son Raporlar</span>
+            <span style={{ fontSize: 12, color: 'var(--color-muted-light)' }}>En son girilen günlük saha raporları</span>
           </div>
-          <button onClick={() => onTabChange?.('rapor-listesi')} style={BTN_SM_GHOST}>Tümünü Gör</button>
+          <button onClick={() => onTabChange?.('rapor-listesi')} style={BTN_SM_OUTLINE}>Tümünü Gör</button>
         </div>
 
         <div style={{ padding: 16 }}>
           {recentReports.length === 0 ? (
-            <p style={{ textAlign: 'center', color: '#9CA3AF', fontSize: 13, padding: '16px 0', margin: 0 }}>
+            <p style={{ textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 13, padding: '16px 0', margin: 0 }}>
               Henüz günlük rapor girilmedi.
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {recentReports.slice(0, reportLimit).map(report => (
+            <div>
+              <div style={{ minHeight: PAGE_SIZE * 53 }}>
+              {recentReports.slice(safeReportPage * PAGE_SIZE, safeReportPage * PAGE_SIZE + PAGE_SIZE).map(report => (
                 <button
                   key={report.id}
                   onClick={() => onEditReport?.(report.id)}
-                  style={ITEM_BTN}
+                  className="ss-list-row"
+                  style={{ width: '100%', border: 'none', background: 'none', borderBottom: '1px solid var(--color-border)', fontFamily: 'inherit' }}
                 >
                   <span style={{ fontSize: 18, flexShrink: 0 }}>📋</span>
-                  <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: '#111827' }}>
-                      {report.report_date ? new Date(report.report_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Tarihsiz rapor'}
-                    </p>
-                    <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8' }}>
-                      {report.weather || 'Hava yok'} · {report.worker_count || 0} personel
-                    </p>
-                  </div>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-                    background: '#EEF2FF', color: '#3730A3', whiteSpace: 'nowrap',
-                  }}>
-                    {report.general_status || 'Durum yok'}
+                  <span className="ss-list-title">
+                    {report.report_date ? new Date(report.report_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Tarihsiz rapor'}
+                    {' · '}{report.weather || 'Hava yok'} · {report.worker_count || 0} personel
+                  </span>
+                  <span className="ss-list-badges">
+                    <Badge map={{}} value={report.general_status} />
                   </span>
                 </button>
               ))}
-              {recentReports.length > reportLimit && (
-                <button onClick={() => setReportLimit(l => l + 5)} style={LOAD_MORE_BTN}>
-                  Daha Fazla Yükle ({recentReports.length - reportLimit} kaldı)
-                </button>
-              )}
+              </div>
+              <Pager
+                page={safeReportPage}
+                totalPages={reportTotalPages}
+                onChange={setReportPage}
+              />
             </div>
           )}
         </div>
@@ -538,22 +649,22 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   )
 }
 
-const BTN_SM_PRIMARY = {
-  background: '#003B8E', color: '#fff', border: 'none', borderRadius: 6,
-  padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+const CARD_BASE = {
+  background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 14,
+  padding: '14px 16px', boxShadow: 'var(--shadow-card)',
 }
-const BTN_SM_GHOST = {
-  background: '#fff', color: '#003B8E', border: '1px solid #BFDBFE', borderRadius: 6,
+const BTN_ACTION_PRIMARY = {
+  background: 'var(--color-primary)', color: 'var(--color-surface)', border: 'none', borderRadius: 10,
+  padding: '12px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+  width: '100%', minHeight: 44,
+}
+const BTN_ACTION_OUTLINE = {
+  background: 'var(--color-surface)', color: 'var(--color-primary)', border: '1px solid var(--color-border-md)', borderRadius: 10,
+  padding: '12px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+  width: '100%', minHeight: 44,
+}
+const BTN_SM_OUTLINE = {
+  background: 'var(--color-surface)', color: 'var(--color-primary)', border: '1px solid var(--color-border-md)', borderRadius: 6,
   padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
   whiteSpace: 'nowrap',
-}
-const ITEM_BTN = {
-  background: '#F9FAFB', border: '1px solid #F3F4F6', borderRadius: 10,
-  padding: '10px 14px', width: '100%', cursor: 'pointer', fontFamily: 'inherit',
-  display: 'flex', alignItems: 'center', gap: 10, transition: 'background 0.1s',
-}
-const LOAD_MORE_BTN = {
-  background: 'none', border: '1px dashed #D1D5DB', borderRadius: 8,
-  padding: '8px', fontSize: 12, color: '#6B7280', cursor: 'pointer',
-  fontFamily: 'inherit', width: '100%',
 }

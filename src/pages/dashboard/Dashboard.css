@@ -16,6 +16,15 @@
   --shadow-card:        0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
   --radius-lg:          1rem;
   --radius-md:          0.5rem;
+
+  --color-success-bg:   #dcfce7;
+  --color-success-text: #16a34a;
+  --color-warning-bg:   #fef3c7;
+  --color-warning-text: #92400e;
+  --color-danger-bg:    #fee2e2;
+  --color-danger-text:  #991b1b;
+  --color-primary-bg:   #eff6ff;
+  --color-primary-text: #1d4ed8;
 }
 
 /* ── Dashboard Layout ── */
@@ -364,6 +373,52 @@
 .project-milestone:hover::after {
   transform: translateX(-50%) translateY(0);
 }
+
+/* KPI kart hover ipucu — .project-milestone::after ile aynı görsel dil, çok satırlı içerik için */
+.kpi-hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%) translateY(4px);
+  min-width: 180px;
+  max-width: 260px;
+  padding: .5rem .65rem;
+  border-radius: .55rem;
+  background: #0f172a;
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: pre-line;
+  text-align: left;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .18);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease, transform .12s ease;
+  z-index: 30;
+}
+.kpi-hover::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #0f172a;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s ease;
+  z-index: 31;
+}
+.kpi-hover:hover::after,
+.kpi-hover:hover::before {
+  opacity: 1;
+}
+.kpi-hover:hover::after {
+  transform: translateX(-50%) translateY(0);
+}
+
 .project-bottom-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; min-width: 0; }
 .project-mini-card { padding: 1rem 1.1rem; min-height: 220px; min-width: 0; }
 .project-card-link { border: 0; background: transparent; color: #2563eb; font: inherit; font-size: .6rem; font-weight: 600; cursor: pointer; padding: 0; white-space: nowrap; flex-shrink: 0; }
@@ -761,6 +816,59 @@
 @media (max-width: 640px) {
   .gr-desktop-only { display: none; }
   .gr-mobile-only  { display: block; }
+}
+
+/* KPI kart satırı — mobil 2'li, tablet 3'lü, masaüstü 6'lı (hepsi yan yana) */
+.ss-kpi-grid-6 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .ss-kpi-grid-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1100px) {
+  .ss-kpi-grid-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+/* Aksiyon kartları (Fotoğraf / Sorun / Malzeme) */
+.gr-action-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.gr-action-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 76px;
+  padding: 12px 8px;
+  background: var(--color-surface);
+  border: 1.5px dashed var(--color-border-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.gr-action-tile:hover { background: var(--color-bg); border-color: var(--color-primary); }
+.gr-action-tile-icon  { font-size: 20px; line-height: 1; }
+.gr-action-tile-label { font-size: 12px; font-weight: 600; color: var(--color-text-sub); }
+.gr-action-tile-badge {
+  position: absolute; top: 6px; right: 6px;
+  background: var(--color-primary); color: #fff;
+  min-width: 18px; height: 18px; border-radius: 9px;
+  font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center; padding: 0 4px;
+}
+
+@media (max-width: 420px) {
+  .gr-action-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .gr-action-tile { min-height: 68px; padding: 10px 4px; }
+  .gr-action-tile-label { font-size: 11px; }
 }
 
 /* Personel accordion (mobil) */
