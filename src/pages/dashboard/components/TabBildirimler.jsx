@@ -25,11 +25,13 @@ function timeAgo(iso) {
   return `${day} gün önce`
 }
 
-// Günlük rapor hatırlatması: bekleyen (pending) sarı, çözülen (resolved) yeşil zeminli — NotificationBell.jsx ile aynı kural.
+// Günlük rapor hatırlatması: ilk gelişte (okunmamış + pending) sarı, okunup rapor hâlâ
+// girilmediyse normal zemine döner, rapor girilince (resolved) yeşil zeminli — NotificationBell.jsx ile aynı kural.
 function reminderTone(n) {
   if (n.entity_type !== 'daily_report_reminder') return null
   if (n.event_type === 'resolved') return { bg: 'var(--color-success-bg)', dot: 'var(--color-success-text)' }
-  return { bg: 'var(--color-warning-bg)', dot: 'var(--color-warning-text)' }
+  if (!n.is_read) return { bg: 'var(--color-warning-bg)', dot: 'var(--color-warning-text)' }
+  return null
 }
 
 export default function TabBildirimler({ onNavigate }) {

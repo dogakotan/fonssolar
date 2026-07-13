@@ -4,6 +4,7 @@ import { useAuth } from '../../../context/AuthContext'
 import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
 import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModal'
+import Pager from '../../../components/ui/Pager'
 import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
 
 const STATUS = {
@@ -27,10 +28,9 @@ const STATUS_FILTERS = [
   { value: 'faturasi_kesildi', label: 'Faturası Kesildi' },
 ]
 
-const VISIBLE_ROWS = 7
+const PAGE_SIZE = 10
 const ROW_HEIGHT = 44
 const HEADER_HEIGHT = 24
-const TABLE_MAX_HEIGHT = HEADER_HEIGHT + VISIBLE_ROWS * ROW_HEIGHT
 const EMPTY_MAP = new Map()
 
 const TH = { height: HEADER_HEIGHT, boxSizing: 'border-box', padding: '0 12px', lineHeight: `${HEADER_HEIGHT}px`, textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', whiteSpace: 'nowrap', verticalAlign: 'middle' }
@@ -105,7 +105,7 @@ function RiskBadge({ state }) {
   )
 }
 
-export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = false, procurement, projectId }) {
+export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = false, procurement, projectId, refreshKey }) {
   const { role, isAdmin, isMuhasebe } = useAuth()
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
@@ -115,11 +115,20 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
   const [faturaRequest, setFaturaRequest] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
   const [errorMessage, setErrorMessage] = useState('')
+  const [page, setPage] = useState(0)
 
   const canCreate = role !== 'muhasebe'
   const canInvoice = isAdmin || isMuhasebe
+  // Onay/red yalnızca admin'e ait — "Onay Bekleyenler" sekmesi de aynı şekilde isAdmin'e
+  // kilitli (TabSatinAlma.jsx), buradaki satır-içi butonlar önceden rol farkı gözetmeden
+  // herkese görünüyordu (bkz. CLAUDE.md bilinen açık noktalar).
+  const canApprove = isAdmin
 
-  useEffect(() => { fetchData() }, [onlyPending, projectId])
+  // refreshKey: üst bileşendeki Realtime aboneliği purchase_requests'te değişiklik
+  // gördüğünde bump edilir — bu liste kendi ham sorgusunu koştuğu için (RPC'den bağımsız)
+  // Realtime'a doğrudan bağlı değil, refreshKey değişimiyle dolaylı olarak tazelenir.
+  useEffect(() => { fetchData() }, [onlyPending, projectId, refreshKey])
+  useEffect(() => { setPage(0) }, [statusFilter, onlyPending, projectId, refreshKey])
 
   async function fetchData() {
     setLoading(true)
@@ -215,6 +224,9 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
     if (statusFilter === 'all') return true
     return normalizeStatus(request.status) === statusFilter
   })
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages - 1)
+  const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
   const emptyText = onlyPending
     ? 'Onay bekleyen satın alma talebi yok.'
@@ -264,7 +276,8 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
       ) : filtered.length === 0 ? (
         <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>{emptyText}</div>
       ) : (
-        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: TABLE_MAX_HEIGHT }}>
+        <>
+        <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040 }}>
             <thead>
               <tr>
@@ -274,7 +287,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
               </tr>
             </thead>
             <tbody>
-              {filtered.map(request => {
+              {pageRows.map(request => {
                 const isPending = normalizeStatus(request.status) === 'bekliyor'
                 const materialPlan = materialPlanByProject.get(request.project_id) || EMPTY_MAP
                 const requestedTotals = requestedTotalsByProject.get(request.project_id) || EMPTY_MAP
@@ -300,7 +313,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                     <td style={{ ...TD, whiteSpace: 'nowrap' }}><StatusBadge status={request.status} /></td>
                     <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(request.request_date || request.created_at)}</td>
                     <td style={{ ...TD, minWidth: 128, whiteSpace: 'nowrap' }}>
-                      {isPending ? (
+                      {isPending && canApprove ? (
                         <div style={{ display: 'flex', gap: 5, flexWrap: 'nowrap' }}>
                           <button onClick={event => updateStatus(event, request.id, 'onaylandi')} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                             {actionLoading === request.id ? '…' : 'Onayla'}
@@ -309,6 +322,8 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                             {actionLoading === request.id ? '…' : 'Reddet'}
                           </button>
                         </div>
+                      ) : isPending ? (
+                        <span style={{ fontSize: 12, color: 'var(--color-muted-light)' }}>—</span>
                       ) : canInvoice && isAwaitingInvoice(request) ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
                           <InvoiceStatusBadge status={request.status} />
@@ -326,6 +341,10 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
             </tbody>
           </table>
         </div>
+        <div style={{ padding: '4px 14px 12px' }}>
+          <Pager page={safePage} totalPages={totalPages} onChange={setPage} />
+        </div>
+        </>
       )}
 
       {showNew && (

@@ -93,7 +93,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const canAct = isAdmin && status === 'bekliyor'
   const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
   const description = req.description || req.request_note || req.notes || '-'
-  const requester = req.profiles?.full_name || req.requester_name || req.requested_by_name || req.created_by_name || 'santiyesefi.test'
+  const requester = req.profiles?.full_name || req.requester_name || req.requested_by_name || req.created_by_name || '—'
   const type = requestType(req, items)
   const anyTracked = breakdown.some(row => !(type === 'Malzeme' && row.planned <= 0))
   const approvalDate = req.approved_at || req.updated_at

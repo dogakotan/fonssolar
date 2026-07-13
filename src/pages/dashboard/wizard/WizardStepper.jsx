@@ -1,7 +1,6 @@
 const STEP_LABELS = [
   'Proje Bilgileri',
   'İş Kalemleri',
-  'İlerleme',
   'Riskler',
   'Tedarik',
   'Bütçe',

@@ -542,9 +542,9 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
       reportIds.length ? supabase.from('machinery_logs').select('machine_type, count').in('report_id', reportIds) : empty,
       reportIds.length ? supabase.from('daily_tasks').select('report_id, description').in('report_id', reportIds).eq('type', 'tamamlandı').order('order_index') : empty,
       reportIds.length ? supabase.from('daily_report_issues').select('report_id, topic, description').in('report_id', reportIds) : empty,
-      reportIds.length ? supabase.from('progress_daily').select('item_id, qty_added').in('report_id', reportIds) : empty,
-      priorReportIds.length ? supabase.from('progress_daily').select('item_id, qty_added').in('report_id', priorReportIds) : empty,
-      supabase.from('progress_items').select('id, name, category, unit, target_qty, order_index').eq('project_id', projectId).order('order_index'),
+      reportIds.length ? supabase.from('progress_daily').select('task_id, qty_added').in('report_id', reportIds) : empty,
+      priorReportIds.length ? supabase.from('progress_daily').select('task_id, qty_added').in('report_id', priorReportIds) : empty,
+      supabase.from('project_tasks').select('id, task_name, category, unit, target_qty').eq('project_id', projectId).gt('target_qty', 0).order('planned_start'),
       supabase.from('daily_report_photos').select('storage_path, report_date').eq('project_id', projectId).gte('report_date', startDate).lte('report_date', endDate).order('report_date').limit(9),
     ])
 
@@ -577,11 +577,11 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 
   const priorTotals = new Map()
   ;(priorProgressRes.data || []).forEach(row => {
-    priorTotals.set(row.item_id, (priorTotals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+    priorTotals.set(row.task_id, (priorTotals.get(row.task_id) || 0) + Number(row.qty_added || 0))
   })
   const periodTotals = new Map()
   ;(progressDailyRes.data || []).forEach(row => {
-    periodTotals.set(row.item_id, (periodTotals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+    periodTotals.set(row.task_id, (periodTotals.get(row.task_id) || 0) + Number(row.qty_added || 0))
   })
   const progressItems = (progressItemsRes.data || [])
     .map(item => {
@@ -590,7 +590,7 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
       const after = before + added
       const target = Number(item.target_qty || 0)
       const pct = target > 0 ? Math.round(Math.min(1, after / target) * 100) : 0
-      return { name: item.name, category: item.category, unit: item.unit, target, before, added, after, pct }
+      return { name: item.task_name, category: item.category, unit: item.unit, target, before, added, after, pct }
     })
     .filter(item => item.added > 0 || item.before > 0)
 
@@ -699,12 +699,12 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
     const { data: rows } = await supabase
       .from('progress_daily')
-      .select('item_id, qty_added')
+      .select('task_id, qty_added')
       .in('report_id', reportIds)
 
     const totals = new Map()
     ;(rows || []).forEach(row => {
-      totals.set(row.item_id, (totals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+      totals.set(row.task_id, (totals.get(row.task_id) || 0) + Number(row.qty_added || 0))
     })
     return totals
   }
@@ -734,7 +734,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         .eq('project_id', projectId)
         .eq('report_date', selectedDay)
         .maybeSingle(),
-      supabase.from('progress_items').select('*').eq('project_id', projectId).order('order_index'),
+      supabase.from('project_tasks').select('id, task_code, task_name, category, unit, target_qty, notes').eq('project_id', projectId).gt('target_qty', 0).order('planned_start'),
       supabase
         .from('purchase_requests')
         .select('*')
@@ -781,7 +781,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     const machinery = machineryRes.data || []
     const progressItems = progressItemsRes.data || []
     const progressDaily = progressDailyRes.data || []
-    const progressByItem = new Map(progressDaily.map(row => [row.item_id, row]))
+    const progressByItem = new Map(progressDaily.map(row => [row.task_id, row]))
     const creatorName = creatorRes.data?.full_name || creatorRes.data?.email || ''
 
     let xml = strFromU8(files['xl/worksheets/sheet1.xml'])
@@ -852,8 +852,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       const cumulative = previous + dailyQty
       const target = Number(item.target_qty || 0)
       const pct = target > 0 ? Math.min(1, cumulative / target) : 0
-      put(`B${row}`, item.code || item.item_code || `K-${String(index + 1).padStart(2, '0')}`)
-      put(`C${row}`, item.name || '')
+      put(`B${row}`, item.task_code || `K-${String(index + 1).padStart(2, '0')}`)
+      put(`C${row}`, item.task_name || '')
       put(`D${row}`, item.unit || '')
       put(`E${row}`, target || '')
       put(`F${row}`, previous || '')
@@ -994,7 +994,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         supabase.from('personnel_log_entries').select('shift, department, count').eq('report_id', rid),
         supabase.from('machinery_logs').select('machine_type, count').eq('report_id', rid),
         supabase.from('daily_tasks').select('type, description').eq('report_id', rid).order('order_index'),
-        supabase.from('progress_daily').select('qty_added, progress_items(name, category, target_qty, unit, total_progress)').eq('report_id', rid),
+        supabase.from('progress_daily').select('qty_added, project_tasks(task_name, category, target_qty, unit, total_progress)').eq('report_id', rid),
       ])
 
       const SHIFT_KEY = { 'mühendis': 'muhendis', 'usta': 'usta', 'işçi': 'isci' }
@@ -1017,12 +1017,12 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       plannedTasks = tasks.filter(t => t.type === 'planlandı').map(t => t.description)
 
       ilerlemeData = (pdRes.data || []).map(r => {
-        const item = r.progress_items || {}
+        const item = r.project_tasks || {}
         const pct  = item.target_qty > 0
           ? Math.round((item.total_progress || 0) / item.target_qty * 100)
           : 0
         return {
-          work_item:        item.name,
+          work_item:        item.task_name,
           category:         item.category,
           quantity:         item.target_qty,
           unit:             item.unit,

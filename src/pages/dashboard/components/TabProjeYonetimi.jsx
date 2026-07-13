@@ -20,7 +20,6 @@ const STATUS_COLOR = {
 
 const SUB_TABLES = [
   'project_tasks',
-  'progress_items',
   'project_risks',
   'procurement_items',
   'budget_lines',

@@ -12,7 +12,7 @@ import ProjeTabSaOnayKuyrugu from './ProjeTabSaOnayKuyrugu'
 import ProjeTabFaturaKesilecekler from './ProjeTabFaturaKesilecekler'
 import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 
-export default function ProjeTabSatinAlma({ projectId, filterDate }) {
+export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false }) {
   const { isAdmin } = useAuth()
   const [tab, setTab] = useState('talepler')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
@@ -26,20 +26,25 @@ export default function ProjeTabSatinAlma({ projectId, filterDate }) {
   const requests = overview?.requests || []
   const procurement = overview?.procurement_items || []
   const refresh = refetch
+  // ProjeTabTalepListesi kendi ham purchase_requests sorgusunu koşuyor (RPC'den bağımsız)
+  // — overview.requests'in Realtime ile tazelenmesi liste tablosuna yansımaz. refreshKey'i
+  // bump ederek çocuk bileşenin kendi fetchData'sını da tetikliyoruz.
+  const [refreshKey, setRefreshKey] = useState(0)
   const realtime = useRealtimeRefresh(
     ['purchase_requests'],
-    refetch,
+    () => { refetch(); setRefreshKey(k => k + 1) },
     { enabled: !!projectId, filter: { column: 'project_id', value: projectId } }
   )
 
   useEffect(() => {
+    if (siteChiefView) return // Şantiye şefi görünümünde döviz kartı (sidebar) gösterilmiyor.
     let alive = true
     // TCMB kur servisi yavaş/erişilemez olabilir; ana veriyi bekletmemesi için ayrı yükleniyor.
     fetchDoviz().then(kurData => {
       if (alive && kurData) setDoviz({ usd: kurData.usd, eur: kurData.eur, date: kurData.date })
     })
     return () => { alive = false }
-  }, [])
+  }, [siteChiefView])
 
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -75,10 +80,12 @@ export default function ProjeTabSatinAlma({ projectId, filterDate }) {
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
       </div>
-      <div className="sa-overview-grid">
-        <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
-        <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} recent={recent} doviz={doviz} loading={loading} />
-      </div>
+      {!siteChiefView && (
+        <div className="sa-overview-grid">
+          <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
+          <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} recent={recent} doviz={doviz} loading={loading} />
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
@@ -94,9 +101,9 @@ export default function ProjeTabSatinAlma({ projectId, filterDate }) {
         ))}
       </div>
       {tab === 'talepler' && (
-        <ProjeTabTalepListesi projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} />
+        <ProjeTabTalepListesi projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} siteChiefView={siteChiefView} />
       )}
-      {tab === 'onay' && isAdmin && <ProjeTabSaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} />}
+      {tab === 'onay' && isAdmin && <ProjeTabSaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
       {tab === 'malzeme' && <ProjeTabFaturaKesilecekler rows={materialRows} loading={loading} />}
     </div>
   )

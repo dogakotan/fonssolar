@@ -254,104 +254,21 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
     setShowCal(v => !v)
   }
 
-  async function applyReportProgress(projectRows) {
-    const projectIds = projectRows.map(p => p.id).filter(Boolean)
-    if (!projectIds.length) return projectRows
-
-    const asOfDate = selectedDate ? toIsoDate(selectedDate) : null
-    const [itemsRes, reportsRes] = await Promise.all([
-      supabase
-        .from('progress_items')
-        .select('id, project_id, target_qty')
-        .in('project_id', projectIds),
-      (() => {
-        let query = supabase
-          .from('daily_reports')
-          .select('id, project_id, report_date')
-          .in('project_id', projectIds)
-        if (asOfDate) query = query.lte('report_date', asOfDate)
-        return query
-      })(),
-    ])
-
-    if (itemsRes.error || reportsRes.error) throw (itemsRes.error || reportsRes.error)
-
-    const items = itemsRes.data || []
-    const reports = reportsRes.data || []
-    const reportIds = reports.map(report => report.id).filter(Boolean)
-    const reportProjectById = new Map(reports.map(report => [report.id, report.project_id]))
-
-    let dailyRows = []
-    if (reportIds.length) {
-      const { data, error } = await supabase
-        .from('progress_daily')
-        .select('report_id, item_id, qty_added')
-        .in('report_id', reportIds)
-      if (error) throw error
-      dailyRows = data || []
-    }
-
-    const qtyByItem = new Map()
-    dailyRows.forEach(row => {
-      if (!reportProjectById.has(row.report_id)) return
-      qtyByItem.set(row.item_id, (qtyByItem.get(row.item_id) || 0) + Number(row.qty_added || 0))
-    })
-
-    const itemsByProject = new Map()
-    items.forEach(item => {
-      if (!itemsByProject.has(item.project_id)) itemsByProject.set(item.project_id, [])
-      itemsByProject.get(item.project_id).push(item)
-    })
-
-    return projectRows.map(project => {
-      const projectItems = itemsByProject.get(project.id) || []
-      if (!projectItems.length) return project
-      const pct = Math.round(projectItems.reduce((sum, item) => {
-        const target = Number(item.target_qty || 0)
-        const done = Number(qtyByItem.get(item.id) || 0)
-        return sum + (target > 0 ? Math.min(done / target, 1) * 100 : 0)
-      }, 0) / projectItems.length)
-      return { ...project, progress: pct }
-    })
-  }
-
-  // Başlangıç yüklemesi — proje listesi (KPI özeti artık ayrı useDashboardData ile çekiliyor)
+  // Başlangıç yüklemesi — proje listesi (KPI özeti artık ayrı useDashboardData ile çekiliyor).
+  // İlerleme, projects.progress kolonundan doğrudan okunuyor (fn_sync_project_progress
+  // tarafından kategori-ağırlıklı olarak güncel tutuluyor) — client-side yeniden hesap yok.
   useEffect(() => {
     async function load() {
       const { data: projData } = await getProjects()
-      let projectRows = projData || []
-      const projectIds = projectRows.map(p => p.id).filter(Boolean)
-
-      if (projectIds.length) {
-        try {
-          projectRows = await applyReportProgress(projectRows)
-        } catch (reportProgressErr) {
-          console.warn('Günlük rapor ilerlemesi hesaplanamadı, özet view deneniyor:', reportProgressErr)
-          const { data: progressRows, error: progressErr } = await supabase
-            .from('vw_project_progress_summary')
-            .select('project_id, actual_progress_pct')
-            .in('project_id', projectIds)
-
-          if (!progressErr && progressRows) {
-            const progressByProject = new Map(progressRows.map(row => [
-              row.project_id,
-              Math.round(Number(row.actual_progress_pct || 0)),
-            ]))
-            projectRows = projectRows.map(project => ({
-              ...project,
-              progress: progressByProject.has(project.id)
-                ? progressByProject.get(project.id)
-                : Math.round(Number(project.progress || 0)),
-            }))
-          }
-        }
-      }
-
+      const projectRows = (projData || []).map(project => ({
+        ...project,
+        progress: Math.round(Number(project.progress || 0)),
+      }))
       setProjects(projectRows)
       setLoading(false)
     }
     load().catch(() => setLoading(false))
-  }, [selectedDate])
+  }, [])
 
   // selectedDate değiştiğinde filtreli proje ID'lerine göre görev + satın alma say
   useEffect(() => {
@@ -870,12 +787,12 @@ function ProjectDashboard({ projectId, filterDate }) {
 
     const { data: dailyRows } = await supabase
       .from('progress_daily')
-      .select('item_id, qty_added, report_id')
+      .select('task_id, qty_added, report_id')
       .in('report_id', reportIds)
 
     const totals = new Map()
     ;(dailyRows || []).forEach(row => {
-      totals.set(row.item_id, (totals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+      totals.set(row.task_id, (totals.get(row.task_id) || 0) + Number(row.qty_added || 0))
     })
     return totals
   }
@@ -909,7 +826,7 @@ function ProjectDashboard({ projectId, filterDate }) {
       progressTotals,
     ] = await Promise.all([
       supabase.from('projects').select('*').eq('id', projectId).single(),
-      supabase.from('progress_items').select('*').eq('project_id', projectId).order('order_index'),
+      supabase.from('project_tasks').select('*').eq('project_id', projectId).gt('target_qty', 0).order('planned_start'),
       supabase.from('project_tasks').select('*').eq('project_id', projectId).in('status', ['devam_ediyor', 'tamamlandi']).order('task_code'),
       reportId ? supabase.from('personnel_log_entries').select('*').eq('report_id', reportId) : Promise.resolve({ data: [] }),
       reportId ? supabase.from('machinery_logs').select('*').eq('report_id', reportId) : Promise.resolve({ data: [] }),
@@ -960,7 +877,7 @@ function ProjectDashboard({ projectId, filterDate }) {
 
     fillExcelTemplateSheet(files, 2, data.progressItems.map(item => [
       undefined,
-      item.name || '',
+      item.task_name || '',
       item.unit || '',
       item.target_qty || 0,
       data.progressTotals.get(item.id) || 0,
@@ -1001,7 +918,7 @@ function ProjectDashboard({ projectId, filterDate }) {
       progressEnd,
     ] = await Promise.all([
       supabase.from('projects').select('*').eq('id', projectId).single(),
-      supabase.from('progress_items').select('*').eq('project_id', projectId).order('order_index'),
+      supabase.from('project_tasks').select('*').eq('project_id', projectId).gt('target_qty', 0).order('planned_start'),
       supabase.from('project_risks').select('*').eq('project_id', projectId).eq('status', 'açık'),
       supabase.from('budget_lines').select('*').eq('project_id', projectId).order('order_index'),
       supabase.from('invoices').select('*').eq('project_id', projectId).lte('invoice_date', period.end),
@@ -1022,7 +939,7 @@ function ProjectDashboard({ projectId, filterDate }) {
     const progressRows = (progItems || []).map(item => {
       const before = progressBefore.get(item.id) || 0
       const end = progressEnd.get(item.id) || 0
-      return [undefined, item.name || '', item.unit || '', before, end, undefined, item.target_qty || 0]
+      return [undefined, item.task_name || '', item.unit || '', before, end, undefined, item.target_qty || 0]
     })
 
     let summaryXml = strFromU8(files['xl/worksheets/sheet1.xml'])
@@ -1076,7 +993,7 @@ function ProjectDashboard({ projectId, filterDate }) {
 
     fillExcelTemplateSheet(files, 3, (progItems || []).map(item => [
       undefined,
-      item.name || '',
+      item.task_name || '',
       item.unit || '',
       item.target_qty || 0,
       progressBefore.get(item.id) || 0,

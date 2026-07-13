@@ -55,8 +55,9 @@ async function ctxGenel(projectId, selectedDate) {
       ceiling
     ),
     supabase
-      .from('progress_items')
-      .select('category, name, target_qty, total_progress')
+      .from('project_tasks')
+      .select('category, task_name, target_qty, total_progress')
+      .gt('target_qty', 0)
       .match(pid ? { project_id: pid } : {}),
   ])
 
@@ -77,7 +78,7 @@ async function ctxGenel(projectId, selectedDate) {
 
   const progressLines = progress.map(p => {
     const pct = p.target_qty > 0 ? Math.round((p.total_progress / p.target_qty) * 100) : 0
-    return `  - [${p.category}] ${p.name}: %${pct} (${fmt(p.total_progress)}/${fmt(p.target_qty)})`
+    return `  - [${p.category}] ${p.task_name}: %${pct} (${fmt(p.total_progress)}/${fmt(p.target_qty)})`
   })
 
   return [
@@ -109,8 +110,9 @@ async function ctxIsPlan(projectId, selectedDate) {
       ceiling
     ),
     supabase
-      .from('progress_items')
-      .select('category, name, target_qty, total_progress')
+      .from('project_tasks')
+      .select('category, task_name, target_qty, total_progress')
+      .gt('target_qty', 0)
       .match(pid ? { project_id: pid } : {}),
   ])
 
@@ -128,7 +130,7 @@ async function ctxIsPlan(projectId, selectedDate) {
 
   const progLines = progs.map(p => {
     const pct = p.target_qty > 0 ? Math.round((p.total_progress / p.target_qty) * 100) : 0
-    return `  - [${p.category}] ${p.name}: %${pct}`
+    return `  - [${p.category}] ${p.task_name}: %${pct}`
   })
 
   return [

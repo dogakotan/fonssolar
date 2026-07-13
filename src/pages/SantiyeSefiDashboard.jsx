@@ -145,7 +145,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   }, [lastReportId])
 
   // İş Planı'ndaki planlı tarihler — "İlerleme Kalemleri"nde geciken/aktif kalemleri öne çıkarmak için.
-  // progress_items.task_id dolduruldukça devreye girer; boşken sıralama düz % bazlı kalır (bkz. enrichedProgressItems).
+  // project_tasks.planned_start/end dolu olduğunda devreye girer; boşken sıralama düz % bazlı kalır (bkz. enrichedProgressItems).
   const [projectTasks, setProjectTasks] = useState([])
   useEffect(() => {
     if (!projectId) { setProjectTasks([]); return }
@@ -360,71 +360,74 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
         <button onClick={() => setShowTicket(true)} style={{ ...BTN_ACTION_OUTLINE, width: 'auto', flex: '1 1 200px' }}>🎫 Ticket Aç</button>
       </div>
 
-      {/* Proje İlerlemesi */}
+      {/* Proje İlerlemesi — tek net genel ilerleme çubuğu (plan işaretli) + kalemler yatay bar listesi olarak,
+          eski donut grid + ayrı varyans rozeti karmaşası kaldırıldı (kullanıcı geri bildirimi: "anlaşılır değil"). */}
       {(progressSummary || progressItems.length > 0) && (
         <div style={{ ...CARD_BASE, padding: 0, marginBottom: 16, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-            <div>
-              <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)', display: 'block' }}>Proje İlerlemesi</span>
-              {progressSummary && (
-                <span style={{ fontSize: 12, color: 'var(--color-muted-light)' }}>
-                  Planlanan %{progressSummary.planned_progress_pct} · Gerçekleşen %{progressSummary.actual_progress_pct}
-                </span>
-              )}
-            </div>
-            {progressSummary && progressSummary.progress_variance != null && (
-              <span style={{
-                fontSize: 14, fontWeight: 700, flexShrink: 0,
-                color: Number(progressSummary.progress_variance) >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
-              }}>
-                {Number(progressSummary.progress_variance) >= 0 ? '+' : ''}{progressSummary.progress_variance}%
-              </span>
+          <div style={{ padding: '14px 18px', borderBottom: progressItems.length > 0 ? '1px solid var(--color-border)' : 'none' }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text)', display: 'block', marginBottom: 10 }}>Proje İlerlemesi</span>
+
+            {progressSummary && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 30, fontWeight: 700, color: 'var(--color-primary)', lineHeight: 1 }}>%{progressSummary.actual_progress_pct}</span>
+                  <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>tamamlandı</span>
+                </div>
+
+                <div style={{ position: 'relative', height: 12, background: 'var(--color-border)', borderRadius: 6, marginBottom: 4 }}>
+                  <div style={{
+                    position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 6,
+                    background: 'var(--color-primary)', width: `${progressSummary.actual_progress_pct || 0}%`, transition: 'width .4s',
+                  }} />
+                  {progressSummary.planned_progress_pct > 0 && (
+                    <div
+                      title={`Planlanan ilerleme: %${progressSummary.planned_progress_pct}`}
+                      style={{
+                        position: 'absolute', top: -3, bottom: -3, width: 3, borderRadius: 2,
+                        background: 'var(--color-text)', left: `${progressSummary.planned_progress_pct}%`, transform: 'translateX(-50%)',
+                      }}
+                    />
+                  )}
+                </div>
+                {progressSummary.planned_progress_pct > 0 && (
+                  <p style={{ margin: '0 0 8px', fontSize: 11, color: 'var(--color-muted-light)' }}>
+                    ▍ işareti planlanan ilerlemeyi gösterir (%{progressSummary.planned_progress_pct})
+                  </p>
+                )}
+
+                {progressSummary.progress_variance != null && (
+                  <p style={{
+                    margin: '0 0 10px', fontSize: 12, fontWeight: 600,
+                    color: Number(progressSummary.progress_variance) >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
+                  }}>
+                    {Number(progressSummary.progress_variance) >= 0
+                      ? `Plana göre ${progressSummary.progress_variance} puan önde`
+                      : `Plana göre ${Math.abs(progressSummary.progress_variance)} puan geride`}
+                  </p>
+                )}
+
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                    <strong style={{ color: 'var(--color-text-sub)' }}>{progressSummary.completed_tasks}</strong>/{progressSummary.total_tasks} görev tamamlandı
+                  </span>
+                  {progressSummary.delayed_tasks > 0 && (
+                    <span style={{ fontSize: 12, color: 'var(--color-danger)', fontWeight: 600 }}>
+                      ⚠ {progressSummary.delayed_tasks} geciken görev
+                    </span>
+                  )}
+                  {progressSummary.days_remaining != null && (
+                    <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                      <strong style={{ color: 'var(--color-text-sub)' }}>{progressSummary.days_remaining}</strong> gün kaldı
+                    </span>
+                  )}
+                </div>
+              </>
             )}
           </div>
 
-          {progressSummary && (
-            <div style={{ padding: '12px 18px', borderBottom: progressItems.length > 0 ? '1px solid var(--color-border)' : 'none' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>Genel İlerleme</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-primary)' }}>%{progressSummary.actual_progress_pct}</span>
-              </div>
-              <div style={{ position: 'relative', height: 10, background: 'var(--color-border)', borderRadius: 5, overflow: 'hidden' }}>
-                <div style={{
-                  position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 5,
-                  background: 'var(--color-primary)', width: `${progressSummary.actual_progress_pct || 0}%`, transition: 'width .4s',
-                }} />
-              </div>
-              {progressSummary.planned_progress_pct > 0 && (
-                <div style={{ position: 'relative', height: 4, marginTop: 3 }}>
-                  <div style={{
-                    position: 'absolute', left: 0, top: 0, height: 2,
-                    background: 'var(--color-border-md)', borderRadius: 2,
-                    width: `${progressSummary.planned_progress_pct || 0}%`,
-                  }} />
-                  <span style={{ position: 'absolute', left: `${progressSummary.planned_progress_pct || 0}%`, top: -2, fontSize: 8, color: 'var(--color-muted-light)', transform: 'translateX(-50%)' }}>▲</span>
-                </div>
-              )}
-              <div style={{ display: 'flex', gap: 16, marginTop: 8, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
-                  <strong style={{ color: 'var(--color-text-sub)' }}>{progressSummary.completed_tasks}</strong>/{progressSummary.total_tasks} görev tamamlandı
-                </span>
-                {progressSummary.delayed_tasks > 0 && (
-                  <span style={{ fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}>
-                    {progressSummary.delayed_tasks} geciken görev
-                  </span>
-                )}
-                {progressSummary.days_remaining != null && (
-                  <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
-                    <strong style={{ color: 'var(--color-text-sub)' }}>{progressSummary.days_remaining}</strong> gün kaldı
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
           {progressItems.length > 0 && (
-            <div style={{ padding: '4px 18px 16px' }}>
-              <p style={{ margin: '12px 0 10px', fontSize: 11, fontWeight: 600, color: 'var(--color-muted-light)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            <div style={{ padding: '12px 18px 16px' }}>
+              <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 600, color: 'var(--color-muted-light)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
                 İlerleme Kalemleri · geciken ve bugün aktif olanlar
               </p>
               {rankedProgressItems.length === 0 ? (
@@ -432,43 +435,40 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
                   Bugün için planlı olarak devam eden veya geciken kalem yok.
                 </p>
               ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {rankedProgressItems.map(({ item, pct, scheduleState, overdueLabel }) => {
                     const tone = scheduleState === 'overdue'
                       ? 'var(--color-danger)'
                       : pct >= 70 ? 'var(--color-success)' : pct >= 35 ? 'var(--color-primary)' : 'var(--color-danger)'
                     return (
-                      <div key={item.id} style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                        padding: '12px 6px', background: 'var(--color-surface)',
+                      <div key={item.id} className="pi-item-row" style={{
+                        padding: '9px 10px', background: 'var(--color-surface)',
                         border: scheduleState === 'overdue' ? '1px solid var(--color-danger)' : '1px solid var(--color-border)',
-                        borderRadius: 10, textAlign: 'center',
+                        borderRadius: 8,
                       }}>
-                        <div style={{
-                          width: 54, height: 54, borderRadius: '50%', display: 'grid', placeItems: 'center',
-                          background: `radial-gradient(circle at center, var(--color-surface) 0 62%, transparent 63%), conic-gradient(${tone} calc(${pct} * 1%), var(--color-border) 0)`,
-                        }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: tone }}>%{pct}</span>
+                        <div className="pi-item-name-col">
+                          <span title={item.name} style={{
+                            display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--color-text)',
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {item.name}
+                          </span>
+                          <span style={{ fontSize: 10, color: 'var(--color-muted-light)', whiteSpace: 'nowrap' }}>
+                            {Number(item.total_progress).toLocaleString('tr-TR')}/{Number(item.target_qty).toLocaleString('tr-TR')} {item.unit}
+                          </span>
                         </div>
-                        <span style={{
-                          fontSize: 12, fontWeight: 600, color: 'var(--color-text)', maxWidth: '100%',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
-                          {item.name}
-                        </span>
-                        <span style={{ fontSize: 10, color: 'var(--color-muted-light)' }}>
-                          {Number(item.total_progress).toLocaleString('tr-TR')}/{Number(item.target_qty).toLocaleString('tr-TR')} {item.unit}
-                        </span>
-                        {scheduleState === 'overdue' && (
-                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-danger)' }}>
-                            ⚠ {overdueLabel} bitmeliydi
-                          </span>
-                        )}
-                        {scheduleState === 'active' && (
-                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--color-primary)' }}>
-                            ● Bugün aktif
-                          </span>
-                        )}
+                        <div className="pi-item-bar-col">
+                          <div style={{ flex: 1, position: 'relative', height: 8, background: 'var(--color-border)', borderRadius: 4, overflow: 'hidden', minWidth: 40 }}>
+                            <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 4, background: tone, width: `${pct}%`, transition: 'width .4s' }} />
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: tone, width: 34, textAlign: 'right', flexShrink: 0 }}>%{pct}</span>
+                          {scheduleState === 'overdue' && (
+                            <span title={`${overdueLabel} bitmeliydi`} style={{ fontSize: 13, flexShrink: 0 }}>⚠</span>
+                          )}
+                          {scheduleState === 'active' && (
+                            <span title="Bugün aktif" style={{ fontSize: 10, color: 'var(--color-primary)', flexShrink: 0 }}>●</span>
+                          )}
+                        </div>
                       </div>
                     )
                   })}

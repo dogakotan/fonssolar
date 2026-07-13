@@ -157,12 +157,11 @@ function statusLabel(status) {
   return STATUS_LABELS[status] || status?.replace(/_/g, ' ') || '-'
 }
 
-function pctFromDailyProgress(items, dailyRows) {
-  const totalTarget = (items || []).reduce((sum, item) => sum + Number(item.target_qty || 0), 0)
-  if (totalTarget <= 0) return 0
+function pctFromDailyProgress(targetQty, dailyRows) {
+  if (targetQty <= 0) return 0
 
   const dailyDone = (dailyRows || []).reduce((sum, row) => sum + Number(row.qty_added || 0), 0)
-  return Math.min(100, Math.round((dailyDone / totalTarget) * 100))
+  return Math.min(100, Math.round((dailyDone / targetQty) * 100))
 }
 
 export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily', siteChiefView = false }) {
@@ -172,7 +171,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   // Görev bazlı "Kümülatif/Günlük İlerleme" hesaplamak için ham veriler tutulur —
   // önceden tek bir proje-geneli yüzde hesaplanıp HER görevin detay panelinde
   // aynı (yanlış) sayı gösteriliyordu, task_id ile filtrelenmediği için.
-  const [progressItemsAll, setProgressItemsAll] = useState([])
+  const [taskTargetsAll, setTaskTargetsAll] = useState([])
   const [dailyProgressRowsAll, setDailyProgressRowsAll] = useState([])
   const [criticalCodes, setCriticalCodes] = useState(new Set())
   const [critCount, setCritCount] = useState(0)
@@ -198,7 +197,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   )
   const authorized = ganttData?.authorized ?? true
   const realtime = useRealtimeRefresh(
-    ['project_tasks', 'progress_items', { table: 'progress_daily', filterColumn: null }, 'daily_reports', 'purchase_requests'],
+    ['project_tasks', { table: 'progress_daily', filterColumn: null }, 'daily_reports', 'purchase_requests'],
     refetch,
     { enabled: !!projectId, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
   )
@@ -222,7 +221,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
         })))
         setCritCount(0)
         setSiteChief(null)
-        setProgressItemsAll([])
+        setTaskTargetsAll([])
         setDailyProgressRowsAll([])
         setLoading(false)
       })
@@ -256,7 +255,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
       setCriticalCodes(codes)
       setCritCount(codes.size)
 
-      const [chiefRes, itemsRes, reportRes] = await Promise.all([
+      const [chiefRes, tasksRes, reportRes] = await Promise.all([
         supabase
           .from('profiles')
           .select('full_name, email')
@@ -265,9 +264,10 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           .limit(1)
           .maybeSingle(),
         supabase
-          .from('progress_items')
-          .select('id, target_qty, total_progress, task_id')
-          .eq('project_id', projectId),
+          .from('project_tasks')
+          .select('id, target_qty')
+          .eq('project_id', projectId)
+          .gt('target_qty', 0),
         supabase
           .from('daily_reports')
           .select('id')
@@ -278,18 +278,18 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
 
       if (!alive) return
 
-      const progressItems = itemsRes.data || []
+      const taskTargets = tasksRes.data || []
       let dailyProgressRows = []
       if (reportRes.data?.id) {
         const { data: progressRows } = await supabase
           .from('progress_daily')
-          .select('qty_added, item_id')
+          .select('qty_added, task_id')
           .eq('report_id', reportRes.data.id)
         dailyProgressRows = progressRows || []
       }
 
       setSiteChief(chiefRes.data?.full_name || chiefRes.data?.email || null)
-      setProgressItemsAll(progressItems)
+      setTaskTargetsAll(taskTargets)
       setDailyProgressRowsAll(dailyProgressRows)
       setLoading(false)
     }
@@ -332,14 +332,14 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const selectedTask = withDates.find(task => task.id === selectedTaskId) || null
 
   // Görevin kendi bugünkü katkısı — proje-geneli değil, sadece bu göreve bağlı
-  // progress_items kalemlerine bugün girilen miktar üzerinden hesaplanır. Erken
+  // project_tasks.target_qty'ye karşı bugün girilen miktar üzerinden hesaplanır. Erken
   // return'lerden (loading/authorized) ÖNCE çağrılmalı — aksi halde Hooks kuralı ihlal edilir.
   const selectedTaskDailyPct = useMemo(() => {
     if (!selectedTask) return 0
-    const taskItems = progressItemsAll.filter(i => i.task_id === selectedTask.id)
-    const taskDailyRows = dailyProgressRowsAll.filter(r => taskItems.some(i => i.id === r.item_id))
-    return pctFromDailyProgress(taskItems, taskDailyRows)
-  }, [selectedTask, progressItemsAll, dailyProgressRowsAll])
+    const targetQty = Number(taskTargetsAll.find(t => t.id === selectedTask.id)?.target_qty || 0)
+    const taskDailyRows = dailyProgressRowsAll.filter(r => r.task_id === selectedTask.id)
+    return pctFromDailyProgress(targetQty, taskDailyRows)
+  }, [selectedTask, taskTargetsAll, dailyProgressRowsAll])
 
   if (loading) {
     return (

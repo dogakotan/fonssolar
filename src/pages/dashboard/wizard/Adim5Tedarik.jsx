@@ -81,7 +81,7 @@ export default function Adim5Tedarik({ projectId, result, onDone, onBack, mode =
   return (
     <div className="card">
       <div className="card-header">
-        <h3>Adım 5 — Tedarik</h3>
+        <h3>Adım 4 — Tedarik</h3>
         <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>Opsiyonel — procurement_items</span>
       </div>
 

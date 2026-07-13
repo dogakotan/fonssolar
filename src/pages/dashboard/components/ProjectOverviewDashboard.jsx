@@ -291,7 +291,7 @@ export default function ProjectOverviewDashboard({
   )
   const authorized = byDateData?.authorized ?? true
   const realtime = useRealtimeRefresh(
-    ['daily_reports', 'progress_items', { table: 'progress_daily', filterColumn: null }, 'project_tasks', 'tickets', 'purchase_requests', 'invoices'],
+    ['daily_reports', { table: 'progress_daily', filterColumn: null }, 'project_tasks', 'tickets', 'purchase_requests', 'invoices'],
     refetch,
     { enabled: !!projectId, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
   )

@@ -26,7 +26,11 @@ export default function TabSatinAlma() {
   const requests = overview?.requests || []
   const procurement = overview?.procurement_items || []
   const refresh = refetch
-  const realtime = useRealtimeRefresh(['purchase_requests'], refetch)
+  // TabSatinAlmaTalepListesi kendi ham purchase_requests sorgusunu koşuyor (RPC'den
+  // bağımsız) — bu yüzden overview.requests'in Realtime ile tazelenmesi liste tablosuna
+  // yansımaz. refreshKey'i bump ederek çocuk bileşenin kendi fetchData'sını da tetikliyoruz.
+  const [refreshKey, setRefreshKey] = useState(0)
+  const realtime = useRealtimeRefresh(['purchase_requests'], () => { refetch(); setRefreshKey(k => k + 1) })
 
   useEffect(() => {
     let alive = true
@@ -108,9 +112,9 @@ export default function TabSatinAlma() {
         </select>
       </div>
       {tab === 'talepler' && (
-        <TabSatinAlmaTalepListesi onChanged={refresh} procurement={scopedProcurement} projectId={activeProjectId} />
+        <TabSatinAlmaTalepListesi onChanged={refresh} procurement={scopedProcurement} projectId={activeProjectId} refreshKey={refreshKey} />
       )}
-      {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu onChanged={refresh} procurement={scopedProcurement} projectId={activeProjectId} />}
+      {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu onChanged={refresh} procurement={scopedProcurement} projectId={activeProjectId} refreshKey={refreshKey} />}
     </div>
   )
 }

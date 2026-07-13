@@ -246,7 +246,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
       creatorRes,
     ] = await Promise.all([
       supabase.from('projects').select('*').eq('id', exportProjectId).maybeSingle(),
-      supabase.from('progress_items').select('*').eq('project_id', exportProjectId).order('order_index'),
+      supabase.from('project_tasks').select('id, task_code, task_name, category, unit, target_qty, notes').eq('project_id', exportProjectId).gt('target_qty', 0).order('planned_start'),
       supabase.from('purchase_requests').select('*').eq('project_id', exportProjectId)
         .gte('created_at', `${selectedDay}T00:00:00`)
         .lte('created_at', `${selectedDay}T23:59:59`)
@@ -271,9 +271,9 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     const prevIds = (prevReports || []).map(r => r.id).filter(Boolean)
     const previousTotals = new Map()
     if (prevIds.length) {
-      const { data: prevRows } = await supabase.from('progress_daily').select('item_id, qty_added').in('report_id', prevIds)
+      const { data: prevRows } = await supabase.from('progress_daily').select('task_id, qty_added').in('report_id', prevIds)
       ;(prevRows || []).forEach(row => {
-        previousTotals.set(row.item_id, (previousTotals.get(row.item_id) || 0) + Number(row.qty_added || 0))
+        previousTotals.set(row.task_id, (previousTotals.get(row.task_id) || 0) + Number(row.qty_added || 0))
       })
     }
 
@@ -281,7 +281,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     const personnel = personnelRes.data || []
     const machinery = machineryRes.data || []
     const progressItems = progressItemsRes.data || []
-    const progressByItem = new Map((progressDailyRes.data || []).map(row => [row.item_id, row]))
+    const progressByItem = new Map((progressDailyRes.data || []).map(row => [row.task_id, row]))
     const creatorName = creatorRes.data?.full_name || creatorRes.data?.email || ''
     const reportNotes = decodeStoredMeta('__REPORT_NOTES_META__', report.notes)
 
@@ -341,8 +341,8 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
       const cumulative = previous + dailyQty
       const target = Number(item.target_qty || 0)
       const pct = target > 0 ? Math.min(1, cumulative / target) : 0
-      put(`B${row}`, item.code || item.item_code || `K-${String(idx + 1).padStart(2, '0')}`)
-      put(`C${row}`, item.name || '')
+      put(`B${row}`, item.task_code || `K-${String(idx + 1).padStart(2, '0')}`)
+      put(`C${row}`, item.task_name || '')
       put(`D${row}`, item.unit || '')
       put(`E${row}`, target || '')
       put(`F${row}`, previous || '')

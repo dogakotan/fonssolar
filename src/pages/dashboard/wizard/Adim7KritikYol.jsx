@@ -73,7 +73,7 @@ export default function Adim7KritikYol({ projectId, result, onDone, onBack, mode
   return (
     <div className="card">
       <div className="card-header">
-        <h3>Adım 7 — Kritik Yol</h3>
+        <h3>Adım 6 — Kritik Yol</h3>
         <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>Opsiyonel — critical_path_items</span>
       </div>
 

@@ -57,7 +57,7 @@ export default function Adim6Butce({ projectId, result, onDone, onBack, mode = '
   return (
     <div className="card">
       <div className="card-header">
-        <h3>Adım 6 — Bütçe Kalemleri</h3>
+        <h3>Adım 5 — Bütçe Kalemleri</h3>
         <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>Opsiyonel — budget_lines</span>
       </div>
 

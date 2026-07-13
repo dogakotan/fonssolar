@@ -43,7 +43,7 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
   const issues     = data?.issues     || []
 
   const realtime = useRealtimeRefresh(
-    ['daily_reports', { table: 'progress_daily', filterColumn: null }, 'progress_items'],
+    ['daily_reports', { table: 'progress_daily', filterColumn: null }],
     refetch,
     {
       enabled: !!reportId,

@@ -16,7 +16,7 @@ export function useSantiyeData(projectId) {
   // Faz D: eski ss-tickets/ss-prs/ss-daily kanalları kaldırıldı, ortak
   // useRealtimeRefresh'e taşındı (tek kanal, debounce'lu, polling yedekli).
   const realtime = useRealtimeRefresh(
-    ['daily_reports', 'purchase_requests', 'tickets', 'progress_items', 'project_tasks'],
+    ['daily_reports', 'purchase_requests', 'tickets', 'project_tasks'],
     refetch,
     { enabled: !!projectId, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
   )

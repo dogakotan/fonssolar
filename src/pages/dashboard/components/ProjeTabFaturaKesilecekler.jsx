@@ -1,7 +1,9 @@
-const VISIBLE_ROWS = 6
+import { useState, useEffect } from 'react'
+import Pager from '../../../components/ui/Pager'
+
+const PAGE_SIZE = 10
 const ROW_HEIGHT = 44
 const HEADER_HEIGHT = 24
-const TABLE_MAX_HEIGHT = HEADER_HEIGHT + VISIBLE_ROWS * ROW_HEIGHT
 
 const TH = { height: HEADER_HEIGHT, boxSizing: 'border-box', padding: '0 14px', lineHeight: `${HEADER_HEIGHT}px`, textAlign: 'left', fontSize: 9.5, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', verticalAlign: 'middle' }
 const TD = { height: ROW_HEIGHT, boxSizing: 'border-box', padding: '0 14px', fontSize: 13, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
@@ -10,6 +12,13 @@ const formatQty = (value) =>
   Number(value || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
 
 export default function ProjeTabFaturaKesilecekler({ rows = [], loading }) {
+  const [page, setPage] = useState(0)
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
+  const safePage = Math.min(page, totalPages - 1)
+  const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+
+  useEffect(() => { setPage(0) }, [rows.length])
+
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -26,7 +35,8 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading }) {
           Bu projeye ait malzeme listesi henüz eklenmemiş.
         </div>
       ) : (
-        <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: TABLE_MAX_HEIGHT }}>
+        <>
+        <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
             <thead>
               <tr>
@@ -36,7 +46,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map(row => (
+              {pageRows.map(row => (
                 <tr key={row.id || row.material} style={{ borderBottom: '1px solid var(--color-border)' }}>
                   <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text)' }}>{row.material}</td>
                   <td style={TD}>{formatQty(row.planned)} {row.unit}</td>
@@ -49,6 +59,10 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading }) {
             </tbody>
           </table>
         </div>
+        <div style={{ padding: '4px 14px 12px' }}>
+          <Pager page={safePage} totalPages={totalPages} onChange={setPage} />
+        </div>
+        </>
       )}
     </div>
   )

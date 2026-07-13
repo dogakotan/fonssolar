@@ -7,6 +7,7 @@ import Sidebar from '../../components/layouts/Sidebar'
 import TabGenel from './components/TabGenel'
 import TabProjeler from './components/TabProjeler'
 import TabSatinAlma from './components/TabSatinAlma'
+import ProjeTabSatinAlma from './components/ProjeTabSatinAlma'
 import TabFinans from './components/TabFinans'
 import TabTickets from './components/TabTickets'
 import TabSantiyeSefi from './components/TabSantiyeSefi'
@@ -260,7 +261,10 @@ export default function Dashboard() {
             setSelectedDate={setSelectedDate}
           />
         )}
-        {activeTab === 'satin-alma'   && <TabSatinAlma />}
+        {activeTab === 'satin-alma'   && role === 'santiye_sefi' && (
+          <ProjeTabSatinAlma projectId={projectId} siteChiefView />
+        )}
+        {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && <TabSatinAlma />}
         {activeTab === 'finans'       && <TabFinans />}
         {activeTab === 'tickets'      && <TabTickets selectedDate={selectedDate} />}
         {activeTab === 'kullanicilar' && isAdmin && <TabKullanicilar />}

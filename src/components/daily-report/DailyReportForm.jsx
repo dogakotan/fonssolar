@@ -49,7 +49,6 @@ const MACHINE_TYPE_ALIASES = {
   'traktör': 'traktör',
   'traktor': 'traktör',
 }
-const UNIT_OPTIONS    = ['Adet', 'm', 'm²', 'm³', 'kg', 'ton', 'rulo', 'kutu']
 const PRIORITY_OPTIONS = ['düşük', 'orta', 'yüksek', 'kritik']
 const RESOLUTION_OPTIONS = ['açık', 'devam ediyor', 'çözüldü']
 
@@ -108,20 +107,6 @@ function initMachinery() {
 function newMachineryRow() {
   return { machine_type: '', count: 0, status: 'çalışıyor', notes: '' }
 }
-function newMaterialRow() {
-  return {
-    progress_item_id: '',
-    material_name: '',
-    quantity_used: '',
-    unit: 'Adet',
-    supplier: '',
-    waybill_no: '',
-    delivery_date: '',
-    storage_location: '',
-    description: '',
-    reason: '',
-  }
-}
 function newIssueRow() {
   return {
     topic: '',
@@ -138,7 +123,6 @@ function newTaskRow() {
   return { description: '' }
 }
 
-const MATERIAL_META_PREFIX = '__MATERIAL_META__'
 const ISSUE_META_PREFIX = '__ISSUE_META__'
 const REPORT_NOTES_META_PREFIX = '__REPORT_NOTES_META__'
 
@@ -156,16 +140,6 @@ function decodeMeta(prefix, value) {
   } catch {
     return { description: text }
   }
-}
-
-function materialDescription(row) {
-  return encodeMeta(MATERIAL_META_PREFIX, {
-    supplier: row.supplier || '',
-    waybill_no: row.waybill_no || '',
-    delivery_date: row.delivery_date || '',
-    storage_location: row.storage_location || '',
-    description: row.description || '',
-  }, row.description || '')
 }
 
 function issueDescription(row) {
@@ -194,11 +168,24 @@ function InfoTile({ label, value }) {
   )
 }
 
+// Sol bölüm listesi — mockup'taki 9 bölüm, sırayla. Tıklanınca sağdan (mobilde alttan) panel açılır.
+const SECTION_DEFS = [
+  { key: 'general',   label: 'Hava ve Genel Durum', icon: '☀️' },
+  { key: 'personnel', label: 'Personel',            icon: '👷' },
+  { key: 'machinery', label: 'Makine / Ekipman',    icon: '🚜' },
+  { key: 'tasks',     label: 'Günün İşleri',         icon: '🗓️' },
+  { key: 'progress',  label: 'İlerleme Girişi',      icon: '📈' },
+  { key: 'issues',    label: 'Sorunlar',             icon: '⚠️' },
+  { key: 'photos',    label: 'Fotoğraflar',          icon: '📷' },
+  { key: 'notes',     label: 'Notlar',               icon: '🗒️' },
+]
+
 export default function DailyReportForm({ reportId: initialReportId, onBack, onSaved, className = '' }) {
   const { user, projectId } = useAuth()
   const fileInputRef = useRef(null)
 
-  const [openSection, setOpenSection] = useState(null) // null | 'materials' | 'photos' | 'issues'
+  const [openSection, setOpenSection] = useState(null) // null | bölüm anahtarı (SECTION_DEFS.key)
+  const panelSnapshotRef = useRef(null)
   const [reportId, setReportId]     = useState(initialReportId || null)
   const [project, setProject]       = useState(null)
   const [resolvedProjectId, setResolvedProjectId] = useState(null)
@@ -214,7 +201,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     weather:        'açık',
     weather_note:   '',
     general_status: 'normal',
-    worker_count:   0,
     isg_notes:      '',
     incident_notes: '',
     notes:          '',
@@ -231,9 +217,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const [existingQtys, setExistingQtys]   = useState({})
   const [doneTasks, setDoneTasks]         = useState([newTaskRow()])
   const [plannedTasks, setPlannedTasks]   = useState([newTaskRow()])
-
-  // Step 4
-  const [materials, setMaterials] = useState([newMaterialRow()])
 
   // Step 5 - Photos
   const [photos, setPhotos]             = useState([]) // { file, caption, preview }
@@ -280,9 +263,10 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   // ayrı ayrı (ve birbirinden sapan) kopyaları olması önceki hatanın kaynağıydı:
   // "zaten var" durumunda form hiç doldurulmuyor, Kaydet o günün verisini siliyordu.
   async function loadReportInto(id, seq) {
-    // Personnel/machinery/progress/materials/photos/issues get_daily_report_detail RPC'sinden
-    // tek çağrıyla gelir (mevcut RPC, ayrı ayrı 7 supabase.from() sorgusuyla aynı veriyi döner).
-    // daily_tasks bu RPC'nin dönüşünde henüz yok, o yüzden ayrı sorgulanıyor.
+    // Personnel/machinery/progress/photos/issues get_daily_report_detail RPC'sinden
+    // tek çağrıyla gelir (mevcut RPC, ayrı ayrı supabase.from() sorgularıyla aynı veriyi döner).
+    // daily_tasks bu RPC'nin dönüşünde henüz yok, o yüzden ayrı sorgulanıyor. RPC materials
+    // de döndürüyor ama bu form artık Malzeme Kullanımı bölümünü göstermediği için kullanılmıyor.
     const [detailRes, taskRes] = await Promise.all([
       supabase.rpc('get_daily_report_detail', { p_report_id: id }),
       supabase.from('daily_tasks').select('*').eq('report_id', id).order('order_index'),
@@ -300,7 +284,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         weather:        normalizeWeather(r.weather || 'açık'),
         weather_note:   r.weather_note   || '',
         general_status: r.general_status || 'normal',
-        worker_count:   r.worker_count   || 0,
         isg_notes:      reportNotes.isg_notes || '',
         incident_notes: reportNotes.incident_notes || '',
         notes:          reportNotes.description || '',
@@ -341,9 +324,10 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       setMachinery(initMachinery())
     }
 
-    // Progress qtys
+    // Progress qtys — task_id ile anahtarlanır (eski item_id-bazlı satırlarda da
+    // Migration A/B ile backfill edilmiş task_id kullanılabilir hale geldi).
     const eQtys = {}
-    ;(detail?.progress || []).forEach(e => { eQtys[e.item_id] = Number(e.qty_added) || 0 })
+    ;(detail?.progress || []).forEach(e => { eQtys[e.task_id] = Number(e.qty_added) || 0 })
     setExistingQtys(eQtys)
     setTodayQty({ ...eQtys })
 
@@ -356,28 +340,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       .map(t => ({ description: t.description || '' }))
     setDoneTasks(loadedDone.length ? loadedDone : [newTaskRow()])
     setPlannedTasks(loadedPlanned.length ? loadedPlanned : [newTaskRow()])
-
-    // Materials
-    const matRows = detail?.materials || []
-    if (matRows.length > 0) {
-      setMaterials(matRows.map(m => {
-        const meta = decodeMeta(MATERIAL_META_PREFIX, m.description)
-        return {
-          progress_item_id: m.progress_item_id || '',
-          material_name:    m.material_name    || '',
-          quantity_used:    m.quantity_used     || '',
-          unit:             m.unit              || 'Adet',
-          supplier:         meta.supplier       || '',
-          waybill_no:       meta.waybill_no     || '',
-          delivery_date:    meta.delivery_date  || '',
-          storage_location: meta.storage_location || '',
-          description:      meta.description    || '',
-          reason:           m.reason            || '',
-        }
-      }))
-    } else {
-      setMaterials([newMaterialRow()])
-    }
 
     // Existing photos
     setExistingPhotos(detail?.photos || [])
@@ -411,7 +373,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       weather:        'açık',
       weather_note:   '',
       general_status: 'normal',
-      worker_count:   0,
       isg_notes:      '',
       incident_notes: '',
       notes:          '',
@@ -422,7 +383,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setTodayQty({})
     setDoneTasks([newTaskRow()])
     setPlannedTasks([newTaskRow()])
-    setMaterials([newMaterialRow()])
     setPhotos([])
     setExistingPhotos([])
     setIssues([newIssueRow()])
@@ -483,12 +443,13 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       setResolvedProjectId(effectiveProjectId)
 
       const [itemsRes] = await Promise.all([
-        supabase.from('progress_items')
-          .select('id, name, unit, target_qty, total_progress, category, order_index')
+        supabase.from('project_tasks')
+          .select('id, task_name, unit, target_qty, total_progress, category, planned_start')
           .eq('project_id', effectiveProjectId)
-          .order('order_index'),
+          .gt('target_qty', 0)
+          .order('planned_start'),
       ])
-      setProgressItems(itemsRes.data || [])
+      setProgressItems((itemsRes.data || []).map(t => ({ ...t, name: t.task_name })))
 
       const [profileRes] = await Promise.all([
         user?.id
@@ -531,13 +492,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   }
   function addMachineryRow()    { setMachinery(prev => [...prev, newMachineryRow()]) }
   function removeMachineryRow(i){ setMachinery(prev => prev.filter((_, idx) => idx !== i)) }
-
-  // Material helpers
-  function updateMaterial(i, field, val) {
-    setMaterials(prev => prev.map((row, idx) => idx === i ? { ...row, [field]: val } : row))
-  }
-  function addMaterialRow()    { setMaterials(prev => [...prev, newMaterialRow()]) }
-  function removeMaterialRow(i){ setMaterials(prev => prev.filter((_, idx) => idx !== i)) }
 
   // Daily task helpers
   function updateTask(kind, i, val) {
@@ -584,6 +538,62 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     })
   }
 
+  // ─── Panel aç/kapat — her panel kendi "Kaydet ve Kapat" / "İptal" butonuna
+  // sahip. Panel açılırken formun o anki tüm durumu anlık görüntülenir;
+  // "İptal" bu görüntüye geri döner, "Kaydet ve Kapat" sadece paneli kapatır
+  // (veri zaten canlı state'e yazılıyor, ayrıca ağ çağrısı gerekmez — asıl
+  // yazma "Raporu Gönder" ile tek seferde olur).
+  function captureSnapshot() {
+    return {
+      formData: { ...formData },
+      personnel: personnel.map(r => ({ ...r })),
+      machinery: machinery.map(r => ({ ...r })),
+      doneTasks: doneTasks.map(r => ({ ...r })),
+      plannedTasks: plannedTasks.map(r => ({ ...r })),
+      todayQty: { ...todayQty },
+      itemNotes: { ...itemNotes },
+      existingQtys: { ...existingQtys },
+      issues: issues.map(r => ({ ...r })),
+      photos: photos.slice(),
+      existingPhotos: existingPhotos.slice(),
+      reportId,
+      alreadyExists,
+    }
+  }
+
+  function restoreSnapshot(snap) {
+    setFormData(snap.formData)
+    setPersonnel(snap.personnel)
+    setMachinery(snap.machinery)
+    setDoneTasks(snap.doneTasks)
+    setPlannedTasks(snap.plannedTasks)
+    setTodayQty(snap.todayQty)
+    setItemNotes(snap.itemNotes)
+    setExistingQtys(snap.existingQtys)
+    setIssues(snap.issues)
+    // Panel açıkken eklenmiş yeni fotoğrafların preview URL'lerini bellekte bırakmamak için iptal edilir.
+    const keepUrls = new Set(snap.photos.map(p => p.preview))
+    photos.forEach(p => { if (!keepUrls.has(p.preview)) URL.revokeObjectURL(p.preview) })
+    setPhotos(snap.photos)
+    setExistingPhotos(snap.existingPhotos)
+    setReportId(snap.reportId)
+    setAlreadyExists(snap.alreadyExists)
+  }
+
+  function openPanel(key) {
+    panelSnapshotRef.current = captureSnapshot()
+    setOpenSection(key)
+  }
+  function closePanelSave() {
+    panelSnapshotRef.current = null
+    setOpenSection(null)
+  }
+  function closePanelCancel() {
+    if (panelSnapshotRef.current) restoreSnapshot(panelSnapshotRef.current)
+    panelSnapshotRef.current = null
+    setOpenSection(null)
+  }
+
   async function handleSave() {
     setSaving(true)
     setError('')
@@ -621,18 +631,9 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       for (const item of progressItems) {
         const newQty = Number(todayQty[item.id]) || 0
         if (newQty > 0) {
-          progressRows.push({ item_id: item.id, qty_added: newQty, note: itemNotes[item.id] || null })
+          progressRows.push({ task_id: item.id, qty_added: newQty, note: itemNotes[item.id] || null })
         }
       }
-
-      const validMats = materials.filter(r => r.material_name).map(r => ({
-        progress_item_id: r.progress_item_id || null,
-        material_name:    r.material_name,
-        quantity_used:    Number(r.quantity_used) || 0,
-        unit:             r.unit || 'Adet',
-        description:      materialDescription(r) || null,
-        reason:           r.reason || null,
-      }))
 
       const validIssues = issues.filter(r => r.topic).map(r => ({
         topic:             r.topic,
@@ -653,10 +654,9 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         p_notes:          reportNotesPayload(formData) || null,
         p_personnel:      persRows,
         p_machinery:      validMach,
-        p_progress:       progressRows,
         p_daily_tasks:    taskRows,
-        p_materials:      validMats,
         p_issues:         validIssues,
+        p_task_progress:  progressRows,
       })
       if (saveErr) throw saveErr
       setReportId(rid)
@@ -706,8 +706,59 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     )
   }
 
+  // ─── Bölüm tamamlanma durumu — "anlamlı veri girildiyse" tamamlandı sayılır.
+  // Hava/Genel Durum ve Notlar zaten geçerli varsayılan değerlerle geldiği için hep tamamlanmış sayılır.
+  const filledMachinery     = machinery.filter(r => normalizeMachineType(r.machine_type) && Number(r.count) > 0)
+  const filledDoneTasks     = doneTasks.filter(r => String(r.description || '').trim())
+  const filledPlannedTasks  = plannedTasks.filter(r => String(r.description || '').trim())
+  const filledProgressItems = progressItems.filter(item => Number(todayQty[item.id]) > 0)
+  const filledIssues        = issues.filter(r => String(r.topic || '').trim())
+  const totalPhotoCount     = existingPhotos.length + photos.length
+
+  const SECTION_STATE = {
+    general: {
+      complete: true,
+      preview: `${formData.weather} · ${formData.general_status}`,
+    },
+    personnel: {
+      complete: totalPersonnel > 0,
+      preview: totalPersonnel > 0 ? `${totalPersonnel} kişi` : 'Henüz girilmedi',
+    },
+    machinery: {
+      complete: filledMachinery.length > 0,
+      preview: filledMachinery.length > 0 ? `${filledMachinery.length} makine` : 'Henüz girilmedi',
+    },
+    tasks: {
+      complete: (filledDoneTasks.length + filledPlannedTasks.length) > 0,
+      preview: (filledDoneTasks.length + filledPlannedTasks.length) > 0
+        ? `${filledDoneTasks.length} tamamlanan, ${filledPlannedTasks.length} planlanan`
+        : 'Henüz girilmedi',
+    },
+    progress: {
+      complete: filledProgressItems.length > 0,
+      preview: filledProgressItems.length > 0
+        ? `${filledProgressItems.length} kalem güncellendi`
+        : (progressItems.length ? 'Henüz girilmedi' : 'Bu projeye iş kalemi tanımlanmamış'),
+    },
+    issues: {
+      complete: filledIssues.length > 0,
+      preview: filledIssues.length > 0 ? `${filledIssues.length} sorun` : 'Sorun yok',
+    },
+    photos: {
+      complete: totalPhotoCount > 0,
+      preview: totalPhotoCount > 0 ? `${totalPhotoCount} fotoğraf` : 'Henüz eklenmedi',
+    },
+    notes: {
+      complete: true,
+      preview: formData.notes ? formData.notes.slice(0, 40) : 'Not eklenmedi',
+    },
+  }
+
+  const completedCount = SECTION_DEFS.filter(d => SECTION_STATE[d.key].complete).length
+  const activeSectionDef = SECTION_DEFS.find(d => d.key === openSection)
+
   return (
-    <div className={className} style={{ fontFamily: 'inherit' }}>
+    <div className={className} style={{ fontFamily: 'Calibri, Inter, sans-serif' }}>
 
       {/* Toast */}
       {toast && (
@@ -720,609 +771,504 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         </div>
       )}
 
-      {/* Header bar */}
+      {/* Üst bant — geri butonu + her zaman görünen özet kartları */}
       <div style={{
-        background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 16,
-        padding: '14px 20px', marginBottom: 20,
-        display: 'flex', alignItems: 'center', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap',
+        background: '#1B3A6B', borderRadius: 16, padding: '14px 18px', marginBottom: 16,
         boxShadow: 'var(--shadow-card)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={onBack} style={BTN_GHOST}>← Geri</button>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>
-              {initialReportId ? 'Raporu Düzenle' : 'Yeni Günlük Rapor'}
-            </h2>
-            <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted-light)' }}>
-              {new Date(formData.report_date).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </p>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button onClick={onBack} style={BTN_BACK}>← Geri</button>
           {alreadyExists && !initialReportId && (
-            <div style={{
-              background: 'var(--color-warning-bg)', color: 'var(--color-warning-text)', borderRadius: 8,
-              padding: '6px 12px', fontSize: 12, fontWeight: 600,
+            <span style={{
+              background: 'rgba(245, 158, 11, 0.18)', color: '#FDE68A', borderRadius: 8,
+              padding: '5px 10px', fontSize: 11.5, fontWeight: 700,
             }}>
               ⚠ Bu tarih için rapor zaten mevcut — düzenleniyor
-            </div>
+            </span>
           )}
-          <button onClick={handleSave} disabled={saving} className="desk-only" style={{ ...BTN_PRIMARY, opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Kaydediliyor…' : '💾 Kaydet'}
-          </button>
+        </div>
+        <div className="sr-summary-grid">
+          <SummaryTile label="Proje" value={project?.name || projectId || '—'} />
+          <SummaryTile label="Tarih" value={new Date(formData.report_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })} />
+          <SummaryTile label="Toplam İşçi" value={totalPersonnel} />
+          <SummaryTile label="Genel Durum" value={formData.general_status} tone={formData.general_status} />
         </div>
       </div>
 
-      {/* Genel + Personel */}
-      <div className="ss-bottom-grid" style={{ marginBottom: 16 }}>
-        <div style={CARD}>
-          <h3 style={CARD_TITLE}>Genel</h3>
-          <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              gap: 12,
-              marginBottom: 20,
-            }}>
-              <InfoTile label="Rapor Tarihi" value={new Date(formData.report_date).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} />
-              <InfoTile label="Hazırlayan" value={preparedBy || '—'} />
-              <InfoTile label="Proje" value={project?.name || projectId || '—'} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20 }}>
-
-              <div>
-                <label style={LABEL}>Rapor Tarihi</label>
-                <input
-                  type="date"
-                  value={formData.report_date}
-                  onChange={e => handleDateChange(e.target.value)}
-                  disabled={!!initialReportId}
-                  style={initialReportId ? { ...INPUT, background: 'var(--color-bg)', color: 'var(--color-muted)' } : INPUT}
-                />
-              </div>
-
-              <div>
-                <label style={LABEL}>Hava Durumu</label>
-                <select value={formData.weather} onChange={e => setFormData(f => ({ ...f, weather: e.target.value }))} style={INPUT}>
-                  {WEATHER_OPTIONS.map(w => <option key={w}>{w}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label style={LABEL}>Genel Durum</label>
-                <select value={formData.general_status} onChange={e => setFormData(f => ({ ...f, general_status: e.target.value }))} style={INPUT}>
-                  {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label style={LABEL}>Toplam Çalışan Sayısı</label>
-                <input
-                  type="number" min={0}
-                  value={formData.worker_count}
-                  onChange={e => setFormData(f => ({ ...f, worker_count: parseInt(e.target.value) || 0 }))}
-                  style={INPUT}
-                />
-              </div>
-
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={LABEL}>Hava Durumu Notu (opsiyonel)</label>
-                <input type="text" value={formData.weather_note} onChange={e => setFormData(f => ({ ...f, weather_note: e.target.value }))} placeholder="Hava durumu hakkında ek not..." style={INPUT} />
-              </div>
-
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={LABEL}>İSG Notları (opsiyonel)</label>
-                <textarea
-                  value={formData.isg_notes}
-                  onChange={e => setFormData(f => ({ ...f, isg_notes: e.target.value }))}
-                  placeholder="İSG gözlemleri, toolbox, uygunsuzluk veya tedbir notları..."
-                  rows={2}
-                  style={{ ...INPUT, resize: 'vertical' }}
-                />
-              </div>
-
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={LABEL}>Olağandışı Olay / Şantiye Ziyareti (opsiyonel)</label>
-                <textarea
-                  value={formData.incident_notes}
-                  onChange={e => setFormData(f => ({ ...f, incident_notes: e.target.value }))}
-                  placeholder="Olağandışı durum, ziyaret, denetim veya saha notu..."
-                  rows={2}
-                  style={{ ...INPUT, resize: 'vertical' }}
-                />
-              </div>
-
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label style={LABEL}>Genel Notlar</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))}
-                  placeholder="Bugün yapılan işler, önemli gelişmeler, genel değerlendirme..."
-                  rows={4}
-                  style={{ ...INPUT, resize: 'vertical' }}
-                />
-              </div>
-            </div>
-          </div>
-
-        <div style={CARD}>
-          <h3 style={CARD_TITLE}>Personel</h3>
-          <p style={SECTION_LABEL}>Personel Durumu</p>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', fontSize: 13, minWidth: 480 }}>
-                <thead>
-                  <tr>
-                    <th style={TH}>Personel Tipi</th>
-                    {DEPARTMENTS.map(d => <th key={d} style={TH}>{DEPT_LABELS[d]}</th>)}
-                    <th style={TH}>Toplam</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {personnel.map((row, i) => {
-                    const rowTotal = DEPARTMENTS.reduce((s, d) => s + (Number(row[d]) || 0), 0)
-                    return (
-                      <tr key={row.shift}>
-                        <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{SHIFT_LABELS[row.shift] || row.shift}</td>
-                        {DEPARTMENTS.map(dept => (
-                          <td key={dept} style={TD}>
-                            <input
-                              type="number" min={0}
-                              value={row[dept] || 0}
-                              onChange={e => updatePersonnel(i, dept, e.target.value)}
-                              style={NUM_INPUT}
-                            />
-                          </td>
-                        ))}
-                        <td style={{ ...TD, fontWeight: 700, color: 'var(--color-primary)' }}>{rowTotal}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td style={{ ...TD, fontWeight: 700 }}>Genel Toplam</td>
-                    {DEPARTMENTS.map(dept => {
-                      const colTotal = personnel.reduce((s, r) => s + (Number(r[dept]) || 0), 0)
-                      return <td key={dept} style={{ ...TD, fontWeight: 700, color: 'var(--color-primary)' }}>{colTotal}</td>
-                    })}
-                    <td style={{ ...TD, fontWeight: 800, color: 'var(--color-primary)', background: 'var(--color-primary-bg)' }}>{totalPersonnel}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-        </div>
+      {/* Bölüm listesi */}
+      <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 14, overflow: 'hidden', marginBottom: 16, boxShadow: 'var(--shadow-card)' }}>
+        {SECTION_DEFS.map(def => {
+          const state = SECTION_STATE[def.key]
+          return (
+            <button
+              key={def.key}
+              type="button"
+              onClick={() => openPanel(def.key)}
+              className="ss-list-row"
+              style={{ width: '100%', border: 'none', borderBottom: '1px solid var(--color-border)', background: 'none', fontFamily: 'inherit' }}
+            >
+              <span style={{ fontSize: 18, flexShrink: 0 }}>{def.icon}</span>
+              <span className="ss-list-title" style={{ fontWeight: 600 }}>
+                {def.label}
+                <span style={{ display: 'block', fontSize: 11.5, fontWeight: 400, color: 'var(--color-muted-light)', marginTop: 2 }}>
+                  {state.preview}
+                </span>
+              </span>
+              {state.complete
+                ? <span style={CHECK_BADGE} title="Dolduruldu">✓</span>
+                : <span style={{ color: 'var(--color-muted-light)', fontSize: 18, flexShrink: 0 }}>›</span>}
+            </button>
+          )
+        })}
       </div>
 
-      {/* Makine + İlerleme */}
-      <div className="ss-bottom-grid" style={{ marginBottom: 16 }}>
-        <div style={CARD}>
-          <h3 style={CARD_TITLE}>Makine</h3>
-          <p style={SECTION_LABEL}>İş Makineleri / Ekipman</p>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%', minWidth: 560 }}>
-                <thead>
-                  <tr>
-                    <th style={TH}>Makine Türü</th>
-                    <th style={{ ...TH, width: 70 }}>Adet</th>
-                    <th style={{ ...TH, width: 140 }}>Durum</th>
-                    <th style={TH}>Notlar</th>
-                    <th style={{ ...TH, width: 44 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {machinery.map((row, i) => (
-                    <tr key={i}>
-                      <td style={TD}>
-                        <select value={normalizeMachineType(row.machine_type)} onChange={e => updateMachinery(i, 'machine_type', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
-                          <option value="">Makine seçin</option>
-                          {MACHINERY_PRESETS.map(type => (
-                            <option key={type} value={type}>{MACHINE_LABELS[type] || type}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td style={TD}>
-                        <input type="number" min={0} value={row.count} onChange={e => updateMachinery(i, 'count', e.target.value)} style={NUM_INPUT} />
-                      </td>
-                      <td style={TD}>
-                        <select
-                          value={row.status}
-                          onChange={e => updateMachinery(i, 'status', e.target.value)}
-                          style={{ ...INPUT, padding: '5px 8px', borderColor: MACH_STATUS_COLOR[row.status], color: MACH_STATUS_COLOR[row.status], fontWeight: 600 }}
-                        >
-                          {MACH_STATUS.map(s => <option key={s}>{s}</option>)}
-                        </select>
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.notes} onChange={e => updateMachinery(i, 'notes', e.target.value)} placeholder="Not..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <button onClick={() => removeMachineryRow(i)} style={BTN_REMOVE} title="Sil">×</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {error && (
+        <p style={{ color: 'var(--color-danger)', fontSize: 12, margin: '0 0 12px' }}>{error}</p>
+      )}
+
+      {/* Sabit "Raporu Gönder" barı */}
+      <div className="sr-submit-bar" style={{
+        position: 'sticky', bottom: 0, background: 'var(--color-bg)', paddingTop: 10, paddingBottom: 10, marginTop: 4,
+      }}>
+        <span style={{ fontSize: 12, color: 'var(--color-muted)', fontWeight: 600 }}>
+          {completedCount}/{SECTION_DEFS.length} bölüm dolduruldu
+        </span>
+        <button onClick={handleSave} disabled={saving} style={{ ...BTN_SUBMIT, opacity: saving ? 0.7 : 1 }}>
+          {saving ? 'Gönderiliyor…' : '📋 Raporu Gönder'}
+        </button>
+      </div>
+
+      {/* ── Bölüm paneli — sağdan (masaüstü) / alttan (mobil) açılır ── */}
+      {openSection && (
+        <div className="gr-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) closePanelCancel() }}>
+          <div className="gr-drawer" onMouseDown={(e) => e.stopPropagation()}>
+            <div style={MODAL_HEADER}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>{activeSectionDef?.label}</h3>
+              <button onClick={closePanelCancel} style={BTN_GHOST}>✕</button>
             </div>
-            <button onClick={addMachineryRow} style={{ ...BTN_GHOST, marginTop: 10 }}>+ Satır Ekle</button>
-        </div>
+            <div style={{ ...MODAL_BODY, flex: 1 }}>
 
-        <div style={CARD}>
-          <h3 style={CARD_TITLE}>İlerleme</h3>
-          <p style={{ margin: '-6px 0 14px', fontSize: 11, color: 'var(--color-muted-light)' }}>Yüzde sistem tarafından hesaplanır — girilmez.</p>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginBottom: 22 }}>
-              <div>
-                <p style={SECTION_LABEL}>Bugün Yapılan İşler</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {doneTasks.map((row, i) => (
-                    <div key={`done-${i}`} style={{ display: 'flex', gap: 8 }}>
+              {/* Hava ve Genel Durum */}
+              {openSection === 'general' && (
+                <div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+                    <InfoTile label="Hazırlayan" value={preparedBy || '—'} />
+                    <InfoTile label="Proje" value={project?.name || projectId || '—'} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+                    <div>
+                      <label style={LABEL}>Rapor Tarihi</label>
                       <input
-                        type="text"
-                        value={row.description}
-                        onChange={e => updateTask('done', i, e.target.value)}
-                        placeholder="Bugün yapılan iş..."
-                        style={INPUT}
+                        type="date"
+                        value={formData.report_date}
+                        onChange={e => handleDateChange(e.target.value)}
+                        disabled={!!initialReportId}
+                        style={initialReportId ? { ...INPUT, background: 'var(--color-bg)', color: 'var(--color-muted)' } : INPUT}
                       />
-                      <button onClick={() => removeTask('done', i)} style={BTN_REMOVE} title="Sil">×</button>
                     </div>
-                  ))}
-                </div>
-                <button onClick={() => addTask('done')} style={{ ...BTN_GHOST, marginTop: 8 }}>+ İş Ekle</button>
-              </div>
-
-              <div>
-                <p style={SECTION_LABEL}>Yarın Yapılacak İşler</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {plannedTasks.map((row, i) => (
-                    <div key={`planned-${i}`} style={{ display: 'flex', gap: 8 }}>
-                      <input
-                        type="text"
-                        value={row.description}
-                        onChange={e => updateTask('planned', i, e.target.value)}
-                        placeholder="Yarın planlanan iş..."
-                        style={INPUT}
-                      />
-                      <button onClick={() => removeTask('planned', i)} style={BTN_REMOVE} title="Sil">×</button>
+                    <div>
+                      <label style={LABEL}>Hava Durumu</label>
+                      <select value={formData.weather} onChange={e => setFormData(f => ({ ...f, weather: e.target.value }))} style={INPUT}>
+                        {WEATHER_OPTIONS.map(w => <option key={w}>{w}</option>)}
+                      </select>
                     </div>
-                  ))}
+                    <div>
+                      <label style={LABEL}>Genel Durum</label>
+                      <select value={formData.general_status} onChange={e => setFormData(f => ({ ...f, general_status: e.target.value }))} style={INPUT}>
+                        {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <label style={LABEL}>Hava Durumu Notu (opsiyonel)</label>
+                      <input type="text" value={formData.weather_note} onChange={e => setFormData(f => ({ ...f, weather_note: e.target.value }))} placeholder="Hava durumu hakkında ek not..." style={INPUT} />
+                    </div>
+                  </div>
                 </div>
-                <button onClick={() => addTask('planned')} style={{ ...BTN_GHOST, marginTop: 8 }}>+ Plan Ekle</button>
-              </div>
-            </div>
+              )}
 
-            {progressItems.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--color-muted-light)' }}>
-                <p style={{ fontSize: 32, margin: '0 0 12px' }}>📋</p>
-                <p style={{ fontSize: 14, fontWeight: 600 }}>Bu projeye henüz iş kalemi tanımlanmamış</p>
-                <p style={{ fontSize: 12 }}>Proje yöneticisi iş kalemlerini tanımladıktan sonra bu bölüm aktif olacak.</p>
-              </div>
-            ) : (
-              <div>
-                <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--color-muted-light)' }}>Bugün tamamlanan miktarları girin. Yalnızca miktar girilen kalemler kaydedilir.</p>
+              {/* Personel */}
+              {openSection === 'personnel' && (
                 <div style={{ overflowX: 'auto' }}>
-                  <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 680 }}>
+                  <table style={{ borderCollapse: 'collapse', fontSize: 13, minWidth: 480, width: '100%' }}>
                     <thead>
                       <tr>
-                        <th style={{ ...TH, textAlign: 'left' }}>İş Kalemi</th>
-                        <th style={{ ...TH, width: 50 }}>Birim</th>
-                        <th style={{ ...TH, width: 80 }}>Hedef</th>
-                        <th style={{ ...TH, width: 80 }}>Toplam</th>
-                        <th style={{ ...TH, width: 90 }}>Bugün</th>
-                        <th style={{ ...TH, width: 90 }}>Kümülatif</th>
-                        <th style={{ ...TH, width: 60 }}>%</th>
-                        <th style={TH}>Not</th>
+                        <th style={TH}>Personel Tipi</th>
+                        {DEPARTMENTS.map(d => <th key={d} style={TH}>{DEPT_LABELS[d]}</th>)}
+                        <th style={TH}>Toplam</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.entries(groupedItems).map(([cat, items]) => (
-                        <>
-                          <tr key={`cat-${cat}`}>
-                            <td colSpan={8} style={{
-                              padding: '8px 10px',
+                      {personnel.map((row, i) => {
+                        const rowTotal = DEPARTMENTS.reduce((s, d) => s + (Number(row[d]) || 0), 0)
+                        return (
+                          <tr key={row.shift}>
+                            <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{SHIFT_LABELS[row.shift] || row.shift}</td>
+                            {DEPARTMENTS.map(dept => (
+                              <td key={dept} style={TD}>
+                                <input
+                                  type="number" min={0}
+                                  value={row[dept] || 0}
+                                  onChange={e => updatePersonnel(i, dept, e.target.value)}
+                                  style={NUM_INPUT}
+                                />
+                              </td>
+                            ))}
+                            <td style={{ ...TD, fontWeight: 700, color: 'var(--color-primary)' }}>{rowTotal}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td style={{ ...TD, fontWeight: 700 }}>Genel Toplam</td>
+                        {DEPARTMENTS.map(dept => {
+                          const colTotal = personnel.reduce((s, r) => s + (Number(r[dept]) || 0), 0)
+                          return <td key={dept} style={{ ...TD, fontWeight: 700, color: 'var(--color-primary)' }}>{colTotal}</td>
+                        })}
+                        <td style={{ ...TD, fontWeight: 800, color: 'var(--color-primary)', background: 'var(--color-primary-bg)' }}>{totalPersonnel}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* Makine / Ekipman */}
+              {openSection === 'machinery' && (
+                <div>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%', minWidth: 560 }}>
+                      <thead>
+                        <tr>
+                          <th style={TH}>Makine Türü</th>
+                          <th style={{ ...TH, width: 70 }}>Adet</th>
+                          <th style={{ ...TH, width: 140 }}>Durum</th>
+                          <th style={TH}>Notlar</th>
+                          <th style={{ ...TH, width: 44 }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {machinery.map((row, i) => (
+                          <tr key={i}>
+                            <td style={TD}>
+                              <select value={normalizeMachineType(row.machine_type)} onChange={e => updateMachinery(i, 'machine_type', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
+                                <option value="">Makine seçin</option>
+                                {MACHINERY_PRESETS.map(type => (
+                                  <option key={type} value={type}>{MACHINE_LABELS[type] || type}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td style={TD}>
+                              <input type="number" min={0} value={row.count} onChange={e => updateMachinery(i, 'count', e.target.value)} style={NUM_INPUT} />
+                            </td>
+                            <td style={TD}>
+                              <select
+                                value={row.status}
+                                onChange={e => updateMachinery(i, 'status', e.target.value)}
+                                style={{ ...INPUT, padding: '5px 8px', borderColor: MACH_STATUS_COLOR[row.status], color: MACH_STATUS_COLOR[row.status], fontWeight: 600 }}
+                              >
+                                {MACH_STATUS.map(s => <option key={s}>{s}</option>)}
+                              </select>
+                            </td>
+                            <td style={TD}>
+                              <input type="text" value={row.notes} onChange={e => updateMachinery(i, 'notes', e.target.value)} placeholder="Not..." style={{ ...INPUT, padding: '5px 8px' }} />
+                            </td>
+                            <td style={TD}>
+                              <button onClick={() => removeMachineryRow(i)} style={BTN_REMOVE} title="Sil">×</button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button onClick={addMachineryRow} style={{ ...BTN_GHOST, marginTop: 10 }}>+ Satır Ekle</button>
+                </div>
+              )}
+
+              {/* Günün İşleri */}
+              {openSection === 'tasks' && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
+                  <div>
+                    <p style={SECTION_LABEL}>Bugün Yapılan İşler</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {doneTasks.map((row, i) => (
+                        <div key={`done-${i}`} style={{ display: 'flex', gap: 8 }}>
+                          <input
+                            type="text"
+                            value={row.description}
+                            onChange={e => updateTask('done', i, e.target.value)}
+                            placeholder="Bugün yapılan iş..."
+                            style={INPUT}
+                          />
+                          <button onClick={() => removeTask('done', i)} style={BTN_REMOVE} title="Sil">×</button>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => addTask('done')} style={{ ...BTN_GHOST, marginTop: 8 }}>+ İş Ekle</button>
+                  </div>
+
+                  <div>
+                    <p style={SECTION_LABEL}>Yarın Yapılacak İşler</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {plannedTasks.map((row, i) => (
+                        <div key={`planned-${i}`} style={{ display: 'flex', gap: 8 }}>
+                          <input
+                            type="text"
+                            value={row.description}
+                            onChange={e => updateTask('planned', i, e.target.value)}
+                            placeholder="Yarın planlanan iş..."
+                            style={INPUT}
+                          />
+                          <button onClick={() => removeTask('planned', i)} style={BTN_REMOVE} title="Sil">×</button>
+                        </div>
+                      ))}
+                    </div>
+                    <button onClick={() => addTask('planned')} style={{ ...BTN_GHOST, marginTop: 8 }}>+ Plan Ekle</button>
+                  </div>
+                </div>
+              )}
+
+              {/* İlerleme Girişi */}
+              {openSection === 'progress' && (
+                <div>
+                  <p style={{ margin: '0 0 16px', fontSize: 11, color: 'var(--color-muted-light)' }}>Yüzde sistem tarafından hesaplanır — girilmez.</p>
+                  {progressItems.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--color-muted-light)' }}>
+                      <p style={{ fontSize: 32, margin: '0 0 12px' }}>📋</p>
+                      <p style={{ fontSize: 14, fontWeight: 600 }}>Bu projeye henüz iş kalemi tanımlanmamış</p>
+                      <p style={{ fontSize: 12 }}>Proje yöneticisi iş kalemlerini tanımladıktan sonra bu bölüm aktif olacak.</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--color-muted-light)' }}>Bugün tamamlanan miktarları girin. Yalnızca miktar girilen kalemler kaydedilir.</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                        {Object.entries(groupedItems).map(([cat, items]) => (
+                          <div key={cat}>
+                            <span style={{
+                              display: 'inline-block', padding: '5px 10px', borderRadius: 6, marginBottom: 10,
                               background: CATEGORY_COLORS[cat] || 'var(--color-muted-light)',
                               color: 'var(--color-surface)', fontSize: 11, fontWeight: 700,
                               textTransform: 'uppercase', letterSpacing: '0.5px',
                             }}>
                               {CATEGORY_LABELS[cat] || cat}
-                            </td>
-                          </tr>
-                          {items.map(item => {
-                            const existQty = Number(existingQtys[item.id]) || 0
-                            const prevTotal = Math.max(0, (Number(item.total_progress) || 0) - existQty)
-                            const todayVal  = Number(todayQty[item.id]) || 0
-                            const cumulative = prevTotal + todayVal
-                            const target = Number(item.target_qty) || 0
-                            const pct = target > 0 ? Math.min(100, (cumulative / target * 100)).toFixed(1) : '—'
-                            const isOver = target > 0 && cumulative > target
+                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                              {items.map(item => {
+                                const existQty = Number(existingQtys[item.id]) || 0
+                                const prevTotal = Math.max(0, (Number(item.total_progress) || 0) - existQty)
+                                const todayVal  = Number(todayQty[item.id]) || 0
+                                const cumulative = prevTotal + todayVal
+                                const target = Number(item.target_qty) || 0
+                                const pct = target > 0 ? Math.min(100, (cumulative / target * 100)).toFixed(1) : '—'
+                                const isOver = target > 0 && cumulative > target
 
-                            return (
-                              <tr key={item.id} style={{ background: isOver ? 'var(--color-danger-bg)' : undefined }}>
-                                <td style={{ ...TD, textAlign: 'left', color: 'var(--color-text)', fontWeight: 500 }}>{item.name}</td>
-                                <td style={{ ...TD, color: 'var(--color-muted)' }}>{item.unit}</td>
-                                <td style={{ ...TD, color: 'var(--color-muted)' }}>{target}</td>
-                                <td style={{ ...TD, color: 'var(--color-muted)' }}>{prevTotal.toFixed(1)}</td>
-                                <td style={TD}>
-                                  <input
-                                    type="number" min={0} step="0.01"
-                                    value={todayQty[item.id] || ''}
-                                    onChange={e => setTodayQty(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                    style={{ ...NUM_INPUT, width: 72, borderColor: isOver ? 'var(--color-danger)' : undefined }}
-                                    placeholder="0"
-                                  />
-                                </td>
-                                <td style={{ ...TD, fontWeight: 600, color: isOver ? 'var(--color-danger)' : 'var(--color-text)' }}>
-                                  {cumulative.toFixed(1)}
-                                </td>
-                                <td style={{
-                                  ...TD, fontWeight: 600,
-                                  color: Number(pct) >= 100 ? 'var(--color-success)' : Number(pct) >= 50 ? 'var(--color-primary)' : 'var(--color-muted-light)',
-                                }}>
-                                  {pct !== '—' ? `${pct}%` : '—'}
-                                </td>
-                                <td style={TD}>
-                                  <input
-                                    type="text"
-                                    value={itemNotes[item.id] || ''}
-                                    onChange={e => setItemNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                    placeholder={isOver ? 'Aşma sebebi...' : 'Not...'}
-                                    style={{ ...INPUT, padding: '4px 7px', fontSize: 11, borderColor: isOver && !itemNotes[item.id] ? 'var(--color-danger)' : undefined }}
-                                  />
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-        </div>
-      </div>
-
-      {/* 3 aksiyon kartı */}
-      <div className="gr-action-tiles" style={{ marginBottom: 90 }}>
-        <button type="button" className="gr-action-tile" onClick={() => setOpenSection('photos')}>
-          {(existingPhotos.length + photos.length) > 0 && (
-            <span className="gr-action-tile-badge">{existingPhotos.length + photos.length}</span>
-          )}
-          <span className="gr-action-tile-icon">📷</span>
-          <span className="gr-action-tile-label">Fotoğraf Ekle</span>
-        </button>
-        <button type="button" className="gr-action-tile" onClick={() => setOpenSection('issues')}>
-          {issues.filter(r => r.topic).length > 0 && (
-            <span className="gr-action-tile-badge">{issues.filter(r => r.topic).length}</span>
-          )}
-          <span className="gr-action-tile-icon">⚠️</span>
-          <span className="gr-action-tile-label">Sorun/Not Kaydı</span>
-        </button>
-        <button type="button" className="gr-action-tile" onClick={() => setOpenSection('materials')}>
-          {materials.filter(r => r.material_name).length > 0 && (
-            <span className="gr-action-tile-badge">{materials.filter(r => r.material_name).length}</span>
-          )}
-          <span className="gr-action-tile-icon">📦</span>
-          <span className="gr-action-tile-label">Malzeme Kullanımı</span>
-        </button>
-      </div>
-
-      {error && (
-        <p style={{ color: 'var(--color-danger)', fontSize: 12, margin: '0 0 16px' }}>{error}</p>
-      )}
-
-      {/* Mobil sticky Kaydet */}
-      <div className="mob-only" style={{ position: 'sticky', bottom: 0, paddingTop: 10, paddingBottom: 10, background: 'var(--color-bg)' }}>
-        <button onClick={handleSave} disabled={saving} style={{ ...BTN_PRIMARY, width: '100%', opacity: saving ? 0.7 : 1 }}>
-          {saving ? 'Kaydediliyor…' : '💾 Kaydet'}
-        </button>
-      </div>
-
-      {/* Malzeme Kullanımı modalı */}
-      {openSection === 'materials' && (
-        <div style={MODAL_OVERLAY} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpenSection(null) }}>
-          <div style={MODAL_BOX} onMouseDown={(e) => e.stopPropagation()}>
-            <div style={MODAL_HEADER}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>Malzeme Kullanımı</h3>
-              <button onClick={() => setOpenSection(null)} style={BTN_GHOST}>Kapat</button>
-            </div>
-            <div style={MODAL_BODY}>
-            <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--color-muted-light)' }}>Sahada kullanılan malzemeleri kaydedin.</p>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 1120 }}>
-                <thead>
-                  <tr>
-                    <th style={TH}>İş Kalemi (opsiyonel)</th>
-                    <th style={TH}>Malzeme Adı</th>
-                    <th style={TH}>Tedarikçi</th>
-                    <th style={{ ...TH, width: 80 }}>Miktar</th>
-                    <th style={{ ...TH, width: 80 }}>Birim</th>
-                    <th style={TH}>İrsaliye</th>
-                    <th style={{ ...TH, width: 130 }}>Teslim Tarihi</th>
-                    <th style={TH}>Depolama Yeri</th>
-                    <th style={TH}>Açıklama</th>
-                    <th style={TH}>Sebep</th>
-                    <th style={{ ...TH, width: 44 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {materials.map((row, i) => (
-                    <tr key={i}>
-                      <td style={TD}>
-                        <select value={row.progress_item_id} onChange={e => updateMaterial(i, 'progress_item_id', e.target.value)} style={{ ...INPUT, padding: '5px 8px', fontSize: 11 }}>
-                          <option value="">— Seç —</option>
-                          {progressItems.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
-                        </select>
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.material_name} onChange={e => updateMaterial(i, 'material_name', e.target.value)} placeholder="Malzeme adı..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.supplier} onChange={e => updateMaterial(i, 'supplier', e.target.value)} placeholder="Tedarikçi..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <input type="number" min={0} step="0.01" value={row.quantity_used} onChange={e => updateMaterial(i, 'quantity_used', e.target.value)} style={NUM_INPUT} />
-                      </td>
-                      <td style={TD}>
-                        <select value={row.unit} onChange={e => updateMaterial(i, 'unit', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
-                          {UNIT_OPTIONS.map(u => <option key={u}>{u}</option>)}
-                        </select>
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.waybill_no} onChange={e => updateMaterial(i, 'waybill_no', e.target.value)} placeholder="İrsaliye no..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <input type="date" value={row.delivery_date} onChange={e => updateMaterial(i, 'delivery_date', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.storage_location} onChange={e => updateMaterial(i, 'storage_location', e.target.value)} placeholder="Depo/saha..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.description} onChange={e => updateMaterial(i, 'description', e.target.value)} placeholder="Açıklama..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.reason} onChange={e => updateMaterial(i, 'reason', e.target.value)} placeholder="Fazla/eksik sebebi..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <button onClick={() => removeMaterialRow(i)} style={BTN_REMOVE} title="Sil">×</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button onClick={addMaterialRow} style={{ ...BTN_GHOST, marginTop: 10 }}>+ Satır Ekle</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Fotoğraf modalı */}
-      {openSection === 'photos' && (
-        <div style={MODAL_OVERLAY} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpenSection(null) }}>
-          <div style={MODAL_BOX} onMouseDown={(e) => e.stopPropagation()}>
-            <div style={MODAL_HEADER}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>Saha Fotoğrafları</h3>
-              <button onClick={() => setOpenSection(null)} style={BTN_GHOST}>Kapat</button>
-            </div>
-            <div style={MODAL_BODY}>
-
-            {/* Existing photos (edit mode) */}
-            {existingPhotos.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 11, color: 'var(--color-muted-light)', margin: '0 0 8px' }}>Mevcut fotoğraflar:</p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
-                  {existingPhotos.map(photo => {
-                    const url = supabase.storage.from('saha-fotolari').getPublicUrl(photo.storage_path).data.publicUrl
-                    return (
-                      <div key={photo.id} style={{ position: 'relative' }}>
-                        <img src={url} alt={photo.caption || ''} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--color-border-md)' }} />
-                        {photo.caption && <p style={{ margin: '4px 0 0', fontSize: 10, color: 'var(--color-muted-light)', textAlign: 'center' }}>{photo.caption}</p>}
+                                return (
+                                  <div key={item.id} style={{ ...CARD_ROW, background: isOver ? 'var(--color-danger-bg)' : CARD_ROW.background }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                                      <div style={{ minWidth: 0 }}>
+                                        <strong style={{ fontSize: 13, color: 'var(--color-text)' }}>{item.name}</strong>
+                                        <div style={{ fontSize: 11, color: 'var(--color-muted-light)' }}>
+                                          {item.unit} · Hedef {target} · Önceki toplam {prevTotal.toFixed(1)}
+                                        </div>
+                                      </div>
+                                      <span style={{
+                                        fontWeight: 700, fontSize: 13, flexShrink: 0,
+                                        color: Number(pct) >= 100 ? 'var(--color-success)' : Number(pct) >= 50 ? 'var(--color-primary)' : 'var(--color-muted-light)',
+                                      }}>
+                                        {pct !== '—' ? `${pct}%` : '—'}
+                                      </span>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+                                      <div>
+                                        <label style={LABEL}>Bugün</label>
+                                        <input
+                                          type="number" min={0} step="0.01"
+                                          value={todayQty[item.id] || ''}
+                                          onChange={e => setTodayQty(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                          style={{ ...INPUT, borderColor: isOver ? 'var(--color-danger)' : undefined }}
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                      <div>
+                                        <label style={LABEL}>Kümülatif</label>
+                                        <div style={{ ...INPUT, background: 'var(--color-bg)', fontWeight: 600, color: isOver ? 'var(--color-danger)' : 'var(--color-text)' }}>
+                                          {cumulative.toFixed(1)}
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div style={{ marginTop: 10 }}>
+                                      <label style={LABEL}>Not</label>
+                                      <input
+                                        type="text"
+                                        value={itemNotes[item.id] || ''}
+                                        onChange={e => setItemNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
+                                        placeholder={isOver ? 'Aşma sebebi...' : 'Not...'}
+                                        style={{ ...INPUT, borderColor: isOver && !itemNotes[item.id] ? 'var(--color-danger)' : undefined }}
+                                      />
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    )
-                  })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* New photo upload */}
-            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhotoSelect} style={{ display: 'none' }} />
-            <button onClick={() => fileInputRef.current?.click()} style={{ ...BTN_GHOST, marginBottom: 12, minHeight: 44 }}>
-              📷 Fotoğraf Seç
-            </button>
+              {/* Sorunlar / Blokerlar */}
+              {openSection === 'issues' && (
+                <div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {issues.map((row, i) => (
+                      <div key={i} style={CARD_ROW}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-muted)' }}>Sorun {i + 1}</span>
+                          <button onClick={() => removeIssueRow(i)} style={BTN_REMOVE} title="Sil">×</button>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          <div>
+                            <label style={LABEL}>Konu</label>
+                            <input type="text" value={row.topic} onChange={e => updateIssue(i, 'topic', e.target.value)} placeholder="Sorun konusu..." style={INPUT} />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+                            <div>
+                              <label style={LABEL}>Kategori</label>
+                              <input type="text" value={row.category} onChange={e => updateIssue(i, 'category', e.target.value)} placeholder="Kategori..." style={INPUT} />
+                            </div>
+                            <div>
+                              <label style={LABEL}>Öncelik</label>
+                              <select value={row.priority} onChange={e => updateIssue(i, 'priority', e.target.value)} style={INPUT}>
+                                {PRIORITY_OPTIONS.map(p => <option key={p}>{p}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={LABEL}>İlgili Kişi</label>
+                              <input type="text" value={row.assigned_to} onChange={e => updateIssue(i, 'assigned_to', e.target.value)} placeholder="İlgili kişi..." style={INPUT} />
+                            </div>
+                          </div>
+                          <div>
+                            <label style={LABEL}>Açıklama</label>
+                            <input type="text" value={row.description} onChange={e => updateIssue(i, 'description', e.target.value)} placeholder="Açıklama..." style={INPUT} />
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+                            <div>
+                              <label style={LABEL}>Çözüm Durumu</label>
+                              <select value={row.resolution_status} onChange={e => updateIssue(i, 'resolution_status', e.target.value)} style={INPUT}>
+                                {RESOLUTION_OPTIONS.map(r => <option key={r}>{r}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={LABEL}>Kapanış Tarihi</label>
+                              <input type="date" value={row.closed_at} onChange={e => updateIssue(i, 'closed_at', e.target.value)} style={INPUT} />
+                            </div>
+                            <div>
+                              <label style={LABEL}>Not</label>
+                              <input type="text" value={row.notes} onChange={e => updateIssue(i, 'notes', e.target.value)} placeholder="Not..." style={INPUT} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={addIssueRow} style={{ ...BTN_GHOST, marginTop: 12 }}>+ Sorun Ekle</button>
+                </div>
+              )}
 
-            {photos.length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 24 }}>
-                {photos.map((photo, i) => (
-                  <div key={i} style={{ position: 'relative' }}>
-                    <img src={photo.preview} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--color-border-md)' }} />
-                    <button
-                      onClick={() => removePhoto(i)}
-                      style={{
-                        position: 'absolute', top: 4, right: 4,
-                        background: 'rgba(0,0,0,0.6)', color: 'var(--color-surface)', border: 'none',
-                        borderRadius: '50%', width: 22, height: 22, fontSize: 12,
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}
-                    >×</button>
-                    <input
-                      type="text"
-                      value={photo.caption}
-                      onChange={e => updatePhotoCaption(i, e.target.value)}
-                      placeholder="Açıklama..."
-                      style={{ ...INPUT, marginTop: 4, padding: '4px 7px', fontSize: 11 }}
+              {/* Fotoğraflar */}
+              {openSection === 'photos' && (
+                <div>
+                  {existingPhotos.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <p style={{ fontSize: 11, color: 'var(--color-muted-light)', margin: '0 0 8px' }}>Mevcut fotoğraflar:</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+                        {existingPhotos.map(photo => {
+                          const url = supabase.storage.from('saha-fotolari').getPublicUrl(photo.storage_path).data.publicUrl
+                          return (
+                            <div key={photo.id} style={{ position: 'relative' }}>
+                              <img src={url} alt={photo.caption || ''} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--color-border-md)' }} />
+                              {photo.caption && <p style={{ margin: '4px 0 0', fontSize: 10, color: 'var(--color-muted-light)', textAlign: 'center' }}>{photo.caption}</p>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handlePhotoSelect} style={{ display: 'none' }} />
+                  <button onClick={() => fileInputRef.current?.click()} style={{ ...BTN_GHOST, marginBottom: 12, minHeight: 44 }}>
+                    📷 Fotoğraf Seç
+                  </button>
+
+                  {photos.length > 0 && (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+                      {photos.map((photo, i) => (
+                        <div key={i} style={{ position: 'relative' }}>
+                          <img src={photo.preview} alt="" style={{ width: '100%', height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--color-border-md)' }} />
+                          <button
+                            onClick={() => removePhoto(i)}
+                            style={{
+                              position: 'absolute', top: 4, right: 4,
+                              background: 'rgba(0,0,0,0.6)', color: 'var(--color-surface)', border: 'none',
+                              borderRadius: '50%', width: 22, height: 22, fontSize: 12,
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}
+                          >×</button>
+                          <input
+                            type="text"
+                            value={photo.caption}
+                            onChange={e => updatePhotoCaption(i, e.target.value)}
+                            placeholder="Açıklama..."
+                            style={{ ...INPUT, marginTop: 4, padding: '4px 7px', fontSize: 11 }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Notlar */}
+              {openSection === 'notes' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div>
+                    <label style={LABEL}>İSG Notları (opsiyonel)</label>
+                    <textarea
+                      value={formData.isg_notes}
+                      onChange={e => setFormData(f => ({ ...f, isg_notes: e.target.value }))}
+                      placeholder="İSG gözlemleri, toolbox, uygunsuzluk veya tedbir notları..."
+                      rows={3}
+                      style={{ ...INPUT, resize: 'vertical' }}
                     />
                   </div>
-                ))}
-              </div>
-            )}
-            </div>
-          </div>
-        </div>
-      )}
+                  <div>
+                    <label style={LABEL}>Olağandışı Olay / Şantiye Ziyareti (opsiyonel)</label>
+                    <textarea
+                      value={formData.incident_notes}
+                      onChange={e => setFormData(f => ({ ...f, incident_notes: e.target.value }))}
+                      placeholder="Olağandışı durum, ziyaret, denetim veya saha notu..."
+                      rows={3}
+                      style={{ ...INPUT, resize: 'vertical' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={LABEL}>Genel Notlar</label>
+                    <textarea
+                      value={formData.notes}
+                      onChange={e => setFormData(f => ({ ...f, notes: e.target.value }))}
+                      placeholder="Bugün yapılan işler, önemli gelişmeler, genel değerlendirme..."
+                      rows={5}
+                      style={{ ...INPUT, resize: 'vertical' }}
+                    />
+                  </div>
+                </div>
+              )}
 
-      {/* Sorun/Not Kaydı modalı */}
-      {openSection === 'issues' && (
-        <div style={MODAL_OVERLAY} onMouseDown={(e) => { if (e.target === e.currentTarget) setOpenSection(null) }}>
-          <div style={MODAL_BOX} onMouseDown={(e) => e.stopPropagation()}>
-            <div style={MODAL_HEADER}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }}>Sorunlar / Blokerlar</h3>
-              <button onClick={() => setOpenSection(null)} style={BTN_GHOST}>Kapat</button>
             </div>
-            <div style={MODAL_BODY}>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%', minWidth: 980 }}>
-                <thead>
-                  <tr>
-                    <th style={TH}>Konu</th>
-                    <th style={TH}>Kategori</th>
-                    <th style={{ ...TH, width: 100 }}>Öncelik</th>
-                    <th style={TH}>İlgili Kişi</th>
-                    <th style={TH}>Açıklama</th>
-                    <th style={{ ...TH, width: 110 }}>Çözüm Durumu</th>
-                    <th style={{ ...TH, width: 130 }}>Kapanış Tarihi</th>
-                    <th style={TH}>Not</th>
-                    <th style={{ ...TH, width: 44 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {issues.map((row, i) => (
-                    <tr key={i}>
-                      <td style={TD}>
-                        <input type="text" value={row.topic} onChange={e => updateIssue(i, 'topic', e.target.value)} placeholder="Sorun konusu..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.category} onChange={e => updateIssue(i, 'category', e.target.value)} placeholder="Kategori..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <select value={row.priority} onChange={e => updateIssue(i, 'priority', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
-                          {PRIORITY_OPTIONS.map(p => <option key={p}>{p}</option>)}
-                        </select>
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.assigned_to} onChange={e => updateIssue(i, 'assigned_to', e.target.value)} placeholder="İlgili kişi..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.description} onChange={e => updateIssue(i, 'description', e.target.value)} placeholder="Açıklama..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <select value={row.resolution_status} onChange={e => updateIssue(i, 'resolution_status', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
-                          {RESOLUTION_OPTIONS.map(r => <option key={r}>{r}</option>)}
-                        </select>
-                      </td>
-                      <td style={TD}>
-                        <input type="date" value={row.closed_at} onChange={e => updateIssue(i, 'closed_at', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <input type="text" value={row.notes} onChange={e => updateIssue(i, 'notes', e.target.value)} placeholder="Not..." style={{ ...INPUT, padding: '5px 8px' }} />
-                      </td>
-                      <td style={TD}>
-                        <button onClick={() => removeIssueRow(i)} style={BTN_REMOVE} title="Sil">×</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button onClick={addIssueRow} style={{ ...BTN_GHOST, marginTop: 10 }}>+ Sorun Ekle</button>
+            <div style={{ ...MODAL_HEADER, borderTop: '1px solid var(--color-border)', borderBottom: 'none', gap: 10 }}>
+              <button onClick={closePanelCancel} style={BTN_GHOST}>İptal</button>
+              <button onClick={closePanelSave} style={BTN_PRIMARY}>Kaydet ve Kapat</button>
             </div>
           </div>
         </div>
@@ -1331,33 +1277,48 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   )
 }
 
+// ─── Özet kartı (üst bant) ──────────────────────────────────────────────────
+function SummaryTile({ label, value, tone }) {
+  const toneColor = tone === 'kritik' ? '#FCA5A5' : tone === 'dikkat' ? '#FDE68A' : '#BBF7D0'
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: 10, padding: '8px 12px', minWidth: 0 }}>
+      <p style={{ margin: '0 0 3px', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.65)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</p>
+      <p style={{
+        margin: 0, fontSize: 14, fontWeight: 700, color: tone ? toneColor : '#fff',
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: tone ? 'capitalize' : 'none',
+      }}>
+        {value}
+      </p>
+    </div>
+  )
+}
+
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const CARD = { background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, padding: '1rem 1.25rem' }
-const CARD_TITLE = { margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: 'var(--color-text)' }
 const SECTION_LABEL = { margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: 'var(--color-text-sub)', textTransform: 'uppercase', letterSpacing: '0.5px' }
+// Dar panel kutusunda yatay kaydırmalı tablo yerine bölüm/kalem başına dikey kart —
+// Sorunlar ve İlerleme Girişi listelerinde kullanılıyor.
+const CARD_ROW = { border: '1px solid var(--color-border-md)', borderRadius: 10, padding: '12px 14px', background: 'var(--color-surface)' }
 
 const LABEL = { fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 5 }
 const INPUT = {
   width: '100%', boxSizing: 'border-box', border: '1px solid var(--color-border-md)', borderRadius: 8,
   padding: '8px 10px', fontSize: 13, fontFamily: 'inherit', outline: 'none', background: 'var(--color-surface)',
+  minHeight: 40,
 }
 const TH = { padding: '8px 10px', textAlign: 'center', fontSize: 11, fontWeight: 600, color: 'var(--color-muted)', background: 'var(--color-border)', border: '1px solid var(--color-border-md)', whiteSpace: 'nowrap' }
 const TD = { padding: '6px 8px', textAlign: 'center', border: '1px solid var(--color-border-md)' }
-const NUM_INPUT = { width: 64, textAlign: 'center', border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 6px', fontSize: 13, fontFamily: 'inherit', outline: 'none' }
-const BTN_PRIMARY   = { background: 'var(--color-primary)', color: 'var(--color-surface)', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 44 }
-const BTN_GHOST     = { background: 'none', color: 'var(--color-primary)', border: '1px solid var(--color-primary)', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
-const MODAL_OVERLAY = {
-  position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.48)', zIndex: 1100,
-  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18,
-}
-const MODAL_BOX = {
-  background: 'var(--color-surface)', borderRadius: 16, width: 'min(920px, 96vw)',
-  maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.22)',
+const NUM_INPUT = { width: 64, textAlign: 'center', border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 6px', fontSize: 13, fontFamily: 'inherit', outline: 'none', minHeight: 40 }
+const BTN_PRIMARY   = { background: '#2563EB', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 44 }
+const BTN_GHOST     = { background: 'none', color: '#2563EB', border: '1px solid #2563EB', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 40 }
+const BTN_BACK       = { background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 36 }
+const BTN_SUBMIT     = { background: '#2563EB', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }
+const BTN_REMOVE    = { background: 'var(--color-danger-bg)', color: 'var(--color-danger)', border: 'none', borderRadius: 6, width: 32, height: 32, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0 }
+const CHECK_BADGE   = {
+  width: 24, height: 24, borderRadius: '50%', background: 'var(--color-success)', color: '#fff',
+  fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
 }
 const MODAL_HEADER = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
   padding: '14px 20px', borderBottom: '1px solid var(--color-border)', flexShrink: 0,
 }
 const MODAL_BODY = { padding: '18px 20px', overflowY: 'auto' }
-const BTN_REMOVE    = { background: 'var(--color-danger-bg)', color: 'var(--color-danger)', border: 'none', borderRadius: 6, width: 28, height: 28, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit' }
