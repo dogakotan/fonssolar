@@ -186,25 +186,14 @@ export default function ProjeTabOnayKuyrugu({ projectId }) {
     setLoading(false)
   }
 
+  // invoices.status güncellemesi tamamen fn_invoice_approval_cascade trigger'ına bırakılır —
+  // burada ayrıca yazmak trigger'la çakışıp onu ezerdi (bkz. DB-WF-001).
   async function handleAction(invoiceId, action, note, step) {
     setActionLoading(invoiceId)
 
     await supabase.from('invoice_approvals')
       .update({ status: action, note: note || null, reviewed_at: new Date().toISOString(), reviewer_id: user.id })
       .eq('invoice_id', invoiceId).eq('step', step)
-
-    let newStatus
-    if (action === 'reddedildi') {
-      newStatus = 'reddedildi'
-    } else if (step === 1) {
-      newStatus = 'yönetici_onayında'
-    } else if (step === 2) {
-      newStatus = 'onaylandı'
-    }
-
-    if (newStatus) {
-      await supabase.from('invoices').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', invoiceId)
-    }
 
     setActionLoading(null)
     fetchData()
