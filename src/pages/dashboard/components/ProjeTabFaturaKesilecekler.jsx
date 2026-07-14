@@ -49,7 +49,29 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading }) {
               {pageRows.map(row => (
                 <tr key={row.id || row.material} style={{ borderBottom: '1px solid var(--color-border)' }}>
                   <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text)' }}>{row.material}</td>
-                  <td style={TD}>{formatQty(row.planned)} {row.unit}</td>
+                  <td style={TD}>
+                    {formatQty(row.planned)} {row.unit}
+                    {row.addedQty > 0 && (
+                      <span
+                        title={`+${formatQty(row.addedQty)} ${row.unit} eklendi (${row.addedViaCount} onaylı satın alma ile)`}
+                        style={{
+                          marginLeft: 8,
+                          display: 'inline-block',
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          color: 'var(--color-success)',
+                          background: '#f0fdf4',
+                          border: '1px solid #86efac',
+                          borderRadius: 20,
+                          padding: '1px 7px',
+                          cursor: 'help',
+                          verticalAlign: 'middle',
+                        }}
+                      >
+                        +{formatQty(row.addedQty)} onaylı
+                      </span>
+                    )}
+                  </td>
                   <td style={{ ...TD, fontWeight: 600, color: 'var(--color-success)' }}>{formatQty(row.sent)} {row.unit}</td>
                   <td style={{ ...TD, fontWeight: 700, color: row.required > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
                     {formatQty(row.required)} {row.unit}

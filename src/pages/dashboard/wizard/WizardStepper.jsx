@@ -4,7 +4,6 @@ const STEP_LABELS = [
   'Riskler',
   'Tedarik',
   'Bütçe',
-  'Kritik Yol',
   'Tamamlandı',
 ]
 

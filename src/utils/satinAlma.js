@@ -66,7 +66,7 @@ function requestedTotalsByMaterial(requests) {
 export function classifyMaterials(materials, requests) {
   const requestedByMaterial = requestedTotalsByMaterial(requests)
   const plannedByMaterial = new Map(
-    materials.map(material => [materialKey(materialName(material)), toNumber(material.quantity)])
+    materials.map(material => [materialKey(materialName(material)), toNumber(material.planned_qty ?? material.quantity)])
   )
 
   return requests.reduce((acc, request) => {
@@ -94,7 +94,9 @@ function sentTotalsByMaterial(requests) {
 export function buildMaterialListRows(materials, requests) {
   const sentByMaterial = sentTotalsByMaterial(requests)
   return materials.map(material => {
-    const planned = toNumber(material.quantity)
+    // Kanonik alan planned_qty (numeric) — eski quantity (text) yalnızca geriye
+    // dönük uyumluluk için fallback, backend ikisini senkron tutuyor.
+    const planned = toNumber(material.planned_qty ?? material.quantity)
     const key = materialKey(materialName(material))
     const sent = sentByMaterial.get(key) || 0
     return {
@@ -104,6 +106,8 @@ export function buildMaterialListRows(materials, requests) {
       planned,
       sent,
       required: Math.max(0, planned - sent),
+      addedQty: toNumber(material.added_qty),
+      addedViaCount: Number(material.added_via_count || 0),
     }
   })
 }

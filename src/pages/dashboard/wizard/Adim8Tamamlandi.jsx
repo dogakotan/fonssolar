@@ -6,7 +6,6 @@ const STEPS = [
   { step: 3, table: 'project_risks',       label: 'Riskler' },
   { step: 4, table: 'procurement_items',   label: 'Tedarik' },
   { step: 5, table: 'budget_lines',        label: 'Bütçe' },
-  { step: 6, table: 'critical_path_items', label: 'Kritik Yol' },
 ]
 
 const btnP = { padding: '0.5rem 1.25rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
@@ -146,7 +145,7 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
   return (
     <div className="card">
       <div className="card-header">
-        <h3>Adım 7 — {isEdit ? 'Güncelle & Tamamla' : 'Kaydet & Tamamla'}</h3>
+        <h3>Adım 6 — {isEdit ? 'Güncelle & Tamamla' : 'Kaydet & Tamamla'}</h3>
         <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
           Veriler veritabanına şimdi yazılacak
         </span>

@@ -368,11 +368,13 @@ export default function ProjectOverviewDashboard({
     }
   })
 
-  const avgReportProgress = overallProgressPct !== null
-    ? Math.round(Number(overallProgressPct))
-    : taskProgressRows.length
-      ? Math.round(taskProgressRows.reduce((s, t) => s + t.pct, 0) / taskProgressRows.length)
-      : Math.round(Number(progressSummaryProp?.actual_progress_pct ?? 0))
+  const avgReportProgress = currentProject?.progress != null
+    ? Math.round(Number(currentProject.progress))
+    : overallProgressPct !== null
+      ? Math.round(Number(overallProgressPct))
+      : taskProgressRows.length
+        ? Math.round(taskProgressRows.reduce((s, t) => s + t.pct, 0) / taskProgressRows.length)
+        : Math.round(Number(progressSummaryProp?.actual_progress_pct ?? 0))
 
   const plannedPct     = calcPlannedAt(tasks, effectiveDate)
   const totalBudget    = budgetLines.reduce((s, b) => s + Number(b.planned_amount || 0), 0)
@@ -453,7 +455,7 @@ export default function ProjectOverviewDashboard({
         <div className="card project-overview-card project-progress-card">
           <div className="project-card-title"><h3>Genel İlerleme</h3></div>
           <Ring value={avgReportProgress} />
-          <p>Günlük saha girişlerinden hesaplanan gerçekleşen ilerleme</p>
+          <p>Kategori-ağırlıklı proje ilerlemesi</p>
         </div>
 
         <div className="card project-overview-card">

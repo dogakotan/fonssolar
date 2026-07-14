@@ -6,7 +6,6 @@ import Adim2IsKalemleri         from './Adim2IsKalemleri'
 import Adim4Riskler             from './Adim4Riskler'
 import Adim5Tedarik             from './Adim5Tedarik'
 import Adim6Butce               from './Adim6Butce'
-import Adim7KritikYol           from './Adim7KritikYol'
 import Adim8Tamamlandi          from './Adim8Tamamlandi'
 
 const TABLE_MAP = {
@@ -14,7 +13,6 @@ const TABLE_MAP = {
   3: 'project_risks',
   4: 'procurement_items',
   5: 'budget_lines',
-  6: 'critical_path_items',
 }
 
 export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
@@ -91,7 +89,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
   function submitCurrentStep(action = 'next') {
     actionRef.current = action
     if (step === 1) document.querySelector('[data-wizard-form="project"]')?.requestSubmit()
-    else if (step < 7) document.querySelector('[data-wizard-submit="next"]')?.click()
+    else if (step < 6) document.querySelector('[data-wizard-submit="next"]')?.click()
     else document.querySelector('[data-wizard-submit="save"]')?.click()
   }
 
@@ -100,12 +98,12 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
   return (
     <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
       <div className="card" style={{ width: 210, flexShrink: 0, overflow: 'hidden' }}>
-        <WizardStepper current={step} completedSteps={Object.keys(stepsResult).map(Number)} availableUntil={7} onSelect={setStep} />
+        <WizardStepper current={step} completedSteps={Object.keys(stepsResult).map(Number)} availableUntil={6} onSelect={setStep} />
         <div style={{ padding: '0.875rem', borderTop: '1px solid var(--color-border-md)', display: 'grid', gap: '0.5rem' }}>
           <button type="button" onClick={onSuccess} style={{ ...btnBase, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)' }}>
             İptal
           </button>
-          {step < 7 && (
+          {step < 6 && (
             <button
               type="button"
               onClick={() => submitCurrentStep('save')}
@@ -120,7 +118,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             onClick={() => submitCurrentStep('next')}
             style={{ ...btnBase, background: 'var(--color-primary)', color: '#fff' }}
           >
-            {step === 7 ? 'Kaydet' : 'Devam →'}
+            {step === 6 ? 'Kaydet' : 'Devam →'}
           </button>
 
           {toast && (
@@ -187,15 +185,6 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
           />
         )}
         {step === 6 && (
-          <Adim7KritikYol
-            projectId={projectId}
-            result={stepsResult[6]}
-            mode="edit"
-            onDone={r => handleStepDone(6, r)}
-            onBack={goBack}
-          />
-        )}
-        {step === 7 && (
           <Adim8Tamamlandi
             stepsResult={stepsResult}
             projectType={stepsResult[1]?.project_type ?? project.project_type ?? null}

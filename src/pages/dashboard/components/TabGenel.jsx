@@ -622,9 +622,9 @@ function TimelineStrip({ steps, fmtDate }) {
           const active  = item.status === 'devam_ediyor'
           const dotColor  = done ? '#16a34a' : active ? '#003B8E' : '#cbd5e1'
           const lineColor = done && i < steps.length - 1 ? '#16a34a' : '#e2e8f0'
-          const shortName = (item.activity_name || '').slice(0, 12) + ((item.activity_name || '').length > 12 ? '…' : '')
+          const shortName = (item.task_name || '').slice(0, 12) + ((item.task_name || '').length > 12 ? '…' : '')
           return (
-            <div key={item.path_code || i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+            <div key={item.task_code || i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
               {/* connecting line */}
               {i < steps.length - 1 && (
                 <div style={{
@@ -663,7 +663,7 @@ function TimelineStrip({ steps, fmtDate }) {
                     borderRadius: 8, fontSize: 11, whiteSpace: 'nowrap', zIndex: 20,
                     boxShadow: '0 4px 12px rgba(0,0,0,0.18)', pointerEvents: 'none',
                   }}>
-                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{item.activity_name}</div>
+                    <div style={{ fontWeight: 600, marginBottom: 2 }}>{item.task_name}</div>
                     <div style={{ opacity: 0.8 }}>İlerleme: %{item.progress_pct || 0}</div>
                     <div style={{ opacity: 0.8 }}>{fmtDate(item.planned_start)} → {fmtDate(item.planned_end)}</div>
                   </div>
@@ -697,9 +697,8 @@ function ProjectDashboard({ projectId, filterDate }) {
   const [risks, setRisks]               = useState([])
   const [weather, setWeather]           = useState(null)
   const [lostDays, setLostDays]         = useState(0)
-  const [mechCheck, setMechCheck]       = useState([])
-  const [elecCheck, setElecCheck]       = useState([])
   const [inspections, setInspections]   = useState([])
+  const [categoryWeights, setCategoryWeights] = useState([])
   const [personnel, setPersonnel]       = useState([])
   const [machinery, setMachinery]       = useState([])
   const [loading, setLoading]           = useState(true)
@@ -733,29 +732,18 @@ function ProjectDashboard({ projectId, filterDate }) {
       setRisks(data.risks || [])
       setWeather(data.weather || null)
       setLostDays(data.lost_days || 0)
-      setMechCheck(data.mech_check || [])
-      setElecCheck(data.elec_check || [])
       setInspections(data.inspections || [])
+      setCategoryWeights(data.category_weights || [])
       setOpenTickets(data.open_tickets ?? 0)
       setPendingPR(data.pending_pr ?? 0)
       setRecentTickets(data.recent_tickets || [])
       setPersonnel(data.personnel || [])
       setMachinery(data.machinery || [])
 
-      // avgProgress: tarih filtreli progress_items toplamından hesapla
-      const items = data.progress_items || []
-      if (items.length) {
-        const progresses = items.map(item =>
-          Math.min(Number(item.total_progress || 0) / (Number(item.target_qty) || 1), 1.0)
-        )
-        setAvgProgress((progresses.reduce((s, v) => s + v, 0) / progresses.length) * 100)
-      } else {
-        setAvgProgress(
-          taskList.length
-            ? taskList.reduce((s, t) => s + Number(t.progress_pct || 0), 0) / taskList.length
-            : 0
-        )
-      }
+      // Kanonik ilerleme: projects.progress (kategori-ağırlıklı, fn_sync_project_progress
+      // tarafından güncel tutulur) — item bazlı basit ortalama değil, "İlerleme" kolonunda
+      // her yerde gösterilen sayıyla aynı olmalı.
+      setAvgProgress(Number(data.project?.progress || 0))
 
       setLoading(false)
     }
@@ -1159,10 +1147,6 @@ function ProjectDashboard({ projectId, filterDate }) {
   }, {})
 
   // Kalite
-  const mechTotal   = mechCheck.length
-  const mechDone    = mechCheck.filter(c => c.is_completed).length
-  const elecTotal   = elecCheck.length
-  const elecDone    = elecCheck.filter(c => c.is_completed).length
   const inspTotal   = inspections.length
   const inspPassed  = inspections.filter(i => i.result === 'geçti').length
 
@@ -1360,7 +1344,7 @@ function ProjectDashboard({ projectId, filterDate }) {
               </div>
             </div>
             <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>
-              Başlamış<br />görev ortalaması
+              Kategori-ağırlıklı<br />proje ilerlemesi
             </p>
           </div>
         </div>
@@ -1699,6 +1683,34 @@ function ProjectDashboard({ projectId, filterDate }) {
         </div>
       </div>
 
+      {/* Açık Riskler (detay) */}
+      {risks.length > 0 && (
+        <div className="card" style={{ marginTop: '1rem' }}>
+          <div className="card-header"><h3>Açık Riskler (Detay)</h3></div>
+          <div style={{ padding: '0.75rem 1.5rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {risks.map(risk => (
+              <div key={risk.id} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10,
+                padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0',
+                borderLeft: `3px solid ${risk.severity === 'kritik' ? '#ef4444' : risk.severity === 'yüksek' ? '#f59e0b' : '#94a3b8'}`,
+              }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>{risk.title}</div>
+                  {risk.source === 'otomatik' && (
+                    <span style={{ fontSize: 9.5, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: 999, display: 'inline-block', marginTop: 4 }}>
+                      Sistem tarafından tespit edildi
+                    </span>
+                  )}
+                </div>
+                <span className={`badge ${SEV_COLOR[risk.severity] || 'gray'}`} style={{ fontSize: 10, flexShrink: 0 }}>
+                  {risk.severity}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ─── ALAN 4: Kalite + Kaynaklar ──────────────────── */}
       <div className="proj-dash-grid-2">
 
@@ -1707,8 +1719,6 @@ function ProjectDashboard({ projectId, filterDate }) {
           <div className="card-header"><h3>Kalite / Kontrol Listesi</h3></div>
           <div style={{ padding: '1rem 1.5rem' }}>
             {[
-              { label: 'Mekanik Kontrol Listesi', total: mechTotal, done: mechDone },
-              { label: 'Elektrik Kontrol Listesi', total: elecTotal, done: elecDone },
               { label: 'Kalite Denetimleri (Geçti)', total: inspTotal, done: inspPassed },
             ].map(c => {
               const pct = c.total > 0 ? (c.done / c.total) * 100 : 0

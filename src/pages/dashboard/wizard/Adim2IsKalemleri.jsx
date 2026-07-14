@@ -13,6 +13,11 @@ const CATEGORY_OPTS = [
   { v: 'devreye_alma', l: 'Devreye Alma' },
   { v: 'evrak_sureci', l: 'Evrak Süreci' },
   { v: 'satin_alma',   l: 'Satın Alma' },
+  { v: 'kolon_montaji', l: 'Kolon Montajı' },
+  { v: 'kiris_montaji', l: 'Kiriş Montajı' },
+  { v: 'asik_montaji',  l: 'Aşık Montajı' },
+  { v: 'panel_montaji', l: 'Panel Montajı' },
+  { v: 'kosk_trafo',    l: 'Köşk Trafo' },
 ]
 
 const STATUS_OPTS = [
@@ -30,6 +35,7 @@ const DEF = {
   planned_start: '', planned_end: '', progress_pct: '0', status: 'beklemede',
   responsible: '', team_size: '', equipment_notes: '', notes: '',
   unit: '', target_qty: '0', dashboard_visible: false, dashboard_order: '0',
+  is_critical: false,
 }
 
 const lbl = { fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.03em' }
@@ -73,6 +79,7 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, mo
               target_qty: String(r.target_qty ?? 0),
               dashboard_visible: !!r.dashboard_visible,
               dashboard_order: String(r.dashboard_order ?? 0),
+              is_critical: !!r.is_critical,
             }))
           : [])
       })
@@ -128,6 +135,7 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, mo
       target_qty:        r.target_qty !== '' ? Number(r.target_qty) : 0,
       dashboard_visible: !!r.dashboard_visible,
       dashboard_order:   r.dashboard_order !== '' ? Number(r.dashboard_order) : 0,
+      is_critical:       !!r.is_critical,
     }))
     onDone({ rows: payload, skipped: false, count: rows.length })
   }
@@ -224,6 +232,12 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, mo
                 <select style={inp} value={row.status} onChange={e => upd(row._id, 'status', e.target.value)}>
                   {STATUS_OPTS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 6 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#0f172a', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={row.is_critical} onChange={e => upd(row._id, 'is_critical', e.target.checked)} />
+                  Kritik Yol
+                </label>
               </div>
               <div>
                 <label style={lbl}>Sorumlu</label>

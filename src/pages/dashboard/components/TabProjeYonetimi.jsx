@@ -23,15 +23,13 @@ const SUB_TABLES = [
   'project_risks',
   'procurement_items',
   'budget_lines',
-  'critical_path_items',
 ]
 
 const PROJECT_DELETE_TABLES = [
-  'schedule_activities', 'agent_reports', 'mechanical_checklist',
-  'electrical_checklist', 'quality_inspections',
+  'schedule_activities', 'agent_reports', 'quality_inspections',
 ]
 
-const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu-v4.xlsx'
+const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu-v6.xlsx'
 
 export default function TabProjeYonetimi({ onViewProject }) {
   const [view,            setView]            = useState('list')

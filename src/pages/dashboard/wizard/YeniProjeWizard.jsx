@@ -5,7 +5,6 @@ import Adim2IsKalemleri         from './Adim2IsKalemleri'
 import Adim4Riskler             from './Adim4Riskler'
 import Adim5Tedarik             from './Adim5Tedarik'
 import Adim6Butce               from './Adim6Butce'
-import Adim7KritikYol           from './Adim7KritikYol'
 import Adim8Tamamlandi          from './Adim8Tamamlandi'
 
 
@@ -16,7 +15,7 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
 
   const projectId = stepsResult[1]?.id ?? null
   const completedSteps = Object.keys(stepsResult).map(Number)
-  const availableUntil = projectId ? 7 : 1
+  const availableUntil = projectId ? 6 : 1
 
   const goNext = () => setStep(s => s + 1)
   const goBack = () => setStep(s => s - 1)
@@ -24,16 +23,16 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
   function handleStepDone(stepNo, result) {
     setStepsResult(r => ({ ...r, [stepNo]: result }))
     if (actionRef.current === 'save') {
-      setStep(7)
+      setStep(6)
     } else if (actionRef.current === 'next') {
-      setStep(current => Math.min(7, Math.max(current + 1, stepNo + 1)))
+      setStep(current => Math.min(6, Math.max(current + 1, stepNo + 1)))
     }
   }
 
   function submitCurrentStep(action = 'next') {
     actionRef.current = action
     if (step === 1) document.querySelector('[data-wizard-form="project"]')?.requestSubmit()
-    else if (step < 7) document.querySelector('[data-wizard-submit="next"]')?.click()
+    else if (step < 6) document.querySelector('[data-wizard-submit="next"]')?.click()
     else document.querySelector('[data-wizard-submit="save"]')?.click()
   }
 
@@ -54,7 +53,7 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
           >
             İptal
           </button>
-          {step < 7 && (
+          {step < 6 && (
             <button
               type="button"
               onClick={() => submitCurrentStep('save')}
@@ -68,7 +67,7 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
             onClick={() => submitCurrentStep('next')}
             style={{ padding: '0.5rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            {step === 7 ? 'Kaydet' : 'Devam →'}
+            {step === 6 ? 'Kaydet' : 'Devam →'}
           </button>
         </div>
       </div>
@@ -114,14 +113,6 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
           />
         )}
         {step === 6 && (
-          <Adim7KritikYol
-            projectId={projectId}
-            result={stepsResult[6]}
-            onDone={r => handleStepDone(6, r)}
-            onBack={goBack}
-          />
-        )}
-        {step === 7 && (
           <Adim8Tamamlandi
             stepsResult={stepsResult}
             projectType={stepsResult[1]?.project_type ?? null}

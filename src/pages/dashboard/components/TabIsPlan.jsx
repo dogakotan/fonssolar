@@ -173,8 +173,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   // aynı (yanlış) sayı gösteriliyordu, task_id ile filtrelenmediği için.
   const [taskTargetsAll, setTaskTargetsAll] = useState([])
   const [dailyProgressRowsAll, setDailyProgressRowsAll] = useState([])
-  const [criticalCodes, setCriticalCodes] = useState(new Set())
-  const [critCount, setCritCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(new Set())
   const [statusFilter, setStatusFilter] = useState('all')
@@ -209,7 +207,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     setLoading(true)
     supabase
       .from('project_tasks')
-      .select('id, task_code, task_name, group_label, category, planned_start, planned_end, progress_pct, status')
+      .select('id, task_code, task_name, group_label, category, planned_start, planned_end, progress_pct, status, is_critical')
       .order('planned_start', { ascending: true })
       .then(({ data: tasksData }) => {
         if (!alive) return
@@ -219,7 +217,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           // (tamamlandı/devam ediyor) bunu ezmez, sadece ayrı bir alan olarak gösterilir.
           status: deriveTaskStatusAt(task, Number(task.progress_pct || 0), effectiveDate),
         })))
-        setCritCount(0)
         setSiteChief(null)
         setTaskTargetsAll([])
         setDailyProgressRowsAll([])
@@ -251,9 +248,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
 
       setProject(ganttData.project || null)
       setTasks(normalizedTasks)
-      const codes = new Set((ganttData.critical_codes || []).filter(Boolean))
-      setCriticalCodes(codes)
-      setCritCount(codes.size)
 
       const [chiefRes, tasksRes, reportRes] = await Promise.all([
         supabase
@@ -321,7 +315,8 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const kpis = useMemo(() => {
     const late = tasks.filter(t => isTaskLate(t, today)).length
     const ongoing = tasks.filter(t => t.status === 'devam_ediyor').length
-    return { late, ongoing }
+    const crit = tasks.filter(t => t.is_critical).length
+    return { late, ongoing, crit }
   }, [tasks, today])
 
   useEffect(() => {
@@ -361,7 +356,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
           <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
         </div>
-        <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={critCount} />
+        <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={kpis.crit} />
         <GanttShell
           project={project}
           statusFilter={statusFilter}
@@ -470,7 +465,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
       </div>
-      <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={critCount} />
+      <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={kpis.crit} />
 
       <div className={`gantt-workspace${panelOpen ? ' has-panel' : ''}`}>
         <GanttShell
@@ -548,7 +543,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                         const barWidth = Math.max(1.2, barEnd - barLeft)
                         const duration = daysBetween(task.planned_start, task.planned_end)
                         const pct = Math.round(Number(task.progress_pct || 0))
-                        const isCrit = criticalCodes.has(task.task_code)
+                        const isCrit = !!task.is_critical
                         const isLate = isTaskLate(task, today)
                         const isSelected = task.id === selectedTaskId
 
@@ -603,7 +598,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
             group={selectedTask ? resolveGroup(selectedTask) : null}
             dailyPct={selectedTaskDailyPct}
             siteChief={siteChief}
-            isCritical={selectedTask ? criticalCodes.has(selectedTask.task_code) : false}
+            isCritical={!!selectedTask?.is_critical}
             siteChiefView={siteChiefView}
             onClose={() => setPanelOpen(false)}
           />

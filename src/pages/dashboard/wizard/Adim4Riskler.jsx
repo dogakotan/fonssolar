@@ -2,9 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
 
 const SEV_OPTS    = [{ v: 'kritik', l: 'Kritik' }, { v: 'yüksek', l: 'Yüksek' }, { v: 'orta', l: 'Orta' }, { v: 'düşük', l: 'Düşük' }]
-const STATUS_OPTS = [{ v: 'aktif_takip', l: 'Aktif Takip' }, { v: 'planlandi', l: 'Planlandı' }, { v: 'kapandi', l: 'Kapandı' }]
+const STATUS_OPTS = [
+  { v: 'açık',         l: 'Açık' },
+  { v: 'azaltıldı',    l: 'Azaltıldı' },
+  { v: 'kabul_edildi', l: 'Kabul Edildi' },
+  { v: 'kapatıldı',    l: 'Kapatıldı' },
+]
 
-const DEF = { title: '', description: '', severity: 'orta', probability: '3', impact: '3', mitigation: '', status: 'aktif_takip' }
+const DEF = { title: '', description: '', severity: 'orta', probability: '3', impact: '3', mitigation: '', status: 'açık' }
 
 const lbl = { fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.03em' }
 const inp = { padding: '0.45rem 0.625rem', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, color: '#0f172a', background: '#fff', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', outline: 'none' }
