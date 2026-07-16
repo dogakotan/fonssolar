@@ -5,11 +5,33 @@ import { useDashboardData } from '../../../hooks/useDashboardData'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ReferenceLine, ResponsiveContainer,
+} from 'recharts'
 
 const TYPE_LABEL = {
   arazi_ges: 'Arazi GES',
   cati_ges: 'Çatı GES',
   depolamali_ges: 'Depolamalı GES',
+}
+
+const TASK_CATEGORY_LABEL = {
+  mobilizasyon:   'Mobilizasyon',
+  mekanik:        'Mekanik',
+  elektrik_dc:    'Elektrik DC',
+  elektrik_ac:    'Elektrik AC',
+  elektrik_og:    'Elektrik OG',
+  topraklama:     'Topraklama',
+  enh:            'ENH',
+  devreye_alma:   'Devreye Alma',
+  evrak_sureci:   'Evrak Süreci',
+  satin_alma:     'Satın Alma',
+  kolon_montaji:  'Kolon Montajı',
+  kiris_montaji:  'Kiriş Montajı',
+  asik_montaji:   'Aşık Montajı',
+  panel_montaji:  'Panel Montajı',
+  kosk_trafo:     'Köşk Trafo',
 }
 
 const STATUS_LABEL = {
@@ -112,6 +134,34 @@ function calcPlannedAt(tasks, dateText) {
   }, 0)
 
   return Math.round(total / dated.length)
+}
+
+function buildScurve(tasks, startDateText, endDateText, actualPct) {
+  if (!startDateText || !endDateText || !tasks.length) return []
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const start = new Date(`${startDateText}T00:00:00`)
+  const end   = new Date(`${endDateText}T00:00:00`)
+  const data = []
+  let cur = new Date(start.getFullYear(), start.getMonth(), 1)
+  while (cur <= end) {
+    const dateText = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-01`
+    data.push({
+      label: cur.toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' }),
+      planned: calcPlannedAt(tasks, dateText),
+      actual: cur <= today ? Math.round(actualPct) : null,
+    })
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+  }
+  return data
+}
+
+const SEV_BORDER = {
+  kritik: '#ef4444',
+  yüksek: '#f59e0b',
+  yuksek: '#f59e0b',
+  orta: '#94a3b8',
+  düşük: '#3b82f6',
+  dusuk: '#3b82f6',
 }
 
 function Ring({ value }) {
@@ -257,6 +307,8 @@ export default function ProjectOverviewDashboard({
   const [machinery, setMachinery]       = useState([])
   const [progressItems, setProgressItems] = useState([])
   const [overallProgressPct, setOverallProgressPct] = useState(null)
+  const [categoryWeights, setCategoryWeights] = useState([])
+  const [risks, setRisks]               = useState([])
   const [tickets, setTickets]           = useState([])
   const [purchases, setPurchases]       = useState([])
   const [budgetLines, setBudgetLines]   = useState([])
@@ -304,6 +356,8 @@ export default function ProjectOverviewDashboard({
     setMachinery(byDateData.machinery || [])
     setProgressItems(byDateData.progress_items || [])
     setOverallProgressPct(byDateData.overall_pct ?? null)
+    setCategoryWeights(byDateData.category_weights || [])
+    setRisks(byDateData.risks || [])
     setTickets(byDateData.tickets || [])
     setPurchases(byDateData.purchases || [])
     setBudgetLines(byDateData.budget_lines || [])
@@ -404,10 +458,15 @@ export default function ProjectOverviewDashboard({
     return { ...task, pct: asOf, progress: asOf, progress_pct: asOf }
   })
   const purchaseRows  = purchases.map(normalizePurchase)
-  const progressRows  = progressItems.slice(0, 6).map(item => ({
+  const progressRows  = progressItems.map(item => ({
     id: item.id, name: item.name, done: item.total_to_date,
     target: item.target_qty, unit: item.unit, pct: Number(item.pct),
   }))
+  const top5Budget = [...budgetLines]
+    .sort((a, b) => Number(b.planned_amount || 0) - Number(a.planned_amount || 0))
+    .slice(0, 5)
+  const sCurveData = buildScurve(taskProgressRows, currentProject?.start_date, currentProject?.target_date, avgReportProgress)
+  const todayLabel = new Date().toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' })
   const sitePhotoUrl = path => supabase.storage.from('saha-fotolari').getPublicUrl(path).data.publicUrl
 
   if (loading) {
@@ -577,6 +636,58 @@ export default function ProjectOverviewDashboard({
         </div>
       </div>
 
+      {sCurveData.length > 0 && (
+        <div className="card project-timeline-card" style={{ marginBottom: '1rem' }}>
+          <div className="project-card-title">
+            <h3>S-Eğrisi</h3>
+            <LinkButton onClick={() => onGoTab?.('gantt')}>İş Planını Gör</LinkButton>
+          </div>
+          <div style={{ padding: '0.5rem 1.5rem 1.25rem' }}>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={sCurveData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="label" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} tickFormatter={v => `${v}%`} />
+                <Tooltip formatter={v => v !== null ? `${Math.round(v)}%` : '—'} />
+                <ReferenceLine x={todayLabel} stroke="#ef4444" strokeDasharray="4 3" />
+                <Line type="monotone" dataKey="planned" stroke="#3b82f6" dot={false} strokeWidth={2} name="Planlanan" />
+                <Line type="monotone" dataKey="actual"  stroke="#22c55e" dot={{ r: 4 }} strokeWidth={2} name="Gerçekleşen" connectNulls={false} />
+              </LineChart>
+            </ResponsiveContainer>
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 20, height: 2, background: '#3b82f6', display: 'inline-block' }} /> Planlanan
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 20, height: 2, background: '#22c55e', display: 'inline-block' }} /> Gerçekleşen
+              </span>
+              <span style={{ fontSize: 11, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ width: 2, height: 12, background: '#ef4444', display: 'inline-block' }} /> Bugün
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {categoryWeights.length > 0 && (
+        <div className="card project-mini-card" style={{ marginBottom: '1rem' }}>
+          <div className="project-card-title">
+            <h3>Kategori Bazlı İlerleme</h3>
+            <LinkButton onClick={() => onGoTab?.('gantt')}>İş Planını Gör</LinkButton>
+          </div>
+          {categoryWeights.map(cw => (
+            <div className="project-progress-row" key={cw.category}>
+              <div>
+                <strong>{TASK_CATEGORY_LABEL[cw.category] || cw.category}</strong>
+                <span>Ağırlık %{fmtNumber(cw.weight_pct)}</span>
+              </div>
+              <MiniProgress value={cw.avg_progress} />
+              <b>{Math.round(Number(cw.avg_progress || 0))}%</b>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="project-bottom-grid">
         <div className="card project-mini-card">
           <div className="project-card-title">
@@ -599,22 +710,23 @@ export default function ProjectOverviewDashboard({
 
         <div className="card project-mini-card">
           <div className="project-card-title">
-            <h3>İş Kalemleri Takibi</h3>
+            <h3>İmalat İlerlemesi</h3>
             <LinkButton onClick={() => onGoTab?.('gantt')}>Detayı Gör</LinkButton>
           </div>
-          {(() => {
-            const rows = progressRows.slice(0, 4)
-            return rows.length ? rows.map(item => (
-              <div className="project-progress-row" key={item.name}>
-                <div>
-                  <strong>{item.name}</strong>
-                  <span>{item.done || 0} / {item.target || '—'} {item.unit}</span>
+          {progressRows.length ? (
+            <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+              {progressRows.map(item => (
+                <div className="project-progress-row" key={item.id || item.name}>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <span>{item.done || 0} / {item.target || '—'} {item.unit}</span>
+                  </div>
+                  <MiniProgress value={item.pct} />
+                  <b>{Math.round(item.pct)}%</b>
                 </div>
-                <MiniProgress value={item.pct} />
-                <b>{Math.round(item.pct)}%</b>
-              </div>
-            )) : <p className="project-empty">İş kalemi verisi yok.</p>
-          })()}
+              ))}
+            </div>
+          ) : <p className="project-empty">İş kalemi verisi yok.</p>}
         </div>
 
         <div className="card project-mini-card">
@@ -641,6 +753,19 @@ export default function ProjectOverviewDashboard({
           <DetailRow label="Kullanım Oranı" value={totalBudget ? `%${budgetPct}` : '—'} tone={budgetPct > 90 ? 'danger' : 'primary'} />
           <MiniProgress value={budgetPct} color={budgetPct > 90 ? '#ef4444' : '#185FA5'} />
           <DetailRow label="Öngörülen Toplam Maliyet" value={totalBudget ? `${fmtMoney(Math.max(totalBudget, spent))} ₺` : '—'} tone="danger" />
+          {top5Budget.length > 0 && (
+            <>
+              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0.875rem 0 0.25rem' }}>
+                En Büyük 5 Kalem
+              </p>
+              {top5Budget.map((b, i) => (
+                <div key={b.id || i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9' }}>
+                  <span style={{ fontSize: 12, color: 'var(--color-text)' }}>{b.name || b.category}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>{fmtMoney(b.planned_amount)} ₺</span>
+                </div>
+              ))}
+            </>
+          )}
         </div>
 
         <div className="card project-mini-card">
@@ -721,6 +846,43 @@ export default function ProjectOverviewDashboard({
           )}
         </div>
       </div>
+
+      {risks.length > 0 && (
+        <div className="card" style={{ marginTop: '1rem' }}>
+          <div className="project-card-title"><h3>Açık Riskler (Detay)</h3></div>
+          <div style={{ padding: '0.75rem 1.5rem', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {risks.map(risk => {
+              const target = risk.rule_code === 'gorev_gecikmesi' ? 'gantt'
+                : risk.rule_code === 'malzeme_fazla_talep' ? 'satin-alma'
+                : null
+              return (
+                <div
+                  key={risk.id}
+                  onClick={target ? () => onGoTab?.(target) : undefined}
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10,
+                    padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0',
+                    borderLeft: `3px solid ${SEV_BORDER[risk.severity] || '#94a3b8'}`,
+                    cursor: target ? 'pointer' : 'default',
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-text)' }}>{risk.title}</div>
+                    {risk.source === 'otomatik' && (
+                      <span style={{ fontSize: 9.5, color: '#0369a1', background: '#e0f2fe', padding: '1px 6px', borderRadius: 999, display: 'inline-block', marginTop: 4 }}>
+                        Sistem tarafından tespit edildi
+                      </span>
+                    )}
+                  </div>
+                  <span className={`badge ${RISK_BADGE[risk.severity] || 'gray'}`} style={{ fontSize: 10, flexShrink: 0 }}>
+                    {risk.severity}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {photoLightbox && (
         <div

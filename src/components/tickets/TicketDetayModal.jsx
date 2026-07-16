@@ -9,6 +9,7 @@ const SEVERITY = {
   'düşük':  { bg: '#F3F4F6', color: '#374151', label: 'Düşük' },
   'orta':   { bg: '#FEF3C7', color: '#92400E', label: 'Orta' },
   'yüksek': { bg: '#FEE2E2', color: '#991B1B', label: 'Yüksek' },
+  'kritik': { bg: '#7F1D1D', color: '#FEE2E2', label: 'Kritik' },
 }
 const STATUS = {
   'gönderildi':   { bg: '#DBEAFE', color: '#1D4ED8', label: 'Gönderildi' },

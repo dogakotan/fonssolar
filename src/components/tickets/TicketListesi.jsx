@@ -5,12 +5,13 @@ import YeniTicketModal from './YeniTicketModal'
 import TicketDetayModal from './TicketDetayModal'
 import DateNavigator from '../ui/DateNavigator'
 
-const SEVERITY_ORDER = { 'yüksek': 3, 'orta': 2, 'düşük': 1 }
+const SEVERITY_ORDER = { 'kritik': 4, 'yüksek': 3, 'orta': 2, 'düşük': 1 }
 
 const SEVERITY = {
   'düşük':  { bg: '#F3F4F6', color: '#374151', label: 'Düşük' },
   'orta':   { bg: '#FEF3C7', color: '#92400E', label: 'Orta' },
   'yüksek': { bg: '#FEE2E2', color: '#991B1B', label: 'Yüksek' },
+  'kritik': { bg: '#7F1D1D', color: '#FEE2E2', label: 'Kritik' },
 }
 const STATUS = {
   'gönderildi':   { bg: '#DBEAFE', color: '#1D4ED8', label: 'Gönderildi' },
@@ -118,7 +119,7 @@ function QuickActionModal({ ticket, action, onClose, onDone }) {
   )
 }
 
-export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId, filterStatus, filterSeverity, filterDate: filterDateProp }) {
+export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId, filterStatus, filterSeverity, filterDate: filterDateProp, openTicketId, onOpenedTicket }) {
   const { user, isAdmin, role, projectId: authProjectId } = useAuth()
   const [tickets, setTickets]               = useState([])
   const [loading, setLoading]               = useState(true)
@@ -139,6 +140,24 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   useEffect(() => {
     if (filterDateProp) setDateFilter(filterDateProp)
   }, [filterDateProp])
+
+  // Dışarıdan (örn. Günlük Rapor'daki "Ticket açıldı" rozeti) belirli bir
+  // ticket'a doğrudan gitme — mevcut filtrelerden bağımsız, tek satırı çekip açar.
+  useEffect(() => {
+    if (!openTicketId) return
+    let alive = true
+    supabase
+      .from('tickets')
+      .select('*, creator:profiles!tickets_created_by_fkey(full_name)')
+      .eq('id', openTicketId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!alive) return
+        if (data) setSelected(data)
+        onOpenedTicket?.()
+      })
+    return () => { alive = false }
+  }, [openTicketId])
 
   useEffect(() => { fetchTickets() }, [statusTab, sortMode, severityFilter, categoryFilter, dateFilter, refreshKey, propProjectId, filterStatus, filterSeverity, isAdmin, role, authProjectId, user?.id])
 
@@ -239,7 +258,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
           {/* Severity sub-butonlar — sadece severity sort aktifse */}
           {(sortMode === 'sev_desc' || sortMode === 'sev_asc') && (
             <div className="tl-toolbar-sev" style={{ display: 'flex', gap: 4 }}>
-              {[{ key: 'all', label: 'Tümü' }, { key: 'düşük', label: 'Düşük' }, { key: 'orta', label: 'Orta' }, { key: 'yüksek', label: 'Yüksek' }].map(s => (
+              {[{ key: 'all', label: 'Tümü' }, { key: 'düşük', label: 'Düşük' }, { key: 'orta', label: 'Orta' }, { key: 'yüksek', label: 'Yüksek' }, { key: 'kritik', label: 'Kritik' }].map(s => (
                 <button
                   key={s.key}
                   onClick={() => setSeverityFilter(s.key)}

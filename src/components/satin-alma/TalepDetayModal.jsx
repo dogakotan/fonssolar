@@ -76,7 +76,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
       if (!id) return
       const { data: req, error } = await supabase
         .from('purchase_requests')
-        .select('*, purchase_request_items(*)')
+        .select('*, purchase_request_items(*), suppliers(name)')
         .eq('id', id)
         .single()
 
@@ -100,6 +100,8 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const invoiceDone = status === 'faturasi_kesildi'
   const invoiceActive = ['fatura_bekliyor', 'fatura_onay_bekliyor'].includes(status)
   const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
+  const procurementActive = status === 'onaylandi'
+  const procurementDone = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const isRejected = status === 'red_edildi'
   const canInvoice = (isAdmin || isMuhasebe) && isAwaitingInvoice(req)
 
@@ -170,10 +172,18 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                       : 'Şu anki adım'}
                 />
                 <Step
+                  active={procurementActive}
+                  done={procurementDone}
+                  label="Tedarikçi / Satın Alma Bilgisi"
+                  sub={procurementDone
+                    ? `${req.suppliers?.name || 'Tedarikçi'} · ${fmtDate(req.purchase_date)}`
+                    : procurementActive ? 'Proje yöneticisi girişi bekleniyor' : 'Onay sonrası başlar'}
+                />
+                <Step
                   active={invoiceActive}
                   done={invoiceDone}
                   label="Fatura Bekleniyor"
-                  sub={invoiceActive ? 'Muhasebe/onay sürecinde' : invoiceDone ? 'Tamamlandı' : 'Onay sonrası başlar'}
+                  sub={invoiceActive ? 'Muhasebe/onay sürecinde' : invoiceDone ? 'Tamamlandı' : procurementDone ? 'Tedarik tamamlandı, fatura kesilebilir' : 'Tedarik sonrası başlar'}
                 />
                 <Step
                   done={invoiceDone}
@@ -261,7 +271,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
 
           {canInvoice && (
             <section style={{ ...CARD, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <p style={{ margin: 0, fontSize: 12.5, color: '#64748B' }}>Talep onaylandı, henüz faturası kesilmedi.</p>
+              <p style={{ margin: 0, fontSize: 12.5, color: '#64748B' }}>Tedarik tamamlandı, henüz faturası kesilmedi.</p>
               <button onClick={() => setShowFaturaModal(true)} style={{ background: '#5B21B6', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                 Fatura Oluştur
               </button>

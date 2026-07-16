@@ -181,6 +181,7 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
                 <option value="düşük">Düşük</option>
                 <option value="orta">Orta</option>
                 <option value="yüksek">Yüksek</option>
+                <option value="kritik">Kritik</option>
               </select>
             </div>
           </div>

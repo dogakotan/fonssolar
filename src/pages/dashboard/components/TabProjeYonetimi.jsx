@@ -29,7 +29,7 @@ const PROJECT_DELETE_TABLES = [
   'schedule_activities', 'agent_reports', 'quality_inspections',
 ]
 
-const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu-v6.xlsx'
+const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu.xlsx'
 
 export default function TabProjeYonetimi({ onViewProject }) {
   const [view,            setView]            = useState('list')
@@ -219,22 +219,18 @@ export default function TabProjeYonetimi({ onViewProject }) {
           <button
             onClick={handleImportClick}
             disabled={importState === 'importing'}
-            style={{ padding: '0.5rem 1.1rem', background: 'transparent', color: 'var(--color-primary)', border: '1px solid var(--color-primary)', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            {importState === 'importing' ? 'Aktarılıyor…' : 'Excel İçeri Aktar'}
-          </button>
-          <button
-            onClick={() => setView('new')}
-            style={{ padding: '0.5rem 1.25rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            style={{ padding: '0.5rem 1.25rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: importState === 'importing' ? 0.7 : 1 }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            Yeni Proje
+            {importState === 'importing' ? 'Aktarılıyor…' : 'Yeni Proje'}
+          </button>
+          <button
+            onClick={() => setView('new')}
+            style={{ padding: '0.5rem 0.75rem', background: 'none', border: 'none', color: 'var(--color-muted)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2 }}
+          >
+            Manuel doldur
           </button>
         </div>
       </div>
@@ -253,11 +249,20 @@ export default function TabProjeYonetimi({ onViewProject }) {
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
             <p style={{ fontSize: 14, color: 'var(--color-muted)', marginBottom: '1rem' }}>Henüz proje eklenmemiş.</p>
             <button
-              onClick={() => setView('new')}
-              style={{ padding: '0.5rem 1.5rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+              onClick={handleImportClick}
+              disabled={importState === 'importing'}
+              style={{ padding: '0.5rem 1.5rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: importState === 'importing' ? 0.7 : 1 }}
             >
-              + İlk Projeyi Ekle
+              {importState === 'importing' ? 'Aktarılıyor…' : '+ İlk Projeyi Ekle'}
             </button>
+            <div style={{ marginTop: '0.6rem' }}>
+              <button
+                onClick={() => setView('new')}
+                style={{ padding: '0.4rem 0.6rem', background: 'none', border: 'none', color: 'var(--color-muted)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2 }}
+              >
+                Manuel doldur
+              </button>
+            </div>
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>

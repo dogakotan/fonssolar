@@ -8,8 +8,13 @@ const STATUS_OPTS = [
   { v: 'kabul_edildi', l: 'Kabul Edildi' },
   { v: 'kapatıldı',    l: 'Kapatıldı' },
 ]
+const CAT_OPTS = [
+  { v: 'is_kalemi',  l: 'İş Kalemi' },
+  { v: 'satin_alma', l: 'Satın Alma' },
+  { v: 'diger',      l: 'Diğer' },
+]
 
-const DEF = { title: '', description: '', severity: 'orta', probability: '3', impact: '3', mitigation: '', status: 'açık' }
+const DEF = { title: '', description: '', severity: 'orta', probability: '3', impact: '3', mitigation: '', status: 'açık', category: 'diger' }
 
 const lbl = { fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.03em' }
 const inp = { padding: '0.45rem 0.625rem', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 13, color: '#0f172a', background: '#fff', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box', outline: 'none' }
@@ -61,6 +66,7 @@ export default function Adim4Riskler({ projectId, result, onDone, onBack, mode =
       impact:      r.impact      !== '' ? Number(r.impact) : 3,
       mitigation:  r.mitigation  || null,
       status:      r.status,
+      category:    r.category || 'diger',
     }))
     onDone({ rows: payload, skipped: false, count: rows.length })
   }
@@ -93,10 +99,16 @@ export default function Adim4Riskler({ projectId, result, onDone, onBack, mode =
               </span>
               <button onClick={() => del(row._id)} title="Sil" style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 4px' }}>×</button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '0.75rem' }}>
               <div style={{ gridColumn: 'span 2' }}>
                 <label style={lbl}>Risk Başlığı <span style={{ color: '#ef4444' }}>*</span></label>
                 <input style={inp} value={row.title} onChange={e => upd(row._id, 'title', e.target.value)} placeholder="Risk başlığı" />
+              </div>
+              <div>
+                <label style={lbl}>Kategori</label>
+                <select style={inp} value={row.category} onChange={e => upd(row._id, 'category', e.target.value)}>
+                  {CAT_OPTS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                </select>
               </div>
               <div>
                 <label style={lbl}>Şiddet</label>
@@ -110,7 +122,7 @@ export default function Adim4Riskler({ projectId, result, onDone, onBack, mode =
                   {STATUS_OPTS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
                 </select>
               </div>
-              <div style={{ gridColumn: 'span 4' }}>
+              <div style={{ gridColumn: 'span 5' }}>
                 <label style={lbl}>Açıklama</label>
                 <input style={inp} value={row.description} onChange={e => upd(row._id, 'description', e.target.value)} placeholder="Riskin açıklaması" />
               </div>

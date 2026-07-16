@@ -16,6 +16,17 @@ function requestCategoryToInvoiceCategory(category) {
   return 'diger'
 }
 
+function toUserMessage(error) {
+  const m = (error?.message || '').toLocaleLowerCase('tr-TR')
+  if (m.includes('henüz proje yöneticisi tarafından tedarik aşamasına alınmadı'))
+    return 'Bu talep için tedarikçi/satın alma bilgisi henüz girilmedi. Fatura eklemeden önce proje yöneticisinin tedarik adımını tamamlaması gerekiyor.'
+  if (m.includes('duplicate') || m.includes('unique'))
+    return 'Bu talep için zaten bir fatura kaydı var.'
+  if (m.includes('row-level security') || m.includes('permission'))
+    return 'Bu işlem için yetkiniz yok.'
+  return error?.message || 'Fatura kaydedilemedi. Lütfen tekrar deneyin.'
+}
+
 export default function FaturaOlusturModal({ request, onClose, onSaved }) {
   const [suppliers, setSuppliers] = useState([])
   const [saving, setSaving] = useState(false)
@@ -56,7 +67,7 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
       source: 'satin_alma',
     })
     setSaving(false)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(toUserMessage(error)); return }
     onSaved?.()
     onClose()
   }

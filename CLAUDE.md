@@ -107,7 +107,20 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   Panel içi tablolar yatay scroll yerine dikey kart listesi (`CARD_ROW`).
   "Malzeme Kullanımı" bölümü formda YOK (kaldırıldı, `daily_report_material_usage`
   tablosu kullanımda değil). "İlerleme Girişi" paneli `project_tasks`'tan
-  (task_id bazlı) beslenir.
+  (task_id bazlı) beslenir. "Sorunlar" bölümündeki her satır `daily_report_issues`'a
+  `save_daily_report`'un `p_issues`'una yazılır (bkz. RPC katmanı) — satırın
+  `id`/`ticket_id`'si state'te korunur (`newIssueRow()`/prefill), satır
+  otomatik bir ticket'a bağlıysa altında tıklanabilir bir "🎫 Ticket açıldı —
+  durum: …" rozeti gösterilir (`issueTicketInfo` state'i, tek seferlik
+  `tickets` sorgusuyla doldurulur). Rozete tıklamak `onGoToTicket` prop'uyla
+  `index.jsx`'e kadar akar: rapor modalı kapanır, Tickets sekmesine geçilir,
+  `openTicketId` state'i `TabTickets` → `TicketListesi`'ne kadar iletilir ve
+  o ticket'ın detay modalı doğrudan açılır (liste filtrelenmez, doğrudan açılır
+  — daha güvenilir). `daily_report_issues.description` alanı ayrıca
+  `category`/`closed_at`/`notes` alanlarını `__ISSUE_META__{json}` öneki ile
+  paketler (bu tabloda o kolonlar yok, önceden var olan bir çözüm) — bu yüzden
+  otomatik açılan ticket'ın `description`'ı, kullanıcı bu ek alanlardan birini
+  doldurduysa ham JSON içerir; bilinen bir kozmetik yan etki, ayrı bir görev.
 - `SantiyeSefiDashboard.jsx`'teki "Proje İlerlemesi" kartı: tek büyük yüzde +
   tek ilerleme çubuğu (planlanan ilerleme çubuk üstünde dikey işaret çizgisi),
   "Plana göre N puan önde/geride" cümlesi, altta kalem başına yatay bar-listesi.
@@ -120,30 +133,93 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   `TabSatinAlmaTalepListesi.jsx`, `ProjeTabFaturaKesilecekler.jsx`) sabit
   iç-scroll kutusu yerine `PAGE_SIZE=10` + ortak `Pager` bileşeni (`‹ 1/2 ›`)
   kullanıyor.
+- `ProjeDetay.jsx`'in sekmeleri: Genel Proje, İş Planı, Satın Alma, Finans,
+  Ticket, Raporlar, Ekip (ayrı bir "Proje Paneli" sekmesi YOK — 2026-07-16'da
+  kısaca eklenip aynı oturumda kullanıcı kararıyla geri alındı, bkz. Tamamlanan
+  büyük görevler). Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kaynağı
+  `get_project_by_date`) proje özeti ekranı: Proje Detayları/Genel İlerleme/
+  Özet/Hava Durumu KPI kartları, Projenin Gidişatı (milestone şeridi), S-Eğrisi
+  (planlanan/gerçekleşen aylık çizgi grafiği), Kategori Bazlı İlerleme, İmalat
+  İlerlemesi, Malzeme Kalemleri/Satın Alma, Maliyet Durumu (+ En Büyük 5 Kalem),
+  Güncel Ticketlar, Saha Fotoğrafları, **Açık Riskler (Detay)** — `project_risks`
+  otomatik risk motorunun `source==='otomatik'` rozetiyle göründüğü uygulamadaki
+  **tek** ekran. Kritik yol timeline'ı YOK (kullanıcı kararıyla kapsam dışı
+  bırakıldı). İlgili kartlar (S-Eğrisi/Kategori Bazlı İlerleme → İş Planı,
+  İmalat İlerlemesi → İş Planı, Maliyet Durumu → Finans, Malzeme Kalemleri →
+  Satın Alma, her risk satırı → `rule_code`'a göre İş Planı/Satın Alma) tıklanınca
+  ilgili sekmeye (`onGoTab`) geçiyor.
+
+### Satın alma akışı — proje yöneticisi tedarik adımı
+Durum zinciri: `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
+→ satin_alindi → fatura_bekliyor/fatura_onay_bekliyor → faturasi_kesildi`
+(+ `reddedildi`/`iptal`). `onaylandi` ile fatura arasına **zorunlu** bir
+tedarik adımı girdi (2026-07-16): `proje_yoneticisi` rolü (tek proje kapsamlı,
+`santiye_sefi` ile aynı `profiles.project_id` mekanizması) kendi projesindeki
+`onaylandi` durumundaki talepleri yeni **"Tedarik"** alt-sekmesinden işler —
+bu AYRI bir sidebar sayfası DEĞİL (ilk denemede öyle yapılmıştı, kullanıcı
+"proje içinde olsun" diyerek geri çevirdi): `ProjeTabSatinAlma.jsx`'e eklenen
+bir sekme (`TedarikKuyrugu.jsx` bileşeni, `canManageProcurement = isAdmin ||
+role==='proje_yoneticisi'` iken görünür) — hem admin `Projeler → [proje] →
+Satın Alma` üzerinden herhangi bir projede görür, hem `proje_yoneticisi`
+kendi tek-proje kilitli `satin-alma` sekmesinde (`procurementManagerView`
+prop'u varsayılan aktif sekmeyi `'tedarik'` yapar, KPI/döviz sidebar'ını
+gizler — `siteChiefView` ile aynı desende). `TedarikKuyrugu.jsx` işler:
+`supplier_id` +
+`purchase_date` (zorunlu), `delivery_date`/`received_by_name`/
+`delivery_document_url` (opsiyonel, dosya varsa `ticket-ekleri` bucket'ına
+`tedarik/{request_id}/...` path'iyle yüklenir) girip doğrudan
+`purchase_requests` UPDATE eder — **status'u asla elle set etmez**.
+DB tetikleyicisi `trg_auto_advance_pr_to_satin_alindi` (`fn_auto_advance_pr_to_satin_alindi`)
+`supplier_id`+`purchase_date` doluyken statüyü otomatik `satin_alindi`'ye
+ilerletir. RLS (`pr_update_proje_yoneticisi` policy, `purchase_requests`):
+`get_my_role()='proje_yoneticisi'` + `has_project_access` + statü
+`onaylandi`/`satin_alindi` olmalı, `with_check` `fn_purchase_request_procurement_fields_only(...)`
+ile yalnızca tedarik alanlarına yazabildiğini garanti eder (title/urgency/
+category/estimated_amount_excl_vat/requested_by/approved_by/approved_at
+dokunulamaz). Sert kilit: `trg_guard_invoice_requires_procurement_done`
+(`invoices` BEFORE INSERT) talep hâlâ `onaylandi`'nin öncesindeyse fatura
+insert'ini Postgres seviyesinde reddeder — muhasebe bu adımı atlayamaz.
+Frontend tarafı: `isAwaitingInvoice()` (`src/utils/satinAlma.js`) artık yalnızca
+`satin_alindi` durumunda true döner (`onaylandi` ARTIK YETERLİ DEĞİL) — "Fatura
+Oluştur" butonu üç yerde de (`ProjeTabTalepListesi.jsx`, `TabSatinAlmaTalepListesi.jsx`,
+`TalepDetayModal.jsx`) bu tek fonksiyona delege ettiği için değişiklik hepsine
+otomatik yansıyor. `FaturaOlusturModal.jsx`'te yeni bir `toUserMessage()` DB
+guard hatasını Türkçeleştiriyor (bu dosyaya özel, `DailyReportForm.jsx`'teki
+`toUserMessage` ile ortak bir modül değil — bkz. Bilinen açık noktalar).
+`suppliers` tablosunun tam şeması: `id, name, tax_no, contact, email, phone,
+created_at` — frontend hâlâ yalnızca `id, name` okuyor/yazıyor, `TedarikKuyrugu.jsx`
+içindeki "+ Yeni" mini-form da yalnızca `name` ile insert ediyor.
 
 ### Roller (19, `roles` tablosunda tanımlı — `select key, display_name, is_manager, cross_project from roles`)
 admin, koordinator, proje_koordinatoru, muhendis, proje_tasarim_sorumlusu,
 santiye_sefi, proje_kurulum_sefi, elektrik_sefi, mekanik_sef, isg_sorumlusu,
-kalite_kontrol_sefi, lojistik_tedarik, satin_alma_uzmani, enh_sorumlusu,
+kalite_kontrol_sefi, lojistik_tedarik, proje_yoneticisi, enh_sorumlusu,
 operasyon_sorumlusu, evrak_takip, maliyet_kontrolcu, muhasebe, is_makinesi_operator
 
 `is_manager=true`: admin, koordinator, proje_koordinatoru, maliyet_kontrolcu,
 muhasebe (tüm yönetici bildirimlerini alır, `has_project_access` her projeye
-izin verir). `cross_project=true`: satin_alma_uzmani, lojistik_tedarik (tek
-projeye bağlı değil ama manager de değil).
+izin verir). `cross_project=true`: lojistik_tedarik (tek projeye bağlı değil
+ama manager de değil). `proje_yoneticisi` (2026-07-16'da `satin_alma_uzmani`
+rolünün yerine geçti) `santiye_sefi` ile aynı mekanizmayla **tek proje**
+kapsamlı — `is_manager=false`, `cross_project=false`, `profiles.project_id`/
+`user_project_access` üzerinden bağlanır (bkz. Satın alma → tedarik adımı).
 
 **Bilinen fark:** Frontend hâlâ yalnızca 6 rolü tanıyor (`ROLE_TABS`/`ROLE_LABEL`
 `src/pages/dashboard/index.jsx`, nav `Sidebar.jsx`) — admin, muhasebe,
-santiye_sefi, muhendis, koordinator, satin_alma_uzmani. Diğer 13 rolle giren
+santiye_sefi, muhendis, koordinator, proje_yoneticisi. Diğer 13 rolle giren
 bir kullanıcı kısıtsız `TabGenel` görür ama sidebar'da o rol için tanımlı nav
 item'ı yoksa gezinemez.
 
 ### RPC katmanı (canlı)
 
 **Okuma:** `get_dashboard_summary(p_project_id)`, `get_project_gantt(p_project_id, p_filter_date)`,
-`get_project_dashboard(p_project_id, p_effective_date)`, `get_daily_report_detail(p_report_id)`,
+`get_project_dashboard(p_project_id, p_effective_date)` (frontend'den artık HİÇ çağrılmıyor —
+bkz. Bilinen açık noktalar), `get_daily_report_detail(p_report_id)`,
 `get_daily_reports_list(p_project_id, p_start_date, p_end_date, p_page, p_page_size)`,
-`get_proje_detay(p_project_id)`, `get_santiye_dashboard(p_project_id, p_today)`, `get_project_by_date(p_project_id, p_date)`,
+`get_proje_detay(p_project_id)`, `get_santiye_dashboard(p_project_id, p_today)`,
+`get_project_by_date(p_project_id, p_date)` (`ProjeDetay.jsx`'in "Genel Proje" sekmesinin —
+`ProjectOverviewDashboard.jsx` — tek veri kaynağı; `category_weights` ve `risks` node'ları
+`get_project_dashboard`'daki aynı alt sorgulardan, `budget_lines.name` alanı da 2026-07-16'da eklendi),
 `get_satin_alma_overview(p_project_id)`, `get_satin_alma_overview_all()`,
 `get_finans_overview(p_project_id, p_as_of_date)`, `get_finans_overview_all(p_as_of_date)`,
 `get_delayed_tasks_scoped(p_project_id)`, `get_my_role()`, `get_my_projects()`.
@@ -152,7 +228,15 @@ item'ı yoksa gezinemez.
 `save_daily_report(p_project_id, p_report_date, p_created_by, p_general_status, p_worker_count, p_weather, p_weather_note, p_notes, p_personnel, p_machinery, p_progress, p_daily_tasks, p_materials, p_issues, p_task_progress)`
 — tek overload (eski 11/14 parametreli overload'lar kaldırıldı). `p_progress`
 artık gövdece kullanılmıyor (geriye dönük DEFAULT'lu param); ilerleme yalnızca
-`p_task_progress: [{task_id, qty_added, note}]` ile giriliyor. `update_procurement_status(...)`.
+`p_task_progress: [{task_id, qty_added, note}]` ile giriliyor.
+`p_issues: [{id?, topic, priority, assigned_to, description, resolution_status}]`
+— diğer alt tablolardan (personel/makine/görev/ilerleme) FARKLI olarak
+delete+reinsert değil, **id-bazlı upsert**: `id` yoksa yeni sorun (INSERT,
+`fn_create_ticket_from_daily_report_issue` tetiklenip ticket açar), `id` varsa
+güncelleme (ticket_id korunur, mükerrer ticket açılmaz), payload'da id'si
+olmayan mevcut satırlar silinir. Frontend (`DailyReportForm.jsx`) `get_daily_report_detail`'den
+gelen `issues[].id`'yi state'te saklayıp geri göndermek ZORUNDA — göndermezse
+her kayıtta yeni ticket açılır (bkz. Trigger zincirleri). `update_procurement_status(...)`.
 
 **Yetki/kapsam çekirdeği:** `get_project_scope(p_project_id)` — tüm dual-scope
 (tek proje/Tüm Projeler) RPC'lerin ortak yetki katmanı (`roles.is_manager` OR
@@ -190,6 +274,21 @@ pending sarı, okunmuş+pending normal, resolved yeşil.
 - `invoices` INSERT → `create_invoice_approval_chain()` → status'u `muhasebe_onayında` yapar + `invoice_approvals` step1 açar; `fn_invoice_approval_cascade` **tek yazan kaynak** olarak ilerletir: step1 onayı → step2 açar + `yönetici_onayında`; step2 onayı → `onaylandı` (frontend artık `invoices.status`'a ikinci bir yazma yapmıyor, bkz. DB-WF-001); herhangi bir adımda ret → `reddedildi`. `ödendi` durumu constraint'te geçerli ama onu üretecek bir akış yok (backlog). INSERT/UPDATE ayrıca `sync_purchase_request_from_invoice()` ile bağlı `purchase_requests.status`/`invoice_id`'sini senkronlar (reddedilince `invoice_id=NULL`, yeniden fatura kesilebilir) ve (onaylandı/ödendi → upsert, reddedildi → sil) `trg_invoice_cost_allocation` ile `cost_allocations`'ı günceller. `purchase_requests.invoice_id`'ye yapılan HER yazma `trg_guard_purchase_request_invoice_id` ile gerçek `invoices` durumundan yeniden hesaplanır (drift/manuel bozulma imkansız) ve `invoices.purchase_request_id` üzerinde `WHERE status <> 'reddedildi'` kısmi UNIQUE index'i bir talebin aynı anda yalnızca bir aktif faturası olmasını DB seviyesinde garanti eder.
 - `purchase_requests` UPDATE → `handle_purchase_request_approval()`.
 - `tickets` UPDATE → `fn_ticket_history()` → `ticket_history`'ye otomatik log.
+- `daily_report_issues` INSERT (yalnızca `ticket_id` henüz NULL olan gerçek yeni
+  satırlarda) → `fn_create_ticket_from_daily_report_issue()`: `tickets`'a
+  `title=topic`, `description=description`, `severity=priority` (artık birebir
+  aynı 4 değer: düşük/orta/yüksek/kritik), `status` `resolution_status`'tan map
+  (açık→gönderildi, devam ediyor→işlemde, çözüldü→kapatıldı), `created_by`=raporu
+  giren, `assigned_to`=serbest metin isimden `profiles.full_name` eşleşmesi
+  varsa — otomatik açılan ticket'ın id'si `NEW.ticket_id`'ye yazılır. Sonraki
+  `daily_report_issues` UPDATE'lerinde `resolution_status` değişirse
+  `fn_sync_ticket_status_from_daily_report_issue()` bağlı ticket'ın `status`'unu
+  (ve `çözüldü` ise `resolved_at`'ını) otomatik günceller — **tek yönlü**,
+  Tickets sayfasından ticket durumunu değiştirmek `daily_report_issues`'u geri
+  etkilemez. `save_daily_report` RPC'si bu tabloda diğer alt tablolardan farklı
+  olarak delete+reinsert YERİNE id-bazlı upsert yapar (bkz. RPC katmanı →
+  `save_daily_report`) — bu ayrım kasıtlı, aksi halde her kayıtta mükerrer
+  ticket açılırdı.
 - Yukarıdaki tablolar + `daily_reports`/`purchase_requests`/`invoices`/`tickets`/`ticket_comments` INSERT/status değişimi → bildirim trigger'ları (bkz. yukarı).
 
 **"Gerçekleşen maliyet" kanonik tanımı:** `invoices.status IN ('onaylandı','ödendi')`,
@@ -226,12 +325,36 @@ talepleri toplamı planlanan miktarı aşarsa. Tetikleyiciler:
 `trg_recompute_risks_from_task` (`project_tasks`), `trg_recompute_risks_from_purchase_request`/
 `_purchase_item` (`purchase_requests`/`purchase_request_items`),
 `trg_recompute_risks_from_daily_report` (`daily_reports`). `project_risks`'e
-eklenen 3 kolon: `source` (`'manuel'|'otomatik'`), `rule_code`
+eklenen kolonlar: `source` (`'manuel'|'otomatik'`), `rule_code`
 (`'gorev_gecikmesi'|'malzeme_fazla_talep'|null`), `subject_ref` (görev kodu ya
-da BOM kalem id'si). Koşul düzelince risk kendiliğinden `'kapatıldı'` olur —
-frontend'de bunları elle kapatan bir buton YOK (hiç risk yönetim ekranı yok,
-bkz. Bilinen açık noktalar), o yüzden "otomatik risklerde kapat butonunu gizle"
-gibi bir UI kararı da gerekmiyor.
+da BOM kalem id'si), ve `category` (`'is_kalemi'|'satin_alma'|'diger'`,
+2026-07-16'da eklendi — `source`'un `'manuel'` değeriyle karışmaması için
+kasıtlı olarak `'manuel'` değil `'diger'` kullanılıyor). `fn_recompute_auto_risks()`
+otomatik risk oluştururken `category`'yi `rule_code`'a göre otomatik dolduruyor
+(`gorev_gecikmesi`→`is_kalemi`, `malzeme_fazla_talep`→`satin_alma`); manuel
+girişte kullanıcı `Adim4Riskler.jsx`'teki bir dropdown'dan seçiyor. Koşul
+düzelince risk kendiliğinden `'kapatıldı'` olur — frontend'de bunları elle
+kapatan bir buton YOK, o yüzden "otomatik risklerde kapat butonunu gizle" gibi
+bir UI kararı da gerekmiyor. Risklerin görünür olduğu yer `ProjeDetay.jsx`'in
+**"Genel Proje"** sekmesindeki "Açık Riskler (Detay)" kartı
+(`ProjectOverviewDashboard.jsx`, `get_project_by_date`'in `risks` node'u) —
+`source==='otomatik'` olanlarda "Sistem tarafından tespit edildi" rozeti
+gösterir, satıra tıklayınca `rule_code`'a göre İş Planı/Satın Alma sekmesine
+gider (bkz. Frontend yapısı → `ProjeDetay.jsx` sekmeleri).
+
+**Risk girişi yalnızca proje DÜZENLEME akışında var, oluşturmada YOK**
+(2026-07-16 kararı) — yeni oluşturulan bir projede henüz görev/satın alma
+verisi olmadığı için ne otomatik motor bir şey üretebilir ne de manuel risk
+girişi anlamlı olur. `YeniProjeWizard.jsx`'ten `Adim4Riskler` adımı tamamen
+çıkarıldı (5 adım: Proje Bilgileri → İş Kalemleri → Tedarik → Bütçe →
+Tamamlandı), `ProjeEditWizard.jsx`'te aynen kaldı (6 adım, Riskler dahil).
+`WizardStepper.jsx` ve `Adim8Tamamlandi.jsx` artık `labels`/`steps` prop'u
+alıyor (varsayılan = eski 6 adımlık dizi, `ProjeEditWizard.jsx` değişmeden
+çalışır) — `YeniProjeWizard.jsx` kendi 5 adımlık dizisini geçiyor. Excel
+tarafında da aynı kural: `import-project-excel` edge fonksiyonu (v8) yeni
+proje oluştururken "Riskler" sayfasını hiç okumuyor, yalnızca mevcut projeye
+güncelleme yaparken okuyor (`isNewProject` kontrolü, `project_category_weights`
+seed mantığıyla aynı desende ama ters yönde).
 
 ### Modül → tablo haritası (29 tablo + 6 view + `notifications`)
 | Modül | Tablolar |
@@ -255,18 +378,67 @@ View'lar (hepsi `security_invoker=on`): `project_cost_summary`, `personnel_logs`
 `vw_weekly_progress`.
 
 ### Excel şablonu / proje sihirbazı
-Örnek şablon dosyası `fons-solar-proje-sablonu-v6.xlsx` (`public/excel/`) —
-tek "İş Kalemleri" sayfası (ayrı "İlerleme Kalemleri" sayfası yok), Birim,
-Hedef Miktar, Dashboard Göster, Dashboard Sıra kolonları `project_tasks`'ın
-karşılığı kolonlarına eşleniyor. `template_builder.ts` (Deno, `export-project-excel`/
-`import-project-excel` edge fonksiyonları, v7) ve istemci tarafı basit sihirbaz
-şablonu (`src/utils/projectExcelImport.js`) ikisi de bu tek-sayfa modelde;
-frontend Excel üretmiyor, edge fonksiyonlarla ilgilenmesi gerekmiyor. Proje
-oluşturma/düzenleme sihirbazı 6 adım: İş Kalemleri (Adım 2, ilerleme hedefi +
-kategori dropdown'ı 15 değer + "Kritik Yol" checkbox'ı da burada) → Riskler →
-Tedarik → Bütçe → Tamamlandı. Ayrı bir "Kritik Yol" adımı YOK (eskiden
-`critical_path_items`'a yazan `Adim7KritikYol.jsx` vardı, tablo DB'den
-kaldırılınca dosyayla birlikte silindi).
+Örnek/indirilebilir şablon dosyası `fons-solar-proje-sablonu.xlsx` (`public/excel/`,
+2026-07-16'da `-v6` sürüm eki kaldırılarak yeniden adlandırıldı — `TabProjeYonetimi.jsx`'in
+`PROJECT_TEMPLATE_FILE` sabiti buna göre güncellendi). Statik bir dosya, hiçbir
+kod tarafından ÜRETİLMİYOR — kullanıcı bunu indirip doldurup `TabProjeYonetimi.jsx`'ten
+tekrar yüklüyor (`import-project-excel` edge fonksiyonu). 7 sayfa: **Proje
+Bilgileri** (`projects`), **İş Kalemleri** (`project_tasks` — Kategori/Alt
+Kategori/Birim/Hedef Miktar/Dashboard Göster/Dashboard Sıra/Kritik mi?),
+**Kategori Ağırlıkları** (`project_category_weights`, SALT OKUNUR — Excel'den
+okunmuyor, yalnızca referans/görüntüleme; yeni projede DB trigger'ı seed
+ediyor), **Riskler** (`project_risks` — A-I asıl veri, **J = Kategori**
+[`İş Kalemi`/`Satın Alma`/`Diğer`, 2026-07-16'da eklendi] dropdown'lu; bu sayfa
+yalnızca MEVCUT proje güncellemesinde okunuyor, yeni proje oluşturmada
+`import-project-excel` bu sayfayı hiç parse etmiyor — bkz. "Kritik yol ve
+otomatik risk motoru"), **Bütçe** (`budget_lines` — A-D kolonları gerçek veri,
+sağdaki "Kategori Rehberi"/"Bütçe Özeti (Otomatik)" paneli (G-K kolonları,
+2026-07-16'da eklendi) yalnızca görsel referans/Excel formülü, import'a dahil
+değil), **Malzeme Listesi** (`procurement_items`), **📘 Kullanım Kılavuzu**
+(DB eşlemesi yok, yalnızca doldurma rehberi).
+
+`import-project-excel` (v8) / `export-project-excel` (v9) edge fonksiyonları
+(Deno, kaynak kodu bu repoda değil — yalnızca Supabase'de deploy edili, `get_edge_function`
+ile incelenebilir) bu 7 sayfayı parse ediyor/üretiyor; frontend yalnızca ince
+bir köprüden (`src/utils/projectExcelBridge.js`) çağırıyor, kendi Excel
+üretmiyor/parse etmiyor. Kategori eşleme (`mapping.ts`'teki `taskCategoryToCode`)
+sabit bir liste DEĞİL — Türkçe etiketi doğrudan `snake_case`'e çeviriyor
+(`trSnake`), bu yüzden yeni kategori eklendiğinde edge function'da değişiklik
+gerekmiyor. Risk kategorisi (`riskCategoryToCode`/`RISK_CAT_TO_LABEL`) ise
+sabit 3 değerlik bir sözlük (İş Kalemi/Satın Alma/Diğer ↔ is_kalemi/satin_alma/diger),
+`trSnake` kullanmıyor. Statik `public/excel/` dosyasındaki J kolonu (Kategori)
+elle, `exceljs` ile (proje bağımlılığı değil — `npm install --no-save exceljs`
+ile geçici kurulup iş bitince kaldırıldı) mevcut dosyaya eklendi; `xlsx` paketi
+(bu projenin gerçek bağımlılığı) açılır liste (data validation) yazmayı
+desteklemiyor, o yüzden bu tek seferlik düzenleme için `exceljs` gerekti.
+
+Bundan AYRI bir ikinci akış: istemci tarafı basit sihirbaz mini-importer'ı
+(`src/utils/projectExcelImport.js`) — yalnızca proje sihirbazının Adım 2 (İş
+Kalemleri) adımında toplu görev satırı yüklemek için, yalnızca "İş Kalemleri"
+sayfasını okur (tam 7-sayfalık şablonla karıştırılmamalı). Bunun `CAT_MAP`'i
+hâlâ eski 10 kategoriyle sınırlı ve `is_critical`'ı okumuyor — bkz. Bilinen
+açık noktalar, edge function'daki genel `trSnake` yaklaşımından farklı, ayrı
+bir düzeltme gerektiriyor.
+
+Proje oluşturma/düzenleme sihirbazı (`YeniProjeWizard.jsx`/`ProjeEditWizard.jsx`)
+6 adım: İş Kalemleri (Adım 2, ilerleme hedefi + kategori dropdown'ı 15 değer +
+"Kritik Yol" checkbox'ı da burada) → Riskler → Tedarik → Bütçe → Tamamlandı.
+Ayrı bir "Kritik Yol" adımı YOK (eskiden `critical_path_items`'a yazan
+`Adim7KritikYol.jsx` vardı, tablo DB'den kaldırılınca dosyayla birlikte silindi).
+
+**`TabProjeYonetimi.jsx`'te "Yeni Proje" butonu artık birincil akış olarak
+Excel şablonu yükleme akışını açıyor** (2026-07-16'da değiştirildi, kullanıcı
+kararıyla): tıklanınca doğrudan dosya seçici açılır (`handleImportClick` →
+`import-project-excel` edge fonksiyonu), eskisi gibi manuel sihirbazı
+açmıyor. Manuel sihirbaz TAMAMEN kaldırılmadı — küçük, ikincil bir "Manuel
+doldur" bağlantısı (`setView('new')`) hâlâ `YeniProjeWizard.jsx`'i açıyor.
+Aynı desen boş-liste durumundaki "+ İlk Projeyi Ekle" butonuna da uygulandı.
+"Şablon İndir" butonu (statik dosya, `PROJECT_TEMPLATE_FILE`) değişmedi —
+kullanıcı önce şablonu indirip doldurmalı, sonra "Yeni Proje"yle yükler.
+**Not:** Manuel sihirbaz yolu seçilirse, sihirbazın Adım 2'sindeki client-side
+mini-importer (`src/utils/projectExcelImport.js`) hâlâ eski 10 kategoriyle
+sınırlı ve `is_critical`'ı okumuyor (bkz. Bilinen açık noktalar) — bu artık
+ikincil bir yol olduğu için öncelik düştü ama düzeltilmedi.
 
 ### Test ortamı
 5 profil, 2 proje: "Ege Enerji İzmir GES – TEST" (`test-izmir-ges-2026`) ve
@@ -325,8 +497,95 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
   yalnızca DB-SEC-006 kaldı (leaked password protection, Supabase Free plan'da
   desteklenmiyor, Pro plan gerektiriyor — ödeme kararı, teknik olarak
   yapılamaz).
+- **`ProjectDashboard` ölü kodunun tasfiyesi + değerli parçalarının "Genel Proje"ye taşınması:**
+  v6 prompt doğrulamasında bulunan "categoryWeights render edilmiyor" bulgusu
+  araştırılırken `TabGenel.jsx`'in `ProjectDashboard` alt bileşeninin (`projectId`
+  dolu geldiğinde render edilen dal) **hiç mount edilmediği** ortaya çıktı
+  (commit `94024c4`'ün "Proje Paneli sekmesi bağlandı" iddiası yanlıştı, o
+  commit `ProjeDetay.jsx`'e hiç dokunmamıştı). İlk denemede `ProjeDetay.jsx`'e
+  gerçek bir "Proje Paneli" sekmesi eklenip bağlandı, ama kullanıcı bunu
+  istemedi ("ekstradan proje paneli sayfası açmaya gerek yok") — bunun yerine
+  kartların, zaten kullanılan **"Genel Proje"** sekmesine (`ProjectOverviewDashboard.jsx`)
+  sayfanın kendi temasına uygun şekilde taşınmasını istedi, kritik yol
+  timeline'ından vazgeçildiğini belirtti ve kartların ilgili sekmelere
+  tıklama ile gitmesini istedi.
+
+  Sonuç: "Proje Paneli" sekmesi geri alındı; `TabGenel.jsx`'in `ProjectDashboard`
+  fonksiyonu ve yalnızca ona özel yardımcıları (`Ring`, `DualRing`, `buildScurve`,
+  `TimelineStrip`, kullanılmayan recharts import'ları) **tamamen silindi**
+  (`TabGenel` artık yalnızca `ProjectListView`'ı render ediyor — bkz. `get_project_dashboard`
+  RPC'sinin artık hiç çağrılmadığı not, Bilinen açık noktalar). Değerli parçalar
+  `ProjectOverviewDashboard.jsx`'e taşındı/genişletildi: S-Eğrisi grafiği (yeni),
+  Kategori Bazlı İlerleme (önceki turdan), "İş Kalemleri Takibi" → "İmalat
+  İlerlemesi" olarak genişletildi (4 yerine tüm kalemler, iç scroll), "Maliyet
+  Durumu"na "En Büyük 5 Kalem" listesi eklendi, "Açık Riskler (Detay)" kartı
+  (yeni — otomatik risk motorunun `source==='otomatik'` rozetinin uygulamadaki
+  **tek** göründüğü yer). İlgili RPC (`get_project_by_date`) `risks` node'u ve
+  `budget_lines.name` alanıyla genişletildi (2 küçük additive migration,
+  onaylı). Kartlara `onGoTab` ile ilgili sekmeye (İş Planı/Finans/Satın Alma)
+  tıklama-geçiş eklendi; risk satırları `rule_code`'a göre hedef sekmeyi seçiyor.
+  Playwright ile İzmir projesinde tüm yeni kartlar + "Proje Paneli" sekmesinin
+  gerçekten kaldırıldığı + risk tıklamasının İş Planı'na gittiği doğrulandı;
+  `faz-e.spec.js` test A bozulma göstermedi (test B önceden bilinen flaky).
+- **Günlük rapor "Sorun" girişi ↔ Tickets otomatik bağlantısı (frontend tarafı):**
+  Backend (trigger'lar, `tickets.severity`'ye `kritik` eklenmesi, `daily_report_issues.ticket_id`,
+  `save_daily_report`'un `p_issues` için id-bazlı upsert'e geçmesi) ayrı bir
+  oturumda yapılıp SQL ile doğrulanmıştı (bkz. Trigger zincirleri, RPC katmanı).
+  Bu turda frontend tarafı tamamlandı: `DailyReportForm.jsx` artık `issues[].id`'yi
+  prefill'de koruyor ve kaydederken geri gönderiyor (aksi halde her kayıtta
+  mükerrer ticket açılıyordu); bağlı ticket varsa tıklanabilir bir rozet
+  gösteriyor (Tickets sekmesine geçip o ticket'ı doğrudan açıyor — `index.jsx`'te
+  yeni `openTicketId`/`goToTicket`, `TabTickets`/`TicketListesi`'ne kadar
+  iletiliyor). `tickets.severity`'nin yeni `kritik` değeri `TicketListesi.jsx`,
+  `TicketDetayModal.jsx`, `YeniTicketModal.jsx`'teki severity seçici/rozet/sıralama
+  haritalarına eklendi (üçü de ayrı ayrı, ortak bir sabit yok — kod tekrarı,
+  gelecekte tekilleştirilebilir). Playwright ile uçtan uca doğrulandı: yeni
+  sorun girişi gerçek bir ticket açıyor (severity/status doğru), aynı raporu
+  değiştirmeden tekrar kaydetmek mükerrer ticket açmıyor (id dedup çalışıyor),
+  resolution_status değişince ticket status'u senkron oluyor, rozete tıklama
+  doğru ticket'ı açıyor, kritik severity hatasız kaydediliyor; `faz-e.spec.js`
+  test A bozulma göstermedi. **Bilinen kozmetik yan etki:** `daily_report_issues.description`
+  kolonu `category`/`closed_at`/`notes` alanlarını `__ISSUE_META__{json}` öneki
+  ile paketliyor (bu tabloda o alanlar için ayrı kolon yok, önceden var olan bir
+  çözüm) — kullanıcı bu ek alanlardan birini doldurursa otomatik açılan
+  ticket'ın `description`'ı ham JSON içerir; ayrı bir görev (yeni kolon
+  eklemek ya da encoding'i kaldırmak) gerektirir, bu turda kapsam dışı bırakıldı.
+- **Satın alma akışına "Proje Yöneticisi Tedarik" katmanı:** Backend (rol
+  değişimi `satin_alma_uzmani`→`proje_yoneticisi`, `purchase_requests`'e
+  tedarik kolonları, `trg_auto_advance_pr_to_satin_alindi`,
+  `trg_guard_invoice_requires_procurement_done`, `pr_update_proje_yoneticisi`
+  RLS policy'si) ayrı bir oturumda yapılıp SQL ile doğrulanmıştı. Bu turda
+  frontend tarafı tamamlandı: `satin_alma_uzmani` string'i `src/` ağacından
+  tamamen kaldırıldı (`TabKullanicilar.jsx`, `index.jsx`, `Sidebar.jsx`,
+  `ProjeDetay.jsx` — `proje_yoneticisi` artık `PROJE_BAZLI` grubunda, tek
+  proje kapsamlı); yeni **"Tedarik Kuyruğu"** ekranı eklendi
+  (`TedarikKuyrugu.jsx`, `admin` + `proje_yoneticisi` görür); `isAwaitingInvoice()`
+  artık yalnızca `satin_alindi`'de true dönüyor (bkz. Satın alma akışı);
+  `FaturaOlusturModal.jsx`'e DB guard hatasını Türkçeleştiren bir `toUserMessage()`
+  eklendi; `TalepDetayModal.jsx`'in onay-süreci timeline'ına "Tedarikçi / Satın
+  Alma Bilgisi" adımı eklendi. Playwright ile uçtan uca doğrulandı (admin +
+  scope selector üzerinden İzmir projesi): yeni bir `onaylandi` talebi
+  "Tedarik Bekleyenler"de görünüyor, "+ Yeni" tedarikçi ekleyip kaydedince
+  talep DB tetikleyicisiyle otomatik `satin_alindi`'ye geçiyor ve "Tamamlanan"
+  sekmesine düşüyor, Satın Alma sekmesinde bu talep için artık "Fatura Oluştur"
+  butonu görünüyor (önceden `onaylandi`'de de görünürdü, artık değil). Test
+  verisi (geçici `purchase_request`/`suppliers` satırları) temizlendi.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
+- **Otomatik açılan ticket'ların `description`'ı bazen ham JSON içerebilir** —
+  `daily_report_issues.description` `category`/`closed_at`/`notes` alanlarını
+  `__ISSUE_META__{json}` öneki ile paketliyor (bu tabloda o alanlar için ayrı
+  kolon yok); `fn_create_ticket_from_daily_report_issue` bunu olduğu gibi
+  ticket'a kopyalıyor. Kullanıcı sorun formunda Kategori/Kapanış Tarihi/Not
+  doldurursa ticket'ın açıklaması okunaksız görünür. Düzeltme iki yoldan biri:
+  `daily_report_issues`'a yeni kolonlar eklemek (migration) ya da ticket'a
+  yalnızca temiz `description`'ı kopyalayıp meta alanları başka bir yerde
+  tutmak — kullanıcıyla ayrı görüşülmeli, bu turda kapsam dışı.
+- **`tickets.severity`/`TicketListesi.jsx`/`TicketDetayModal.jsx`/`YeniTicketModal.jsx`
+  severity haritaları tekrarlı** — üçü de aynı `{düşük,orta,yüksek,kritik}`
+  sözlüğünü ayrı ayrı tanımlıyor (ortak bir sabit/dosya yok). `kritik` 2026-07-16'da
+  üçüne de eklendi ama tekilleştirme yapılmadı — ileride yeni bir severity
+  değeri eklenirse üç dosyanın da güncellenmesi gerekir.
 - **Satın alma/finans liste ekranları RPC kullanmıyor:** `TabSatinAlmaTalepListesi.jsx`,
   `ProjeTabTalepListesi.jsx`, `FaturaListesi.jsx`, `OnayKuyrugu.jsx`,
   `ProjeTabFaturaListesi.jsx`, `ProjeTabOnayKuyrugu.jsx` kendi ham sorgularını
@@ -338,37 +597,51 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
   ~2300 satır kod tekrarı** (`FaturaListesi`↔`ProjeTabFaturaListesi`,
   `OnayKuyrugu`↔`ProjeTabOnayKuyrugu`, `MaliyetTablosu`↔`ProjeTabMaliyetTablosu`,
   `TalepListesi`↔`ProjeTabTalepListesi`, `FaturaKesilecekler`↔`ProjeTabFaturaKesilecekler`).
-  Genel sayfalar ölü kod DEĞİL — `satin_alma_uzmani`/`muhasebe` rolleri için tek
+  Genel sayfalar ölü kod DEĞİL — `proje_yoneticisi`/`muhasebe` rolleri için tek
   arayüz. Birleştirme planı netleşmiş ama kullanıcı isteğiyle ertelendi, açıkça
-  istenmeden yapma.
+  istenmeden yapma. Detaylı 5 fazlı teknik plan (hangi dosya hangi prop'la
+  birleşecek, sıra) `C:\Users\fonss\Claude\Projects\Fons Solar\satin-alma-finans-birlestirme-cc-prompt.md`
+  dosyasında duruyor — iş gündeme gelirse oradan devam edilebilir.
 - **Frontend 6/19 rolü tanıyor** (yukarı bkz.) — `ROLE_TABS`/`ROLE_LABEL`/`Sidebar.jsx`
   genişletilmeli, idealde `roles` tablosundan okunan bir izin matrisiyle.
+- **`toUserMessage()` üç ayrı dosyada bağımsız tanımlı** — `DailyReportForm.jsx`,
+  `FaturaOlusturModal.jsx` (2026-07-16'da eklendi), ikisi de kendi if/includes
+  zincirini tekrarlıyor, ortak bir `src/utils/errors.js` yok. Yeni bir modülde
+  Postgres hata çevirisi gerekirse ya bu ikisinden birine benzer yerel bir
+  fonksiyon eklenir ya da bu üçü ortak bir util'e çıkarılır (kullanıcıyla
+  görüşülmeden yapılmamalı, kapsamı büyütür).
 - **Kalite denetimi modülü hiç arayüzü yok** — `quality_inspections` tablosu
   var (0 satır, RLS `USING(true)`, rol/proje kısıtı yok), sıfırdan yazılması
   gerekiyor. (`mechanical_checklist`/`electrical_checklist` tabloları — aynı
   gruptaki mekanik/elektrik checklist'ler — DB'den tamamen kaldırıldı, bu artık
   onlar için geçerli değil.)
-- **`work_packages`, `schedule_activities` yetim tablolar** — hiçbir dosyada
-  kullanılmıyor, şema var arayüz/veri yok. (`critical_path_predecessors` aynı
+- **`work_packages` yetim tablo, `schedule_activities` yarı-yetim** —
+  `work_packages` gerçekten hiçbir dosyada kullanılmıyor (frontend'deki
+  `wps`/"work_packages" değişkeni kafa karıştırıcı bir isimlendirme: `get_proje_detay`
+  RPC'sinin `work_packages` JSON node'u aslında `project_tasks`'tan geliyor, gerçek
+  `work_packages` tablosuna hiç dokunmuyor). `schedule_activities` ise teknik olarak
+  okunuyor (`agentContext.js:106`, her zaman boş dönen bir sorgu) ve proje silme
+  akışında (`TabProjeYonetimi.jsx`) temizleniyor — ama hiçbir UI'da render edilmiyor,
+  pratikte hâlâ kullanılmayan bir tablo. (`critical_path_predecessors` aynı
   gruptaydı, artık DB'de yok.)
-- **`TabGenel.jsx` iki ayrı bileşen barındırıyor** — `ProjectListView` ("Genel
-  Bakış" sekmesinde görünen, `get_dashboard_summary`/`get_delayed_tasks_scoped`
-  kullanan özet ekran) ve `ProjectDashboard` (Kritik Yol KPI'sı, S-Eğrisi,
-  Kalite kartı, Açık Riskler detay kartı — `get_project_dashboard`'ın tek
-  tüketicisi). `TabGenel`'in varsayılan export'u
-  `projectId` prop'u doluysa `ProjectDashboard`'ı render ediyor. Bu ikisi farklı
-  yollardan erişiliyor: `ProjectListView`'a "Genel Bakış" sekmesinden
-  (`scopeProjectId` ile), `ProjectDashboard`'a ise `ProjeDetay.jsx`'in **"Proje
-  Paneli"** sekmesinden (`<TabGenel projectId={projectId} filterDate={filterDate} />`)
-  ulaşılıyor — `ProjeDetay.jsx`'in kendi "Genel Proje" sekmesi (`ProjectOverviewDashboard`)
-  farklı, daha sade bir özet gösterir; ikisi kasıtlı olarak yan yana duruyor,
-  birleştirilmedi. (Bu bileşen daha önce hiçbir yerden mount edilmiyordu —
-  2026-07-14'te "Proje Paneli" sekmesiyle bağlandı. O sırada iki gerçek bug da
-  düzeltildi: kritik yol zaman çizelgesi RPC'nin döndürdüğü `task_code`/`task_name`
-  yerine eski `path_code`/`activity_name` okuyordu; "Genel İlerleme" donut'u
-  kanonik `projects.progress` yerine kendi item-bazlı basit ortalamasını
-  hesaplıyordu — artık `data.project.progress` kullanıyor, diğer ekranlarla
-  aynı sayıyı gösteriyor.)
+- **Excel şablonu (`src/utils/projectExcelImport.js`) `is_critical` ve 5 yeni
+  kategoriyi taşımıyor** — `CAT_MAP` hâlâ eski 10 kategoriyle sınırlı
+  (`kolon_montaji`/`kiris_montaji`/`asik_montaji`/`panel_montaji`/`kosk_trafo`
+  yok, bunlar Excel'den okunursa `'mekanik'`e düşer), `parseIsKalemleri()`
+  `is_critical`'ı Excel'den okumuyor (`toBoolTR()` yardımcı fonksiyonu var ama
+  burada kullanılmıyor). UI tarafı (`Adim2IsKalemleri.jsx`) zaten doğru — sorun
+  yalnızca Excel import/export köprüsünde, round-trip veri kaybına yol açar.
+- **`vw_bom_tracking` view'ı hiç kullanılmıyor** — DB'de tanımlı (`over_requested`
+  dahil tam mantık var), otomatik risk motoru aynı işi kendi ayrı sorgusuyla
+  yapıyor. Silinebilir ya da risk motoru buna geçirilebilir, acil değil.
+- **Genel Proje kartlarındaki personel/makine sayıları ile günlük rapor
+  export'u farklı kaynaklardan besleniyor** (teyit gerekli) —
+  `ProjectOverviewDashboard.jsx`/`TabGenel.jsx` `get_project_dashboard`/
+  `get_project_by_date`'in `personnel`/`machinery` node'larından (en son rapor
+  bazlı) besleniyor; `exportDailyReport`/`exportPeriodicReport` ham
+  `personnel_log_entries`/`machinery_logs` sorgusu yapıyor (seçili rapor/dönem
+  için). Muhtemelen kasıtlı ("güncel durum" vs "geçmişe dönük rapor") ama
+  doğrulanmadı.
 - **`DailyReportForm.jsx`'e BOM seçimi UI'sı bağlanmadı** — `daily_report_material_usage.bom_item_id`
   FK şema seviyesinde hazır (FAZ5), form alanına henüz eklenmedi.
 - **`profiles.role` / `profiles.role_key` iki ayrı kolon** — FAZ1 denetiminde
@@ -383,17 +656,17 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
   RLS'i için gerekliydi). Supabase üretim ölçeğinde Broadcast-from-database'e
   geçişi öneriyor — bu projenin ölçeğinde (2 test projesi) şimdilik gerekmiyor,
   ileride gündeme gelirse bu kararı birlikte gözden geçir.
+- **`get_project_dashboard` RPC'si artık hiçbir yerden çağrılmıyor** — onu
+  kullanan tek bileşen (`TabGenel.jsx`'in `ProjectDashboard` alt bileşeni)
+  2026-07-16'da silindi (bkz. Tamamlanan büyük görevler). RPC'nin kendisi
+  DB'de duruyor (silinmedi — bu bir migration kararı, ayrıca istenmeden
+  yapılmadı), `get_project_by_date`'ten fazladan alanları var (`inspections`,
+  `pending_pr`, `open_tickets`, ayrı `personnel`/`machinery` şekli) ama
+  hiçbiri artık okunmuyor. İleride ya silinmeli (temizlik migration'ı) ya da
+  gerçek bir ihtiyaç çıkarsa yeniden bir ekrana bağlanmalı.
 - **Proje sihirbazında ilerleme kategori ağırlıkları düzenlenemiyor** —
   `project_category_weights` yalnızca SQL ile yönetiliyor, sihirbaza/ayarlar
   ekranına bir düzenleme arayüzü eklenmedi.
-- **`category_weights` verisi çekiliyor ama hiçbir yerde render edilmiyor** —
-  `TabGenel.jsx`'in `ProjectDashboard` alt bileşeni `get_project_dashboard`'ın
-  `category_weights` alanını (`{category, weight_pct, avg_progress}[]`)
-  `categoryWeights` state'ine yazıyor (satır ~701/736) ama bu state hiçbir
-  JSX'te kullanılmıyor — tamamen ölü kod. "Genel İlerleme" kartı yalnızca tek
-  bir toplam yüzde gösteriyor, kategori bazlı kırılım (panel montajı %X,
-  elektrik %Y gibi) hiçbir ekranda yok. 2026-07-16'da bu ölü kodu tarayıp
-  bulundu, kullanıcı kararıyla düzeltilmedi — ayrı bir görev.
 - **`Adim5Tedarik.jsx`'in "Durum" akışı yeniden tasarlanacak (kullanıcı kararı,
   henüz yapılmadı).** Kullanıcı tedarik/teslimat takibiyle şu an ilgilenmiyor;
   `procurement_items`'ta hiç kullanılmayan `shortage_notes`/`damage_notes`
@@ -406,35 +679,60 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
 ---
 
 ## Son değişiklik
-**14.07.2026 v6 şablonu/risk motoru prompt'undaki (`C:\Users\fonss\Claude\Projects\Fons Solar\proje-sablonu-v6-ve-risk-otomasyonu-cc-prompt.md`)
-maddeler tek tek doğrulandı.** DB sağlamlık denetimi kapatıldıktan sonra (bkz.
-"Tamamlanan büyük görevler") kullanıcı bu eski prompt dosyasını hatırlatıp
-neyin yapılıp neyin yapılmadığının teyit edilmesini istedi. Kod taraması
-(grep + dosya okuması) ile: Kritik Yol ayrı sayfası kaldırma, Mekanik/Elektrik
-Checklist ekranları, "Kaptan Adana" prototip temizliği, kaldırılan 4 tabloya
-(`critical_path_items` vb.) sarkan referans, `is_critical`/Gantt entegrasyonu,
-risk kartında otomatik/manuel rozeti — **hepsi doğrulandı, yapılmış veya
-zaten yoktu.**
+**16.07.2026 (4) — `project_risks`'e Kategori kolonu; risk girişi proje oluşturmadan kaldırıldı.**
 
-**Tek gerçek eksik bulundu:** `get_project_dashboard`'ın döndürdüğü
-`category_weights` alanı `TabGenel.jsx`'te `categoryWeights` state'ine
-yazılıyor (satır ~701/736) ama hiçbir JSX'te render edilmiyor — tamamen ölü
-kod, kategori bazlı ilerleme kırılımı (panel montajı %X, elektrik %Y gibi)
-hiçbir ekranda yok. CLAUDE.md'de bu özellik yanlışlıkla "var" diye
-belgelenmişti (`ProjectDashboard`'ın özellik listesinde) — bu iddia
-kaldırıldı, doğru haliyle "Bilinen açık noktalar"a taşındı. Kullanıcı kararıyla
-görselleştirme bu turda **eklenmedi**, yalnızca dokümantasyon düzeltildi.
+Kullanıcı otomatik risk motorunun koşullarını sorup "proje oluştururken risk
+eklemek mantıktan çıkıyor" dedi — netleştirme sonucu: risk girişi yalnızca
+proje DÜZENLEME akışında kalsın (proje yöneticisi sahada gördüğü bir sorunu
+loglar), oluşturmada tamamen kalksın; ayrıca riskleri İş Kalemi/Satın Alma/Diğer
+diye 3 kategoriye ayıralım. Kullanıcı bu planı "Cowork" adlı başka bir
+sistemin incelemesinden geçirip 3 düzeltmeyle geri getirdi: (1) `category`
+için `manuel` yerine `diger` kullan (source kolonuyla isim çakışması), (2)
+migration'dan önce project_risks'te bir RLS allow-list guard'ı olup olmadığını
+kontrol et, (3) Excel'de yeni kolon mevcut F/G formüllerini kaydırmaması için
+sona (J) eklenmeli. Nokta 2'yi kendim doğruladım (guard yok, sadece
+`user_has_project_access` kontrolü var — Cowork'ün varsayımının aksine ek bir
+migration adımı gerekmedi); nokta 1 ve 3'ü uyguladım.
 
-DB tarafında bu oturumda tamamlanan işler (DB-NF-003/004/005, DB-PERF-002/003,
-DB-SEC-002-FOLLOWUP) artık "Tamamlanan büyük görevler" bölümünde özetli;
-detaylar `fons-solar-veritabani-saglamlik-denetimi.md`'de (artık onaysız
-doğrudan düzenlenebilir bir yaşayan doküman) ve memory'de. Commit: `7b8fd58`
-+ `0ed846d`. Repo origin/main'in 4 commit ilerisinde, push yapılmadı.
+**DB (2 migration, onaylı):** `project_risks.category` kolonu
+(`is_kalemi`/`satin_alma`/`diger`, backfill: 11 `gorev_gecikmesi`→`is_kalemi`,
+64 manuel→`diger`) + `fn_recompute_auto_risks()` artık otomatik risk
+oluştururken `category`'yi de dolduruyor.
 
-**Denetim durumu:** `fons-solar-veritabani-saglamlik-denetimi.md`'deki tüm
-P0/P1/P2 maddeleri artık ya Doğrulandı ya bilinçli olarak ertelendi/kapsam
-dışı — geriye yalnızca DB-SEC-006 (leaked password protection) kaldı.
-Kullanıcı Dashboard'dan denedi, Supabase "Pro plan ve üzeri gerekiyor"
-diyerek reddetti (proje Free plan'da) — Claude Code kapsamı dışı olmanın
-ötesinde, plan yükseltmesi olmadan teknik olarak imkansız. Kullanıcı bunu
-kısıt olarak kabul etti, denetim dosyasında böyle belgelendi.
+**Sihirbaz:** `Adim4Riskler.jsx`'e Kategori dropdown'ı eklendi.
+`YeniProjeWizard.jsx`'ten Riskler adımı tamamen çıkarıldı (6→5 adım) —
+`WizardStepper.jsx` ve `Adim8Tamamlandi.jsx`'e bunun için `labels`/`steps`
+prop'u eklendi (varsayılan = eski 6 adımlık dizi, `ProjeEditWizard.jsx`
+değişmeden çalışmaya devam ediyor). Bu arada `Adim8Tamamlandi.jsx`'in
+hardcoded `STEPS` dizisinin yalnızca görüntüleme değil GERÇEK KAYIT
+mantığını da sürdüğü fark edildi — düzeltilmeseydi yeni 5-adımlı akışta
+Tedarik verisi `project_risks` tablosuna yazılacaktı ve Bütçe hiç
+kaydedilmeyecekti (gerçek bir bug, zamanında yakalandı).
+
+**Excel + edge fonksiyonlar (prod deploy):** `template_builder.ts`'e Riskler
+sayfasına J (Kategori) kolonu + dropdown eklendi; `export-project-excel`
+(v8→v9) bunu yazıyor; `import-project-excel` (v7→v8) proje YENİ oluşturuluyorsa
+Riskler sayfasını hiç okumuyor, güncellemede okuyup `category`'yi
+`riskCategoryToCode()` ile eşliyor. Statik `public/excel/fons-solar-proje-sablonu.xlsx`
+dosyasına da aynı J kolonu eklendi — `xlsx` paketi (bu projenin gerçek
+bağımlılığı) açılır liste desteklemediği için `exceljs` geçici olarak
+(`--no-save`) kurulup iş bitince kaldırıldı, `package.json`/`package-lock.json`
+değişmedi.
+
+Doğrulama: `npx vite build` hatasız. Gerçek edge fonksiyon çağrısıyla uçtan
+uca doğrulama (geçici test projesi + gerçek admin oturumu, Excel dosyası
+`exceljs` ile bellekte oluşturulup `import-project-excel`'e POST edildi):
+yeni proje oluşturulurken Riskler sayfası atlandı (log doğrulandı) ama
+otomatik risk motoru YİNE DE çalıştı (test görevinin planlı bitişi geçmişti)
+ve doğru `category='is_kalemi'` ile risk oluşturdu — Migration 2'yi de bonus
+doğruladı; aynı proje güncellenirken Riskler satırı gerçekten aktarıldı,
+`category='is_kalemi'` doğru eşlendi. Playwright ile ayrıca: Yeni Proje
+sihirbazında (Manuel doldur) Riskler adımı yok, Proje Düzenle'de Kategori
+seçici var. Tüm test verisi/dosyaları temizlendi.
+
+Commit'lenmedi. Repo hâlâ origin/main'in ilerisinde; bu turun + bu oturumdaki
+önceki turların (Genel Proje redesign, günlük rapor↔ticket bağlantısı, satın
+alma proje yöneticisi tedarik katmanı, .md temizliği + Excel şablonu yeniden
+adlandırma/entegrasyonu — bkz. Tamamlanan büyük görevler) commit'lenmemiş
+çalışma-alanı değişiklikleri birikmiş durumda. Kullanıcı henüz elle test
+etmedi, hepsini birlikte kontrol edecek.

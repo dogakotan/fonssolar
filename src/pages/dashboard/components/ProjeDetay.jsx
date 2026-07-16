@@ -48,7 +48,7 @@ const EKIP_ROLE_CFG = {
   evrak_takip:         { label: 'Evrak Takip Uzmanı',    color: '#6D28D9', bg: '#F5F3FF' },
   maliyet_kontrolcu:   { label: 'Maliyet Kontrolcü',     color: '#065F46', bg: '#ECFDF5' },
   muhasebe:             { label: 'Muhasebe',                color: '#6D28D9', bg: '#F5F3FF' },
-  satin_alma_uzmani:    { label: 'Satın Alma Uzmanı',       color: '#0F766E', bg: '#CCFBF1' },
+  proje_yoneticisi:     { label: 'Proje Yöneticisi',        color: '#0F766E', bg: '#CCFBF1' },
   is_makinesi_operator: { label: 'İş Makinesi Op. Şefi',   color: '#EA580C', bg: '#FFEDD5' },
   proje_tasarim_sorumlusu: { label: 'Proje Tasarım Sorum.', color: '#0891B2', bg: '#CFFAFE' },
 }

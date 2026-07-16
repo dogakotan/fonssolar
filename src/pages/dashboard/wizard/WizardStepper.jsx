@@ -1,4 +1,4 @@
-const STEP_LABELS = [
+const DEFAULT_STEP_LABELS = [
   'Proje Bilgileri',
   'İş Kalemleri',
   'Riskler',
@@ -7,7 +7,7 @@ const STEP_LABELS = [
   'Tamamlandı',
 ]
 
-export default function WizardStepper({ current, completedSteps = [], availableUntil = 1, onSelect }) {
+export default function WizardStepper({ current, completedSteps = [], availableUntil = 1, onSelect, labels = DEFAULT_STEP_LABELS }) {
   return (
     <div>
       <div style={{ padding: '0.875rem 1rem 0.75rem', borderBottom: '1px solid var(--color-border-md)' }}>
@@ -15,7 +15,7 @@ export default function WizardStepper({ current, completedSteps = [], availableU
           Adımlar
         </p>
       </div>
-      {STEP_LABELS.map((label, i) => {
+      {labels.map((label, i) => {
         const no     = i + 1
         const done   = completedSteps.includes(no)
         const active = no === current

@@ -1,7 +1,10 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
 
-const STEPS = [
+// Varsayılan (Proje Düzenleme'deki 6 adımlık akış — Riskler dahil). Yeni proje
+// oluşturma akışında (YeniProjeWizard.jsx) Riskler adımı yok — bu bileşene kendi
+// step-numarasına göre bir `steps` prop'u geçiriyor (bkz. o dosyadaki not).
+const DEFAULT_STEPS = [
   { step: 2, table: 'project_tasks',       label: 'İş Kalemleri' },
   { step: 3, table: 'project_risks',       label: 'Riskler' },
   { step: 4, table: 'procurement_items',   label: 'Tedarik' },
@@ -11,7 +14,7 @@ const STEPS = [
 const btnP = { padding: '0.5rem 1.25rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const btnS = { padding: '0.5rem 1.25rem', background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }
 
-export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new', project, onBack, onSuccess, onViewProject }) {
+export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new', project, onBack, onSuccess, onViewProject, steps = DEFAULT_STEPS }) {
   const [status,    setStatus]    = useState('idle') // 'idle' | 'saving' | 'done' | 'error'
   const [errorMsg,  setErrorMsg]  = useState(null)
   const [savedId,   setSavedId]   = useState(null)
@@ -80,7 +83,7 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
       }
     }
 
-    for (const { step, table, label } of STEPS) {
+    for (const { step, table, label } of steps) {
       const res = stepsResult?.[step]
       if (!res || res.skipped || !res.rows?.length) continue
 
@@ -185,7 +188,7 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
           })()}
 
           {/* Steps 2–7 summary */}
-          {STEPS.map(({ step, label }) => {
+          {steps.map(({ step, label }) => {
             const res  = stepsResult?.[step]
             const done = res !== undefined
             return (

@@ -109,6 +109,8 @@ function newMachineryRow() {
 }
 function newIssueRow() {
   return {
+    id: null,
+    ticket_id: null,
     topic: '',
     category: '',
     priority: 'orta',
@@ -118,6 +120,16 @@ function newIssueRow() {
     closed_at: '',
     notes: '',
   }
+}
+
+// Ticket durumu için kısa TR etiketleri — src/components/tickets/*'daki STATUS
+// haritasıyla aynı anlam, burada yalnızca rozet metni için (bağımlılık eklemeye gerek yok).
+const TICKET_STATUS_LABEL = {
+  gönderildi:   'Gönderildi',
+  açık:         'Gönderildi',
+  işlemde:      'İşlemde',
+  kapatıldı:    'Kapatıldı',
+  iptal_edildi: 'İptal Edildi',
 }
 function newTaskRow() {
   return { description: '' }
@@ -180,7 +192,7 @@ const SECTION_DEFS = [
   { key: 'notes',     label: 'Notlar',               icon: '🗒️' },
 ]
 
-export default function DailyReportForm({ reportId: initialReportId, onBack, onSaved, className = '' }) {
+export default function DailyReportForm({ reportId: initialReportId, onBack, onSaved, className = '', onGoToTicket }) {
   const { user, projectId } = useAuth()
   const fileInputRef = useRef(null)
 
@@ -224,6 +236,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
   // Step 5 - Issues
   const [issues, setIssues] = useState([newIssueRow()])
+  const [issueTicketInfo, setIssueTicketInfo] = useState({}) // ticket_id -> { status, severity }
 
   const [alreadyExists, setAlreadyExists] = useState(false)
   const weatherCity = project?.location?.split('/')?.[0]?.trim() || null
@@ -344,12 +357,15 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     // Existing photos
     setExistingPhotos(detail?.photos || [])
 
-    // Issues
+    // Issues — id/ticket_id KORUNMALI: id geri gönderilmezse save_daily_report
+    // bunu yeni sorun sanıp her kayıtta mükerrer ticket açar (bkz. RPC yorumu).
     const issueRows = detail?.issues || []
     if (issueRows.length > 0) {
       setIssues(issueRows.map(i => {
         const meta = decodeMeta(ISSUE_META_PREFIX, i.description)
         return {
+          id:                i.id,
+          ticket_id:         i.ticket_id        || null,
           topic:             i.topic             || '',
           category:          meta.category        || '',
           priority:          i.priority          || 'orta',
@@ -362,6 +378,16 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       }))
     } else {
       setIssues([newIssueRow()])
+    }
+
+    const ticketIds = [...new Set(issueRows.map(i => i.ticket_id).filter(Boolean))]
+    if (ticketIds.length > 0) {
+      const { data: ticketRows } = await supabase.from('tickets').select('id, status, severity').in('id', ticketIds)
+      const map = {}
+      ;(ticketRows || []).forEach(t => { map[t.id] = t })
+      setIssueTicketInfo(map)
+    } else {
+      setIssueTicketInfo({})
     }
   }
 
@@ -386,6 +412,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setPhotos([])
     setExistingPhotos([])
     setIssues([newIssueRow()])
+    setIssueTicketInfo({})
   }
 
   // Create-mode'da: seçilen tarihte zaten rapor var mı diye bakar. Varsa
@@ -636,6 +663,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       }
 
       const validIssues = issues.filter(r => r.topic).map(r => ({
+        id:                r.id || null, // mevcut satır — backend'in mükerrer ticket açmaması için şart
         topic:             r.topic,
         priority:          r.priority,
         assigned_to:       r.assigned_to || null,
@@ -1168,6 +1196,20 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                               <input type="text" value={row.notes} onChange={e => updateIssue(i, 'notes', e.target.value)} placeholder="Not..." style={INPUT} />
                             </div>
                           </div>
+                          {row.ticket_id && (
+                            <button
+                              type="button"
+                              onClick={() => onGoToTicket?.(row.ticket_id)}
+                              style={{
+                                alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6,
+                                background: '#EFF6FF', color: '#185FA5', border: '1px solid #BFDBFE',
+                                borderRadius: 999, padding: '4px 12px', fontSize: 11.5, fontWeight: 600,
+                                cursor: 'pointer', fontFamily: 'inherit',
+                              }}
+                            >
+                              🎫 Ticket açıldı — durum: {TICKET_STATUS_LABEL[issueTicketInfo[row.ticket_id]?.status] || '…'} →
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

@@ -11,10 +11,12 @@ import ProjeTabTalepListesi from './ProjeTabTalepListesi'
 import ProjeTabSaOnayKuyrugu from './ProjeTabSaOnayKuyrugu'
 import ProjeTabFaturaKesilecekler from './ProjeTabFaturaKesilecekler'
 import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
+import TedarikKuyrugu from './TedarikKuyrugu'
 
-export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false }) {
-  const { isAdmin } = useAuth()
-  const [tab, setTab] = useState('talepler')
+export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false }) {
+  const { isAdmin, role } = useAuth()
+  const canManageProcurement = isAdmin || role === 'proje_yoneticisi'
+  const [tab, setTab] = useState(procurementManagerView ? 'tedarik' : 'talepler')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
   const { data: overview, loading, refreshing, error, refetch } = useDashboardData(
@@ -37,7 +39,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
   )
 
   useEffect(() => {
-    if (siteChiefView) return // Şantiye şefi görünümünde döviz kartı (sidebar) gösterilmiyor.
+    if (siteChiefView || procurementManagerView) return // Şantiye şefi / proje yöneticisi görünümünde döviz kartı (sidebar) gösterilmiyor.
     let alive = true
     // TCMB kur servisi yavaş/erişilemez olabilir; ana veriyi bekletmemesi için ayrı yükleniyor.
     fetchDoviz().then(kurData => {
@@ -67,6 +69,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
   const TABS = [
     { key: 'talepler', label: 'Talepler' },
     ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
+    ...(canManageProcurement ? [{ key: 'tedarik', label: 'Tedarik' }] : []),
     { key: 'malzeme', label: 'Malzeme Listesi' },
   ]
 
@@ -80,7 +83,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
       </div>
-      {!siteChiefView && (
+      {!siteChiefView && !procurementManagerView && (
         <div className="sa-overview-grid">
           <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
           <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} recent={recent} doviz={doviz} loading={loading} />
@@ -104,6 +107,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
         <ProjeTabTalepListesi projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} siteChiefView={siteChiefView} />
       )}
       {tab === 'onay' && isAdmin && <ProjeTabSaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
+      {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} />}
       {tab === 'malzeme' && <ProjeTabFaturaKesilecekler rows={materialRows} loading={loading} />}
     </div>
   )

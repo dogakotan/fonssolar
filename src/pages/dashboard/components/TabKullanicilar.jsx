@@ -3,10 +3,10 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import { getAuthRedirectUrl } from '../../../lib/authRedirect'
 
-const SIRKET_GENELI = ['admin', 'muhasebe', 'satin_alma_uzmani']
+const SIRKET_GENELI = ['admin', 'muhasebe']
 
 const PROJE_BAZLI = [
-  'santiye_sefi', 'muhendis', 'koordinator',
+  'santiye_sefi', 'muhendis', 'koordinator', 'proje_yoneticisi',
   'mekanik_sef', 'elektrik_sefi', 'enh_sorumlusu',
   'evrak_takip', 'evrak_takip_uzmani',
   'is_makinesi_operatoru', 'is_makinesi_operator_sefi',
@@ -17,7 +17,7 @@ const PROJE_BAZLI = [
 
 // Dropdown'da gösterilecek benzersiz proje bazlı roller
 const PROJE_BAZLI_SECENEK = [
-  'santiye_sefi', 'muhendis', 'koordinator',
+  'santiye_sefi', 'muhendis', 'koordinator', 'proje_yoneticisi',
   'mekanik_sef', 'elektrik_sefi', 'enh_sorumlusu',
   'evrak_takip', 'is_makinesi_operatoru',
   'isg_sorumlusu', 'kalite_kontrol_sefi',
@@ -28,7 +28,7 @@ const PROJE_BAZLI_SECENEK = [
 const ROL_ETIKET = {
   admin:                       'Yönetici',
   muhasebe:                    'Muhasebe',
-  satin_alma_uzmani:           'Satın Alma Uzmanı',
+  proje_yoneticisi:            'Proje Yöneticisi',
   santiye_sefi:                'Şantiye Şefi',
   muhendis:                    'Mühendis',
   koordinator:                 'Koordinatör',
@@ -51,7 +51,7 @@ const ROL_ETIKET = {
 const ROL_RENK = {
   admin:                       { bg: '#FEE2E2', color: '#991B1B' },
   muhasebe:                    { bg: '#FEF3C7', color: '#92400E' },
-  satin_alma_uzmani:           { bg: '#FCE7F3', color: '#9D174D' },
+  proje_yoneticisi:            { bg: '#FCE7F3', color: '#9D174D' },
   santiye_sefi:                { bg: '#D1FAE5', color: '#065F46' },
   muhendis:                    { bg: '#EFF6FF', color: '#185FA5' },
   koordinator:                 { bg: '#F5F3FF', color: '#5B21B6' },

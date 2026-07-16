@@ -4,7 +4,7 @@ import { useAuth } from '../../../context/AuthContext'
 import TicketStats  from '../../../components/tickets/TicketStats'
 import TicketListesi from '../../../components/tickets/TicketListesi'
 
-export default function TabTickets() {
+export default function TabTickets({ openTicketId, onOpenedTicket } = {}) {
   const { isAdmin } = useAuth()
   const [refreshKey, setRefreshKey] = useState(0)
   const refresh = () => setRefreshKey(k => k + 1)
@@ -34,6 +34,8 @@ export default function TabTickets() {
         onNewTicket={refresh}
         refreshKey={refreshKey}
         projectId={projectFilter || undefined}
+        openTicketId={openTicketId}
+        onOpenedTicket={onOpenedTicket}
       />
     </div>
   )

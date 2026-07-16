@@ -73,7 +73,7 @@ function StatusBadge({ status }) {
 function InvoiceStatusBadge({ status }) {
   const normalized = normalizeStatus(status)
   const info = {
-    onaylandi: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura Bekliyor' },
+    onaylandi: { bg: '#FEF3C7', color: '#92400E', label: 'Tedarikçi Bekleniyor' },
     satin_alindi: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura Bekliyor' },
     fatura_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Sürecinde' },
     fatura_onay_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Onayında' },

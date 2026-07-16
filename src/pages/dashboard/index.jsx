@@ -38,13 +38,13 @@ const TABS = {
 
 const ROLE_TABS = {
   muhasebe:          ['finans', 'bildirimler'],
-  satin_alma_uzmani: ['satin-alma', 'bildirimler'],
+  proje_yoneticisi:  ['satin-alma', 'bildirimler'],
   santiye_sefi:      ['genel', 'is-plani', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets', 'bildirimler'],
 }
 
 const ROLE_DEFAULT = {
   muhasebe:          'finans',
-  satin_alma_uzmani: 'satin-alma',
+  proje_yoneticisi:  'satin-alma',
   santiye_sefi:      'genel',
 }
 
@@ -54,7 +54,7 @@ const ROLE_LABEL = {
   santiye_sefi:      'Şantiye Şefi',
   muhendis:          'Mühendis',
   koordinator:       'Koordinatör',
-  satin_alma_uzmani: 'Satın Alma Uzmanı',
+  proje_yoneticisi:  'Proje Yöneticisi',
 }
 
 function getHeaderInitials(name) {
@@ -77,6 +77,7 @@ export default function Dashboard() {
   const [selectedProjectName, setSelectedProjectName] = useState('')
   const [showProjectDetail,   setShowProjectDetail]   = useState(false)
   const [selectedDate,        setSelectedDate]        = useState(null)
+  const [openTicketId,        setOpenTicketId]        = useState(null)
   const navigate = useNavigate()
 
   // Kısıtlı roller → başlangıç sekmesi
@@ -122,6 +123,14 @@ export default function Dashboard() {
     setEditReportId(null)
     setShowReportModal(false)
     setReportViewKey(k => k + 1)
+  }
+
+  // Günlük rapor formundaki "Ticket açıldı" rozetine tıklayınca: raporu kapat,
+  // Tickets sekmesine geç, o ticket'ı doğrudan aç.
+  function goToTicket(ticketId) {
+    closeReportModal()
+    setOpenTicketId(ticketId)
+    handleTabChange('tickets')
   }
 
   if (!authLoading && role === null) {
@@ -264,9 +273,18 @@ export default function Dashboard() {
         {activeTab === 'satin-alma'   && role === 'santiye_sefi' && (
           <ProjeTabSatinAlma projectId={projectId} siteChiefView />
         )}
-        {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && <TabSatinAlma />}
+        {activeTab === 'satin-alma'   && role === 'proje_yoneticisi' && (
+          <ProjeTabSatinAlma projectId={projectId} procurementManagerView />
+        )}
+        {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && <TabSatinAlma />}
         {activeTab === 'finans'       && <TabFinans />}
-        {activeTab === 'tickets'      && <TabTickets selectedDate={selectedDate} />}
+        {activeTab === 'tickets'      && (
+          <TabTickets
+            selectedDate={selectedDate}
+            openTicketId={openTicketId}
+            onOpenedTicket={() => setOpenTicketId(null)}
+          />
+        )}
         {activeTab === 'kullanicilar' && isAdmin && <TabKullanicilar />}
         {activeTab === 'proje-ekle'  && isAdmin && (
           <TabProjeYonetimi
@@ -305,6 +323,7 @@ export default function Dashboard() {
                   reportId={editReportId || undefined}
                   onBack={closeReportModal}
                   onSaved={handleReportSaved}
+                  onGoToTicket={goToTicket}
                 />
               </div>
             </div>

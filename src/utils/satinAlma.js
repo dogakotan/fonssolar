@@ -33,10 +33,14 @@ export const statusLabel = (status) => ({
   iptal: 'İptal Edildi',
 })[normalizeStatus(status)] || String(status || 'Durum yok').replace(/_/g, ' ')
 
-// Talep onaylandı/satın alındı ama henüz faturası kesilmedi mi? -> "Faturası Kesilecekler"
-// kuyruğunda görünmeli ve Fatura Oluştur aksiyonu gösterilmeli.
+// Talep satın alındı (proje yöneticisi tedarikçi/satın alma bilgisini girdi) ama henüz
+// faturası kesilmedi mi? -> "Faturası Kesilecekler" kuyruğunda görünmeli ve Fatura Oluştur
+// aksiyonu gösterilmeli. "onaylandi" durumu artık YETERLİ DEĞİL — DB (trg_guard_invoice_
+// requires_procurement_done) da bu durumda fatura eklemeyi reddediyor, proje yöneticisi
+// önce Tedarik Kuyruğu'nda tedarikçi + satın alma tarihini girip talebi satin_alindi'ye
+// otomatik ilerletmeli.
 export function isAwaitingInvoice(request) {
-  return !request.invoice_id && ['onaylandi', 'satin_alindi'].includes(normalizeStatus(request.status))
+  return !request.invoice_id && normalizeStatus(request.status) === 'satin_alindi'
 }
 
 // Malzeme fiilen satın alınıp projeye ulaştı mı? (fatura süreci bundan sonra, bağımsız ilerler)
