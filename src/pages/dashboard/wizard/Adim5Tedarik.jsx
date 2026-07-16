@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { toNumber } from '../../../utils/satinAlma'
 
 const PRI_OPTS = [{ v: 'kritik', l: 'Kritik' }, { v: 'önemli', l: 'Önemli' }, { v: 'normal', l: 'Normal' }]
 const STA_OPTS = [
@@ -63,6 +64,9 @@ export default function Adim5Tedarik({ projectId, result, onDone, onBack, mode =
       category:          r.category          || null,
       equipment:         r.equipment,
       quantity:          r.quantity          || null,
+      // Kanonik alan — get_satin_alma_overview*/riskState hesapları buradan okuyor,
+      // quantity yalnızca geriye dönük görüntüleme fallback'i (bkz. proje CLAUDE.md).
+      planned_qty:       r.quantity ? toNumber(r.quantity) : null,
       unit:              r.unit              || null,
       brand_criteria:    r.brand_criteria    || null,
       warranty_years:    r.warranty_years !== '' ? Number(r.warranty_years) : null,

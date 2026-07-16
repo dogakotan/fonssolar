@@ -162,8 +162,10 @@ EXECUTE kapalı, yalnızca başka SECURITY DEFINER fonksiyonlardan çağrılır.
 OR cross_project OR profiles.project_id OR user_project_access).
 `user_has_project_access(p_project_id)`/`user_can_access_report(p_report_id)` —
 RLS politikalarında kullanılan ince katmanlar, ikisi de artık yukarıdakilere delege eder.
-**Not:** `get_project_dashboard`'da bu yetki kontrolü hiç yok (diğer proje-bazlı
-RPC'lerin hepsinde var) — sebebi araştırılmadı, ayrı bir inceleme gerektirir.
+`get_project_dashboard` de artık diğer proje-bazlı RPC'lerle aynı
+`get_project_scope`/`authorized` desenini kullanıyor (2026-07-16'da eklendi —
+daha önce hiç yetki kontrolü yoktu, herhangi bir authenticated kullanıcı
+erişimi olmayan bir projenin verisini görebiliyordu).
 
 **Bildirim:** `notify_managers(...)`, `notify_role(...)`, `notify_user(...)` —
 `daily_reports`/`purchase_requests`/`invoices`/`tickets`/`ticket_comments`
@@ -185,7 +187,7 @@ pending sarı, okunmuş+pending normal, resolved yeşil.
   satır varsa (`category` → `weight_pct`) `Σ(weight_pct/100 × kategori_ortalama(progress_pct))`
   kullanılır (kategori içi basit AVG), satır yoksa süre-ağırlıklı (planned_start/
   planned_end) eski formüle düşer.
-- `invoices` INSERT → `create_invoice_approval_chain()` → status'u `muhasebe_onayında` yapar + `invoice_approvals` step1 açar; step onaylanınca (`fn_invoice_approval_cascade`) step2 → `yönetici_onayında` → `ödendi` ilerler. INSERT/UPDATE ayrıca `sync_purchase_request_from_invoice()` ile bağlı `purchase_requests.status`'unu senkronlar ve (onaylandı/ödendi → upsert, reddedildi → sil) `trg_invoice_cost_allocation` ile `cost_allocations`'ı günceller.
+- `invoices` INSERT → `create_invoice_approval_chain()` → status'u `muhasebe_onayında` yapar + `invoice_approvals` step1 açar; `fn_invoice_approval_cascade` **tek yazan kaynak** olarak ilerletir: step1 onayı → step2 açar + `yönetici_onayında`; step2 onayı → `onaylandı` (frontend artık `invoices.status`'a ikinci bir yazma yapmıyor, bkz. DB-WF-001); herhangi bir adımda ret → `reddedildi`. `ödendi` durumu constraint'te geçerli ama onu üretecek bir akış yok (backlog). INSERT/UPDATE ayrıca `sync_purchase_request_from_invoice()` ile bağlı `purchase_requests.status`/`invoice_id`'sini senkronlar (reddedilince `invoice_id=NULL`, yeniden fatura kesilebilir) ve (onaylandı/ödendi → upsert, reddedildi → sil) `trg_invoice_cost_allocation` ile `cost_allocations`'ı günceller. `purchase_requests.invoice_id`'ye yapılan HER yazma `trg_guard_purchase_request_invoice_id` ile gerçek `invoices` durumundan yeniden hesaplanır (drift/manuel bozulma imkansız) ve `invoices.purchase_request_id` üzerinde `WHERE status <> 'reddedildi'` kısmi UNIQUE index'i bir talebin aynı anda yalnızca bir aktif faturası olmasını DB seviyesinde garanti eder.
 - `purchase_requests` UPDATE → `handle_purchase_request_approval()`.
 - `tickets` UPDATE → `fn_ticket_history()` → `ticket_history`'ye otomatik log.
 - Yukarıdaki tablolar + `daily_reports`/`purchase_requests`/`invoices`/`tickets`/`ticket_comments` INSERT/status değişimi → bildirim trigger'ları (bkz. yukarı).
@@ -373,39 +375,118 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
 - **Proje sihirbazında ilerleme kategori ağırlıkları düzenlenemiyor** —
   `project_category_weights` yalnızca SQL ile yönetiliyor, sihirbaza/ayarlar
   ekranına bir düzenleme arayüzü eklenmedi.
+- **`Adim5Tedarik.jsx`'in "Durum" akışı yeniden tasarlanacak (kullanıcı kararı,
+  henüz yapılmadı).** Kullanıcı tedarik/teslimat takibiyle şu an ilgilenmiyor;
+  `procurement_items`'ta hiç kullanılmayan `shortage_notes`/`damage_notes`
+  kolonları ve `kısmi_teslim`/`hasarlı` status değerleri kaldırıldı (2026-07-16),
+  ama formdaki mevcut 5 durumlu (`planlandı`/`sipariş_verildi`/`teslim_edildi`/
+  `iptal`/`gecikmiş`) Durum dropdown'ı ve teslimat tarihi alanları (Sipariş
+  Tarihi/Beklenen Teslimat) kasıtlı olarak dokunulmadan bırakıldı — bu akış
+  "o kısma gelince baştan" tasarlanacak, kendiliğinden sadeleştirme yapma.
 
 ---
 
 ## Son değişiklik
-**Proje şablonu v6 + otomatik risk motorunun frontend'e yansıtılması tamamlandı,
-`ProjectDashboard` erişilebilir hale getirildi.** Backend tarafında zaten
-canlıya alınmış bir DB değişikliğini (yeni `is_critical` kolonu, 15 kategori,
-`critical_path_items`/`critical_path_predecessors`/`mechanical_checklist`/
-`electrical_checklist` tablolarının kaldırılması, `project_risks` otomatik risk
-motoru) frontend'e taşıma görevi. Yapılanlar: `TabIsPlan.jsx`'in kritik yol
-tespiti kaldırılan `critical_codes` node'undan `task.is_critical`'a taşındı;
-`Adim2IsKalemleri.jsx`'e (görev formu) 5 yeni kategori + "Kritik Yol" checkbox'ı
-eklendi; proje sihirbazı `critical_path_items`'a yazan `Adim7KritikYol.jsx`
-adımı silinerek 7'den 6 adıma indi; `TabProjeYonetimi.jsx`'in proje silme
-tablo dizilerinden 4 silinen tablo çıkarıldı, şablon dosya adı v4→v6
-güncellendi; `get_project_dashboard`'a küçük bir migration'la (`source`/
-`rule_code`/`subject_ref`) risk kaynağı bilgisi eklendi.
+**DB sağlamlık denetiminde DB-NF-003/004/005 ele alındı.**
 
-**Yol boyunca bulunan ve düzeltilen üç şey:** (1) `TabGenel.jsx`'teki kritik
-yol zaman çizelgesi RPC'nin döndürdüğü `task_code`/`task_name` yerine eski
-`path_code`/`activity_name` okuyordu. (2) Bu düzeltmenin ve yeni risk/kategori
-kartının bulunduğu `TabGenel.jsx`'in `ProjectDashboard` alt bileşeni hiçbir
-kullanıcı akışından mount edilmiyordu — kullanıcı isteğiyle `ProjeDetay.jsx`'e
-yeni bir **"Proje Paneli"** sekmesi eklenip `<TabGenel projectId={projectId}
-filterDate={filterDate} />` ile bağlandı (`ProjeDetay.jsx`'in mevcut "Genel
-Proje" sekmesi/`ProjectOverviewDashboard`'ı farklı, daha sade bir özet —
-kasıtlı olarak yan yana duruyor, birleştirilmedi). (3) Erişilebilir olunca
-ortaya çıkan ikinci gerçek bug: "Genel İlerleme" donut'u kanonik
-`projects.progress` yerine kendi item-bazlı basit ortalamasını hesaplıyordu
-(Kayseri'de %46 vs kanonik %22) — `data.project.progress` kullanacak şekilde
-düzeltildi, yanlış "Başlamış görev ortalaması" etiketi de güncellendi.
-Playwright ile doğrulandı: sihirbaz 6 adım gösteriyor, yeni kategoriler ve
-"Kritik Yol" checkbox'ı doğru render ediyor, `TabIsPlan.jsx` ve yeni "Proje
-Paneli" sekmesi konsol hatasız çalışıyor, Proje Paneli Kayseri için doğru
-%22'yi gösteriyor. **Commit/push henüz yapılmadı** — kullanıcı önce repoyu
-kendisi gözden geçirecek.
+**DB-NF-003 (fatura↔satın alma çift yönlü ilişki) — düzeltildi.**
+`invoices.purchase_request_id` (tek gerçek kaynak, yalnızca
+`FaturaOlusturModal.jsx` INSERT'te yazıyor) ile `purchase_requests.invoice_id`
+(tamamen `sync_purchase_request_from_invoice()` trigger'ıyla aynalanan alan)
+arasındaki aynalamayı hiçbir DB constraint'i garanti etmiyordu. Eklenen:
+`fn_guard_purchase_request_invoice_id()` + `trg_guard_purchase_request_invoice_id`
+(`BEFORE UPDATE OF invoice_id ON purchase_requests`) — kolona yapılan HER
+yazma gerçek `invoices` durumundan yeniden hesaplanıp üzerine yazılıyor, drift
+artık imkansız. Migration: `db_nf_003_invoice_purchase_request_link_integrity`.
+Yol boyunca kendi hatam: önerdiğim "aynı anda yalnızca bir aktif fatura" kısmi
+unique index'i zaten DB-INT-003'te (2026-07-14) eklenmişti
+(`invoices_active_purchase_request_id_unique`) — mevcut migration geçmişini
+taramadan yeni SQL önerdim, mükerrer index oluşup ayrı bir migration'la
+(`db_nf_003_drop_duplicate_active_invoice_index`) geri alındı (bkz. memory
+`feedback_check_migrations_before_new_constraint`). Test: gerçek PR+fatura ile
+(A) ikinci aktif fatura → unique violation, (B) ret sonrası yeniden faturalama
+akışı bozulmadı, (C) `invoice_id`'ye bozuk değer yazımı guard trigger'la
+self-heal etti; test verisi temizlendi.
+
+**DB-NF-004 (türetilmiş finans alanları) — audit dosyasının yanlış pozitifi,
+yapılacak iş yoktu.** `invoices.vat_amount`/`total_amount` ve
+`purchase_request_items.total_price` zaten orijinal şemadan beri (2026-06-17)
+`GENERATED ALWAYS AS` kolonu — gerçek INSERT ile doğrulandı (Postgres açık
+değer yazımını reddediyor). Frontend'in üç yazma noktası da bu alanları hiç
+göndermiyor.
+
+**DB-NF-005 (procurement_items.quantity text sorunu) — DB kısmı kullanıcı
+kararıyla ertelendi, ama araştırma sırasında aktif bir veri kaybı hatası bulunup
+düzeltildi.** `Adim5Tedarik.jsx` (proje sihirbazı "Tedarik" adımı, hem yeni
+proje hem `ProjeEditWizard` düzenleme akışı) `procurement_items` payload'ında
+yalnızca `quantity` (text) gönderiyordu, kanonik `planned_qty` (numeric) hiç
+yazılmıyordu — bu alanı senkronlayan hiçbir trigger da yok. Sonuç: sihirbazın
+"Tedarik" adımını açıp kaydetmek (değer değiştirmeden bile) o projenin TÜM BOM
+kalemlerinin `planned_qty`'sini sessizce NULL'a düşürüyordu (`directSave`/
+`Adim8Tamamlandi.jsx` önce siliyor sonra bu eksik payload'ı ekliyor) —
+Satın Alma Riski hesabını (`classifyMaterials`/`riskState`) ve
+`get_satin_alma_overview*`'ı bozacaktı. Düzeltme: `Adim5Tedarik.jsx`'e
+`planned_qty: r.quantity ? toNumber(r.quantity) : null` eklendi. Gerçek
+tarayıcıda (admin, İzmir, ProjeEditWizard → Tedarik → Kaydet) test edildi,
+save sonrası `planned_qty` DB'de korunduğu doğrulandı.
+
+**procurement_items ölü teslimat kolonları/durum değerleri temizlendi.**
+Kullanıcı tedarik/teslimat takibiyle şu an ilgilenmediğini belirtti; grep ile
+`shortage_notes`/`damage_notes` kolonlarının ve `kısmi_teslim`/`hasarlı` status
+değerlerinin frontend'de hiç okunmadığı/yazılmadığı (0 satırda veri) doğrulandı.
+Migration: `db_nf_005_drop_unused_procurement_delivery_fields` — iki kolon
+DROP edildi, `procurement_items_status_check` 7 değerden 5'e daraltıldı.
+Formdaki "Durum" dropdown'ına ve teslimat tarihi alanlarına kasıtlı
+dokunulmadı — kullanıcı bu akışı ayrı bir görevde baştan tasarlayacak (bkz.
+Bilinen açık noktalar).
+
+**DB-PERF-002/003 (RLS initplan + çakışan permissive politikalar) tamamlandı —
+denetimin son maddesi.** Resmi Supabase advisor kapsamıyla sınırlı tutuldu
+(kullanıcı kararı): 38 policy/15 tabloda `auth.uid()` çağrıları
+`(select auth.uid())` ile sarmalandı (`get_my_role()`/`has_project_access()`
+gibi özel fonksiyonlar — advisor'ın raporlamadığı ek ~67 policy — kapsam dışı
+bırakıldı). 6 çakışan-permissive-policy çifti birleştirildi
+(agent_reports/profiles/purchase_requests×2/roles/user_project_access).
+`projects`/`roles`'ta admin'in `ALL` yetkisi `SELECT`'e körü körüne OR'lanmadı
+(bu, admin olmayanlara yanlışlıkla yazma yetkisi sızdırırdı) — 3 ayrı
+yazma-komutu policy'sine bölündü, net yetkiler birebir korundu. Migration:
+`db_perf_002_003_rls_initplan_and_policy_consolidation`. `get_advisors`
+sonrası 0 initplan/çakışma kaldı; Playwright tam paket (admin + santiye_sefi
+gerçek girişli Test A dahil) geçti.
+
+Playwright tam regresyon paketi çalıştırıldı: test A ilk seferinde kapsam-seçici
+zamanlama nedeniyle flaky başarısız oldu, izole tekrar denemede geçti
+(değişikliklerle ilgisiz); test B bilinen flaky sorunuyla beklenen şekilde
+başarısız oldu; kalan 5 test (procurement_items temizliği ve RLS migration'ı
+sonrası da dahil) geçti. **Commit/push yapılmadı** — bu oturumdaki DB
+değişiklikleri migration olarak canlıda, repo tarafında yalnızca CLAUDE.md +
+`Adim5Tedarik.jsx`.
+
+**Denetim dosyasının kendisi de tam olarak güncellendi** (kullanıcı isteğiyle:
+"denetim dosyasında yapmadığımız şey kalmasın"): her maddenin durumu
+(DB-NF-003/004/005, DB-PERF-002/003) doğrulanmış detaylarla işaretlendi;
+Bölüm 9'daki Faz 0-4 checklist'i madde madde gerçek kanıtla (migration/test/
+kod okuması) doğrulanıp işaretlendi; Bölüm 12'deki "Yeniden İnceleme Şablonu"
+gerçek ölçülmüş sayılarla dolduruldu (advisor + doğrudan SQL); Bölüm 11'e
+değişiklik günlüğü kayıtları eklendi.
+
+**Bu tarama sırasında yeni, canlı bir güvenlik açığı bulunup düzeltildi
+(DB-SEC-002-FOLLOWUP):** `get_project_dashboard` RPC'sinin gövdesinde HİÇ
+proje-erişim kontrolü yoktu — DB-SEC-002'nin orijinal "riskli örnekler"
+listesinde bu açıkça vardı ama 2026-07-14'teki grant-revoke turu yalnızca
+"kim çağırabilir" (anon EXECUTE) sorununu kapatmış, fonksiyonun kendi içindeki
+kontrol eksikliğini atlamıştı (CLAUDE.md'de de yalnızca bir not olarak
+bırakılmıştı). Sonuç: herhangi bir `authenticated` kullanıcı, erişimi olmayan
+bir projenin `p_project_id`'siyle bu RPC'yi çağırıp bütçe/fatura/risk/personel
+verisini görebiliyordu. Diğer proje-bazlı RPC'lerin kullandığı
+`get_project_scope`/`authorized` deseni eklendi (migration:
+`db_sec_007_add_project_scope_check_to_get_project_dashboard`), mevcut
+alanlar/mantık aynen korundu. Gerçek girişle test edildi: admin İzmir VE
+Kayseri'yi görebildi; İzmir'e bağlı santiye_sefi Kayseri'nin dashboard'unu
+çağırınca `authorized:false` + veri yok, kendi projesini normal gördü.
+Frontend (`TabGenel.jsx`) zaten `|| []`/`|| null` kullandığından çökme yok.
+
+**Denetim durumu:** `fons-solar-veritabani-saglamlik-denetimi.md`'deki tüm
+P0/P1/P2 maddeleri artık ya Doğrulandı ya bilinçli olarak ertelendi/kapsam
+dışı — geriye yalnızca DB-SEC-006 (leaked password protection, Supabase
+Dashboard'dan manuel, Claude Code kapsamı dışı) kaldı.
