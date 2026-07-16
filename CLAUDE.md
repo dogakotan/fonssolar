@@ -488,5 +488,8 @@ Frontend (`TabGenel.jsx`) zaten `|| []`/`|| null` kullandığından çökme yok.
 
 **Denetim durumu:** `fons-solar-veritabani-saglamlik-denetimi.md`'deki tüm
 P0/P1/P2 maddeleri artık ya Doğrulandı ya bilinçli olarak ertelendi/kapsam
-dışı — geriye yalnızca DB-SEC-006 (leaked password protection, Supabase
-Dashboard'dan manuel, Claude Code kapsamı dışı) kaldı.
+dışı — geriye yalnızca DB-SEC-006 (leaked password protection) kaldı.
+Kullanıcı Dashboard'dan denedi, Supabase "Pro plan ve üzeri gerekiyor"
+diyerek reddetti (proje Free plan'da) — Claude Code kapsamı dışı olmanın
+ötesinde, plan yükseltmesi olmadan teknik olarak imkansız. Kullanıcı bunu
+kısıt olarak kabul etti, denetim dosyasında böyle belgelendi.
