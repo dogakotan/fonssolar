@@ -314,6 +314,17 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
   ve `project_risks` otomatik risk motorunun (`fn_recompute_auto_risks` +
   trigger'lar) frontend'e yansıtılması (bkz. Sistem mimarisi → Kritik yol ve
   otomatik risk motoru).
+- **DB sağlamlık denetimi kapatıldı** (`fons-solar-veritabani-saglamlik-denetimi.md`,
+  Downloads'ta — artık onaysız doğrudan düzenlenebilir bir yaşayan doküman):
+  DB-NF-003 (fatura↔satın alma link guard trigger'ı), DB-NF-004 (yanlış
+  pozitifti, zaten `GENERATED ALWAYS`), DB-NF-005 (ölü teslimat kolonları
+  temizlendi + sihirbazın `planned_qty` veri kaybı hatası düzeltildi, DB kısmı
+  ertelendi), DB-PERF-002/003 (RLS initplan sarmalama + çakışan policy
+  birleştirme, 38 policy/15 tablo), DB-SEC-002-FOLLOWUP (`get_project_dashboard`'a
+  eksik olan proje-erişim kontrolü eklendi — canlı bir yetki açığıydı). Geriye
+  yalnızca DB-SEC-006 kaldı (leaked password protection, Supabase Free plan'da
+  desteklenmiyor, Pro plan gerektiriyor — ödeme kararı, teknik olarak
+  yapılamaz).
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Satın alma/finans liste ekranları RPC kullanmıyor:** `TabSatinAlmaTalepListesi.jsx`,
@@ -343,8 +354,8 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
 - **`TabGenel.jsx` iki ayrı bileşen barındırıyor** — `ProjectListView` ("Genel
   Bakış" sekmesinde görünen, `get_dashboard_summary`/`get_delayed_tasks_scoped`
   kullanan özet ekran) ve `ProjectDashboard` (Kritik Yol KPI'sı, S-Eğrisi,
-  kategori ağırlıkları breakdown'ı, Kalite kartı, Açık Riskler detay kartı —
-  `get_project_dashboard`'ın tek tüketicisi). `TabGenel`'in varsayılan export'u
+  Kalite kartı, Açık Riskler detay kartı — `get_project_dashboard`'ın tek
+  tüketicisi). `TabGenel`'in varsayılan export'u
   `projectId` prop'u doluysa `ProjectDashboard`'ı render ediyor. Bu ikisi farklı
   yollardan erişiliyor: `ProjectListView`'a "Genel Bakış" sekmesinden
   (`scopeProjectId` ile), `ProjectDashboard`'a ise `ProjeDetay.jsx`'in **"Proje
@@ -375,6 +386,14 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
 - **Proje sihirbazında ilerleme kategori ağırlıkları düzenlenemiyor** —
   `project_category_weights` yalnızca SQL ile yönetiliyor, sihirbaza/ayarlar
   ekranına bir düzenleme arayüzü eklenmedi.
+- **`category_weights` verisi çekiliyor ama hiçbir yerde render edilmiyor** —
+  `TabGenel.jsx`'in `ProjectDashboard` alt bileşeni `get_project_dashboard`'ın
+  `category_weights` alanını (`{category, weight_pct, avg_progress}[]`)
+  `categoryWeights` state'ine yazıyor (satır ~701/736) ama bu state hiçbir
+  JSX'te kullanılmıyor — tamamen ölü kod. "Genel İlerleme" kartı yalnızca tek
+  bir toplam yüzde gösteriyor, kategori bazlı kırılım (panel montajı %X,
+  elektrik %Y gibi) hiçbir ekranda yok. 2026-07-16'da bu ölü kodu tarayıp
+  bulundu, kullanıcı kararıyla düzeltilmedi — ayrı bir görev.
 - **`Adim5Tedarik.jsx`'in "Durum" akışı yeniden tasarlanacak (kullanıcı kararı,
   henüz yapılmadı).** Kullanıcı tedarik/teslimat takibiyle şu an ilgilenmiyor;
   `procurement_items`'ta hiç kullanılmayan `shortage_notes`/`damage_notes`
@@ -387,104 +406,30 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
 ---
 
 ## Son değişiklik
-**DB sağlamlık denetiminde DB-NF-003/004/005 ele alındı.**
+**14.07.2026 v6 şablonu/risk motoru prompt'undaki (`C:\Users\fonss\Claude\Projects\Fons Solar\proje-sablonu-v6-ve-risk-otomasyonu-cc-prompt.md`)
+maddeler tek tek doğrulandı.** DB sağlamlık denetimi kapatıldıktan sonra (bkz.
+"Tamamlanan büyük görevler") kullanıcı bu eski prompt dosyasını hatırlatıp
+neyin yapılıp neyin yapılmadığının teyit edilmesini istedi. Kod taraması
+(grep + dosya okuması) ile: Kritik Yol ayrı sayfası kaldırma, Mekanik/Elektrik
+Checklist ekranları, "Kaptan Adana" prototip temizliği, kaldırılan 4 tabloya
+(`critical_path_items` vb.) sarkan referans, `is_critical`/Gantt entegrasyonu,
+risk kartında otomatik/manuel rozeti — **hepsi doğrulandı, yapılmış veya
+zaten yoktu.**
 
-**DB-NF-003 (fatura↔satın alma çift yönlü ilişki) — düzeltildi.**
-`invoices.purchase_request_id` (tek gerçek kaynak, yalnızca
-`FaturaOlusturModal.jsx` INSERT'te yazıyor) ile `purchase_requests.invoice_id`
-(tamamen `sync_purchase_request_from_invoice()` trigger'ıyla aynalanan alan)
-arasındaki aynalamayı hiçbir DB constraint'i garanti etmiyordu. Eklenen:
-`fn_guard_purchase_request_invoice_id()` + `trg_guard_purchase_request_invoice_id`
-(`BEFORE UPDATE OF invoice_id ON purchase_requests`) — kolona yapılan HER
-yazma gerçek `invoices` durumundan yeniden hesaplanıp üzerine yazılıyor, drift
-artık imkansız. Migration: `db_nf_003_invoice_purchase_request_link_integrity`.
-Yol boyunca kendi hatam: önerdiğim "aynı anda yalnızca bir aktif fatura" kısmi
-unique index'i zaten DB-INT-003'te (2026-07-14) eklenmişti
-(`invoices_active_purchase_request_id_unique`) — mevcut migration geçmişini
-taramadan yeni SQL önerdim, mükerrer index oluşup ayrı bir migration'la
-(`db_nf_003_drop_duplicate_active_invoice_index`) geri alındı (bkz. memory
-`feedback_check_migrations_before_new_constraint`). Test: gerçek PR+fatura ile
-(A) ikinci aktif fatura → unique violation, (B) ret sonrası yeniden faturalama
-akışı bozulmadı, (C) `invoice_id`'ye bozuk değer yazımı guard trigger'la
-self-heal etti; test verisi temizlendi.
+**Tek gerçek eksik bulundu:** `get_project_dashboard`'ın döndürdüğü
+`category_weights` alanı `TabGenel.jsx`'te `categoryWeights` state'ine
+yazılıyor (satır ~701/736) ama hiçbir JSX'te render edilmiyor — tamamen ölü
+kod, kategori bazlı ilerleme kırılımı (panel montajı %X, elektrik %Y gibi)
+hiçbir ekranda yok. CLAUDE.md'de bu özellik yanlışlıkla "var" diye
+belgelenmişti (`ProjectDashboard`'ın özellik listesinde) — bu iddia
+kaldırıldı, doğru haliyle "Bilinen açık noktalar"a taşındı. Kullanıcı kararıyla
+görselleştirme bu turda **eklenmedi**, yalnızca dokümantasyon düzeltildi.
 
-**DB-NF-004 (türetilmiş finans alanları) — audit dosyasının yanlış pozitifi,
-yapılacak iş yoktu.** `invoices.vat_amount`/`total_amount` ve
-`purchase_request_items.total_price` zaten orijinal şemadan beri (2026-06-17)
-`GENERATED ALWAYS AS` kolonu — gerçek INSERT ile doğrulandı (Postgres açık
-değer yazımını reddediyor). Frontend'in üç yazma noktası da bu alanları hiç
-göndermiyor.
-
-**DB-NF-005 (procurement_items.quantity text sorunu) — DB kısmı kullanıcı
-kararıyla ertelendi, ama araştırma sırasında aktif bir veri kaybı hatası bulunup
-düzeltildi.** `Adim5Tedarik.jsx` (proje sihirbazı "Tedarik" adımı, hem yeni
-proje hem `ProjeEditWizard` düzenleme akışı) `procurement_items` payload'ında
-yalnızca `quantity` (text) gönderiyordu, kanonik `planned_qty` (numeric) hiç
-yazılmıyordu — bu alanı senkronlayan hiçbir trigger da yok. Sonuç: sihirbazın
-"Tedarik" adımını açıp kaydetmek (değer değiştirmeden bile) o projenin TÜM BOM
-kalemlerinin `planned_qty`'sini sessizce NULL'a düşürüyordu (`directSave`/
-`Adim8Tamamlandi.jsx` önce siliyor sonra bu eksik payload'ı ekliyor) —
-Satın Alma Riski hesabını (`classifyMaterials`/`riskState`) ve
-`get_satin_alma_overview*`'ı bozacaktı. Düzeltme: `Adim5Tedarik.jsx`'e
-`planned_qty: r.quantity ? toNumber(r.quantity) : null` eklendi. Gerçek
-tarayıcıda (admin, İzmir, ProjeEditWizard → Tedarik → Kaydet) test edildi,
-save sonrası `planned_qty` DB'de korunduğu doğrulandı.
-
-**procurement_items ölü teslimat kolonları/durum değerleri temizlendi.**
-Kullanıcı tedarik/teslimat takibiyle şu an ilgilenmediğini belirtti; grep ile
-`shortage_notes`/`damage_notes` kolonlarının ve `kısmi_teslim`/`hasarlı` status
-değerlerinin frontend'de hiç okunmadığı/yazılmadığı (0 satırda veri) doğrulandı.
-Migration: `db_nf_005_drop_unused_procurement_delivery_fields` — iki kolon
-DROP edildi, `procurement_items_status_check` 7 değerden 5'e daraltıldı.
-Formdaki "Durum" dropdown'ına ve teslimat tarihi alanlarına kasıtlı
-dokunulmadı — kullanıcı bu akışı ayrı bir görevde baştan tasarlayacak (bkz.
-Bilinen açık noktalar).
-
-**DB-PERF-002/003 (RLS initplan + çakışan permissive politikalar) tamamlandı —
-denetimin son maddesi.** Resmi Supabase advisor kapsamıyla sınırlı tutuldu
-(kullanıcı kararı): 38 policy/15 tabloda `auth.uid()` çağrıları
-`(select auth.uid())` ile sarmalandı (`get_my_role()`/`has_project_access()`
-gibi özel fonksiyonlar — advisor'ın raporlamadığı ek ~67 policy — kapsam dışı
-bırakıldı). 6 çakışan-permissive-policy çifti birleştirildi
-(agent_reports/profiles/purchase_requests×2/roles/user_project_access).
-`projects`/`roles`'ta admin'in `ALL` yetkisi `SELECT`'e körü körüne OR'lanmadı
-(bu, admin olmayanlara yanlışlıkla yazma yetkisi sızdırırdı) — 3 ayrı
-yazma-komutu policy'sine bölündü, net yetkiler birebir korundu. Migration:
-`db_perf_002_003_rls_initplan_and_policy_consolidation`. `get_advisors`
-sonrası 0 initplan/çakışma kaldı; Playwright tam paket (admin + santiye_sefi
-gerçek girişli Test A dahil) geçti.
-
-Playwright tam regresyon paketi çalıştırıldı: test A ilk seferinde kapsam-seçici
-zamanlama nedeniyle flaky başarısız oldu, izole tekrar denemede geçti
-(değişikliklerle ilgisiz); test B bilinen flaky sorunuyla beklenen şekilde
-başarısız oldu; kalan 5 test (procurement_items temizliği ve RLS migration'ı
-sonrası da dahil) geçti. **Commit/push yapılmadı** — bu oturumdaki DB
-değişiklikleri migration olarak canlıda, repo tarafında yalnızca CLAUDE.md +
-`Adim5Tedarik.jsx`.
-
-**Denetim dosyasının kendisi de tam olarak güncellendi** (kullanıcı isteğiyle:
-"denetim dosyasında yapmadığımız şey kalmasın"): her maddenin durumu
-(DB-NF-003/004/005, DB-PERF-002/003) doğrulanmış detaylarla işaretlendi;
-Bölüm 9'daki Faz 0-4 checklist'i madde madde gerçek kanıtla (migration/test/
-kod okuması) doğrulanıp işaretlendi; Bölüm 12'deki "Yeniden İnceleme Şablonu"
-gerçek ölçülmüş sayılarla dolduruldu (advisor + doğrudan SQL); Bölüm 11'e
-değişiklik günlüğü kayıtları eklendi.
-
-**Bu tarama sırasında yeni, canlı bir güvenlik açığı bulunup düzeltildi
-(DB-SEC-002-FOLLOWUP):** `get_project_dashboard` RPC'sinin gövdesinde HİÇ
-proje-erişim kontrolü yoktu — DB-SEC-002'nin orijinal "riskli örnekler"
-listesinde bu açıkça vardı ama 2026-07-14'teki grant-revoke turu yalnızca
-"kim çağırabilir" (anon EXECUTE) sorununu kapatmış, fonksiyonun kendi içindeki
-kontrol eksikliğini atlamıştı (CLAUDE.md'de de yalnızca bir not olarak
-bırakılmıştı). Sonuç: herhangi bir `authenticated` kullanıcı, erişimi olmayan
-bir projenin `p_project_id`'siyle bu RPC'yi çağırıp bütçe/fatura/risk/personel
-verisini görebiliyordu. Diğer proje-bazlı RPC'lerin kullandığı
-`get_project_scope`/`authorized` deseni eklendi (migration:
-`db_sec_007_add_project_scope_check_to_get_project_dashboard`), mevcut
-alanlar/mantık aynen korundu. Gerçek girişle test edildi: admin İzmir VE
-Kayseri'yi görebildi; İzmir'e bağlı santiye_sefi Kayseri'nin dashboard'unu
-çağırınca `authorized:false` + veri yok, kendi projesini normal gördü.
-Frontend (`TabGenel.jsx`) zaten `|| []`/`|| null` kullandığından çökme yok.
+DB tarafında bu oturumda tamamlanan işler (DB-NF-003/004/005, DB-PERF-002/003,
+DB-SEC-002-FOLLOWUP) artık "Tamamlanan büyük görevler" bölümünde özetli;
+detaylar `fons-solar-veritabani-saglamlik-denetimi.md`'de (artık onaysız
+doğrudan düzenlenebilir bir yaşayan doküman) ve memory'de. Commit: `7b8fd58`
++ `0ed846d`. Repo origin/main'in 4 commit ilerisinde, push yapılmadı.
 
 **Denetim durumu:** `fons-solar-veritabani-saglamlik-denetimi.md`'deki tüm
 P0/P1/P2 maddeleri artık ya Doğrulandı ya bilinçli olarak ertelendi/kapsam
