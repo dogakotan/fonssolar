@@ -612,6 +612,8 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
 export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate }) {
+  const { role } = useAuth()
+  const canViewFinanceAndTickets = role !== 'proje_yoneticisi'
   const [tab, setTab]                = useState('genel')
 
   const [project, setProject]        = useState(null)
@@ -629,6 +631,12 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const exportRef = useRef(null)
   const calendarRef = useRef(null)
   const calendarDays = useMemo(() => buildCalendarDays(calendarMonth), [calendarMonth])
+
+  useEffect(() => {
+    if (!canViewFinanceAndTickets && ['finans', 'tickets'].includes(tab)) {
+      setTab('genel')
+    }
+  }, [canViewFinanceAndTickets, tab])
 
   useEffect(() => {
     function handleOut(e) {
@@ -1114,12 +1122,16 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           <button onClick={() => setTab('satin-alma')} style={tab === 'satin-alma' ? tabBtnActive : tabBtn}>
             Satın Alma
           </button>
-          <button onClick={() => setTab('finans')} style={tab === 'finans' ? tabBtnActive : tabBtn}>
-            Finans
-          </button>
-          <button onClick={() => setTab('tickets')} style={tab === 'tickets' ? tabBtnActive : tabBtn}>
-            Ticket
-          </button>
+          {canViewFinanceAndTickets && (
+            <button onClick={() => setTab('finans')} style={tab === 'finans' ? tabBtnActive : tabBtn}>
+              Finans
+            </button>
+          )}
+          {canViewFinanceAndTickets && (
+            <button onClick={() => setTab('tickets')} style={tab === 'tickets' ? tabBtnActive : tabBtn}>
+              Ticket
+            </button>
+          )}
           <button onClick={() => setTab('raporlar')} style={tab === 'raporlar' ? tabBtnActive : tabBtn}>
             Raporlar
           </button>
@@ -1270,11 +1282,11 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
       {tab === 'ekip' ? (
         <EkipListesi projectId={projectId} />
-      ) : tab === 'tickets' ? (
+      ) : tab === 'tickets' && canViewFinanceAndTickets ? (
         <TicketListesi projectId={projectId} filterDate={filterDate} />
       ) : tab === 'satin-alma' ? (
         <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
-      ) : tab === 'finans' ? (
+      ) : tab === 'finans' && canViewFinanceAndTickets ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'raporlar' ? (
         <DailyReportList projectId={projectId} title="Günlük Raporlar" showHeader={false} />

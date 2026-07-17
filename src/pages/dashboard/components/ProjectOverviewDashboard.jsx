@@ -646,7 +646,7 @@ export default function ProjectOverviewDashboard({
                     ]}
                   />
                   <ReferenceLine x={todayLabel} stroke="#ef4444" strokeDasharray="4 3" />
-                  <Line type="monotone" dataKey="planned" stroke="#3b82f6" dot={false} strokeWidth={2} name="Planlanan" />
+                  <Line type="monotone" dataKey="planned" stroke="#3b82f6" dot={false} strokeWidth={2} name="Planlanan" isAnimationActive={false} />
                   <Line type="monotone" dataKey="actual"  stroke="#22c55e" dot={{ r: 4 }} strokeWidth={2} name="Gerçekleşen" connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>

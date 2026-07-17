@@ -65,12 +65,17 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
     .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
     .slice(0, 4)
 
-  const TABS = [
-    { key: 'talepler', label: 'Talepler' },
-    ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
-    ...(canManageProcurement ? [{ key: 'tedarik', label: 'Tedarik' }] : []),
-    { key: 'malzeme', label: 'Malzeme Listesi' },
-  ]
+  const TABS = procurementManagerView
+    ? [
+        { key: 'tedarik', label: 'Tedarik' },
+        { key: 'malzeme', label: 'Malzeme Listesi' },
+      ]
+    : [
+        { key: 'talepler', label: 'Talepler' },
+        ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
+        ...(canManageProcurement ? [{ key: 'tedarik', label: 'Tedarik' }] : []),
+        { key: 'malzeme', label: 'Malzeme Listesi' },
+      ]
 
   if (!loading && !authorized) {
     return <UnauthorizedScopeNotice />
@@ -104,7 +109,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
       )}
       {tab === 'onay' && isAdmin && <ProjeTabSaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
       {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} />}
-      {tab === 'malzeme' && <ProjeTabFaturaKesilecekler rows={materialRows} loading={loading} />}
+      {tab === 'malzeme' && <ProjeTabFaturaKesilecekler rows={materialRows} loading={loading} projectId={projectId} />}
     </div>
   )
 }

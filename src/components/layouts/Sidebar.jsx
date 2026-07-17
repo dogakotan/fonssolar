@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 
 const SAHA_ROLES = ['admin', 'santiye_sefi', 'muhendis', 'koordinator']
+const OPERATION_ROLES = [...SAHA_ROLES, 'proje_yoneticisi']
 
 export default function Sidebar({ active, onTab, onLogout, isOpen }) {
   const { role } = useAuth()
@@ -18,7 +19,7 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
   const items = [
     {
       key: 'genel', label: 'Genel Bakış',
-      roles: SAHA_ROLES,
+      roles: OPERATION_ROLES,
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
@@ -28,7 +29,7 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'is-plani', label: 'İş Planı',
-      roles: ['santiye_sefi'],
+      roles: ['santiye_sefi', 'proje_yoneticisi'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="4" width="18" height="18" rx="2"/>
@@ -50,7 +51,7 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'projeler', label: 'Projeler',
-      roles: ['admin', 'muhendis', 'koordinator'],
+      roles: ['admin', 'muhendis', 'koordinator', 'proje_yoneticisi'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M2 20h20"/><path d="M5 20V8l7-6 7 6v12"/><path d="M9 20v-6h6v6"/>

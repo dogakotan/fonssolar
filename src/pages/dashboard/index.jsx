@@ -38,13 +38,13 @@ const TABS = {
 
 const ROLE_TABS = {
   muhasebe:          ['finans', 'bildirimler'],
-  proje_yoneticisi:  ['satin-alma', 'bildirimler'],
+  proje_yoneticisi:  ['genel', 'projeler', 'is-plani', 'satin-alma', 'bildirimler'],
   santiye_sefi:      ['genel', 'is-plani', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets', 'bildirimler'],
 }
 
 const ROLE_DEFAULT = {
   muhasebe:          'finans',
-  proje_yoneticisi:  'satin-alma',
+  proje_yoneticisi:  'genel',
   santiye_sefi:      'genel',
 }
 
@@ -62,9 +62,43 @@ function getHeaderInitials(name) {
   return name.split(/[\s@._-]+/).slice(0, 2).map(p => p[0]?.toUpperCase()).filter(Boolean).join('') || '?'
 }
 
+// proje_yoneticisi artık cross_project=true (birden fazla projeye erişebiliyor) ama header'daki
+// global proje seçici kaldırıldı — Genel/İş Planı/Satın Alma sekmeleri tek-proje odaklı olduğundan
+// scopeProjectId boşken bu küçük seçici devreye girer (yalnızca bu rol için, diğer rollerin
+// "Tüm Projeler" davranışını etkilemez).
+function ProjeSecimGerekli({ projects, onSelect }) {
+  return (
+    <div style={{ padding: '48px 24px', textAlign: 'center' }}>
+      <p style={{ fontSize: 14, color: 'var(--color-muted)', marginBottom: 16 }}>Devam etmek için bir proje seçin</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 360, margin: '0 auto' }}>
+        {projects.map(p => (
+          <button
+            key={p.id}
+            onClick={() => onSelect(p.id)}
+            style={{
+              background: '#fff', border: '1px solid var(--color-border-md)', borderRadius: 10,
+              padding: '12px 16px', fontSize: 14, fontWeight: 600, color: 'var(--color-text)',
+              cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
+            }}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { user, role, isAdmin, projectId, loading: authLoading, authError } = useAuth()
-  const { scopeProjectId } = useScope()
+  const { scopeProjectId: contextScopeProjectId, projects: scopeProjects } = useScope()
+  // ScopeContext artık manuel override desteklemiyor (header seçicisi kalkınca kasıtlı
+  // sadeleştirildi, scopeProjectId yalnızca tek-proje kullanıcıda otomatik çözülüyor).
+  // proje_yoneticisi (cross_project=true, çoklu proje) için bu üç sekmede (genel/is-plani/
+  // satin-alma) hâlâ tek bir proje seçilmesi gerektiğinden, ortak context'e dokunmadan bu
+  // role özel yerel bir seçim state'i tutuyoruz — diğer rollerin "Tüm Projeler" davranışını etkilemez.
+  const [pySelectedProjectId, setPySelectedProjectId] = useState(null)
+  const scopeProjectId = role === 'proje_yoneticisi' ? (contextScopeProjectId || pySelectedProjectId) : contextScopeProjectId
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [activeTab,           setActiveTab]           = useState(() => {
     const saved = window.localStorage.getItem('dashboard-active-tab')
@@ -241,8 +275,18 @@ export default function Dashboard() {
         {activeTab === 'is-plani'     && role === 'santiye_sefi' && (
           <TabIsPlan projectId={projectId} siteChiefView />
         )}
+        {activeTab === 'is-plani'     && role === 'proje_yoneticisi' && (
+          !scopeProjectId && scopeProjects.length > 1
+            ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />
+            : <TabIsPlan projectId={scopeProjectId} />
+        )}
         {activeTab === 'bildirimler'  && <TabBildirimler onNavigate={handleTabChange} />}
-        {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
+        {activeTab === 'genel'        && role === 'proje_yoneticisi' && (
+          !scopeProjectId && scopeProjects.length > 1
+            ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />
+            : <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />
+        )}
+        {activeTab === 'genel'        && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
         {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'     && showProjectDetail  && (
           <ProjeDetay
@@ -257,11 +301,13 @@ export default function Dashboard() {
           <ProjeTabSatinAlma projectId={projectId} siteChiefView />
         )}
         {activeTab === 'satin-alma'   && role === 'proje_yoneticisi' && (
-          <ProjeTabSatinAlma projectId={scopeProjectId} procurementManagerView />
+          !scopeProjectId && scopeProjects.length > 1
+            ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />
+            : <ProjeTabSatinAlma projectId={scopeProjectId} procurementManagerView />
         )}
         {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && <TabSatinAlma />}
-        {activeTab === 'finans'       && <TabFinans />}
-        {activeTab === 'tickets'      && (
+        {activeTab === 'finans'       && role !== 'proje_yoneticisi' && <TabFinans />}
+        {activeTab === 'tickets'      && role !== 'proje_yoneticisi' && (
           <TabTickets
             selectedDate={selectedDate}
             openTicketId={openTicketId}
