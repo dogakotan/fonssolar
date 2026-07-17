@@ -143,32 +143,36 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   kaldırıldı — her sekme zaten kendi RPC'sine bağlı kendi banner/indicator'ını
   gösteriyordu, üstte ikinci bir tane sadece tekrar/kayma yaratıyordu; hook
   çağrıları — `refetch` tetiklemesi için — kaldı, yalnızca render silindi).
-  Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kayna??
-  `get_project_by_date`) proje ?zeti ekran? g?ncel d?zeni: ?stte Proje Detaylar? /
-  Genel ?lerleme / G?nl?k-Haftal?k-Ayl?k ?zet / Hava Durumu kartlar?; orta sat?rda
-  e?it iki kart olarak **Projenin Gidi?at?** ve **Kategori Bazl? ?lerleme** bulunur.
-  Projenin Gidi?at? art?k milestone ?eridi de?il S-e?risi ?izgi grafi?idir; grafik
-  ba?l??? ve hover tooltip'i g?ncel toplam `plannedPct` / `avgReportProgress` de?erini
-  g?sterir, ge?mi? ay noktalar? yaln?zca ?izginin e?ilimini olu?turur. Kategori Bazl?
-  ?lerleme `BarChart` kullanmaz; kategori ad? + ger?ekle?en progress bar + ger?ekle?en
-  y?zde + plan y?zdesi + sapma sat?rlar?ndan olu?an yatay bullet/progress listedir ve
-  kart i?inde scroll eder; plan i?areti k?rm?z? `var(--color-danger)` ile g?sterilir.
-  Alt grid 3 kolon d?zenindedir: G?nl?k Rapor ?zeti, Malzeme Kalemleri/Sat?n Alma,
-  Maliyet Durumu, G?ncel Ticketlar, Riskler, Saha Foto?raflar?. G?ncel Ticketlar ve
-  Riskler `slice(0,5)` ile e? sat?r y?ksekli?inde g?sterilir; Riskler kart?nda a??klama
-  yaz?s? yoktur. Risk severity frontend'de otomatik kural bazl? normalize edilir:
-  `gorev_gecikmesi` 7+ g?n gecikmi?se `kritik`, daha azsa `orta`;
-  `malzeme_fazla_talep` `y?ksek`; di?er risklerde kay?t ?zerindeki severity kullan?l?r.
-  Saha Foto?raflar? art?k alt grid'in i?inde ???nc? kart olarak yer al?r, ayr? tam
-  geni?lik kart de?ildir. Maliyet Durumu i? scroll kullanmaz; En B?y?k 5 Kalem do?rudan
-  kart i?inde listelenir. Proje Excel i?e/d??a aktar butonlar? Proje Detay > Genel'den
-  kald?r?ld?; bu yetenek yaln?zca Proje Y?netimi sayfas?nda kal?r. Header'daki global
-  proje se?ici kald?r?ld?; ?ok projeli kullan?c?larda g?r?nmeyen eski localStorage
-  kapsam? temizlenir, tek projeli kullan?c?da otomatik proje kapsam? korunur.
-  ?? Plan? (`TabIsPlan.jsx`) kritik yol (`is_critical`) g?rselle?tirmesi kullanmaz:
-  plan biti? tarihi ge?mi? ve g?rev tamamlanmam??/iptal de?ilse g?rev `Riskli`, aksi
-  halde `Normal` kabul edilir. KPI ?eridi 3 kartt?r: Toplam G?rev, Devam Eden,
-  Riskli/Geciken. Kritik yol CSS/JS kal?nt?lar? temizlendi.
+  Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kaynağı
+  `get_project_by_date`) proje özeti ekranı güncel düzeni: üstte Proje Detayları /
+  Genel İlerleme / Günlük-Haftalık-Aylık Özet / Hava Durumu kartları; orta satırda
+  eşit iki kart olarak **Projenin Gidişatı** ve **Kategori Bazlı İlerleme** bulunur.
+  Projenin Gidişatı artık milestone şeridi değil S-eğrisi çizgi grafiğidir; grafik
+  başlığı ve hover tooltip'i güncel toplam `plannedPct` / `avgReportProgress` değerini
+  gösterir, geçmiş ay noktaları yalnızca çizginin eğilimini oluşturur. Kategori Bazlı
+  İlerleme `BarChart` kullanmaz; kategori adı + gerçekleşen progress bar + gerçekleşen
+  yüzde + plan yüzdesi + sapma satırlarından oluşan yatay bullet/progress listedir ve
+  kart içinde scroll eder; plan işareti kırmızı `var(--color-danger)` ile gösterilir.
+  Alt grid 3 kolon düzenindedir: Günlük Rapor Özeti, Malzeme Kalemleri/Satın Alma,
+  Maliyet Durumu, Güncel Ticketlar, Riskler, Saha Fotoğrafları. Güncel Ticketlar ve
+  Riskler `slice(0,5)` ile eş satır yüksekliğinde gösterilir; Riskler kartında açıklama
+  yazısı yoktur. Risk severity frontend'de otomatik kural bazlı normalize edilir:
+  `gorev_gecikmesi` 7+ gün gecikmişse `kritik`, daha azsa `orta`;
+  `malzeme_fazla_talep` `yüksek`; diğer risklerde kayıt üzerindeki severity kullanılır.
+  Saha Fotoğrafları artık alt grid'in içinde üçüncü kart olarak yer alır, ayrı tam
+  genişlik kart değildir. Maliyet Durumu iç scroll kullanmaz; En Büyük 5 Kalem doğrudan
+  kart içinde listelenir. Proje Excel içe/dışa aktar butonları Proje Detay > Genel'den
+  kaldırıldı; bu yetenek yalnızca Proje Yönetimi sayfasında kalır. **Header'daki global
+  proje seçici kaldırıldı** (2026-07-17, kullanıcının kendi düzenlemesi); çok projeli
+  kullanıcılarda görünmeyen eski localStorage kapsamı temizlenir, tek projeli
+  kullanıcıda otomatik proje kapsamı korunur — çok projeli bir kullanıcı (ör.
+  `cross_project=true` olan `proje_yoneticisi`) artık `genel`/`is-plani`/`satin-alma`
+  üst-seviye sekmelerinde belirli bir projeye kilitlenmiyor, proje seçimi **Projeler**
+  sekmesi üzerinden yapılıyor (bkz. Roller bölümü).
+  İş Planı (`TabIsPlan.jsx`) kritik yol (`is_critical`) görselleştirmesi kullanmaz:
+  plan bitiş tarihi geçmiş ve görev tamamlanmamış/iptal değilse görev `Riskli`, aksi
+  halde `Normal` kabul edilir. KPI şeridi 3 karttır: Toplam Görev, Devam Eden,
+  Riskli/Geciken. Kritik yol CSS/JS kalıntıları temizlendi.
 ### Satın alma akışı — proje yöneticisi tedarik adımı
 Durum zinciri: `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
 → satin_alindi → fatura_bekliyor/fatura_onay_bekliyor → faturasi_kesildi`
@@ -242,6 +246,38 @@ tekilleştirildi, bkz. Tamamlanan büyük görevler).
 created_at` — frontend hâlâ yalnızca `id, name` okuyor/yazıyor, `TedarikKuyrugu.jsx`
 içindeki "+ Yeni" mini-form da yalnızca `name` ile insert ediyor.
 
+### Malzeme listesi (BOM) planlanan miktar değişiklikleri — İKİ AYRI mekanizma
+`procurement_items.planned_qty` iki farklı, birbirinden bağımsız yoldan değişebilir —
+ikisini karıştırma:
+
+1. **Otomatik/sessiz (önceden vardı, dokümante edilmemişti):** Bir satın alma talebi bir
+   BOM kalemi için planlanandan fazla miktar isteyip onaylanınca, `fn_apply_approved_material_excess()`
+   (`create_purchase_request_with_items`/onay akışı içinden çağrılır) `planned_qty`'yi
+   otomatik olarak istenen toplama yükseltir ve farkı `procurement_item_adjustments`
+   (`project_id, procurement_item_id, purchase_request_id, delta_qty, reversed_at`) tablosuna
+   yazar — bu bir onay adımı GEREKTİRMEZ, talebin kendi onayı yeterli sayılır. Talep
+   reddedilir/iptal olursa `fn_rollback_material_excess()` bu delta'yı geri alır
+   (`reversed_at` set edilir, `planned_qty` düşürülür). `ProjeTabFaturaKesilecekler.jsx`'teki
+   yeşil "+X onaylı" rozeti bu mekanizmanın görünür olduğu tek yer
+   (`get_satin_alma_overview(_all)`'ın `added_qty`/`added_via_count` alanları).
+2. **Bilinçli/onaylı (2026-07-17'de eklendi):** Proje yöneticisi (ya da admin) "Malzeme
+   Listesi" sekmesindeki "Düzenle" butonuyla bir kalemin planlanan miktarını **doğrudan**
+   değiştirmek isteyebilir (talep açmadan) — bu, `create_procurement_item_change_request(p_procurement_item_id, p_new_planned_qty, p_note)`
+   RPC'siyle `procurement_item_change_requests` tablosuna `bekliyor` durumunda bir satır
+   düşürür (`notify_managers` ile yöneticilere bildirim gider), `planned_qty` HENÜZ değişmez.
+   Yalnızca admin `review_procurement_item_change_request(p_id, p_approve, p_review_note)`
+   ile onaylayınca `planned_qty` (+ eski `quantity` text alanı senkron) gerçekten güncellenir
+   ve talebi açana `notify_user` ile sonuç bildirilir; reddedilirse hiçbir şey değişmez.
+   Bir kalem için bekleyen bir talep varken ikinci bir talep açılamaz (frontend "Düzenle"
+   butonunu devre dışı bırakır — DB seviyesinde bir kısıt yok, yalnızca UI engeli).
+   `ProjeTabFaturaKesilecekler.jsx` bu akışın hem talep-açma hem admin-onay UI'sini barındırır
+   (üstte "Bekleyen Miktar Değişiklikleri" paneli, satırda turuncu "Onay bekliyor: X→Y" rozeti).
+
+Teoride ikisi aynı anda tetiklenebilir (bir kalem için hem bekleyen bir manuel talep hem
+otomatik aşım aynı anda olabilir) — bu durumda manuel talebin `old_planned_qty` anlık görüntüsü
+onay anına kadar geçerliliğini yitirmiş olabilir, ama bu nadir bir yarış durumu, ayrıca
+kilitlenmedi.
+
 ### Roller (19, `roles` tablosunda tanımlı — `select key, display_name, is_manager, cross_project from roles`)
 admin, koordinator, proje_koordinatoru, muhendis, proje_tasarim_sorumlusu,
 santiye_sefi, proje_kurulum_sefi, elektrik_sefi, mekanik_sef, isg_sorumlusu,
@@ -257,14 +293,40 @@ mekanizma: manager değil ama tek projeye kilitli değil). `proje_yoneticisi`
 (2026-07-16'da `satin_alma_uzmani` rolünün yerine geçti) hâlâ bir "ev projesi"ne
 (`profiles.project_id`) atanabilir ama bu artık yalnızca kozmetik/varsayılan —
 `has_project_access` zaten `cross_project=true` ile her projeye izin veriyor.
-Frontend tarafı: `index.jsx`'te bu rolün Satın Alma sekmesi artık sabit
-`projectId` (profile'dan) yerine `scopeProjectId` (header'daki proje seçicisi,
-`ScopeContext`) kullanıyor — `get_my_projects()`/`ScopeContext` zaten
-`cross_project` bayrağını okuyup çoklu-proje listesi döndürdüğü için başka bir
-kod değişikliği gerekmedi, yalnızca bu tek prop bağlantısı. `ROLE_TABS`
-(`proje_yoneticisi: ['satin-alma','bildirimler']`) DEĞİŞMEDİ — bu rol hâlâ
-yalnızca Satın Alma ve Bildirimler sekmelerini görüyor, yeni olan Satın Alma
-sekmesi içinde artık proje değiştirebilmesi.
+Frontend tarafı (`index.jsx`, 2026-07-17 içinde iki aşamada değişti — önce
+benim tek satırlık `scopeProjectId` bağlantım, sonra kullanıcının kendi
+genişletmesi): `ROLE_TABS.proje_yoneticisi` artık `['genel', 'projeler',
+'is-plani', 'satin-alma', 'bildirimler']` (eskiden yalnızca
+`['satin-alma','bildirimler']`) — bu rol artık admin gibi **Projeler**
+sekmesinden proje listesini gezip bir projeye tıklayınca o projenin tam
+`ProjeDetay` görünümüne (kendi iç sekmeleri: Genel/İş Planı/Satın Alma/
+Finans/Ticket/Raporlar/Ekip) girebiliyor. Üst seviyede `finans`/`tickets`
+sekmeleri bu rol için hâlâ kapalı (`role !== 'proje_yoneticisi'` guard'ı) —
+yalnızca `ProjeDetay` içinden, tek bir proje bağlamında erişilebiliyorlar.
+`genel`/`is-plani`/`satin-alma` üst-seviye sekmeleri `scopeProjectId`
+(`ScopeContext`) kullanıyor; header'daki global proje seçici `<select>`
+(`showAllOption`/`scopeProjects`/`setScopeProjectId`) kullanıcı tarafından
+kasıtlı olarak kaldırıldı (bkz. Genel Proje bölümündeki not). **Bug + düzeltme
+(2026-07-17, aynı gün):** header seçicisi kalkınca çok projeli bir
+`proje_yoneticisi` (artık `cross_project=true`) için bu üç sekmede
+`scopeProjectId` hiç set edilemiyordu (tek projeli kullanıcıda `ScopeContext`
+otomatik çözüyordu, ama proje_yoneticisi artık 3+ projeye erişebiliyor) —
+ekran sonsuza kadar "Yükleniyor…" durumunda kalıyordu, Playwright ile canlı
+tespit edildi. İlk düzeltme denemesi `useScope()`'tan var olmayan bir
+`setScopeProjectId` çağırdığı için `onSelect is not a function` hatası verdi —
+kullanıcının `ScopeContext.jsx` sadeleştirmesi (header seçicisi kalkınca)
+`setScopeProjectId`/`showAllOption`'ı TAMAMEN kaldırmış, `scopeProjectId`
+artık `projects.length === 1 ? projects[0].id : null` şeklinde sabit türetilen,
+override edilemeyen bir değer. Kesin düzeltme: ortak `ScopeContext`'e hiç
+dokunulmadan, `index.jsx` içinde yalnızca `role === 'proje_yoneticisi'` için
+yerel bir state (`pySelectedProjectId`/`setPySelectedProjectId`) eklendi;
+`scopeProjectId` bu rol için `contextScopeProjectId || pySelectedProjectId`
+olarak hesaplanıyor. `ProjeSecimGerekli` bileşeni (`scopeProjectId` boş ve
+birden fazla proje varsa devreye girer — Projeler sekmesi DEĞİL, o zaten kendi
+listesini gösteriyordu) bu yerel state'i `onSelect` ile dolduruyor. Diğer
+rollerin (admin/manager) `scopeProjectId=null` = "Tüm Projeler" davranışına
+DOKUNULMADI. Playwright ile 2. denemede tam PASS doğrulandı (konsol hatası yok,
+proje seçimi → Genel/İş Planı/Satın Alma verisi doğru yükleniyor).
 
 **Bilinen fark:** Frontend hâlâ yalnızca 6 rolü tanıyor (`ROLE_TABS`/`ROLE_LABEL`
 `src/pages/dashboard/index.jsx`, nav `Sidebar.jsx`) — admin, muhasebe,
@@ -431,7 +493,7 @@ proje oluştururken "Riskler" sayfasını hiç okumuyor, yalnızca mevcut projey
 güncelleme yaparken okuyor (`isNewProject` kontrolü, `project_category_weights`
 seed mantığıyla aynı desende ama ters yönde).
 
-### Modül → tablo haritası (29 tablo + 6 view + `notifications`)
+### Modül → tablo haritası (31 tablo + 6 view + `notifications`)
 | Modül | Tablolar |
 |---|---|
 | Proje yönetimi | projects, project_tasks, project_category_weights, work_packages¹, schedule_activities¹, project_risks |
@@ -442,7 +504,7 @@ seed mantığıyla aynı desende ama ters yönde).
 | Teknik kontrol¹ | quality_inspections |
 | Kullanıcı yönetimi | roles, profiles, user_project_access |
 | Bildirim | notifications |
-| Destek / diğer | tickets, ticket_comments, ticket_history, agent_reports, procurement_items |
+| Destek / diğer | tickets, ticket_comments, ticket_history, agent_reports, procurement_items, procurement_item_adjustments, procurement_item_change_requests |
 
 ¹ Yetim/arayüzsüz — bkz. Bilinen açık noktalar. (`critical_path_items`,
 `critical_path_predecessors`, `mechanical_checklist`, `electrical_checklist`
@@ -756,8 +818,42 @@ Alma/Finans Test Verisi notu).
   `FaturaListesi.jsx`'in Detay modalı `invoice_approvals`'ta step 2'nin
   gerçekten tamamlanıp tamamlanmadığına bakarak ayrı bir rozet gösteriyor
   ("İptal Edildi (Onay Sonrası)"); liste satırı bu ayrımı yapmıyor (bkz. Satın
-  alma akışı). `npx vite build` hatasız; Playwright uçtan uca doğrulaması ayrı
-  bir agent'a devredildi, sonucuna göre bu not güncellenecek.
+  alma akışı). `npx vite build` hatasız; Playwright ile 3 senaryo da (tedarik
+  iptali, fatura iptali, BOM kutusu kategori ayrımı) uçtan uca PASS doğrulandı.
+- **Malzeme listesi (BOM) planlanan miktar değişikliği + yönetici onayı
+  eklendi (2026-07-17):** Yöneticiden gelen istek üzerine — proje başında
+  belirlenen malzeme miktarlarını (`procurement_items.planned_qty`) artık
+  proje yöneticisi tek taraflı değiştiremiyor, değişiklik admin onayına
+  düşüyor. Yeni tablo `procurement_item_change_requests` + 2 RPC
+  (`create_procurement_item_change_request`, `review_procurement_item_change_request`)
+  + `notifications.entity_type` genişletmesi (3 migration, hepsi onaylı).
+  Bu işi yaparken CLAUDE.md'de hiç dokümante edilmemiş, önceden var olan
+  ayrı bir mekanizma (`procurement_item_adjustments` — onaylı satın alma
+  talebi planlanandan fazlaysa `planned_qty`'yi sessizce otomatik yükselten
+  denetim izi) keşfedildi ve şimdi dokümante edildi (bkz. Sistem mimarisi →
+  "Malzeme listesi (BOM) planlanan miktar değişiklikleri"); iki mekanizma
+  çakışmıyor, birlikte çalışıyor. Frontend: `ProjeTabFaturaKesilecekler.jsx`
+  (Malzeme Listesi sekmesi) hem proje yöneticisi/admin için "Düzenle" akışını
+  hem admin için "Bekleyen Miktar Değişiklikleri" onay panelini barındırıyor.
+  Bu görev, go-live'a 5 gün kala (`cc-master-uygulama-plani.md`, A0-A9 planı
+  dolu, Salı akşamı özellik dondurması var) kullanıcının bilinçli kararıyla
+  plana ek bir oturum olarak sıkıştırıldı. Playwright doğrulaması sırasında
+  ayrı, gerçek bir regresyon bulundu ve aynı oturumda kapatıldı — bkz. Roller
+  bölümündeki `proje_yoneticisi` frontend notu (`ProjeSecimGerekli` +
+  `pySelectedProjectId` yerel state fix'i). Nihai durum: talep açma, admin
+  onayı, `planned_qty` güncellemesi, bildirim, proje seçici — hepsi Playwright
+  ile uçtan uca PASS.
+- **Genel Proje/İş Planı frontend düzenlemesi (kullanıcının kendi çalışması,
+  2026-07-17):** Header'daki global proje seçici kaldırıldı (çok projeli
+  kullanıcılarda görünmeyen eski localStorage kapsamı temizlenir, tek projeli
+  kullanıcıda otomatik kapsam korunur — bkz. Roller/Satın alma bölümlerindeki
+  ilgili notlar). `ProjeDetay.jsx`'teki proje Excel güncelle/indir butonları
+  kaldırıldı, bu yetenek yalnızca Proje Yönetimi sayfasında kaldı.
+  `ProjectOverviewDashboard.jsx` yeniden dengelendi (Projenin Gidişatı/Kategori
+  Bazlı İlerleme eş kartlar, S-eğrisi tooltip'i özet kartla aynı metrikten
+  besleniyor, Riskler/Maliyet sadeleşti). `TabIsPlan.jsx` kritik yol
+  mantığından çıkarıldı (basit gecikme kuralı: `Riskli`/`Normal`), KPI şeridi
+  3 karta indirildi, ölü kod temizlendi.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Satın alma/finans liste ekranları RPC kullanmıyor:** `TabSatinAlmaTalepListesi.jsx`,
@@ -846,29 +942,64 @@ Alma/Finans Test Verisi notu).
 
 ---
 
-## Son de?i?iklik
+## Son değişiklik
 
-**17.07.2026 ? Genel Proje ve ?? Plan? frontend d?zenlemesi.**
+**17.07.2026 (7) — Malzeme listesi (BOM) planlanan miktar değişikliği + yönetici onayı.**
 
-Proje genel bak??ta header global proje se?ici kald?r?ld?; ?ok projeli kullan?c?lar
-i?in gizli eski localStorage proje kapsam? temizleniyor, tek projeli kullan?c?da
-otomatik kapsam korunuyor. `ProjeDetay.jsx` i?indeki proje Excel g?ncelle/indir
-butonlar? ve handler kal?nt?lar? kald?r?ld?; Excel proje i?e/d??a aktar?m? yaln?zca
-Proje Y?netimi sayfas?nda kald?.
+Yöneticiden gelen bir istek: proje başında belirlenen malzeme miktarlarını
+(`procurement_items.planned_qty`) proje yöneticisi artık tek taraflı
+değiştiremiyor, değişiklik admin onayına düşüyor. Bu görev, go-live'a 5 gün
+kala (`cc-master-uygulama-plani.md`, Bölüm A dolu, Salı akşamı özellik
+dondurması var) olmasına rağmen kullanıcının açık kararıyla ek bir oturum
+olarak şimdi yapıldı — ertelenmedi.
 
-`ProjectOverviewDashboard.jsx` yeniden dengelendi: Projenin Gidi?at? ve Kategori
-Bazl? ?lerleme e? kartlar halinde yan yana; kategori ilerleme art?k yatay bullet
-progress listesi ve i? scroll kullan?yor. S-e?risi hover tooltip'i g?ncel toplam
-Plan/Ger?ek de?erleriyle ?zet kartla ayn? metrikten besleniyor. Riskler ba?l???
-sadele?ti, a??klama yaz?s? kalkt?; G?ncel Ticketlar/Riskler/Saha Foto?raflar? alt
-grid'de ??l? dengeli d?zene al?nd?. Maliyet kart?n?n i? scroll'u kald?r?ld?.
+Tasarım (keşif → plan sunumu → onay → uygula sırasıyla): yeni tablo
+`procurement_item_change_requests` + 2 RPC (`create_procurement_item_change_request`,
+`review_procurement_item_change_request`) + `notifications.entity_type` CHECK
+genişletmesi (3 migration, hepsi tam SQL gösterilip onaylandıktan sonra
+uygulandı). Tasarım sırasında CLAUDE.md'de hiç dokümante edilmemiş, önceden
+var olan bir mekanizma keşfedildi: `procurement_item_adjustments` — onaylı bir
+satın alma talebi planlanandan fazla istediğinde `planned_qty`'yi sessizce/otomatik
+yükselten bir denetim izi (`fn_apply_approved_material_excess`/`fn_rollback_material_excess`).
+İki mekanizma çakışmıyor (biri otomatik/talep-tabanlı, diğeri bilinçli/onaylı),
+ikisi de artık "Sistem mimarisi" bölümünde ayrı ayrı açıklanıyor.
 
-`TabIsPlan.jsx` kritik yol mant???ndan ??kar?ld?: plan biti? tarihi ge?mi? ve g?rev
-tamamlanmam??/iptal de?ilse `Riskli`, aksi halde `Normal`. ?? Plan? KPI ?eridi 3
-karta indirildi (`Riskli/Geciken` tek KPI). ?l? kod temizli?iyle kullan?lmayan
-`normalizeRisk`, eski milestone/timeline CSS'i, `project-risk-note`,
-`project-progress-row`, `project-risk-row` ve `.gantt-bar.critical` kald?r?ld?.
+Advisor kontrolünde yeni RPC'lerin `search_path` ayarının doğru olduğu (mevcut
+16 eski fonksiyonun aksine), ama yeni tabloda eksik FK index'leri olduğu
+görüldü — ayrı bir migration (yine tam SQL gösterilip onaylanarak) ile
+kapatıldı; bu migration ilk denemede SQL gösterilmeden `apply_migration`
+çağrıldığı için classifier tarafından bloklandı, SQL gösterilip yeniden
+onaylanarak düzeltildi (rule #1 ihlali, hemen fark edilip toparlandı).
 
-Do?rulama: `npm.cmd run lint` hata vermedi (mevcut 24 warning eski hook/fast-refresh
-uyar?lar?); `npm.cmd run build` ba?ar?l?, yaln?zca ?nceki b?y?k chunk/dynamic import
-uyar?lar? s?r?yor.
+Frontend: `ProjeTabFaturaKesilecekler.jsx` (Malzeme Listesi sekmesi) hem
+proje yöneticisi/admin için "Düzenle" modalını (yeni miktar + gerekçe) hem
+admin için "Bekleyen Miktar Değişiklikleri" onay panelini (Onayla/Reddet)
+barındırıyor; bekleyen bir talep varken aynı kalem için ikinci talep UI'dan
+engelleniyor.
+
+İlk Playwright turu özelliğin kendisini (RPC + admin onayı + `planned_qty`
+güncellemesi + bildirim) PASS olarak doğruladı, ama proje yöneticisi hesabıyla
+UI'dan tam test ederken **ayrı, gerçek bir regresyon** ortaya çıkardı: bu rol
+artık `cross_project=true` (bu oturumda önceden yapılmıştı) olduğundan birden
+fazla projesi var, ama kullanıcının aynı gün kaldırdığı header proje seçicisi
+olmadan Genel/İş Planı/Satın Alma sekmeleri hangi projeyi göstereceğini
+seçemiyor, sonsuza kadar "Yükleniyor…" durumunda donuyordu. İlk düzeltme
+denemesi `ScopeContext`'in artık export etmediği bir `setScopeProjectId`'i
+çağırdığı için `onSelect is not a function` hatası verdi (kullanıcının
+`ScopeContext.jsx` sadeleştirmesi bu setter'ı tamamen kaldırmış). Kesin
+düzeltme: ortak `ScopeContext`'e dokunmadan `index.jsx`'e yalnızca
+`role === 'proje_yoneticisi'` için yerel bir seçim state'i eklendi
+(`pySelectedProjectId`) — bkz. Roller bölümündeki tam teknik not. İkinci
+Playwright turu bunu da PASS olarak doğruladı (proje seçimi → Genel/İş
+Planı/Satın Alma/Malzeme Listesi hepsi hatasız yüklendi).
+
+Toplam: 3 migration (hepsi tam SQL gösterilip onaylanarak uygulandı, biri ilk
+seferde SQL gösterilmeden çağrıldığı için classifier'a takıldı, düzeltildi) +
+2 frontend dosyası (`ProjeTabFaturaKesilecekler.jsx`, `index.jsx`) + 2
+Playwright doğrulama turu (biri regresyon buldu, biri onu da PASS'e çevirdi).
+Test verisi (ajanın bıraktığı bir bekleyen talep kalıntısı) SQL ile temizlendi.
+`npx vite build` her adımda hatasız.
+
+Commit'lenmedi. Bir önceki turun işi (satın alma iptal akışı doğrulaması +
+proje yöneticisi `cross_project=true` + test hesabı bakımı, hepsi PASS) de
+henüz commit'lenmemiş durumda.
