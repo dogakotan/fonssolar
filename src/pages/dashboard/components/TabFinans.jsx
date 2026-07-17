@@ -4,7 +4,6 @@ import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../../../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 import { curvePointLabel, buildDagilimItems, formatRecentActivity } from '../../../utils/finans'
 import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
@@ -37,7 +36,7 @@ export default function TabFinans() {
     'get_finans_overview_all',
     { p_as_of_date: new Date().toISOString().split('T')[0] }
   )
-  const realtime = useRealtimeRefresh(['invoices'], refetch)
+  useRealtimeRefresh(['invoices'], refetch)
 
   useEffect(() => {
     let alive = true
@@ -69,9 +68,6 @@ export default function TabFinans() {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-      </div>
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid #E5E7EB' }}>
         {TABS.map(t => (
           <button

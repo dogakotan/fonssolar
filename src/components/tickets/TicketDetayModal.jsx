@@ -1,16 +1,11 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { SEVERITY_META as SEVERITY } from '../../utils/ticketSeverity'
 
 const fmtDate     = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
 const fmtDateTime = (d) => d ? new Date(d).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 
-const SEVERITY = {
-  'düşük':  { bg: '#F3F4F6', color: '#374151', label: 'Düşük' },
-  'orta':   { bg: '#FEF3C7', color: '#92400E', label: 'Orta' },
-  'yüksek': { bg: '#FEE2E2', color: '#991B1B', label: 'Yüksek' },
-  'kritik': { bg: '#7F1D1D', color: '#FEE2E2', label: 'Kritik' },
-}
 const STATUS = {
   'gönderildi':   { bg: '#DBEAFE', color: '#1D4ED8', label: 'Gönderildi' },
   'açık':         { bg: '#DBEAFE', color: '#1D4ED8', label: 'Gönderildi' },

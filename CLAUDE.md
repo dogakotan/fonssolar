@@ -118,9 +118,11 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   o ticket'ın detay modalı doğrudan açılır (liste filtrelenmez, doğrudan açılır
   — daha güvenilir). `daily_report_issues.description` alanı ayrıca
   `category`/`closed_at`/`notes` alanlarını `__ISSUE_META__{json}` öneki ile
-  paketler (bu tabloda o kolonlar yok, önceden var olan bir çözüm) — bu yüzden
-  otomatik açılan ticket'ın `description`'ı, kullanıcı bu ek alanlardan birini
-  doldurduysa ham JSON içerir; bilinen bir kozmetik yan etki, ayrı bir görev.
+  paketler (bu tabloda o kolonlar yok, önceden var olan bir çözüm) — bu paket
+  `daily_report_issues` tablosunda olduğu gibi kalır (round-trip için gerekli),
+  ama `fn_create_ticket_from_daily_report_issue()` artık ticket'a kopyalarken
+  öneki soyup yalnızca temiz `description` alanını yazıyor (2026-07-17'de
+  düzeltildi — önceden ham JSON ticket'a sızıyordu, bkz. Trigger zincirleri).
 - `SantiyeSefiDashboard.jsx`'teki "Proje İlerlemesi" kartı: tek büyük yüzde +
   tek ilerleme çubuğu (planlanan ilerleme çubuk üstünde dikey işaret çizgisi),
   "Plana göre N puan önde/geride" cümlesi, altta kalem başına yatay bar-listesi.
@@ -136,18 +138,41 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
 - `ProjeDetay.jsx`'in sekmeleri: Genel Proje, İş Planı, Satın Alma, Finans,
   Ticket, Raporlar, Ekip (ayrı bir "Proje Paneli" sekmesi YOK — 2026-07-16'da
   kısaca eklenip aynı oturumda kullanıcı kararıyla geri alındı, bkz. Tamamlanan
-  büyük görevler). Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kaynağı
-  `get_project_by_date`) proje özeti ekranı: Proje Detayları/Genel İlerleme/
-  Özet/Hava Durumu KPI kartları, Projenin Gidişatı (milestone şeridi), S-Eğrisi
-  (planlanan/gerçekleşen aylık çizgi grafiği), Kategori Bazlı İlerleme, İmalat
-  İlerlemesi, Malzeme Kalemleri/Satın Alma, Maliyet Durumu (+ En Büyük 5 Kalem),
-  Güncel Ticketlar, Saha Fotoğrafları, **Açık Riskler (Detay)** — `project_risks`
-  otomatik risk motorunun `source==='otomatik'` rozetiyle göründüğü uygulamadaki
-  **tek** ekran. Kritik yol timeline'ı YOK (kullanıcı kararıyla kapsam dışı
-  bırakıldı). İlgili kartlar (S-Eğrisi/Kategori Bazlı İlerleme → İş Planı,
-  İmalat İlerlemesi → İş Planı, Maliyet Durumu → Finans, Malzeme Kalemleri →
-  Satın Alma, her risk satırı → `rule_code`'a göre İş Planı/Satın Alma) tıklanınca
-  ilgili sekmeye (`onGoTab`) geçiyor.
+  büyük görevler). `ProjeDetay.jsx` kendi seviyesinde artık bir
+  `DataStatusBanner`/`RealtimeStatusIndicator` RENDER ETMİYOR (2026-07-17'de
+  kaldırıldı — her sekme zaten kendi RPC'sine bağlı kendi banner/indicator'ını
+  gösteriyordu, üstte ikinci bir tane sadece tekrar/kayma yaratıyordu; hook
+  çağrıları — `refetch` tetiklemesi için — kaldı, yalnızca render silindi).
+  Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kaynağı
+  `get_project_by_date`) proje özeti ekranı, 2026-07-17'de yeniden düzenlendi:
+  Proje Detayları/Genel İlerleme/Özet/Hava Durumu KPI kartları →
+  **"Projenin Gidişatı"** (eskiden ayrı bir milestone şeridi kartıydı, o kart
+  TAMAMEN kaldırıldı — isim S-Eğrisi kartına taşındı) + **Kategori Bazlı
+  İlerleme** yan yana tek satırda (`project-mid-grid`, kategori sayısı ≤8 ise
+  `recharts` `BarChart`, >8 ise eski dikey liste + iç scroll'a düşer) → alt
+  grid'de Günlük Rapor Özeti, Malzeme Kalemleri/Satın Alma (durum rozeti artık
+  `src/utils/satinAlma.js`'teki kanonik `statusLabel()`/`normalizeStatus()`'a
+  delege ediyor — önceden ham `purchase_requests.status` enum'unu birebir
+  gösteriyordu), Maliyet Durumu (sadeleştirildi: tek "Harcanan/Hedef" özet
+  satırı + rozet + progress bar + bütçe aşımı varsa tek satır uyarı + En Büyük
+  5 Kalem — eskiden 4 ayrı `DetailRow` + her zaman görünen "Öngörülen Toplam
+  Maliyet" satırı vardı), Güncel Ticketlar (sabit `maxHeight` scroll kutusu
+  kaldırıldı, `slice(0,5)` ile sınırlı — kutu az kayıtla altta boşluk
+  bırakıyordu), **Açık Riskler (Detay)** (artık bottom-grid'in bir parçası,
+  kompakt kart; her satırda kategori rozeti — `İş Kalemi`/`Satın Alma`/`Diğer`
+  — ve kural etiketi de var). "İmalat İlerlemesi" kartı 2026-07-17'de
+  kullanıcı tarafından kaldırıldı (kaynak `progress_items` verisi hâlâ
+  `get_project_by_date`'ten geliyor ve Günlük Rapor Özeti'ndeki "İlerleme
+  Yapılan Kalem" sayacı onu kullanmaya devam ediyor, yalnızca bu kart silindi).
+  **Saha Fotoğrafları** artık bottom-grid'in DIŞINDA, tam genişlikte ayrı bir
+  kart (eskiden Riskler'in yerindeydi — ikisinin yeri değiştirildi, fotoğraflar
+  daha büyük/net görünsün diye), thumbnail grid `minmax(150px,1fr)` + 12 adete
+  kadar gösteriyor (eskiden `minmax(72px,1fr)` + 8 idi, bottom-grid'in küçük
+  hücresi içindeydi). Kritik yol timeline'ı YOK (kullanıcı kararıyla kapsam
+  dışı bırakıldı). İlgili kartlar (S-Eğrisi/Kategori Bazlı İlerleme → İş Planı,
+  Maliyet Durumu → Finans, Malzeme Kalemleri → Satın Alma, her risk satırı →
+  `rule_code`'a göre İş Planı/Satın Alma) tıklanınca ilgili sekmeye (`onGoTab`)
+  geçiyor.
 
 ### Satın alma akışı — proje yöneticisi tedarik adımı
 Durum zinciri: `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
@@ -218,8 +243,19 @@ bkz. Bilinen açık noktalar), `get_daily_report_detail(p_report_id)`,
 `get_daily_reports_list(p_project_id, p_start_date, p_end_date, p_page, p_page_size)`,
 `get_proje_detay(p_project_id)`, `get_santiye_dashboard(p_project_id, p_today)`,
 `get_project_by_date(p_project_id, p_date)` (`ProjeDetay.jsx`'in "Genel Proje" sekmesinin —
-`ProjectOverviewDashboard.jsx` — tek veri kaynağı; `category_weights` ve `risks` node'ları
-`get_project_dashboard`'daki aynı alt sorgulardan, `budget_lines.name` alanı da 2026-07-16'da eklendi),
+`ProjectOverviewDashboard.jsx` — tek veri kaynağı; `budget_lines.name` alanı 2026-07-16'da
+eklendi. `overall_pct` ve `category_weights.avg_progress` 2026-07-17'de tarih-farkında
+hale getirildi — önceden `overall_pct` basit bir `AVG(project_tasks.progress_pct)` idi
+[tarihten bağımsız, her zaman "şimdi"yi gösteriyordu] ve `category_weights.avg_progress`
+da aynı şekilde canlı `progress_pct` okuyordu; ikisi de artık `fn_sync_project_progress()`
+ile BİREBİR aynı karar ağacını kullanıyor [kategori ağırlığı varsa ağırlıklı ortalama,
+yoksa süre-ağırlıklı fallback] ama `progress_pct` yerine `progress_daily`'i `p_date`'e
+kadar toplayarak yeniden hesaplıyor — tarih navigasyonunda geçmişe gidince "Genel
+İlerleme" ve "Kategori Bazlı İlerleme" artık gerçekten o güne göre değişiyor. `risks`
+node'u `category` alanını da döndürüyor (önceden dönmüyordu, kategori rozeti hep "Diğer"e
+düşüyordu) ve artık `source` filtresi YOK — hem manuel hem otomatik açık riskler dönüyor,
+"yalnızca otomatik göster" kararı frontend'de `ProjectOverviewDashboard.jsx`'in
+`source==='otomatik'` filtresiyle uygulanıyor),
 `get_satin_alma_overview(p_project_id)`, `get_satin_alma_overview_all()`,
 `get_finans_overview(p_project_id, p_as_of_date)`, `get_finans_overview_all(p_as_of_date)`,
 `get_delayed_tasks_scoped(p_project_id)`, `get_my_role()`, `get_my_projects()`.
@@ -276,8 +312,10 @@ pending sarı, okunmuş+pending normal, resolved yeşil.
 - `tickets` UPDATE → `fn_ticket_history()` → `ticket_history`'ye otomatik log.
 - `daily_report_issues` INSERT (yalnızca `ticket_id` henüz NULL olan gerçek yeni
   satırlarda) → `fn_create_ticket_from_daily_report_issue()`: `tickets`'a
-  `title=topic`, `description=description`, `severity=priority` (artık birebir
-  aynı 4 değer: düşük/orta/yüksek/kritik), `status` `resolution_status`'tan map
+  `title=topic`, `description` = `NEW.description`'daki `__ISSUE_META__{json}`
+  öneki varsa soyulup yalnızca temiz `description` alanı (2026-07-17'de
+  düzeltildi — önceden ham JSON ticket'a kopyalanıyordu), `severity=priority`
+  (artık birebir aynı 4 değer: düşük/orta/yüksek/kritik), `status` `resolution_status`'tan map
   (açık→gönderildi, devam ediyor→işlemde, çözüldü→kapatıldı), `created_by`=raporu
   giren, `assigned_to`=serbest metin isimden `profiles.full_name` eşleşmesi
   varsa — otomatik açılan ticket'ın id'si `NEW.ticket_id`'ye yazılır. Sonraki
@@ -570,22 +608,72 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
   sekmesine düşüyor, Satın Alma sekmesinde bu talep için artık "Fatura Oluştur"
   butonu görünüyor (önceden `onaylandi`'de de görünürdü, artık değil). Test
   verisi (geçici `purchase_request`/`suppliers` satırları) temizlendi.
+- **Genel Proje ekranı ikinci geçiş — kullanıcı geri bildirimlerinden 10 madde +
+  yol boyunca bulunan 5 gerçek bug:** `ProjeDetay.jsx` + her sekmenin kendi
+  `DataStatusBanner`/`RealtimeStatusIndicator`'ı render etmesi yüzünden Genel
+  Proje'ye girince "Canlı"/"Güncelleniyor" ikişer kez görünüyordu — üst
+  seviyedeki (`ProjeDetay.jsx`) kaldırıldı, sekmeye özel olan kaldı (kullanıcı
+  ayrıca kendi elle düzenlemesiyle `ProjectOverviewDashboard.jsx`'teki
+  indicator'ı da tamamen kaldırdı, bu ekranda artık hiç yok). "Projenin
+  Gidişatı" milestone şeridi kartı tamamen silindi, ismi S-Eğrisi kartına
+  taşındı; S-Eğrisi + Kategori Bazlı İlerleme yan yana (`project-mid-grid`,
+  kategori sayısı ≤8'se `recharts BarChart`, değilse eski liste+scroll).
+  Maliyet Durumu sadeleştirildi. Malzeme Kalemleri'nin durum rozeti ham enum
+  metni gösteriyordu (`fatura_onay_bekliyor`, `talep_olusturuldu` vb.) —
+  kaynağın `procurement_items` değil `purchase_requests` olduğu anlaşılınca
+  `src/utils/satinAlma.js`'teki kanonik `statusLabel()`/`normalizeStatus()`'a
+  bağlandı (Günlük Özet'teki "Bekleyen Satın Alma" sayacı da aynı yanlış
+  `status==='bekliyor'` tam-eşleşmesini kullanıyordu, aynı fonksiyonla
+  düzeltildi). Güncel Ticketlar'daki sabit-yükseklik scroll kutusu az kayıtla
+  altta boşluk bırakıyordu — `slice(0,5)`'e geçildi. Riskler kartında `source:
+  'manuel'` 34 adet YİNELENEN mock veri vardı (Excel-import test turlarından
+  kalma, `project_risks`'ten `DELETE ... WHERE source='manuel'` ile temizlendi
+  — hepsi test verisiydi, gerçek kullanıcı girişi yoktu); kart artık kompakt
+  bottom-grid hücresi, her satırda kategori + kural rozeti var. Saha
+  Fotoğrafları ile Riskler'in yeri değiştirildi (fotoğraflar artık tam
+  genişlik, büyük thumbnail). "İmalat İlerlemesi" kartı kullanıcı kararıyla
+  kaldırıldı (hesabı `project_tasks.target_qty`/`progress_daily`'den geliyordu,
+  proje-bağımsız genel bir kural vardı ama kullanıcı yine de kaldırmayı seçti).
+
+  **RPC düzeltmeleri (`get_project_by_date`, 2 migration, onaylı):** (1) `risks`
+  node'u `category` alanını hiç döndürmüyordu — kategori rozeti her zaman
+  "Diğer"e düşüyordu, eklendi; `source='otomatik'` filtresi de kaldırıldı
+  (kullanıcı: RPC tüm açık riskleri dönsün, "yalnızca otomatik" kararı frontend
+  filtresinde kalsın). (2) Daha ciddi bulgu: "Genel İlerleme" ring'i tarih
+  filtresine hiç tepki vermiyordu — `avgReportProgress` her zaman canlı
+  `projects.progress` kolonunu önceliklendiriyordu (tarih-farkında
+  `overall_pct`'i yalnızca o null ise kullanıyordu, ki hiçbir zaman null
+  değil). Kullanıcı iki düzeltme daha istedi: `category_weights.avg_progress`
+  da aynı canlı-değer sorununu taşıyordu (`AVG(project_tasks.progress_pct)`,
+  tarihten bağımsız) — hem o hem `overall_pct` artık `fn_sync_project_progress()`
+  ile BİREBİR aynı karar ağacını (kategori ağırlıklı/süre-ağırlıklı) kullanıyor,
+  ama `progress_pct` yerine `progress_daily`'i `p_date`'e kadar toplayarak.
+  Frontend'de `avgReportProgress`'in öncelik sırası da çevrildi (tarih-farkında
+  değer önce, canlı kolon yalnızca yedek). Playwright ile doğrulandı: bugün
+  %24, 2026-06-01'e (ilerleme girilmemiş bir tarih) gidince %0.
+
+  **Ayrı görev — otomatik ticket description sızıntısı da bu oturumda
+  kapatıldı:** `fn_create_ticket_from_daily_report_issue()` artık
+  `daily_report_issues.description`'daki `__ISSUE_META__{json}` önekini
+  soyup yalnızca temiz açıklamayı ticket'a yazıyor (`daily_report_issues`
+  tablosundaki encoding'in kendisi değişmedi, yalnızca ticket'a kopyalanan
+  değer). Gerçek satır INSERT edilip ticket'ın `description`'ının temiz
+  çıktığı doğrulandı, test verisi silindi.
+
+  Tüm değişiklikler Playwright ile (viewport büyütülüp tam sayfa ekran
+  görüntüsü alınarak) görsel doğrulandı, `npx vite build` her adımda hatasız.
+- **`tickets.severity` haritası tekilleştirildi:** yeni `src/utils/ticketSeverity.js`
+  — `SEVERITY_META` ({bg,color,label} sözlüğü), `SEVERITY_ORDER` (sıralama
+  için), `SEVERITY_OPTIONS` (select dropdown'ları için `{value,label}` dizisi).
+  `TicketListesi.jsx`/`TicketDetayModal.jsx` artık kendi kopyalarını tutmuyor,
+  `YeniTicketModal.jsx`'in Aciliyet select'i hardcoded `<option>`'lar yerine
+  `SEVERITY_OPTIONS.map(...)` kullanıyor. Yeni bir severity değeri eklenirse
+  yalnızca bu tek dosya güncellenir. (`DailyReportForm.jsx`'teki `PRIORITY_OPTIONS`
+  ve `DailyReportDetail.jsx`'teki `PRIORITY_COLORS` — `daily_report_issues.priority`
+  için, farklı bir alan/ekran — kasıtlı olarak bu tekilleştirmenin kapsamı
+  dışında bırakıldı, aynı 4 değeri kullanıyor ama ayrı bir görev.)
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
-- **Otomatik açılan ticket'ların `description`'ı bazen ham JSON içerebilir** —
-  `daily_report_issues.description` `category`/`closed_at`/`notes` alanlarını
-  `__ISSUE_META__{json}` öneki ile paketliyor (bu tabloda o alanlar için ayrı
-  kolon yok); `fn_create_ticket_from_daily_report_issue` bunu olduğu gibi
-  ticket'a kopyalıyor. Kullanıcı sorun formunda Kategori/Kapanış Tarihi/Not
-  doldurursa ticket'ın açıklaması okunaksız görünür. Düzeltme iki yoldan biri:
-  `daily_report_issues`'a yeni kolonlar eklemek (migration) ya da ticket'a
-  yalnızca temiz `description`'ı kopyalayıp meta alanları başka bir yerde
-  tutmak — kullanıcıyla ayrı görüşülmeli, bu turda kapsam dışı.
-- **`tickets.severity`/`TicketListesi.jsx`/`TicketDetayModal.jsx`/`YeniTicketModal.jsx`
-  severity haritaları tekrarlı** — üçü de aynı `{düşük,orta,yüksek,kritik}`
-  sözlüğünü ayrı ayrı tanımlıyor (ortak bir sabit/dosya yok). `kritik` 2026-07-16'da
-  üçüne de eklendi ama tekilleştirme yapılmadı — ileride yeni bir severity
-  değeri eklenirse üç dosyanın da güncellenmesi gerekir.
 - **Satın alma/finans liste ekranları RPC kullanmıyor:** `TabSatinAlmaTalepListesi.jsx`,
   `ProjeTabTalepListesi.jsx`, `FaturaListesi.jsx`, `OnayKuyrugu.jsx`,
   `ProjeTabFaturaListesi.jsx`, `ProjeTabOnayKuyrugu.jsx` kendi ham sorgularını
@@ -679,60 +767,34 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
 ---
 
 ## Son değişiklik
-**16.07.2026 (4) — `project_risks`'e Kategori kolonu; risk girişi proje oluşturmadan kaldırıldı.**
+**17.07.2026 (2) — `tickets.severity` haritası tekilleştirildi.**
 
-Kullanıcı otomatik risk motorunun koşullarını sorup "proje oluştururken risk
-eklemek mantıktan çıkıyor" dedi — netleştirme sonucu: risk girişi yalnızca
-proje DÜZENLEME akışında kalsın (proje yöneticisi sahada gördüğü bir sorunu
-loglar), oluşturmada tamamen kalksın; ayrıca riskleri İş Kalemi/Satın Alma/Diğer
-diye 3 kategoriye ayıralım. Kullanıcı bu planı "Cowork" adlı başka bir
-sistemin incelemesinden geçirip 3 düzeltmeyle geri getirdi: (1) `category`
-için `manuel` yerine `diger` kullan (source kolonuyla isim çakışması), (2)
-migration'dan önce project_risks'te bir RLS allow-list guard'ı olup olmadığını
-kontrol et, (3) Excel'de yeni kolon mevcut F/G formüllerini kaydırmaması için
-sona (J) eklenmeli. Nokta 2'yi kendim doğruladım (guard yok, sadece
-`user_has_project_access` kontrolü var — Cowork'ün varsayımının aksine ek bir
-migration adımı gerekmedi); nokta 1 ve 3'ü uyguladım.
+Backlog'ta duran bir kod-tekrarı maddesiydi: `TicketListesi.jsx`,
+`TicketDetayModal.jsx`, `YeniTicketModal.jsx` aynı `{düşük,orta,yüksek,kritik}`
+sözlüğünü (renk+label) üç ayrı yerde tanımlıyordu. Yeni `src/utils/ticketSeverity.js`
+eklendi: `SEVERITY_META` (renk/label sözlüğü), `SEVERITY_ORDER` (liste
+sıralaması için), `SEVERITY_OPTIONS` (dropdown'lar için `{value,label}` dizisi).
+`TicketListesi.jsx`/`TicketDetayModal.jsx` artık `SEVERITY_META`'yı `SEVERITY`
+adıyla import ediyor (yerel kopyaları silindi); `TicketListesi.jsx`'in severity
+filtre butonları da `SEVERITY_OPTIONS`'tan türetiliyor; `YeniTicketModal.jsx`'in
+Aciliyet select'indeki 4 hardcoded `<option>` `SEVERITY_OPTIONS.map(...)` oldu.
 
-**DB (2 migration, onaylı):** `project_risks.category` kolonu
-(`is_kalemi`/`satin_alma`/`diger`, backfill: 11 `gorev_gecikmesi`→`is_kalemi`,
-64 manuel→`diger`) + `fn_recompute_auto_risks()` artık otomatik risk
-oluştururken `category`'yi de dolduruyor.
+Kasıtlı olarak kapsam dışı bırakılan iki benzer yer: `DailyReportForm.jsx`'teki
+`PRIORITY_OPTIONS` ve `DailyReportDetail.jsx`'teki `PRIORITY_COLORS` —
+`daily_report_issues.priority` için, farklı bir alan/ekran, backlog maddesi
+özellikle `tickets.severity`'yi işaret ediyordu.
 
-**Sihirbaz:** `Adim4Riskler.jsx`'e Kategori dropdown'ı eklendi.
-`YeniProjeWizard.jsx`'ten Riskler adımı tamamen çıkarıldı (6→5 adım) —
-`WizardStepper.jsx` ve `Adim8Tamamlandi.jsx`'e bunun için `labels`/`steps`
-prop'u eklendi (varsayılan = eski 6 adımlık dizi, `ProjeEditWizard.jsx`
-değişmeden çalışmaya devam ediyor). Bu arada `Adim8Tamamlandi.jsx`'in
-hardcoded `STEPS` dizisinin yalnızca görüntüleme değil GERÇEK KAYIT
-mantığını da sürdüğü fark edildi — düzeltilmeseydi yeni 5-adımlı akışta
-Tedarik verisi `project_risks` tablosuna yazılacaktı ve Bütçe hiç
-kaydedilmeyecekti (gerçek bir bug, zamanında yakalandı).
+Doğrulama: `npx vite build` hatasız. Playwright ile santiye_sefi (İzmir) test
+hesabıyla: ticket listesindeki severity rozetleri (Kritik/Orta renkleri) hâlâ
+doğru; "Yeni Ticket" modalının Aciliyet select'i `['Düşük','Orta','Yüksek','Kritik']`
+sırasıyla doğru etiketlerle geliyor.
 
-**Excel + edge fonksiyonlar (prod deploy):** `template_builder.ts`'e Riskler
-sayfasına J (Kategori) kolonu + dropdown eklendi; `export-project-excel`
-(v8→v9) bunu yazıyor; `import-project-excel` (v7→v8) proje YENİ oluşturuluyorsa
-Riskler sayfasını hiç okumuyor, güncellemede okuyup `category`'yi
-`riskCategoryToCode()` ile eşliyor. Statik `public/excel/fons-solar-proje-sablonu.xlsx`
-dosyasına da aynı J kolonu eklendi — `xlsx` paketi (bu projenin gerçek
-bağımlılığı) açılır liste desteklemediği için `exceljs` geçici olarak
-(`--no-save`) kurulup iş bitince kaldırıldı, `package.json`/`package-lock.json`
-değişmedi.
+CLAUDE.md'de bu madde "Bilinen açık noktalar"dan çıkarıldı, "Tamamlanan büyük
+görevler"e eklendi.
 
-Doğrulama: `npx vite build` hatasız. Gerçek edge fonksiyon çağrısıyla uçtan
-uca doğrulama (geçici test projesi + gerçek admin oturumu, Excel dosyası
-`exceljs` ile bellekte oluşturulup `import-project-excel`'e POST edildi):
-yeni proje oluşturulurken Riskler sayfası atlandı (log doğrulandı) ama
-otomatik risk motoru YİNE DE çalıştı (test görevinin planlı bitişi geçmişti)
-ve doğru `category='is_kalemi'` ile risk oluşturdu — Migration 2'yi de bonus
-doğruladı; aynı proje güncellenirken Riskler satırı gerçekten aktarıldı,
-`category='is_kalemi'` doğru eşlendi. Playwright ile ayrıca: Yeni Proje
-sihirbazında (Manuel doldur) Riskler adımı yok, Proje Düzenle'de Kategori
-seçici var. Tüm test verisi/dosyaları temizlendi.
-
-Commit'lenmedi. Repo hâlâ origin/main'in ilerisinde; bu turun + bu oturumdaki
-önceki turların (Genel Proje redesign, günlük rapor↔ticket bağlantısı, satın
-alma proje yöneticisi tedarik katmanı, .md temizliği + Excel şablonu yeniden
-adlandırma/entegrasyonu — bkz. Tamamlanan büyük görevler) commit'lenmemiş
-çalışma-alanı değişiklikleri birikmiş durumda. Kullanıcı henüz elle test
-etmedi, hepsini birlikte kontrol edecek.
+Commit'lenmedi. Repo hâlâ origin/main'in ilerisinde — bu turun + bu oturumdaki
+önceki turların tamamı (proje şablonu v6/risk kategorisi, Genel Proje redesign
+[iki geçiş], günlük rapor↔ticket bağlantısı, satın alma proje yöneticisi
+tedarik katmanı, .md temizliği + Excel şablonu entegrasyonu, ticket description
+sızıntısı — bkz. Tamamlanan büyük görevler) commit'lenmemiş çalışma-alanı
+değişiklikleri birikmiş durumda. Kullanıcı henüz commit/push istemedi.

@@ -310,6 +310,9 @@
 .project-weather-lost { margin-top: auto; padding-top: .8rem; color: var(--color-muted); font-size: .82rem; }
 .project-weather-lost strong { color: var(--color-danger); }
 .project-weather-empty { padding: 2.2rem 0; color: var(--color-muted); font-size: .85rem; text-align: center; }
+.project-mid-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 1rem; align-items: stretch; min-width: 0; }
+.project-category-card { display: flex; flex-direction: column; }
+.project-photo-card { padding: 1.1rem 1.25rem; }
 .project-timeline-card { padding: 1rem 1.25rem 1.1rem; overflow: visible; }
 .project-timeline-scroll {
   overflow-x: auto;
@@ -447,6 +450,10 @@
   .project-top-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+@media (max-width: 1100px) {
+  .project-mid-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 900px) {
   .project-bottom-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -455,7 +462,7 @@
   .project-top-grid, .project-bottom-grid { grid-template-columns: 1fr; }
   .project-detail-columns { grid-template-columns: 1fr; gap: 0; }
   .project-detail-columns > div:first-child { padding-right: 0; border-right: 0; }
-  .project-overview-card, .project-mini-card, .project-timeline-card { padding: .95rem 1rem; }
+  .project-overview-card, .project-mini-card, .project-timeline-card, .project-photo-card { padding: .95rem 1rem; }
   .project-weather-main { align-items: flex-start; }
   .project-weather-tomorrow { grid-template-columns: 1fr; }
   .project-weather-tomorrow small { text-align: left; }

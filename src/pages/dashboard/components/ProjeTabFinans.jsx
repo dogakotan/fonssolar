@@ -4,7 +4,6 @@ import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 import { curvePointLabel, buildDagilimItems, formatRecentActivity } from '../../../utils/finans'
 import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
@@ -41,7 +40,7 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
     { enabled: !!projectId }
   )
   const authorized = overview?.authorized ?? true
-  const realtime = useRealtimeRefresh(
+  useRealtimeRefresh(
     ['invoices'],
     refetch,
     { enabled: !!projectId, filter: { column: 'project_id', value: projectId } }
@@ -82,9 +81,6 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-      </div>
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{

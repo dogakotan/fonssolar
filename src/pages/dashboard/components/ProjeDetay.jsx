@@ -7,8 +7,7 @@ import ProjeTabFinans from './ProjeTabFinans'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import { useDashboardData } from '../../../hooks/useDashboardData'
-import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
+import { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import TabIsPlan from './TabIsPlan'
 import ProjectOverviewDashboard from './ProjectOverviewDashboard'
@@ -1099,13 +1098,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     }
   }
 
-  const { data: detayData, loading: detayLoading, refreshing, error, refetch } = useDashboardData(
+  const { data: detayData, loading: detayLoading, refetch } = useDashboardData(
     'get_proje_detay',
     { p_project_id: projectId },
     { enabled: !!projectId }
   )
   const authorized = detayData?.authorized ?? true
-  const realtime = useRealtimeRefresh(
+  useRealtimeRefresh(
     ['project_tasks'],
     refetch,
     { enabled: !!projectId, filter: { column: 'project_id', value: projectId } }
@@ -1135,10 +1134,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
   return (
     <div>
-      <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-      </div>
       {/* Eylem çubuğu */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
         <button onClick={onBack} style={backBtn}>← Projelere Dön</button>

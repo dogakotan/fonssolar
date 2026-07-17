@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabase'
 import { useScope } from '../context/ScopeContext'
 import { useDashboardData } from '../hooks/useDashboardData'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../components/ui/RealtimeStatusIndicator'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import DailyReportDetail from './DailyReportDetail'
 import { exportToExcel, exportToPdf } from '../utils/exportUtils'
@@ -168,7 +167,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     { enabled: !!projectIdOverride || !scopeLoading }
   )
   const authorized = data?.authorized ?? true
-  const realtime = useRealtimeRefresh(
+  useRealtimeRefresh(
     ['daily_reports'],
     refetch,
     { filter: projectId ? { column: 'project_id', value: projectId } : undefined }
@@ -494,10 +493,6 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
   return (
     <div style={{ fontFamily: 'inherit' }}>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-      </div>
-
       {showHeader && (
         <div style={{
           background: '#fff', border: '1px solid #f1f5f9', borderRadius: 16,

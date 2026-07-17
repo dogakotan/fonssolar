@@ -2,7 +2,6 @@ import { supabase } from '../lib/supabase'
 import { useDashboardData } from '../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../components/ui/RealtimeStatusIndicator'
 
 const PRIORITY_COLORS = {
   kritik: { bg: '#FEE2E2', color: '#991B1B' },
@@ -42,7 +41,7 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
   const photos     = data?.photos     || []
   const issues     = data?.issues     || []
 
-  const realtime = useRealtimeRefresh(
+  useRealtimeRefresh(
     ['daily_reports', { table: 'progress_daily', filterColumn: null }],
     refetch,
     {
@@ -107,10 +106,6 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: -12 }}>
-                <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-              </div>
-
               {/* 1. Genel Bilgiler */}
               <section>
                 <p style={SEC_TITLE}>Genel Bilgiler</p>

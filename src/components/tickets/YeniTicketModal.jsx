@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
 
 const ROW = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -178,10 +179,9 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
             <div style={{ ...ROW, borderBottom: 'none', marginTop: 4 }}>
               <span style={ROW_LABEL}>Aciliyet</span>
               <select value={severity} onChange={e => setSeverity(e.target.value)} style={SELECT_STYLE}>
-                <option value="düşük">Düşük</option>
-                <option value="orta">Orta</option>
-                <option value="yüksek">Yüksek</option>
-                <option value="kritik">Kritik</option>
+                {SEVERITY_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
               </select>
             </div>
           </div>

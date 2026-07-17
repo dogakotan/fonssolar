@@ -6,7 +6,6 @@ import ProgBar from '../../../components/ui/ProgBar'
 import ExportButton from '../../../components/ui/ExportButton'
 import DateNavigator from '../../../components/ui/DateNavigator'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import { useWeather } from '../../../hooks/useWeather'
@@ -148,7 +147,7 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
   // Genel Bakış KPI özeti — kapsam seçicideki proje (veya Tüm Projeler) için canlı çekilir.
   const { data: summary, refreshing: summaryRefreshing, error: summaryError, refetch: refetchSummary } =
     useDashboardData('get_dashboard_summary', { p_project_id: scopeProjectId })
-  const realtime = useRealtimeRefresh(
+  useRealtimeRefresh(
     ['tickets', 'invoices'],
     refetchSummary,
     { filter: scopeProjectId ? { column: 'project_id', value: scopeProjectId } : undefined }
@@ -257,9 +256,6 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
   return (
     <>
       <DataStatusBanner error={summaryError} refreshing={summaryRefreshing} onRetry={refetchSummary} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-      </div>
       <div className="stats-grid" style={{ marginBottom: '1.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
 
         {/* KPI 1: Proje Özeti */}

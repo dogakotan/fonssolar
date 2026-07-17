@@ -4,7 +4,6 @@ import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 import { classifyMaterials, classifyRequestTypes, buildMaterialListRows, normalizeStatus } from '../../../utils/satinAlma'
 import ProjeTabSatinAlmaStats from './ProjeTabSatinAlmaStats'
 import ProjeTabTalepListesi from './ProjeTabTalepListesi'
@@ -32,7 +31,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
   // — overview.requests'in Realtime ile tazelenmesi liste tablosuna yansımaz. refreshKey'i
   // bump ederek çocuk bileşenin kendi fetchData'sını da tetikliyoruz.
   const [refreshKey, setRefreshKey] = useState(0)
-  const realtime = useRealtimeRefresh(
+  useRealtimeRefresh(
     ['purchase_requests'],
     () => { refetch(); setRefreshKey(k => k + 1) },
     { enabled: !!projectId, filter: { column: 'project_id', value: projectId } }
@@ -80,9 +79,6 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-      </div>
       {!siteChiefView && !procurementManagerView && (
         <div className="sa-overview-grid">
           <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />

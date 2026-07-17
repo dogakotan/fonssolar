@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import { useWeather } from '../hooks/useWeather'
 import { useSantiyeData } from '../hooks/useSantiyeData'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../components/ui/RealtimeStatusIndicator'
 import YeniTicketModal from '../components/tickets/YeniTicketModal'
 import YeniTalepModal from '../components/satin-alma/YeniTalepModal'
 import TicketDetayModal from '../components/tickets/TicketDetayModal'
@@ -110,7 +109,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   const [detayTalep, setDetayTalep]   = useState(null)
   const [toast, setToast] = useState('')
 
-  const { project, openPurchaseRequests, openTickets, todayReport, recentReports, stats, progressSummary, progressItems, refetch, loading: dataLoading, refreshing, error, authorized, realtimeStatus, realtimeLastUpdated } = useSantiyeData(projectId)
+  const { project, openPurchaseRequests, openTickets, todayReport, recentReports, stats, progressSummary, progressItems, refetch, loading: dataLoading, refreshing, error, authorized } = useSantiyeData(projectId)
   const weatherCity = extractWeatherCity(project)
   const weather     = useWeather(weatherCity)
   const [machineDetail, setMachineDetail] = useState(null)
@@ -262,10 +261,6 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   return (
     <div style={{ minHeight: '100%' }}>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <RealtimeStatusIndicator status={realtimeStatus} lastUpdated={realtimeLastUpdated} />
-      </div>
-
       {toast && (
         <div style={{
           position: 'fixed', top: 16, right: 16, zIndex: 9999,

@@ -3,7 +3,6 @@ import { supabase } from '../../../lib/supabase'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 
 const GROUP_ORDER = [
   'Projelendirme & İzinler',
@@ -194,7 +193,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     { enabled: !!projectId }
   )
   const authorized = ganttData?.authorized ?? true
-  const realtime = useRealtimeRefresh(
+  useRealtimeRefresh(
     ['project_tasks', { table: 'progress_daily', filterColumn: null }, 'daily_reports', 'purchase_requests'],
     refetch,
     { enabled: !!projectId, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
@@ -353,9 +352,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     return (
       <div className="gantt-page">
         <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-          <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-        </div>
         <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={kpis.crit} />
         <GanttShell
           project={project}
@@ -462,9 +458,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   return (
     <div className="gantt-page">
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-      </div>
       <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={kpis.crit} />
 
       <div className={`gantt-workspace${panelOpen ? ' has-panel' : ''}`}>

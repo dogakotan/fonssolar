@@ -4,7 +4,6 @@ import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../../../components/ui/DataStatusBanner'
-import RealtimeStatusIndicator from '../../../components/ui/RealtimeStatusIndicator'
 import {
   normalizeStatus,
   classifyRequestTypes,
@@ -30,7 +29,7 @@ export default function TabSatinAlma() {
   // bağımsız) — bu yüzden overview.requests'in Realtime ile tazelenmesi liste tablosuna
   // yansımaz. refreshKey'i bump ederek çocuk bileşenin kendi fetchData'sını da tetikliyoruz.
   const [refreshKey, setRefreshKey] = useState(0)
-  const realtime = useRealtimeRefresh(['purchase_requests'], () => { refetch(); setRefreshKey(k => k + 1) })
+  useRealtimeRefresh(['purchase_requests'], () => { refetch(); setRefreshKey(k => k + 1) })
 
   useEffect(() => {
     let alive = true
@@ -80,9 +79,6 @@ export default function TabSatinAlma() {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <RealtimeStatusIndicator status={realtime.status} lastUpdated={realtime.lastUpdated} />
-      </div>
       <div className="sa-overview-grid">
         <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
         <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} recent={recent} doviz={doviz} loading={loading} />
