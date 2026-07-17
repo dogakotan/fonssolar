@@ -64,7 +64,7 @@ function getHeaderInitials(name) {
 
 export default function Dashboard() {
   const { user, role, isAdmin, projectId, loading: authLoading, authError } = useAuth()
-  const { projects: scopeProjects, showAllOption, scopeProjectId, setScopeProjectId } = useScope()
+  const { scopeProjectId } = useScope()
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [activeTab,           setActiveTab]           = useState(() => {
     const saved = window.localStorage.getItem('dashboard-active-tab')
@@ -200,23 +200,6 @@ export default function Dashboard() {
             <h2>{headerTitle}</h2>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
-            {showAllOption && (
-              <select
-                value={scopeProjectId || ''}
-                onChange={(e) => setScopeProjectId(e.target.value || null)}
-                title="Görüntülenecek proje kapsamı"
-                style={{
-                  background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 8,
-                  padding: '7px 10px', fontSize: 12.5, fontWeight: 600, color: 'var(--color-text)',
-                  cursor: 'pointer', fontFamily: 'inherit', maxWidth: 180,
-                }}
-              >
-                <option value="">Tüm Projeler</option>
-                {scopeProjects.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            )}
             <NotificationBell onNavigate={handleTabChange} />
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }} className="desk-only">
               <div style={{
@@ -274,7 +257,7 @@ export default function Dashboard() {
           <ProjeTabSatinAlma projectId={projectId} siteChiefView />
         )}
         {activeTab === 'satin-alma'   && role === 'proje_yoneticisi' && (
-          <ProjeTabSatinAlma projectId={projectId} procurementManagerView />
+          <ProjeTabSatinAlma projectId={scopeProjectId} procurementManagerView />
         )}
         {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && <TabSatinAlma />}
         {activeTab === 'finans'       && <TabFinans />}

@@ -6,7 +6,7 @@ import { normalizeStatus, statusLabel } from '../../../utils/satinAlma'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer,
 } from 'recharts'
 
@@ -158,6 +158,24 @@ function calcPlannedAt(tasks, dateText) {
   return Math.round(total / dated.length)
 }
 
+function calcActualAt(tasks, dateText, currentActualPct) {
+  const date = new Date(`${dateText}T00:00:00`)
+  const dated = tasks.filter(t => t.start_date && t.due_date)
+  if (!dated.length) return Math.round(currentActualPct)
+
+  const total = dated.reduce((sum, task) => {
+    const start = new Date(task.start_date)
+    const end = new Date(task.due_date)
+    const currentProgress = clamp(task.progress_pct ?? task.progress ?? task.pct ?? 0)
+    if (date <= start) return sum
+    if (date >= end) return sum + currentProgress
+    const span = Math.max(1, end - start)
+    return sum + (currentProgress * clamp(((date - start) / span) * 100) / 100)
+  }, 0)
+
+  return Math.round(total / dated.length)
+}
+
 function buildScurve(tasks, startDateText, endDateText, actualPct) {
   if (!startDateText || !endDateText || !tasks.length) return []
   const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -170,7 +188,7 @@ function buildScurve(tasks, startDateText, endDateText, actualPct) {
     data.push({
       label: cur.toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' }),
       planned: calcPlannedAt(tasks, dateText),
-      actual: cur <= today ? Math.round(actualPct) : null,
+      actual: cur <= today ? calcActualAt(tasks, dateText, actualPct) : null,
     })
     cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
   }
@@ -200,6 +218,26 @@ function MiniProgress({ value, color = '#185FA5' }) {
   return (
     <div className="project-mini-progress">
       <i style={{ width: `${pct}%`, background: color }} />
+    </div>
+  )
+}
+
+function CategoryBulletRow({ item }) {
+  const progress = clamp(item.progress)
+  const planned = clamp(item.planned)
+  const variance = Math.round(progress - planned)
+  const tone = variance >= 0 ? 'good' : variance <= -10 ? 'risk' : 'normal'
+
+  return (
+    <div className={`project-category-bullet tone-${tone}`}>
+      <strong title={item.label}>{item.label}</strong>
+      <div className="project-category-track" aria-label={`${item.label} gerçekleşen %${progress}, plan %${planned}`}>
+        <i style={{ width: `${progress}%` }} />
+        <em style={{ left: `${planned}%` }} />
+      </div>
+      <b>%{progress}</b>
+      <span>Plan %{planned}</span>
+      <small>{variance >= 0 ? '+' : ''}{variance}%</small>
     </div>
   )
 }
@@ -235,13 +273,6 @@ function getStatusBadge(status) {
   return PURCHASE_STATUS_BADGE[normalizeStatus(status)] || 'gray'
 }
 
-function normalizeRisk(risk) {
-  const title = risk.risk_title || risk.title || risk.subject || risk.description || 'Risk kaydı'
-  const severity = (risk.severity || risk.priority || risk.risk_level || 'orta').toLowerCase()
-  const date = risk.due_date || risk.target_date || risk.created_at
-  return { title, severity, date }
-}
-
 function normalizePurchase(pr) {
   return {
     material: pr.material_name || pr.title || pr.request_no || pr.description || 'Malzeme talebi',
@@ -249,6 +280,19 @@ function normalizePurchase(pr) {
     statusLabel: statusLabel(pr.status),
     delivery: pr.delivery_date || pr.required_date || pr.created_at,
   }
+}
+
+function getAutoRiskSeverity(risk, todayText) {
+  if (risk.rule_code === 'malzeme_fazla_talep') return 'yüksek'
+  if (risk.rule_code !== 'gorev_gecikmesi') return (risk.severity || 'orta').toLowerCase()
+
+  const riskDate = risk.due_date || risk.target_date || risk.planned_end || risk.created_at
+  if (!riskDate) return 'orta'
+
+  const today = new Date(`${todayText}T00:00:00`)
+  const due = new Date(`${String(riskDate).slice(0, 10)}T00:00:00`)
+  const overdueDays = Math.max(0, Math.floor((today - due) / 86400000))
+  return overdueDays >= 7 ? 'kritik' : 'orta'
 }
 
 function ProjectWeatherCard({ location, lostDays, reportWeather }) {
@@ -432,6 +476,7 @@ export default function ProjectOverviewDashboard({
     return {
       id:   task.id,
       name: task.name || task.task_name || task.title || 'İş kalemi',
+      category: task.category,
       pct,  progress: pct, progress_pct: pct,
       start_date: task.planned_start || task.start_date,
       due_date:   task.planned_end   || task.due_date,
@@ -469,6 +514,10 @@ export default function ProjectOverviewDashboard({
   const categoryChartData = categoryWeights.map(cw => ({
     label: TASK_CATEGORY_LABEL[cw.category] || cw.category,
     progress: Math.round(Number(cw.avg_progress || 0)),
+    planned: calcPlannedAt(
+      taskProgressRows.filter(task => task.category === cw.category),
+      effectiveDate
+    ),
     weight: Number(cw.weight_pct || 0),
   }))
   const openRisks = risks.filter(r => r.source === 'otomatik')
@@ -576,24 +625,33 @@ export default function ProjectOverviewDashboard({
             <div style={{ padding: '0 0.25rem 0.25rem' }}>
               <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
                 Planlanan vs Gerçek:
+                %{plannedPct} / %{avgReportProgress}
                 <strong style={{ color: avgReportProgress >= plannedPct ? '#16a34a' : '#ef4444', marginLeft: 4 }}>
-                  {avgReportProgress >= plannedPct ? '+' : ''}{Math.round(avgReportProgress - plannedPct)}%
+                  ({avgReportProgress >= plannedPct ? '+' : ''}{Math.round(avgReportProgress - plannedPct)}%)
                 </strong>
               </span>
             </div>
-            <div style={{ padding: '0.5rem 0.25rem 1rem' }}>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={sCurveData} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+            <div className="project-timeline-chart">
+              <div className="project-timeline-plot">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={sCurveData} margin={{ top: 4, right: 8, bottom: 2, left: -20 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="label" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
                   <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} tickFormatter={v => `${v}%`} />
-                  <Tooltip formatter={v => v !== null ? `${Math.round(v)}%` : '—'} />
+                  <Tooltip
+                    labelFormatter={() => 'Güncel Durum'}
+                    formatter={(_value, name) => [
+                      `%${name === 'Planlanan' ? plannedPct : avgReportProgress}`,
+                      name,
+                    ]}
+                  />
                   <ReferenceLine x={todayLabel} stroke="#ef4444" strokeDasharray="4 3" />
                   <Line type="monotone" dataKey="planned" stroke="#3b82f6" dot={false} strokeWidth={2} name="Planlanan" />
                   <Line type="monotone" dataKey="actual"  stroke="#22c55e" dot={{ r: 4 }} strokeWidth={2} name="Gerçekleşen" connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: 8 }}>
+              </div>
+              <div className="project-timeline-legend">
                 <span style={{ fontSize: 11, color: 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
                   <span style={{ width: 20, height: 2, background: '#3b82f6', display: 'inline-block' }} /> Planlanan
                 </span>
@@ -614,32 +672,11 @@ export default function ProjectOverviewDashboard({
               <h3>Kategori Bazlı İlerleme</h3>
               <LinkButton onClick={() => onGoTab?.('gantt')}>İş Planını Gör</LinkButton>
             </div>
-            {categoryWeights.length <= 8 ? (
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={categoryChartData} margin={{ top: 4, right: 8, bottom: 24, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={44} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 9 }} tickFormatter={v => `${v}%`} />
-                  <Tooltip
-                    formatter={(v, _name, item) => [`${v}% (ağırlık %${item?.payload?.weight ?? 0})`, 'İlerleme']}
-                  />
-                  <Bar dataKey="progress" fill="#185FA5" radius={[4, 4, 0, 0]} name="İlerleme" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-                {categoryWeights.map(cw => (
-                  <div className="project-progress-row" key={cw.category}>
-                    <div>
-                      <strong>{TASK_CATEGORY_LABEL[cw.category] || cw.category}</strong>
-                      <span>Ağırlık %{fmtNumber(cw.weight_pct)}</span>
-                    </div>
-                    <MiniProgress value={cw.avg_progress} />
-                    <b>{Math.round(Number(cw.avg_progress || 0))}%</b>
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="project-category-bullets">
+              {categoryChartData.map(item => (
+                <CategoryBulletRow key={item.label} item={item} />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -664,12 +701,12 @@ export default function ProjectOverviewDashboard({
           ))}
         </div>
 
-        <div className="card project-mini-card">
+        <div className="card project-mini-card project-purchase-card">
           <div className="project-card-title">
             <h3>Malzeme Kalemleri / Satın Alma</h3>
             <LinkButton onClick={() => onGoTab?.('satin-alma')}>Tüm Satın Almalar</LinkButton>
           </div>
-          {purchaseRows.length ? purchaseRows.slice(0, 4).map((row, idx) => (
+          {purchaseRows.length ? purchaseRows.slice(0, 5).map((row, idx) => (
             <div className="project-list-row" key={`${row.material}-${idx}`}>
               <strong>{row.material}</strong>
               <span className={`badge ${getStatusBadge(row.status)}`}>{row.statusLabel}</span>
@@ -705,7 +742,7 @@ export default function ProjectOverviewDashboard({
               <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', margin: '0.8rem 0 0.2rem' }}>
                 En Büyük 5 Kalem
               </p>
-              <div style={{ maxHeight: 108, overflowY: 'auto' }}>
+              <div className="project-budget-list">
                 {top5Budget.map((b, i) => (
                   <div key={b.id || i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
                     <span style={{ fontSize: 11.5, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name || b.category}</span>
@@ -725,7 +762,7 @@ export default function ProjectOverviewDashboard({
           {tickets.length === 0
             ? <p className="project-empty">Açık ticket bulunmuyor.</p>
             : (
-              <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div className="project-ticket-list">
                 {tickets.slice(0, 5).map(ticket => (
                   <div key={ticket.id} style={{
                     padding: '8px 10px', background: '#f8fafc',
@@ -751,18 +788,17 @@ export default function ProjectOverviewDashboard({
           }
         </div>
 
-        <div className="card project-mini-card">
+        
+        <div className="card project-mini-card project-risk-card">
           <div className="project-card-title">
-            <h3>Açık Riskler (Detay)</h3>
+            <h3>Riskler</h3>
           </div>
-          <p style={{ margin: '-6px 0 8px', fontSize: 10.5, color: 'var(--color-muted)' }}>
-            Sistem tarafından otomatik tespit edilen riskler
-          </p>
           {openRisks.length === 0 ? (
             <p className="project-empty">Açık risk bulunmuyor.</p>
           ) : (
-            <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div className="project-risk-list">
               {openRisks.map(risk => {
+                const severity = getAutoRiskSeverity(risk, effectiveDate)
                 const target = risk.rule_code === 'gorev_gecikmesi' ? 'gantt'
                   : risk.rule_code === 'malzeme_fazla_talep' ? 'satin-alma'
                   : null
@@ -772,16 +808,16 @@ export default function ProjectOverviewDashboard({
                     onClick={target ? () => onGoTab?.(target) : undefined}
                     style={{
                       padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0',
-                      borderLeft: `3px solid ${SEV_BORDER[risk.severity] || '#94a3b8'}`,
+                      borderLeft: `3px solid ${SEV_BORDER[severity] || '#94a3b8'}`,
                       cursor: target ? 'pointer' : 'default', flexShrink: 0,
                     }}
                   >
-                    <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {risk.title}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                      <span className={`badge ${RISK_BADGE[risk.severity] || 'gray'}`} style={{ fontSize: 9 }}>
-                        {risk.severity}
+                      <span className={`badge ${RISK_BADGE[severity] || 'gray'}`} style={{ fontSize: 9 }}>
+                        {severity}
                       </span>
                       <span style={{ fontSize: 9, color: '#475569', background: '#eef2f7', padding: '1px 6px', borderRadius: 999 }}>
                         {RISK_CATEGORY_LABEL[risk.category] || 'Diğer'}
@@ -796,9 +832,8 @@ export default function ProjectOverviewDashboard({
             </div>
           )}
         </div>
-      </div>
 
-      <div className="card project-photo-card" style={{ marginTop: '1rem' }}>
+        <div className="card project-photo-card">
         <div className="project-card-title">
           <h3>Saha Fotoğrafları</h3>
           <LinkButton onClick={() => onGoTab?.('raporlar')}>Tümünü Gör</LinkButton>
@@ -840,6 +875,7 @@ export default function ProjectOverviewDashboard({
             +{sitePhotos.length - 12} fotoğraf daha
           </p>
         )}
+        </div>
       </div>
 
       {photoLightbox && (

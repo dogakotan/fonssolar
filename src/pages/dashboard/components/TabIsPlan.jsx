@@ -206,7 +206,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     setLoading(true)
     supabase
       .from('project_tasks')
-      .select('id, task_code, task_name, group_label, category, planned_start, planned_end, progress_pct, status, is_critical')
+      .select('id, task_code, task_name, group_label, category, planned_start, planned_end, progress_pct, status')
       .order('planned_start', { ascending: true })
       .then(({ data: tasksData }) => {
         if (!alive) return
@@ -312,10 +312,9 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const withDates = filteredTasks.filter(t => t.planned_start && t.planned_end)
 
   const kpis = useMemo(() => {
-    const late = tasks.filter(t => isTaskLate(t, today)).length
     const ongoing = tasks.filter(t => t.status === 'devam_ediyor').length
-    const crit = tasks.filter(t => t.is_critical).length
-    return { late, ongoing, crit }
+    const risky = tasks.filter(t => isTaskLate(t, today)).length
+    return { ongoing, risky }
   }, [tasks, today])
 
   useEffect(() => {
@@ -352,7 +351,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     return (
       <div className="gantt-page">
         <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-        <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={kpis.crit} />
+        <KpiStrip total={tasks.length} devam={kpis.ongoing} risky={kpis.risky} />
         <GanttShell
           project={project}
           statusFilter={statusFilter}
@@ -458,7 +457,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   return (
     <div className="gantt-page">
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <KpiStrip total={tasks.length} devam={kpis.ongoing} late={kpis.late} crit={kpis.crit} />
+      <KpiStrip total={tasks.length} devam={kpis.ongoing} risky={kpis.risky} />
 
       <div className={`gantt-workspace${panelOpen ? ' has-panel' : ''}`}>
         <GanttShell
@@ -536,7 +535,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                         const barWidth = Math.max(1.2, barEnd - barLeft)
                         const duration = daysBetween(task.planned_start, task.planned_end)
                         const pct = Math.round(Number(task.progress_pct || 0))
-                        const isCrit = !!task.is_critical
                         const isLate = isTaskLate(task, today)
                         const isSelected = task.id === selectedTaskId
 
@@ -549,7 +547,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                             <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
                               <span className="gantt-code">
                                 {task.task_code || index + 1}
-                                {isCrit && <b>K</b>}
                               </span>
                               <span className={`gantt-name${isLate ? ' late' : ''}`}>{task.task_name || '-'}</span>
                               <span>{fmtDate(task.planned_start)}</span>
@@ -561,7 +558,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                               </span>
                             </span>
                             <span
-                              className={`gantt-bar${isCrit ? ' critical' : ''}${isLate ? ' late' : ''}`}
+                              className={`gantt-bar${isLate ? ' late' : ''}`}
                               style={{ '--bar-left': `${barLeft}%`, '--bar-width': `${barWidth}%`, '--bar-color': cfg.bar, '--progress': `${pct}%` }}
                               title={`${task.task_name || ''} - ${fmtDate(task.planned_start)} / ${fmtDate(task.planned_end)}`}
                             >
@@ -591,7 +588,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
             group={selectedTask ? resolveGroup(selectedTask) : null}
             dailyPct={selectedTaskDailyPct}
             siteChief={siteChief}
-            isCritical={!!selectedTask?.is_critical}
+            isRisky={selectedTask ? isTaskLate(selectedTask, today) : false}
             siteChiefView={siteChiefView}
             onClose={() => setPanelOpen(false)}
           />
@@ -638,12 +635,11 @@ function GanttShell({ project, statusFilter, setStatusFilter, groupFilter, setGr
   )
 }
 
-function KpiStrip({ total, devam, late, crit }) {
+function KpiStrip({ total, devam, risky }) {
   const cards = [
     { label: 'Toplam Görev', value: total, note: 'Tüm iş kalemleri', icon: 'clipboard', tone: 'blue' },
     { label: 'Devam Eden', value: devam, note: 'Aktif görevler', icon: 'play', tone: 'green' },
-    { label: 'Geciken', value: late, note: 'Plan gerisinde', icon: 'clock', tone: 'orange' },
-    { label: 'Kritik İşler', value: crit, note: 'Kritik yol üzeri', icon: 'warning', tone: 'red' },
+    { label: 'Riskli / Geciken', value: risky, note: 'Tarihi geçmiş işler', icon: 'warning', tone: 'red' },
   ]
   return (
     <div className="gantt-kpi-strip">
@@ -696,7 +692,7 @@ function KpiIcon({ name }) {
   )
 }
 
-function TaskDetailPanel({ task, group, dailyPct, siteChief, isCritical, siteChiefView, onClose }) {
+function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefView, onClose }) {
   if (!task) {
     return (
       <aside className="gantt-detail-panel">
@@ -723,7 +719,7 @@ function TaskDetailPanel({ task, group, dailyPct, siteChief, isCritical, siteChi
     ['Süre', `${duration} gün`],
     ['Kümülatif İlerleme', `%${task.progress_pct || 0}`, 'blue'],
     ['Günlük İlerleme', `%${dailyPct || 0}`, dailyPct > 0 ? 'green' : 'muted'],
-    ['Kritiklik', isCritical ? 'Kritik Yol' : 'Normal', isCritical ? 'red' : 'muted'],
+    ['Risk Durumu', isRisky ? 'Riskli' : 'Normal', isRisky ? 'red' : 'muted'],
     ...(siteChiefView && task.equipment_notes ? [['Ekipman Notu', task.equipment_notes]] : []),
     ...(siteChiefView && task.notes ? [['Not', task.notes]] : []),
   ]

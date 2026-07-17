@@ -19,7 +19,6 @@ import {
   xlsxZipBlob,
   formatExcelDate,
 } from '../../../utils/excelUtils'
-import { importProjectExcel, exportProjectExcelBlob, downloadBlob, formatImportSummary } from '../../../utils/projectExcelBridge'
 
 // ── Periyot yardımcıları ──────────────────────────────────────────────────────
 const PERIODS = [
@@ -621,9 +620,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const [filterMode, setFilterMode]  = useState('gunluk')   // 'gunluk' | 'haftalik' | 'aylik'
   const [loading, setLoading]        = useState(true)
   const [showExportMenu, setShowExportMenu] = useState(false)
-  const [excelExporting, setExcelExporting] = useState(false)
-  const [excelImporting, setExcelImporting] = useState(false)
-  const excelImportRef = useRef(null)
   const [filterDate, setFilterDate]  = useState(todayStr())
   const [showCalendar, setShowCalendar] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -1069,35 +1065,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     }
   }
 
-
-  async function handleProjectExcelExport() {
-    setExcelExporting(true)
-    try {
-      const blob = await exportProjectExcelBlob(projectId)
-      downloadBlob(blob, `${projectId}_detayli_proje_takip.xlsx`)
-    } catch (error) {
-      alert(`Excel indirilemedi: ${error.message}`)
-    } finally {
-      setExcelExporting(false)
-    }
-  }
-
-  async function handleProjectExcelImportChange(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
-    setExcelImporting(true)
-    try {
-      const result = await importProjectExcel(file)
-      alert(`Excel güncellendi.\n${formatImportSummary(result?.summary)}`)
-      refetch()
-    } catch (error) {
-      alert(`Excel güncellenemedi: ${error.message}`)
-    } finally {
-      setExcelImporting(false)
-    }
-  }
-
   const { data: detayData, loading: detayLoading, refetch } = useDashboardData(
     'get_proje_detay',
     { p_project_id: projectId },
@@ -1228,43 +1195,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
               </div>
             )}
           </div>
-
-          {/* Proje Excel köprüsü — tüm proje verisini içe/dışa aktarır */}
-          <input
-            ref={excelImportRef}
-            type="file"
-            accept=".xlsx"
-            style={{ display: 'none' }}
-            onChange={handleProjectExcelImportChange}
-          />
-          <button
-            onClick={() => excelImportRef.current?.click()}
-            disabled={excelImporting}
-            title="Bu projeyi doldurulmuş bir Excel şablonuyla güncelle"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px', background: '#fff', color: 'var(--color-text)',
-              border: '1px solid var(--color-border)', borderRadius: 8,
-              fontSize: 13, fontWeight: 500, cursor: excelImporting ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: excelImporting ? 0.6 : 1,
-            }}
-          >
-            {excelImporting ? 'Güncelleniyor…' : 'Excel Güncelle'}
-          </button>
-          <button
-            onClick={handleProjectExcelExport}
-            disabled={excelExporting}
-            title="Bu projenin tüm verisini Excel olarak indir"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px', background: '#fff', color: 'var(--color-text)',
-              border: '1px solid var(--color-border)', borderRadius: 8,
-              fontSize: 13, fontWeight: 500, cursor: excelExporting ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: excelExporting ? 0.6 : 1,
-            }}
-          >
-            {excelExporting ? 'İndiriliyor…' : 'Excel Olarak İndir'}
-          </button>
 
           {/* Dışa Aktar — İş Planı sade görünümünde gizli */}
           {!['tickets', 'satin-alma', 'finans', 'gantt', 'raporlar'].includes(tab) && (

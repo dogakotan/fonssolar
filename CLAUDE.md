@@ -143,37 +143,32 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   kaldırıldı — her sekme zaten kendi RPC'sine bağlı kendi banner/indicator'ını
   gösteriyordu, üstte ikinci bir tane sadece tekrar/kayma yaratıyordu; hook
   çağrıları — `refetch` tetiklemesi için — kaldı, yalnızca render silindi).
-  Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kaynağı
-  `get_project_by_date`) proje özeti ekranı, 2026-07-17'de yeniden düzenlendi:
-  Proje Detayları/Genel İlerleme/Özet/Hava Durumu KPI kartları →
-  **"Projenin Gidişatı"** (eskiden ayrı bir milestone şeridi kartıydı, o kart
-  TAMAMEN kaldırıldı — isim S-Eğrisi kartına taşındı) + **Kategori Bazlı
-  İlerleme** yan yana tek satırda (`project-mid-grid`, kategori sayısı ≤8 ise
-  `recharts` `BarChart`, >8 ise eski dikey liste + iç scroll'a düşer) → alt
-  grid'de Günlük Rapor Özeti, Malzeme Kalemleri/Satın Alma (durum rozeti artık
-  `src/utils/satinAlma.js`'teki kanonik `statusLabel()`/`normalizeStatus()`'a
-  delege ediyor — önceden ham `purchase_requests.status` enum'unu birebir
-  gösteriyordu), Maliyet Durumu (sadeleştirildi: tek "Harcanan/Hedef" özet
-  satırı + rozet + progress bar + bütçe aşımı varsa tek satır uyarı + En Büyük
-  5 Kalem — eskiden 4 ayrı `DetailRow` + her zaman görünen "Öngörülen Toplam
-  Maliyet" satırı vardı), Güncel Ticketlar (sabit `maxHeight` scroll kutusu
-  kaldırıldı, `slice(0,5)` ile sınırlı — kutu az kayıtla altta boşluk
-  bırakıyordu), **Açık Riskler (Detay)** (artık bottom-grid'in bir parçası,
-  kompakt kart; her satırda kategori rozeti — `İş Kalemi`/`Satın Alma`/`Diğer`
-  — ve kural etiketi de var). "İmalat İlerlemesi" kartı 2026-07-17'de
-  kullanıcı tarafından kaldırıldı (kaynak `progress_items` verisi hâlâ
-  `get_project_by_date`'ten geliyor ve Günlük Rapor Özeti'ndeki "İlerleme
-  Yapılan Kalem" sayacı onu kullanmaya devam ediyor, yalnızca bu kart silindi).
-  **Saha Fotoğrafları** artık bottom-grid'in DIŞINDA, tam genişlikte ayrı bir
-  kart (eskiden Riskler'in yerindeydi — ikisinin yeri değiştirildi, fotoğraflar
-  daha büyük/net görünsün diye), thumbnail grid `minmax(150px,1fr)` + 12 adete
-  kadar gösteriyor (eskiden `minmax(72px,1fr)` + 8 idi, bottom-grid'in küçük
-  hücresi içindeydi). Kritik yol timeline'ı YOK (kullanıcı kararıyla kapsam
-  dışı bırakıldı). İlgili kartlar (S-Eğrisi/Kategori Bazlı İlerleme → İş Planı,
-  Maliyet Durumu → Finans, Malzeme Kalemleri → Satın Alma, her risk satırı →
-  `rule_code`'a göre İş Planı/Satın Alma) tıklanınca ilgili sekmeye (`onGoTab`)
-  geçiyor.
-
+  Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kayna??
+  `get_project_by_date`) proje ?zeti ekran? g?ncel d?zeni: ?stte Proje Detaylar? /
+  Genel ?lerleme / G?nl?k-Haftal?k-Ayl?k ?zet / Hava Durumu kartlar?; orta sat?rda
+  e?it iki kart olarak **Projenin Gidi?at?** ve **Kategori Bazl? ?lerleme** bulunur.
+  Projenin Gidi?at? art?k milestone ?eridi de?il S-e?risi ?izgi grafi?idir; grafik
+  ba?l??? ve hover tooltip'i g?ncel toplam `plannedPct` / `avgReportProgress` de?erini
+  g?sterir, ge?mi? ay noktalar? yaln?zca ?izginin e?ilimini olu?turur. Kategori Bazl?
+  ?lerleme `BarChart` kullanmaz; kategori ad? + ger?ekle?en progress bar + ger?ekle?en
+  y?zde + plan y?zdesi + sapma sat?rlar?ndan olu?an yatay bullet/progress listedir ve
+  kart i?inde scroll eder; plan i?areti k?rm?z? `var(--color-danger)` ile g?sterilir.
+  Alt grid 3 kolon d?zenindedir: G?nl?k Rapor ?zeti, Malzeme Kalemleri/Sat?n Alma,
+  Maliyet Durumu, G?ncel Ticketlar, Riskler, Saha Foto?raflar?. G?ncel Ticketlar ve
+  Riskler `slice(0,5)` ile e? sat?r y?ksekli?inde g?sterilir; Riskler kart?nda a??klama
+  yaz?s? yoktur. Risk severity frontend'de otomatik kural bazl? normalize edilir:
+  `gorev_gecikmesi` 7+ g?n gecikmi?se `kritik`, daha azsa `orta`;
+  `malzeme_fazla_talep` `y?ksek`; di?er risklerde kay?t ?zerindeki severity kullan?l?r.
+  Saha Foto?raflar? art?k alt grid'in i?inde ???nc? kart olarak yer al?r, ayr? tam
+  geni?lik kart de?ildir. Maliyet Durumu i? scroll kullanmaz; En B?y?k 5 Kalem do?rudan
+  kart i?inde listelenir. Proje Excel i?e/d??a aktar butonlar? Proje Detay > Genel'den
+  kald?r?ld?; bu yetenek yaln?zca Proje Y?netimi sayfas?nda kal?r. Header'daki global
+  proje se?ici kald?r?ld?; ?ok projeli kullan?c?larda g?r?nmeyen eski localStorage
+  kapsam? temizlenir, tek projeli kullan?c?da otomatik proje kapsam? korunur.
+  ?? Plan? (`TabIsPlan.jsx`) kritik yol (`is_critical`) g?rselle?tirmesi kullanmaz:
+  plan biti? tarihi ge?mi? ve g?rev tamamlanmam??/iptal de?ilse g?rev `Riskli`, aksi
+  halde `Normal` kabul edilir. KPI ?eridi 3 kartt?r: Toplam G?rev, Devam Eden,
+  Riskli/Geciken. Kritik yol CSS/JS kal?nt?lar? temizlendi.
 ### Satın alma akışı — proje yöneticisi tedarik adımı
 Durum zinciri: `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
 → satin_alindi → fatura_bekliyor/fatura_onay_bekliyor → faturasi_kesildi`
@@ -193,17 +188,48 @@ gizler — `siteChiefView` ile aynı desende). `TedarikKuyrugu.jsx` işler:
 `purchase_date` (zorunlu), `delivery_date`/`received_by_name`/
 `delivery_document_url` (opsiyonel, dosya varsa `ticket-ekleri` bucket'ına
 `tedarik/{request_id}/...` path'iyle yüklenir) girip doğrudan
-`purchase_requests` UPDATE eder — **status'u asla elle set etmez**.
+`purchase_requests` UPDATE eder — normal akışta status'u elle set etmez.
 DB tetikleyicisi `trg_auto_advance_pr_to_satin_alindi` (`fn_auto_advance_pr_to_satin_alindi`)
 `supplier_id`+`purchase_date` doluyken statüyü otomatik `satin_alindi`'ye
-ilerletir. RLS (`pr_update_proje_yoneticisi` policy, `purchase_requests`):
+ilerletir. **İstisna (2026-07-17):** `onaylandi` aşamasında tedarikçi
+bulunamazsa "Tedarik Bekleyenler" satırındaki **"İptal Et"** butonu
+(`TedarikIptalModal`, zorunlu gerekçe alanı) `status`'u doğrudan `iptal`'e
+set eder — bu tek istisnai durumda status elle yazılır. RLS
+(`pr_update_proje_yoneticisi` policy, `purchase_requests`):
 `get_my_role()='proje_yoneticisi'` + `has_project_access` + statü
 `onaylandi`/`satin_alindi` olmalı, `with_check` `fn_purchase_request_procurement_fields_only(...)`
 ile yalnızca tedarik alanlarına yazabildiğini garanti eder (title/urgency/
 category/estimated_amount_excl_vat/requested_by/approved_by/approved_at
-dokunulamaz). Sert kilit: `trg_guard_invoice_requires_procurement_done`
+dokunulamaz); statü geçişi olarak yalnızca `onaylandi→{onaylandi,satin_alindi,iptal}`
+ve `satin_alindi→satin_alindi` (kendi kendine, teslimat alanı güncellemesi
+için) kabul eder — `satin_alindi`'ye geçmiş bir talep artık iptal edilemez.
+Sert kilit: `trg_guard_invoice_requires_procurement_done`
 (`invoices` BEFORE INSERT) talep hâlâ `onaylandi`'nin öncesindeyse fatura
 insert'ini Postgres seviyesinde reddeder — muhasebe bu adımı atlayamaz.
+
+**Fatura onayından sonra iptal (2026-07-17):** `fn_validate_invoice_status_transition()`
+artık `onaylandı → reddedildi` geçişine de izin veriyor (öncesinde yalnızca
+`onaylandı → ödendi` vardı). Bu, var olan `sync_cost_allocation_from_invoice`
+(reddedildi'de `cost_allocations` siler) ve `sync_purchase_request_from_invoice`
+(reddedildi'de bağlı talebi `onaylandi`'ye döndürüp `invoice_id`'yi temizler,
+yeniden fatura kesilebilir) trigger'larını olduğu gibi tekrar kullanıyor — yeni
+bir mantık eklenmedi, yalnızca bu geçişin önündeki validator engeli kaldırıldı.
+UI: `FaturaListesi.jsx` (Detay modalının altında) ve `ProjeTabFaturaListesi.jsx`
+(ayrı bir İŞLEMLER sütunu) `onaylandı` durumundaki faturalarda admin/muhasebe'ye
+"İptal Et" (onay adımlı) gösteriyor. Fatura statüsünde "onay sürecinde reddedilen"
+ile "onaylandıktan sonra iptal edilen" aynı DB değerini (`reddedildi`) paylaşıyor —
+`FaturaListesi.jsx`'in Detay modalı bunu `invoice_approvals`'ta step 2'nin
+gerçekten `onaylandı` olarak kapanıp kapanmadığına bakarak ayırt edip farklı bir
+rozet ("İptal Edildi (Onay Sonrası)") gösteriyor; liste satırındaki rozet bu
+ayrımı yapmıyor (her satır için ayrı sorgu gerektirirdi), hep "Reddedildi" yazar.
+
+`TalepDetayModal.jsx`'teki "Malzeme Miktar Kontrol" (BOM aşım) uyarı kutusu
+(2026-07-17) artık yalnızca `type === 'Malzeme'` olan taleplerde render ediliyor
+— önceden hizmet taleplerinde de gösteriliyordu, ama BOM eşleşmesi hiç
+olmadığından rakamlar hep 0/"Uygun" çıkıyor, kutu yalnızca gereksiz yer
+kaplıyordu. `riskState()`/`classifyMaterials()` (`src/utils/satinAlma.js`)
+zaten kategoriye göre doğru hesaplıyordu, değişen yalnızca bu tek görünürlük
+koşulu.
 Frontend tarafı: `isAwaitingInvoice()` (`src/utils/satinAlma.js`) artık yalnızca
 `satin_alindi` durumunda true döner (`onaylandi` ARTIK YETERLİ DEĞİL) — "Fatura
 Oluştur" butonu üç yerde de (`ProjeTabTalepListesi.jsx`, `TabSatinAlmaTalepListesi.jsx`,
@@ -224,11 +250,21 @@ operasyon_sorumlusu, evrak_takip, maliyet_kontrolcu, muhasebe, is_makinesi_opera
 
 `is_manager=true`: admin, koordinator, proje_koordinatoru, maliyet_kontrolcu,
 muhasebe (tüm yönetici bildirimlerini alır, `has_project_access` her projeye
-izin verir). `cross_project=true`: lojistik_tedarik (tek projeye bağlı değil
-ama manager de değil). `proje_yoneticisi` (2026-07-16'da `satin_alma_uzmani`
-rolünün yerine geçti) `santiye_sefi` ile aynı mekanizmayla **tek proje**
-kapsamlı — `is_manager=false`, `cross_project=false`, `profiles.project_id`/
-`user_project_access` üzerinden bağlanır (bkz. Satın alma → tedarik adımı).
+izin verir). `cross_project=true`: lojistik_tedarik, **proje_yoneticisi**
+(2026-07-17'de `false`'tan `true`'ya çevrildi — kullanıcı proje yöneticisinin
+admin gibi tüm projeleri görebilmesini istedi; `lojistik_tedarik` ile aynı
+mekanizma: manager değil ama tek projeye kilitli değil). `proje_yoneticisi`
+(2026-07-16'da `satin_alma_uzmani` rolünün yerine geçti) hâlâ bir "ev projesi"ne
+(`profiles.project_id`) atanabilir ama bu artık yalnızca kozmetik/varsayılan —
+`has_project_access` zaten `cross_project=true` ile her projeye izin veriyor.
+Frontend tarafı: `index.jsx`'te bu rolün Satın Alma sekmesi artık sabit
+`projectId` (profile'dan) yerine `scopeProjectId` (header'daki proje seçicisi,
+`ScopeContext`) kullanıyor — `get_my_projects()`/`ScopeContext` zaten
+`cross_project` bayrağını okuyup çoklu-proje listesi döndürdüğü için başka bir
+kod değişikliği gerekmedi, yalnızca bu tek prop bağlantısı. `ROLE_TABS`
+(`proje_yoneticisi: ['satin-alma','bildirimler']`) DEĞİŞMEDİ — bu rol hâlâ
+yalnızca Satın Alma ve Bildirimler sekmelerini görüyor, yeni olan Satın Alma
+sekmesi içinde artık proje değiştirebilmesi.
 
 **Bilinen fark:** Frontend hâlâ yalnızca 6 rolü tanıyor (`ROLE_TABS`/`ROLE_LABEL`
 `src/pages/dashboard/index.jsx`, nav `Sidebar.jsx`) — admin, muhasebe,
@@ -490,6 +526,15 @@ Admin test hesabının `profiles.id`'si zaman zaman değişti — körü körün
 id'ye güvenme, `select id from profiles where role_key='admin'` ile doğrula.
 `faz-e.spec.js` test B (fatura INSERT/DELETE realtime) bilinen, önceden var olan
 bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabilir.
+`proje_yoneticisi` test hesabı 2026-07-17'de yenilendi: eski `satinalma@fonssolar.com`
+silinip yerine `projeyoneticisi.test@fonssolar.com` oluşturuldu (kimlik bilgisi
+`.env.test`'teki `TEST_PROJEYONETICISI_EMAIL`/`TEST_PROJEYONETICISI_PASSWORD`),
+`test-izmir-ges-2026` projesine bağlı — rol hâlâ mimaride tek proje kapsamlı
+(`is_manager=false`, `cross_project=false`), admin gibi tüm projeleri görmüyor.
+Eski hesap silinirken kalıcı test verisi fixture'ı olan INV-2026-018/"DC Solar
+Kablo Tedariki — Blok C [TEST VERİSİ]" satırının `price_entered_by`/`purchased_by`
+alanları NULL'a çekildi (FK engeliydi, satırın kendisi silinmedi — bkz. Satın
+Alma/Finans Test Verisi notu).
 
 ---
 
@@ -683,6 +728,36 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
   `DailyReportForm.jsx`/`FaturaOlusturModal.jsx`'i biliyordu) — üçü de artık
   ortak fonksiyona delege ediyor, yerel `toUserMessage()` sarmalayıcıları ince
   birer parametre-geçiş fonksiyonu olarak kaldı (çağıran taraflar değişmedi).
+- **Satın alma akışına iki iptal noktası + BOM kutusu kategori düzeltmesi
+  eklendi:** Kullanıcının anlattığı uçtan uca akış (santiye şefi talep →
+  yönetici onayı → proje yöneticisi tedarik → muhasebe fatura → yönetici fatura
+  onayı → maliyet tablosu) büyük ölçüde zaten kurulu çıktı, yalnızca 3 gerçek
+  boşluk vardı. (1) `TalepDetayModal.jsx`'teki "Malzeme Miktar Kontrol" (BOM
+  aşım) kutusu artık yalnızca `type === 'Malzeme'` taleplerde gösteriliyor —
+  hizmet taleplerinde BOM eşleşmesi zaten hep 0/"Uygun" çıktığından kutu
+  anlamsız yer kaplıyordu (bkz. Satın alma akışı). (2) `TedarikKuyrugu.jsx`'e
+  "İptal Et" eklendi — proje yöneticisi tedarikçi bulamazsa `onaylandi`
+  aşamasındaki talebi zorunlu gerekçe notuyla `iptal` yapabiliyor. Bunun için
+  `fn_purchase_request_procurement_fields_only` migration'ı gerekti (1 migration,
+  onaylı) — ilk önerilen SQL, `pr.status = p_status` eşitliği yüzünden
+  `trg_auto_advance_pr_to_satin_alindi`'nin (BEFORE trigger, WITH CHECK'ten önce
+  çalışır) `onaylandi→satin_alindi` otomatik geçişini kıracaktı; kullanıcı
+  bunu tespit edip düzeltilmiş SQL'i (durum geçişini `pr.status`'a göre değil
+  `p_status`'un mevcut duruma göre nereye gidebileceğine göre dallandıran hali)
+  verdi, o SQL uygulandı. (3) Muhasebe artık `onaylandı` bir faturayı da iptal
+  edebiliyor (`fn_validate_invoice_status_transition`'a `onaylandı→reddedildi`
+  geçişi eklendi, 1 migration, onaylı) — bu tek satır yeterliydi çünkü
+  `sync_cost_allocation_from_invoice`/`sync_purchase_request_from_invoice`
+  zaten `reddedildi`ye göre cost_allocations'ı silip talebi `onaylandi`'ye
+  geri döndürüyordu, yeni bir mantık yazılmadı. UI: `FaturaListesi.jsx` Detay
+  modalında ve `ProjeTabFaturaListesi.jsx`'te yeni bir İŞLEMLER sütununda
+  "İptal Et" (onay adımlı). "Onay sürecinde reddedilen" ile "onaylandıktan
+  sonra iptal edilen" aynı DB değerini (`reddedildi`) paylaştığından
+  `FaturaListesi.jsx`'in Detay modalı `invoice_approvals`'ta step 2'nin
+  gerçekten tamamlanıp tamamlanmadığına bakarak ayrı bir rozet gösteriyor
+  ("İptal Edildi (Onay Sonrası)"); liste satırı bu ayrımı yapmıyor (bkz. Satın
+  alma akışı). `npx vite build` hatasız; Playwright uçtan uca doğrulaması ayrı
+  bir agent'a devredildi, sonucuna göre bu not güncellenecek.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Satın alma/finans liste ekranları RPC kullanmıyor:** `TabSatinAlmaTalepListesi.jsx`,
@@ -771,36 +846,29 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
 
 ---
 
-## Son değişiklik
-**17.07.2026 (3) — `toUserMessage()` tekilleştirildi.**
+## Son de?i?iklik
 
-Bir önceki tur (`tickets.severity` haritası tekilleştirme) commit'lenip
-push'landıktan (`4cbcee8`) sonra backlog'taki bir sonraki kod-tekrarı maddesi
-alındı: `DailyReportForm.jsx` ve `FaturaOlusturModal.jsx` her biri kendi
-bağımsız Postgres-hata→Türkçe-mesaj çeviricisini tutuyordu. Düzeltmeye
-başlamadan önce yapılan taramada CLAUDE.md'nin backlog notunun bilmediği
-**üçüncü** bir kopya bulundu: `TedarikKuyrugu.jsx`'in kendi `toUserMessage()`'ı
-(daha önceki bir oturumda eklenmişti, backlog'a hiç yazılmamıştı).
+**17.07.2026 ? Genel Proje ve ?? Plan? frontend d?zenlemesi.**
 
-Yeni `src/utils/errors.js`: `toUserMessage(error, {rules, fallback})`. Ortak
-kural (RLS/yetki hatası → "Bu işlem için yetkiniz yok.") tek yerde sabit
-(`COMMON_RULES`); her çağıran kendi özel kurallarını (`rules: [{match, message}]`,
-`match` string ya da string dizisi olabilir) ve varsayılan mesajını (`fallback`
-— string ya da orijinal `error.message`'ı koruyan `(error) => string`) parametre
-olarak geçiyor. Üç dosyada da yerel `toUserMessage(e)` sarmalayıcı fonksiyon
-olarak kaldı (yalnızca ortak fonksiyona kendi `rules`/`fallback`'iyle delege
-ediyor) — böylece tek çağrı noktaları (`DailyReportForm.jsx`:714,
-`FaturaOlusturModal.jsx`:70, `TedarikKuyrugu.jsx`:68/87/108) hiç değişmedi.
+Proje genel bak??ta header global proje se?ici kald?r?ld?; ?ok projeli kullan?c?lar
+i?in gizli eski localStorage proje kapsam? temizleniyor, tek projeli kullan?c?da
+otomatik kapsam korunuyor. `ProjeDetay.jsx` i?indeki proje Excel g?ncelle/indir
+butonlar? ve handler kal?nt?lar? kald?r?ld?; Excel proje i?e/d??a aktar?m? yaln?zca
+Proje Y?netimi sayfas?nda kald?.
 
-Doğrulama: `npx vite build` hatasız (3 dosyadaki import + fonksiyon gövdesi
-değişikliğinden sonra). Mantık satır satır karşılaştırıldı — her orijinal
-if/includes zinciri `rules` dizisine birebir taşındı, fallback semantiği
-(bazı yerlerde `error?.message` korunuyor, bazılarında sabit metin) korundu.
+`ProjectOverviewDashboard.jsx` yeniden dengelendi: Projenin Gidi?at? ve Kategori
+Bazl? ?lerleme e? kartlar halinde yan yana; kategori ilerleme art?k yatay bullet
+progress listesi ve i? scroll kullan?yor. S-e?risi hover tooltip'i g?ncel toplam
+Plan/Ger?ek de?erleriyle ?zet kartla ayn? metrikten besleniyor. Riskler ba?l???
+sadele?ti, a??klama yaz?s? kalkt?; G?ncel Ticketlar/Riskler/Saha Foto?raflar? alt
+grid'de ??l? dengeli d?zene al?nd?. Maliyet kart?n?n i? scroll'u kald?r?ld?.
 
-CLAUDE.md'de `toUserMessage()` maddesi "Bilinen açık noktalar"dan çıkarıldı,
-"Tamamlanan büyük görevler"e eklendi.
+`TabIsPlan.jsx` kritik yol mant???ndan ??kar?ld?: plan biti? tarihi ge?mi? ve g?rev
+tamamlanmam??/iptal de?ilse `Riskli`, aksi halde `Normal`. ?? Plan? KPI ?eridi 3
+karta indirildi (`Riskli/Geciken` tek KPI). ?l? kod temizli?iyle kullan?lmayan
+`normalizeRisk`, eski milestone/timeline CSS'i, `project-risk-note`,
+`project-progress-row`, `project-risk-row` ve `.gantt-bar.critical` kald?r?ld?.
 
-Commit'lenmedi. Repo `origin/main`'in ilerisinde — bu tur (`errors.js`
-tekilleştirme, 4 dosya) commit'lenmemiş çalışma-alanında. Bir önceki tur
-(Genel Proje redesign 2. geçiş + tarih-farkında ilerleme + ticket description
-sızıntısı + severity haritası) zaten `4cbcee8` ile commit'lenip push'landı.
+Do?rulama: `npm.cmd run lint` hata vermedi (mevcut 24 warning eski hook/fast-refresh
+uyar?lar?); `npm.cmd run build` ba?ar?l?, yaln?zca ?nceki b?y?k chunk/dynamic import
+uyar?lar? s?r?yor.
