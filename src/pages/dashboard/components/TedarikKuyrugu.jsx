@@ -73,7 +73,7 @@ function TedarikBilgisiModal({ request, onClose, onSaved }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.supplier_id || !form.purchase_date) return
+    if (!form.purchase_date) return
     setSaving(true)
     setErr('')
 
@@ -88,12 +88,14 @@ function TedarikBilgisiModal({ request, onClose, onSaved }) {
     }
 
     const payload = {
-      supplier_id: form.supplier_id,
+      supplier_id: form.supplier_id || null,
       purchase_date: form.purchase_date,
       delivery_date: form.delivery_date || null,
       received_by_name: form.received_by_name.trim() || null,
       delivery_document_url,
       purchased_by: user.id,
+      status: 'satin_alindi',
+      updated_at: new Date().toISOString(),
     }
     if (form.approval_note.trim()) payload.approval_note = form.approval_note.trim()
 
@@ -113,20 +115,20 @@ function TedarikBilgisiModal({ request, onClose, onSaved }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
       <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: 520, maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Tedarik Bilgisi</h3>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Yönetici İşlemi</h3>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
         </div>
         <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748B' }}>
-          {requestTitle(request)} için tedarikçi ve satın alma bilgisini girin. Tedarikçi + satın alma tarihi kaydedilince talep otomatik "Satın Alındı" durumuna geçer.
+          {requestTitle(request)} için dış satın alma/teslimat adımını tamamladıysanız onaylayın. Talep bu işlemden sonra muhasebede fatura bekleyen aşamaya geçer.
         </p>
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 14 }}>
-            <label style={lbl}>Tedarikçi *</label>
+            <label style={lbl}>Tedarikçi / Not (opsiyonel)</label>
             {!showNewSupplier ? (
               <div style={{ display: 'flex', gap: 8 }}>
-                <select required style={inp} value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)}>
-                  <option value="">Seçiniz</option>
+                <select style={inp} value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)}>
+                  <option value="">Sistem dışında takip ediliyor</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
                 <button type="button" onClick={() => setShowNewSupplier(true)}
@@ -151,7 +153,7 @@ function TedarikBilgisiModal({ request, onClose, onSaved }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
             <div>
-              <label style={lbl}>Satın Alma Tarihi *</label>
+              <label style={lbl}>İşlem Tarihi *</label>
               <input required type="date" style={inp} value={form.purchase_date} onChange={e => set('purchase_date', e.target.value)} />
             </div>
             <div>
@@ -166,7 +168,7 @@ function TedarikBilgisiModal({ request, onClose, onSaved }) {
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={lbl}>Teslimat Belgesi</label>
+            <label style={lbl}>Teslimat / İşlem Belgesi</label>
             <input type="file" accept="image/*,.pdf" onChange={e => setFile(e.target.files?.[0] || null)} style={{ fontSize: 13, fontFamily: 'inherit' }} />
             {request.delivery_document_url && !file && (
               <p style={{ margin: '6px 0 0', fontSize: 11.5, color: '#6B7280' }}>Mevcut bir belge zaten yüklü — yeni dosya seçmezseniz korunur.</p>
@@ -185,7 +187,7 @@ function TedarikBilgisiModal({ request, onClose, onSaved }) {
               İptal
             </button>
             <button type="submit" disabled={saving || uploading} style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: (saving || uploading) ? 0.7 : 1 }}>
-              {uploading ? 'Belge yükleniyor…' : saving ? 'Kaydediliyor…' : 'Kaydet'}
+              {uploading ? 'Belge yükleniyor…' : saving ? 'Kaydediliyor…' : 'Muhasebeye Yönlendir'}
             </button>
           </div>
         </form>
@@ -255,7 +257,9 @@ function TedarikIptalModal({ request, onClose, onSaved }) {
 }
 
 export default function TedarikKuyrugu({ projectId }) {
-  const [tab, setTab] = useState('bekleyen')
+  const { role } = useAuth()
+  const canAct = role === 'proje_yoneticisi'
+  const [statusFilter, setStatusFilter] = useState('all')
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
@@ -264,7 +268,7 @@ export default function TedarikKuyrugu({ projectId }) {
   const [page, setPage] = useState(0)
 
   useEffect(() => { if (projectId) fetchData() }, [projectId])
-  useEffect(() => { setPage(0) }, [tab, projectId])
+  useEffect(() => { setPage(0) }, [statusFilter, projectId])
 
   async function fetchData() {
     setLoading(true)
@@ -304,34 +308,42 @@ export default function TedarikKuyrugu({ projectId }) {
     )
   }
 
-  const filtered = requests.filter(r => normalizeStatus(r.status) === (tab === 'bekleyen' ? 'onaylandi' : 'satin_alindi'))
+  const filtered = requests.filter(request => {
+    const normalized = normalizeStatus(request.status)
+    if (statusFilter === 'all') return true
+    return normalized === statusFilter
+  })
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages - 1)
   const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
-  const TABS = [
-    { key: 'bekleyen', label: 'Tedarik Bekleyenler', count: requests.filter(r => normalizeStatus(r.status) === 'onaylandi').length },
-    { key: 'tamamlanan', label: 'Tamamlanan', count: requests.filter(r => normalizeStatus(r.status) === 'satin_alindi').length },
+  const STATUS_FILTERS = [
+    { key: 'all', label: 'Tüm Durumlar', count: requests.length },
+    { key: 'onaylandi', label: 'İşlem Bekliyor', count: requests.filter(r => normalizeStatus(r.status) === 'onaylandi').length },
+    { key: 'satin_alindi', label: 'Muhasebeye Yönlendirildi', count: requests.filter(r => normalizeStatus(r.status) === 'satin_alindi').length },
   ]
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{
-            background: 'none', border: 'none', padding: '10px 22px',
-            fontSize: 14, fontWeight: tab === t.key ? 600 : 400,
-            color: tab === t.key ? 'var(--color-primary)' : 'var(--color-muted)',
-            cursor: 'pointer', fontFamily: 'inherit',
-            borderBottom: tab === t.key ? '2px solid var(--color-primary)' : '2px solid transparent',
-            marginBottom: -2,
-          }}>
-            {t.label} <span style={{ marginLeft: 4, fontSize: 11.5, opacity: 0.75 }}>({t.count})</span>
-          </button>
-        ))}
-      </div>
-
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
+            Proje Yöneticisindeki Talepler
+          </h3>
+          <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 7 }}>
+            {filtered.length} talep
+          </span>
+          <select
+            value={statusFilter}
+            onChange={event => setStatusFilter(event.target.value)}
+            style={{ marginLeft: 'auto', border: '1px solid var(--color-border-md)', borderRadius: 7, padding: '5px 28px 5px 10px', fontSize: 12, color: 'var(--color-text-sub)', background: 'var(--color-surface)', cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
+          >
+            {STATUS_FILTERS.map(({ key, label, count }) => (
+              <option key={key} value={key}>{label} ({count})</option>
+            ))}
+          </select>
+        </div>
+
         {errorMessage && (
           <div style={{ padding: '10px 20px', background: '#FEF2F2', color: '#991B1B', fontSize: 13, borderBottom: '1px solid #FECACA' }}>
             {errorMessage}
@@ -342,7 +354,7 @@ export default function TedarikKuyrugu({ projectId }) {
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>Yükleniyor…</div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>
-            {tab === 'bekleyen' ? 'Tedarik bekleyen talep yok.' : 'Henüz tamamlanmış tedarik yok.'}
+            Seçilen duruma uygun satın alma talebi yok.
           </div>
         ) : (
           <>
@@ -350,45 +362,49 @@ export default function TedarikKuyrugu({ projectId }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
               <thead>
                 <tr>
-                  {['TALEP NO', 'TALEP / MALZEME', 'OLUŞTURAN', 'TARİH', ...(tab === 'tamamlanan' ? ['TEDARİKÇİ', 'SATIN ALMA TARİHİ'] : []), 'İŞLEM'].map(h => (
+                  {['TALEP NO', 'TALEP / MALZEME', 'OLUŞTURAN', 'TARİH', 'DURUM', canAct ? 'İŞLEM' : 'AŞAMA'].map(h => (
                     <th key={h} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1, boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map(request => (
-                  <tr key={request.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                    <td style={{ ...TD, color: 'var(--color-primary)', fontWeight: 700 }}>{requestNo(request)}</td>
-                    <td style={{ ...TD, fontWeight: 700, color: 'var(--color-text)', minWidth: 180 }}>{requestTitle(request)}</td>
-                    <td style={TD}>{requesterName(request)}</td>
-                    <td style={TD}>{fmtDate(request.created_at)}</td>
-                    {tab === 'tamamlanan' && (
-                      <>
-                        <td style={TD}>{request.suppliers?.name || '—'}</td>
-                        <td style={TD}>{fmtDate(request.purchase_date)}</td>
-                      </>
-                    )}
-                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button onClick={() => setSelected(request)} style={{
-                          background: tab === 'bekleyen' ? '#185FA5' : '#EFF6FF',
-                          color: tab === 'bekleyen' ? '#fff' : '#185FA5',
-                          border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                        }}>
-                          {tab === 'bekleyen' ? 'Tedarik Bilgisi Gir' : 'Düzenle'}
-                        </button>
-                        {tab === 'bekleyen' && (
-                          <button onClick={() => setCancelling(request)} style={{
-                            background: '#FEF2F2', color: '#DC2626',
-                            border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                          }}>
-                            İptal Et
-                          </button>
+                {pageRows.map(request => {
+                  const normalized = normalizeStatus(request.status)
+                  const waitingPm = normalized === 'onaylandi'
+                  return (
+                    <tr key={request.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                      <td style={{ ...TD, color: 'var(--color-primary)', fontWeight: 700 }}>{requestNo(request)}</td>
+                      <td style={{ ...TD, fontWeight: 700, color: 'var(--color-text)', minWidth: 180 }}>{requestTitle(request)}</td>
+                      <td style={TD}>{requesterName(request)}</td>
+                      <td style={TD}>{fmtDate(request.created_at)}</td>
+                      <td style={{ ...TD, whiteSpace: 'nowrap' }}>
+                        <span style={{ background: waitingPm ? '#DBEAFE' : '#FEF3C7', color: waitingPm ? '#1E40AF' : '#92400E', fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 999 }}>
+                          {waitingPm ? 'Proje yöneticisinde' : 'Muhasebeye yönlendirildi'}
+                        </span>
+                      </td>
+                      <td style={{ ...TD, whiteSpace: 'nowrap' }}>
+                        {canAct && waitingPm ? (
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button onClick={() => setSelected(request)} style={{
+                              background: '#185FA5', color: '#fff',
+                              border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                            }}>
+                              Muhasebeye Yönlendir
+                            </button>
+                            <button onClick={() => setCancelling(request)} style={{
+                              background: '#FEF2F2', color: '#DC2626',
+                              border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                            }}>
+                              İptal Et
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--color-muted)', fontSize: 12 }}>İşlem yok</span>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>

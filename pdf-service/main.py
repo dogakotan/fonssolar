@@ -6,7 +6,7 @@ Excel dosyasini alir, gunluk_rapor_generator ile PDF uretir, geri doner.
 Calistirmak: uvicorn main:app --port 8001 --reload
 """
 
-import os, sys, tempfile
+import json, os, sys, tempfile
 from pathlib import Path
 from datetime import datetime
 
@@ -44,6 +44,7 @@ async def pdf_endpoint(
     rapor_no: str = Form(default=None),
     hava: str = Form(default=None),
     hazirlayan: str = Form(default=None),
+    photo_paths: str = Form(default=None),
 ):
     excel_path = None
     pdf_path   = None
@@ -69,15 +70,23 @@ async def pdf_endpoint(
             rapor_no=rapor_no,
             hava=hava,
             hazirlayan=hazirlayan,
+            photo_paths=photo_paths,
         )
 
         pdf_path = excel_path.replace(".xlsx", ".pdf")
+        parsed_photo_paths = []
+        if photo_paths:
+            try:
+                parsed_photo_paths = [p for p in json.loads(photo_paths) if isinstance(p, str) and p.strip()]
+            except Exception:
+                parsed_photo_paths = []
 
         generate_pdf(
             excel_path,
             output_path=pdf_path,
             proje_id=proje_id,
             tarih=tarih,
+            storage_paths=parsed_photo_paths,
         )
 
         pdf_bytes = Path(pdf_path).read_bytes()

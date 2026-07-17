@@ -126,7 +126,7 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
         </>
       )}
       {tab === 'faturalar' && <ProjeTabFaturaListesi projectId={projectId} filterDate={filterDate} />}
-      {tab === 'onay'      && <ProjeTabOnayKuyrugu projectId={projectId} filterDate={filterDate} />}
+      {tab === 'onay'      && <ProjeTabOnayKuyrugu projectId={projectId} />}
       {tab === 'maliyet'   && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
     </div>
   )

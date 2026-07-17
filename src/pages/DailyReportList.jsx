@@ -16,6 +16,8 @@ import {
 
 const PAGE_SIZE = 10
 
+const PDF_SERVICE_ENDPOINT = import.meta.env.VITE_PDF_SERVICE_URL || 'http://127.0.0.1:8002/generate-pdf'
+
 const WEATHER_EMOJI = {
   'Güneşli': '☀️', 'Parçalı Bulutlu': '⛅', 'Bulutlu': '☁️',
   'Yağmurlu': '🌧️', 'Karlı': '🌨️', 'Fırtınalı': '⛈️', 'Sisli': '🌫️',
@@ -413,6 +415,12 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     try {
       if (type === 'pdf') {
         const { files, reportDate, metadata } = await buildReportExcelById(reportId, exportProjectId)
+        const { data: reportPhotos } = await supabase
+          .from('daily_report_photos')
+          .select('storage_path')
+          .eq('project_id', exportProjectId)
+          .eq('report_date', reportDate)
+          .order('created_at', { ascending: true })
         const blob = xlsxZipBlob(files)
         const form = new FormData()
         form.append('excel', blob, `rapor-${reportDate}.xlsx`)
@@ -422,7 +430,8 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
         form.append('rapor_no', metadata.reportNo)
         form.append('hava', metadata.weather)
         form.append('hazirlayan', metadata.creatorName)
-        const res = await fetch('/generate-pdf', { method: 'POST', body: form })
+        form.append('photo_paths', JSON.stringify((reportPhotos || []).map(photo => photo.storage_path).filter(Boolean)))
+        const res = await fetch(PDF_SERVICE_ENDPOINT, { method: 'POST', body: form })
         if (!res.ok) throw new Error(`PDF servisi hatası: ${await res.text().catch(() => String(res.status))}`)
         const pdfBlob = await res.blob()
         const url = URL.createObjectURL(pdfBlob)

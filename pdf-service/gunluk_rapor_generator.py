@@ -141,11 +141,23 @@ def fetch_supabase_photos(project_id: str, tarih: str) -> list:
         print(f"  {project_id} / {tarih} icin fotograf bulunamadi.")
         return []
 
+    return download_supabase_photo_paths([rec.get("storage_path", "") for rec in records])
+
+
+def supabase_storage_public_url(storage_path: str) -> str:
+    safe_path = "/".join(urllib.parse.quote(part) for part in str(storage_path or "").split("/"))
+    return f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{safe_path}"
+
+
+def download_supabase_photo_paths(storage_paths: list) -> list:
+    storage_paths = [sp for sp in (storage_paths or []) if sp]
+    if not storage_paths:
+        return []
+
     tmp_dir = tempfile.mkdtemp(prefix="fons_foto_")
-    paths   = []
-    for i, rec in enumerate(records):
-        sp   = rec.get("storage_path", "")
-        url  = f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{sp}"
+    paths = []
+    for i, sp in enumerate(storage_paths):
+        url = supabase_storage_public_url(sp)
         ext  = os.path.splitext(sp)[-1] or ".jpg"
         dest = os.path.join(tmp_dir, f"foto_{i:03d}{ext}")
         try:
@@ -724,7 +736,7 @@ def build_photo_story(foto_dir, hazirlayan, photo_paths=None):
 # ─── Ana PDF Olusturucu ───────────────────────────────────────────────────────
 
 def generate_pdf(excel_path: str, foto_dir: str = None, output_path: str = None,
-                 proje_id: str = None, tarih: str = None) -> str:
+                 proje_id: str = None, tarih: str = None, storage_paths: list = None) -> str:
     print(f"\n  Excel okunuyor: {excel_path}")
     d = ExcelData(excel_path)
 
@@ -741,8 +753,8 @@ def generate_pdf(excel_path: str, foto_dir: str = None, output_path: str = None,
     else:
         tarih_api = tarih
 
-    supabase_photos = []
-    if proje_id:
+    supabase_photos = download_supabase_photo_paths(storage_paths)
+    if not supabase_photos and proje_id:
         print(f"  Supabase'den fotograflar cekiliyor: {proje_id} / {tarih_api}")
         supabase_photos = fetch_supabase_photos(proje_id, tarih_api)
 

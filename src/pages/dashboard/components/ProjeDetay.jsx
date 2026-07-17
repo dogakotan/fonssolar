@@ -3,6 +3,7 @@ import { unzipSync, strFromU8, strToU8 } from 'fflate'
 import { exportGunlukRaporPdf, exportGunlukRaporExcel } from '../../../utils/exportUtils'
 import TicketListesi from '../../../components/tickets/TicketListesi'
 import ProjeTabSatinAlma from './ProjeTabSatinAlma'
+import ProjeTabMalzemeListesi from './ProjeTabMalzemeListesi'
 import ProjeTabFinans from './ProjeTabFinans'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
@@ -19,6 +20,8 @@ import {
   xlsxZipBlob,
   formatExcelDate,
 } from '../../../utils/excelUtils'
+
+const PDF_SERVICE_ENDPOINT = import.meta.env.VITE_PDF_SERVICE_URL || 'http://127.0.0.1:8002/generate-pdf'
 
 // ── Periyot yardımcıları ──────────────────────────────────────────────────────
 const PERIODS = [
@@ -925,6 +928,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
   async function exportSelectedDailyReportPDF() {
     const { files, selectedDay, metadata } = await exportSelectedDailyReportExcel()
+    const { data: reportPhotos } = await supabase
+      .from('daily_report_photos')
+      .select('storage_path')
+      .eq('project_id', projectId)
+      .eq('report_date', selectedDay)
+      .order('created_at', { ascending: true })
+
     const blob = xlsxZipBlob(files)
     const form = new FormData()
     form.append('excel', blob, `rapor-${selectedDay}.xlsx`)
@@ -934,7 +944,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     form.append('rapor_no', metadata.reportNo)
     form.append('hava', metadata.weather)
     form.append('hazirlayan', metadata.creatorName)
-    const res = await fetch('/generate-pdf', { method: 'POST', body: form })
+    form.append('photo_paths', JSON.stringify((reportPhotos || []).map(photo => photo.storage_path).filter(Boolean)))
+    const res = await fetch(PDF_SERVICE_ENDPOINT, { method: 'POST', body: form })
     if (!res.ok) throw new Error(`PDF servisi hatası: ${await res.text().catch(() => res.status)}`)
     const pdfBlob = await res.blob()
     const url = URL.createObjectURL(pdfBlob)
@@ -1122,6 +1133,9 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           <button onClick={() => setTab('satin-alma')} style={tab === 'satin-alma' ? tabBtnActive : tabBtn}>
             Satın Alma
           </button>
+          <button onClick={() => setTab('malzeme-listesi')} style={tab === 'malzeme-listesi' ? tabBtnActive : tabBtn}>
+            Malzeme Listesi
+          </button>
           {canViewFinanceAndTickets && (
             <button onClick={() => setTab('finans')} style={tab === 'finans' ? tabBtnActive : tabBtn}>
               Finans
@@ -1209,7 +1223,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           </div>
 
           {/* Dışa Aktar — İş Planı sade görünümünde gizli */}
-          {!['tickets', 'satin-alma', 'finans', 'gantt', 'raporlar'].includes(tab) && (
+          {!['tickets', 'satin-alma', 'malzeme-listesi', 'finans', 'gantt', 'raporlar'].includes(tab) && (
             <div ref={exportRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setShowExportMenu(v => !v)}
@@ -1286,6 +1300,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         <TicketListesi projectId={projectId} filterDate={filterDate} />
       ) : tab === 'satin-alma' ? (
         <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
+      ) : tab === 'malzeme-listesi' ? (
+        <ProjeTabMalzemeListesi projectId={projectId} filterDate={filterDate} />
       ) : tab === 'finans' && canViewFinanceAndTickets ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'raporlar' ? (

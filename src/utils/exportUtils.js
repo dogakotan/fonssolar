@@ -689,6 +689,15 @@ async function fetchImageAsDataUrl(publicUrl) {
   }
 }
 
+function storagePublicUrl(bucket, path) {
+  const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://bshhgvdzemgfijkzhcrf.supabase.co'
+  const safePath = String(path || '')
+    .split('/')
+    .map(part => encodeURIComponent(part))
+    .join('/')
+  return `${baseUrl}/storage/v1/object/public/${bucket}/${safePath}`
+}
+
 export async function exportPeriodReportPdf(project, periodLabel, periodRangeLabel, data, opts = {}) {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   await registerUnicodeFont(doc)
@@ -847,7 +856,7 @@ export async function exportPeriodReportPdf(project, periodLabel, periodRangeLab
     const imgH = imgW * 0.72
     let x = 14
     for (let i = 0; i < data.photos.length; i++) {
-      const url = `https://bshhgvdzemgfijkzhcrf.supabase.co/storage/v1/object/public/saha-fotolari/${data.photos[i]}`
+      const url = storagePublicUrl('saha-fotolari', data.photos[i])
       const dataUrl = await fetchImageAsDataUrl(url)
       if (dataUrl) {
         try { doc.addImage(dataUrl, 'JPEG', x, y, imgW, imgH) } catch { /* bozuk goruntu, atla */ }

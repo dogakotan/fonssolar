@@ -4,11 +4,10 @@ import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
-import { classifyMaterials, classifyRequestTypes, buildMaterialListRows, normalizeStatus } from '../../../utils/satinAlma'
+import { classifyMaterials, classifyRequestTypes, normalizeStatus } from '../../../utils/satinAlma'
 import ProjeTabSatinAlmaStats from './ProjeTabSatinAlmaStats'
 import ProjeTabTalepListesi from './ProjeTabTalepListesi'
 import ProjeTabSaOnayKuyrugu from './ProjeTabSaOnayKuyrugu'
-import ProjeTabFaturaKesilecekler from './ProjeTabFaturaKesilecekler'
 import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 import TedarikKuyrugu from './TedarikKuyrugu'
 
@@ -45,36 +44,28 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
       if (alive && kurData) setDoviz({ usd: kurData.usd, eur: kurData.eur, date: kurData.date })
     })
     return () => { alive = false }
-  }, [siteChiefView])
+  }, [siteChiefView, procurementManagerView])
 
   const now = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const dateBoundary = new Date((filterDate || now.toISOString().split('T')[0]) + 'T23:59:59')
-  const requestsUntilDate = requests.filter(r => !r.created_at || new Date(r.created_at) <= dateBoundary)
   const pendingRequests = requests.filter(r => normalizeStatus(r.status) === 'bekliyor')
   const tedarik = classifyMaterials(procurement, pendingRequests)
   const dagilim = classifyRequestTypes(requests)
-  const materialRows = buildMaterialListRows(procurement, requestsUntilDate)
   const kpi = {
     pending: pendingRequests.length,
     risky: tedarik.excess,
-    invoicePending: requests.filter(r => ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(normalizeStatus(r.status))).length,
+    invoicePending: requests.filter(r => ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(normalizeStatus(r.status))).length,
     monthOpened: requests.filter(r => r.created_at && new Date(r.created_at) >= monthStart).length,
   }
-  const recent = [...requests]
-    .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
-    .slice(0, 4)
 
   const TABS = procurementManagerView
     ? [
-        { key: 'tedarik', label: 'Tedarik' },
-        { key: 'malzeme', label: 'Malzeme Listesi' },
+        { key: 'tedarik', label: 'Proje Yöneticisinde' },
       ]
     : [
         { key: 'talepler', label: 'Talepler' },
         ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
-        ...(canManageProcurement ? [{ key: 'tedarik', label: 'Tedarik' }] : []),
-        { key: 'malzeme', label: 'Malzeme Listesi' },
+        ...(canManageProcurement ? [{ key: 'tedarik', label: 'Proje Yöneticisinde' }] : []),
       ]
 
   if (!loading && !authorized) {
@@ -87,7 +78,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
       {!siteChiefView && !procurementManagerView && (
         <div className="sa-overview-grid">
           <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
-          <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} recent={recent} doviz={doviz} loading={loading} />
+          <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} doviz={doviz} />
         </div>
       )}
       <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
@@ -109,7 +100,6 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
       )}
       {tab === 'onay' && isAdmin && <ProjeTabSaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
       {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} />}
-      {tab === 'malzeme' && <ProjeTabFaturaKesilecekler rows={materialRows} loading={loading} projectId={projectId} />}
     </div>
   )
 }

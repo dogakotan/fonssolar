@@ -62,12 +62,9 @@ export default function TabSatinAlma() {
   const kpi = {
     pending: pendingRequests.length,
     risky: tedarik.excess,
-    invoicePending: scopedRequests.filter(r => ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(normalizeStatus(r.status))).length,
+    invoicePending: scopedRequests.filter(r => ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(normalizeStatus(r.status))).length,
     monthOpened: scopedRequests.filter(r => r.created_at && new Date(r.created_at) >= monthStart).length,
   }
-  const recent = [...scopedRequests]
-    .sort((a, b) => new Date(b.updated_at || b.created_at) - new Date(a.updated_at || a.created_at))
-    .slice(0, 4)
 
   const TABS = [
     { key: 'talepler', label: 'Talepler' },
@@ -81,7 +78,7 @@ export default function TabSatinAlma() {
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
       <div className="sa-overview-grid">
         <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
-        <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} recent={recent} doviz={doviz} loading={loading} />
+        <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} doviz={doviz} />
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)', flexWrap: 'wrap' }}>
         {TABS.map(t => (

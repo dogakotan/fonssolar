@@ -104,6 +104,11 @@ function ActionButtons({ inv, onAction, actionLoading }) {
 function InvoiceTable({ invoices, onAction, actionLoading, readonly }) {
   const [expanded, setExpanded] = useState(null)
   const toggle = (id) => setExpanded(e => e === id ? null : id)
+  const statusMeta = (status) => ({
+    onaylandı: { bg: '#D1FAE5', color: '#065F46', label: 'Tamamlandı' },
+    reddedildi: { bg: '#FEE2E2', color: '#991B1B', label: 'İptal / Reddedildi' },
+    yönetici_onayında: { bg: '#EFF6FF', color: '#185FA5', label: 'Yönetici Onayında' },
+  })[status] || { bg: '#EFF6FF', color: '#185FA5', label: 'Yönetici Onayında' }
 
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -129,7 +134,7 @@ function InvoiceTable({ invoices, onAction, actionLoading, readonly }) {
                 <td onClick={() => toggle(inv.id)} style={{ padding: '14px 20px', fontSize: 13, color: '#6B7280' }}>{formatDate(inv.invoice_date)}</td>
                 <td style={{ padding: '14px 20px' }} onClick={e => e.stopPropagation()}>
                   {readonly ? (
-                    <span style={{ background: '#EFF6FF', color: '#185FA5', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>Yönetici Onayında</span>
+                    <span style={{ background: statusMeta(inv.status).bg, color: statusMeta(inv.status).color, fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>{statusMeta(inv.status).label}</span>
                   ) : (
                     <ActionButtons inv={inv} onAction={onAction} actionLoading={actionLoading} />
                   )}
@@ -162,6 +167,7 @@ export default function ProjeTabOnayKuyrugu({ projectId }) {
   const { isAdmin, isMuhasebe, user } = useAuth()
   const [muhasebeKuyrugu, setMuhasebeKuyrugu] = useState([])
   const [yoneticiKuyrugu, setYoneticiKuyrugu] = useState([])
+  const [kapananFaturalar, setKapananFaturalar] = useState([])
   const [loading,         setLoading]         = useState(true)
   const [actionLoading,   setActionLoading]   = useState(null)
 
@@ -172,15 +178,21 @@ export default function ProjeTabOnayKuyrugu({ projectId }) {
     const sel = '*, suppliers(name), projects(name)'
 
     if (isMuhasebe) {
-      const [mRes, yRes] = await Promise.all([
+      const [mRes, yRes, cRes] = await Promise.all([
         supabase.from('invoices').select(sel).in('status', ['bekliyor', 'muhasebe_onayında']).eq('project_id', projectId).order('invoice_date', { ascending: true }),
         supabase.from('invoices').select(sel).eq('status', 'yönetici_onayında').eq('project_id', projectId).order('invoice_date', { ascending: true }),
+        supabase.from('invoices').select(sel).in('status', ['onaylandı', 'reddedildi']).eq('project_id', projectId).order('invoice_date', { ascending: false }).limit(20),
       ])
       setMuhasebeKuyrugu(mRes.data || [])
       setYoneticiKuyrugu(yRes.data || [])
+      setKapananFaturalar(cRes.data || [])
     } else if (isAdmin) {
-      const { data } = await supabase.from('invoices').select(sel).eq('status', 'yönetici_onayında').eq('project_id', projectId).order('invoice_date', { ascending: true })
-      setYoneticiKuyrugu(data || [])
+      const [yRes, cRes] = await Promise.all([
+        supabase.from('invoices').select(sel).eq('status', 'yönetici_onayında').eq('project_id', projectId).order('invoice_date', { ascending: true }),
+        supabase.from('invoices').select(sel).in('status', ['onaylandı', 'reddedildi']).eq('project_id', projectId).order('invoice_date', { ascending: false }).limit(20),
+      ])
+      setYoneticiKuyrugu(yRes.data || [])
+      setKapananFaturalar(cRes.data || [])
     }
 
     setLoading(false)
@@ -217,13 +229,24 @@ export default function ProjeTabOnayKuyrugu({ projectId }) {
       )}
 
       <Section
-        title={isAdmin ? 'Yönetici Onay Kuyruğu' : 'Yönetici Onayında'}
+        title={isAdmin ? 'Fatura Onay Bekleyenler' : 'Yönetici Onayında'}
         badge={`${yoneticiKuyrugu.length} fatura`}
         badgeBg="#EFF6FF" badgeColor="#185FA5"
       >
         {yoneticiKuyrugu.length === 0
           ? <EmptyState text={isAdmin ? 'Onay bekleyen fatura yok' : 'Yönetici onayında fatura yok'} />
           : <InvoiceTable invoices={yoneticiKuyrugu} onAction={(id, action, note) => handleAction(id, action, note, 2)} actionLoading={actionLoading} readonly={isMuhasebe} />
+        }
+      </Section>
+
+      <Section
+        title="Tamamlanan / İptal Edilen"
+        badge={`${kapananFaturalar.length} fatura`}
+        badgeBg="#F3F4F6" badgeColor="#374151"
+      >
+        {kapananFaturalar.length === 0
+          ? <EmptyState text="Tamamlanan veya iptal edilen fatura yok" />
+          : <InvoiceTable invoices={kapananFaturalar} onAction={() => {}} actionLoading={actionLoading} readonly />
         }
       </Section>
     </div>

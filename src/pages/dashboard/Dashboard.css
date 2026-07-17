@@ -1273,10 +1273,205 @@
 /* ── Satın Alma özet kart ızgarası ── */
 .sa-overview-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 0.7fr;
+  grid-template-columns: 1.25fr 1.25fr 1.25fr .65fr;
   gap: 12px;
   align-items: stretch;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
+}
+.sa-summary-card,
+.sa-panel-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-md);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  min-height: 112px;
+  box-sizing: border-box;
+}
+.sa-summary-card { border-top-color: var(--color-primary); }
+.sa-eyebrow {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: .66rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.sa-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .38rem .75rem;
+  flex: 1;
+}
+.sa-metric {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .05rem .45rem;
+  align-items: baseline;
+  padding: .05rem 0 .32rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.sa-metric:last-child { border-bottom: 0; }
+.sa-metric-label {
+  color: var(--color-text);
+  font-size: .72rem;
+  font-weight: 800;
+}
+.sa-metric strong {
+  font-size: 1.1rem;
+  line-height: 1;
+  font-weight: 900;
+}
+.sa-metric small {
+  grid-column: 1 / -1;
+  color: var(--color-muted);
+  font-size: .62rem;
+}
+.sa-panel-card {
+  display: flex;
+  flex-direction: column;
+  gap: .48rem;
+  padding: 12px 14px;
+  border-top: 3px solid var(--color-primary);
+}
+.sa-column-chart,
+.sa-donut-wrap {
+  flex: 1;
+  min-height: 0;
+}
+.sa-chart-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--color-muted);
+  font-size: .68rem;
+  font-weight: 800;
+  margin-bottom: .35rem;
+}
+.sa-chart-total strong {
+  color: var(--color-text);
+  font-size: 1.05rem;
+}
+.sa-chart-total small {
+  color: var(--color-muted);
+  font-size: .62rem;
+}
+.sa-column-bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: .55rem;
+  min-height: 82px;
+}
+.sa-column-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .35rem;
+  min-width: 54px;
+}
+.sa-column-item strong {
+  font-size: .95rem;
+  line-height: 1;
+}
+.sa-column-item small {
+  color: var(--color-muted);
+  font-size: .64rem;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+}
+.sa-column-track {
+  width: 42px;
+  height: 58px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+.sa-column-track span {
+  display: block;
+  width: 100%;
+  border-radius: 8px 8px 2px 2px;
+}
+.sa-donut-wrap {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+}
+.sa-donut {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 1px var(--color-border-md);
+}
+.sa-donut > div {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+.sa-donut strong {
+  color: var(--color-text);
+  font-size: 1rem;
+  line-height: 1;
+}
+.sa-donut span {
+  color: var(--color-muted);
+  font-size: .62rem;
+  font-weight: 800;
+}
+.sa-donut-legend {
+  display: grid;
+  gap: .45rem;
+}
+.sa-donut-legend span {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: .45rem;
+  color: var(--color-text-sub);
+  font-size: .74rem;
+  font-weight: 800;
+}
+.sa-donut-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.sa-donut-legend strong { color: var(--color-text); }
+.sa-donut-legend small { color: var(--color-muted); font-size: .66rem; }
+.sa-currency-card {
+  background: #f8fafc;
+}
+.sa-currency-row {
+  display: grid;
+  gap: .1rem;
+  padding-bottom: .45rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.sa-currency-row span {
+  color: var(--color-muted);
+  font-size: .68rem;
+  font-weight: 800;
+}
+.sa-currency-row strong {
+  color: var(--color-text);
+  font-size: .98rem;
+}
+.sa-currency-card small {
+  color: var(--color-muted);
+  font-size: .68rem;
+  margin-top: auto;
 }
 /* ── Finans Genel sekmesi — üst satır (Proje Finans Özeti + Bütçe Kullanımı + Kur) — Kur Bilgisi
    sadece küçük bir bilgi kartı olduğu için en dar sütun, Bütçe Kullanımı daha geniş. Grafik satırı
@@ -1341,6 +1536,7 @@
   .gantt-toolbar, .gantt-toolbar select { width: 100%; }
   .gantt-detail-row strong { max-width: 190px; }
   .sa-overview-grid { grid-template-columns: 1fr; }
+  .sa-metric-grid { grid-template-columns: 1fr; }
   .finans-panel-grid { grid-template-columns: 1fr; }
   .finans-ozet-card { grid-column: span 1; }
   .finans-row2-grid { grid-template-columns: 1fr; }

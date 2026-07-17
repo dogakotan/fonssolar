@@ -7,26 +7,17 @@ import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModa
 import Pager from '../../../components/ui/Pager'
 import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
 
-const STATUS = {
-  bekliyor: { bg: '#FEF3C7', color: '#92400E', label: 'Bekliyor' },
-  onaylandi: { bg: '#D1FAE5', color: '#065F46', label: 'Onaylandı' },
-  red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Red Edildi' },
-  satin_alindi: { bg: '#DBEAFE', color: '#1E40AF', label: 'Satın Alındı' },
-  fatura_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Bekleniyor' },
-  fatura_onay_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Onayında' },
-  faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Faturası Kesildi' },
-  iptal: { bg: '#E5E7EB', color: '#374151', label: 'İptal Edildi' },
-}
-
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tüm Durumlar' },
-  { value: 'bekliyor', label: 'Bekliyor' },
-  { value: 'onaylandi', label: 'Onaylandı' },
-  { value: 'red_edildi', label: 'Red Edildi' },
-  { value: 'satin_alindi', label: 'Satın Alındı' },
-  { value: 'fatura_onay_bekliyor', label: 'Fatura Onayında' },
-  { value: 'faturasi_kesildi', label: 'Faturası Kesildi' },
+  { value: 'bekliyor', label: 'Onay Bekleyen' },
+  { value: 'onaylandi', label: 'Proje Yöneticisinde' },
+  { value: 'fatura_sureci', label: 'Fatura Süreci' },
+  { value: 'faturasi_kesildi', label: 'Tamamlandı' },
+  { value: 'red_edildi', label: 'Reddedildi' },
+  { value: 'iptal', label: 'İptal' },
 ]
+
+const INVOICE_FLOW_STATUSES = new Set(['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'])
 
 const PAGE_SIZE = 10
 const ROW_HEIGHT = 44
@@ -61,34 +52,6 @@ function requestType(request) {
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'Hizmet' : 'Malzeme'
 }
 
-function StatusBadge({ status }) {
-  const normalized = normalizeStatus(status)
-  const badge = STATUS[normalized] || { bg: '#F3F4F6', color: '#374151', label: (normalized || '—').replace(/_/g, ' ') }
-  return (
-    <span style={{ background: badge.bg, color: badge.color, fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 7, whiteSpace: 'nowrap' }}>
-      {badge.label}
-    </span>
-  )
-}
-
-function InvoiceStatusBadge({ status }) {
-  const normalized = normalizeStatus(status)
-  const info = {
-    onaylandi: { bg: '#FEF3C7', color: '#92400E', label: 'Tedarikçi Bekleniyor' },
-    satin_alindi: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura Bekliyor' },
-    fatura_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Sürecinde' },
-    fatura_onay_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Onayında' },
-    faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Faturası Kesildi' },
-    red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Red Edildi' },
-  }[normalized] || { bg: '#F3F4F6', color: '#64748B', label: 'Fatura Yok' }
-
-  return (
-    <span style={{ background: info.bg, color: info.color, fontSize: 11, fontWeight: 600, padding: '3px 9px', borderRadius: 7, whiteSpace: 'nowrap' }}>
-      {info.label}
-    </span>
-  )
-}
-
 const RISK_STATE_META = {
   riskli: { color: 'var(--color-danger)', label: 'Riskli' },
   listede_yok: { color: 'var(--color-warning)', label: 'Listede Yok' },
@@ -117,16 +80,10 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
   const [errorMessage, setErrorMessage] = useState('')
   const [page, setPage] = useState(0)
 
-  const canCreate = role !== 'muhasebe'
-  const canInvoice = isAdmin || isMuhasebe
-  // Onay/red yalnızca admin'e ait — "Onay Bekleyenler" sekmesi de aynı şekilde isAdmin'e
-  // kilitli (TabSatinAlma.jsx), buradaki satır-içi butonlar önceden rol farkı gözetmeden
-  // herkese görünüyordu (bkz. CLAUDE.md bilinen açık noktalar).
+  const canCreate = !isAdmin && role !== 'muhasebe'
+  const canInvoice = isMuhasebe
   const canApprove = isAdmin
 
-  // refreshKey: üst bileşendeki Realtime aboneliği purchase_requests'te değişiklik
-  // gördüğünde bump edilir — bu liste kendi ham sorgusunu koştuğu için (RPC'den bağımsız)
-  // Realtime'a doğrudan bağlı değil, refreshKey değişimiyle dolaylı olarak tazelenir.
   useEffect(() => { fetchData() }, [onlyPending, projectId, refreshKey])
   useEffect(() => { setPage(0) }, [statusFilter, onlyPending, projectId, refreshKey])
 
@@ -173,16 +130,13 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
     setLoading(false)
   }
 
-  // Malzeme Tedarik kartıyla tutarlı olması için per-proje planlanan miktar (BOM) ve
-  // onay bekleyen taleplerin per-proje toplamı — asla projeler arası düzleştirilmez,
-  // çünkü aynı isimli malzemenin farklı projelerde alakasız planlanan miktarları olabilir.
   const materialPlanByProject = new Map()
   groupByProjectId(procurement || []).forEach((group, projectId) => {
     const plan = new Map()
     group.rows.forEach(material => {
       const key = materialKey(materialName(material))
       if (!key) return
-      plan.set(key, toNumber(material.quantity))
+      plan.set(key, toNumber(material.planned_qty ?? material.planned_quantity ?? material.quantity))
     })
     materialPlanByProject.set(projectId, plan)
   })
@@ -219,10 +173,27 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
     setActionLoading(null)
   }
 
+  function FlowBadge({ request }) {
+    const normalized = normalizeStatus(request.status)
+    const info = {
+      onaylandi: { bg: '#DBEAFE', color: '#1E40AF', label: 'Proje yöneticisinde' },
+      satin_alindi: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura bekleniyor' },
+      fatura_bekliyor: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura bekleniyor' },
+      fatura_onay_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura onayında' },
+      faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Tamamlandı' },
+      red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Reddedildi' },
+      iptal: { bg: '#E5E7EB', color: '#374151', label: 'İptal' },
+    }[normalized] || { bg: '#F3F4F6', color: '#64748B', label: 'Bekliyor' }
+
+    return <span style={{ background: info.bg, color: info.color, fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' }}>{info.label}</span>
+  }
+
   const filtered = requests.filter(request => {
     if (onlyPending) return true
     if (statusFilter === 'all') return true
-    return normalizeStatus(request.status) === statusFilter
+    const normalized = normalizeStatus(request.status)
+    if (statusFilter === 'fatura_sureci') return INVOICE_FLOW_STATUSES.has(normalized)
+    return normalized === statusFilter
   })
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages - 1)
@@ -278,10 +249,10 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
       ) : (
         <>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1040 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 860 }}>
             <thead>
               <tr>
-                {['TALEP NO', 'PROJE', 'TALEP / MALZEME', 'TİP', 'OLUŞTURAN KİŞİ', 'RİSK DURUMU', 'DURUM', 'TARİH', 'İŞLEM / FATURA'].map(header => (
+                {['TALEP', 'PROJE', 'OLUŞTURAN', 'UYGUNLUK', 'KATEGORİ', 'İŞLEM'].map(header => (
                   <th key={header} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1, boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)' }}>{header}</th>
                 ))}
               </tr>
@@ -300,18 +271,25 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                     onMouseEnter={event => { event.currentTarget.style.background = 'var(--color-bg)' }}
                     onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
                   >
-                    <td style={{ ...TD, color: 'var(--color-primary)', fontWeight: 700, whiteSpace: 'nowrap' }}>{requestNo(request)}</td>
+                    <td style={{ ...TD, minWidth: 260 }}>
+                      <div style={{ display: 'grid', gap: 5 }}>
+                        <strong style={{ color: 'var(--color-text)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={materialTitle(request)}>{materialTitle(request)}</strong>
+                        <span style={{ color: 'var(--color-primary)', fontSize: 11, fontWeight: 800 }}>{requestNo(request)}</span>
+                      </div>
+                    </td>
                     <td style={{ ...TD, color: 'var(--color-text-sub)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={request.projects?.name || ''}>{request.projects?.name || '—'}</td>
-                    <td style={{ ...TD, fontWeight: 700, color: 'var(--color-text)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={materialTitle(request)}>{materialTitle(request)}</td>
-                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>
-                      <span style={{ background: requestType(request) === 'Malzeme' ? '#EAF2FF' : '#E9FBEF', color: requestType(request) === 'Malzeme' ? 'var(--color-primary)' : 'var(--color-success)', fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 6 }}>
+                    <td style={{ ...TD, minWidth: 150 }}>
+                      <div style={{ display: 'grid', gap: 4 }}>
+                        <strong style={{ color: 'var(--color-text-sub)', fontSize: 12.5 }}>{requesterName(request)}</strong>
+                        <span style={{ color: 'var(--color-muted)', fontSize: 11 }}>{fmtDate(request.request_date || request.created_at)}</span>
+                      </div>
+                    </td>
+                    <td style={{ ...TD, whiteSpace: 'nowrap' }}><RiskBadge state={risk} /></td>
+                    <td style={TD}>
+                      <span style={{ color: requestType(request) === 'Malzeme' ? 'var(--color-primary)' : 'var(--color-success)', fontSize: 12, fontWeight: 800 }}>
                         {requestType(request)}
                       </span>
                     </td>
-                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>{requesterName(request)}</td>
-                    <td style={{ ...TD, whiteSpace: 'nowrap' }}><RiskBadge state={risk} /></td>
-                    <td style={{ ...TD, whiteSpace: 'nowrap' }}><StatusBadge status={request.status} /></td>
-                    <td style={{ ...TD, whiteSpace: 'nowrap' }}>{fmtDate(request.request_date || request.created_at)}</td>
                     <td style={{ ...TD, minWidth: 128, whiteSpace: 'nowrap' }}>
                       {isPending && canApprove ? (
                         <div style={{ display: 'flex', gap: 5, flexWrap: 'nowrap' }}>
@@ -323,16 +301,15 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                           </button>
                         </div>
                       ) : isPending ? (
-                        <span style={{ fontSize: 12, color: 'var(--color-muted-light)' }}>—</span>
+                        <FlowBadge request={request} />
                       ) : canInvoice && isAwaitingInvoice(request) ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
-                          <InvoiceStatusBadge status={request.status} />
                           <button onClick={event => { event.stopPropagation(); setFaturaRequest(request) }} style={{ background: '#EDE9FE', color: '#5B21B6', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                             Fatura Oluştur
                           </button>
                         </div>
                       ) : (
-                        <InvoiceStatusBadge status={request.status} />
+                        <FlowBadge request={request} />
                       )}
                     </td>
                   </tr>

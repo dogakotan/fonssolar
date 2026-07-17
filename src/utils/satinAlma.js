@@ -55,7 +55,7 @@ export function materialName(row) {
 function requestedTotalsByMaterial(requests) {
   const totals = new Map()
   requests.forEach(request => {
-    ;(request.items || []).forEach(item => {
+    ;(request.items || request.purchase_request_items || []).forEach(item => {
       const key = materialKey(item.name)
       if (!key) return
       totals.set(key, (totals.get(key) || 0) + toNumber(item.quantity))
@@ -74,18 +74,25 @@ export function classifyMaterials(materials, requests) {
   )
 
   return requests.reduce((acc, request) => {
-    const risky = (request.items || []).some(item => {
+    const items = request.items || request.purchase_request_items || []
+    const isMaterial = requestType(request) === 'malzeme'
+    const risky = isMaterial && items.some(item => {
       const key = materialKey(item.name)
       const planned = plannedByMaterial.get(key) || 0
       const requested = requestedByMaterial.get(key) || 0
       return planned > 0 && requested > planned
     })
+    const missing = isMaterial && items.length > 0 && items.every(item => {
+      const key = materialKey(item.name)
+      return (plannedByMaterial.get(key) || 0) <= 0
+    })
 
     acc.total += 1
     if (risky) acc.excess += 1
+    else if (missing) acc.missing += 1
     else acc.ok += 1
     return acc
-  }, { total: 0, ok: 0, excess: 0 })
+  }, { total: 0, ok: 0, excess: 0, missing: 0 })
 }
 
 // Yalnızca fiilen satın alınmış/teslim edilmiş taleplerin miktarı → projeye gönderilen miktar
@@ -139,6 +146,7 @@ export function riskBreakdownForItems(items, materialPlan, requestedTotals) {
 // Malzeme tipi bir talebin hiçbir kalemi proje malzeme listesinde (BOM) bulunamadıysa
 // risk hesaplanamadığı için "Uygun" değil "Listede Yok" gösterilmeli.
 export function riskState(items, materialPlan, requestedTotals, category) {
+  if (category !== 'malzeme') return 'uygun'
   const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
   if (breakdown.some(row => row.risky)) return 'riskli'
   if (category === 'malzeme' && breakdown.length > 0 && breakdown.every(row => row.planned <= 0)) return 'listede_yok'
@@ -176,14 +184,14 @@ export function groupByProjectId(rows) {
 // Her proje için classifyMaterials'i ayrı çağırıp {total, ok, excess} toplamlarını döner.
 // Asla projeler arası düzleştirilmiş (flatten) bir malzeme haritası kullanmaz.
 export function aggregateMaterialsAcrossProjects(materialsByProject, requestsByProject) {
-  const totals = { total: 0, ok: 0, excess: 0 }
+  const totals = { total: 0, ok: 0, excess: 0, missing: 0 }
   requestsByProject.forEach((group, projectId) => {
     const materials = materialsByProject.get(projectId)?.rows || []
     const result = classifyMaterials(materials, group.rows)
     totals.total += result.total
     totals.ok += result.ok
     totals.excess += result.excess
+    totals.missing += result.missing
   })
   return totals
 }
-
