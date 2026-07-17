@@ -208,9 +208,10 @@ Frontend tarafı: `isAwaitingInvoice()` (`src/utils/satinAlma.js`) artık yalnı
 `satin_alindi` durumunda true döner (`onaylandi` ARTIK YETERLİ DEĞİL) — "Fatura
 Oluştur" butonu üç yerde de (`ProjeTabTalepListesi.jsx`, `TabSatinAlmaTalepListesi.jsx`,
 `TalepDetayModal.jsx`) bu tek fonksiyona delege ettiği için değişiklik hepsine
-otomatik yansıyor. `FaturaOlusturModal.jsx`'te yeni bir `toUserMessage()` DB
-guard hatasını Türkçeleştiriyor (bu dosyaya özel, `DailyReportForm.jsx`'teki
-`toUserMessage` ile ortak bir modül değil — bkz. Bilinen açık noktalar).
+otomatik yansıyor. `FaturaOlusturModal.jsx`'teki `toUserMessage()` DB guard
+hatasını Türkçeleştiriyor — artık `src/utils/errors.js`'teki ortak
+`toUserMessage(error, {rules, fallback})`'a delege ediyor (2026-07-17'de
+tekilleştirildi, bkz. Tamamlanan büyük görevler).
 `suppliers` tablosunun tam şeması: `id, name, tax_no, contact, email, phone,
 created_at` — frontend hâlâ yalnızca `id, name` okuyor/yazıyor, `TedarikKuyrugu.jsx`
 içindeki "+ Yeni" mini-form da yalnızca `name` ile insert ediyor.
@@ -672,6 +673,16 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
   ve `DailyReportDetail.jsx`'teki `PRIORITY_COLORS` — `daily_report_issues.priority`
   için, farklı bir alan/ekran — kasıtlı olarak bu tekilleştirmenin kapsamı
   dışında bırakıldı, aynı 4 değeri kullanıyor ama ayrı bir görev.)
+- **`toUserMessage()` tekilleştirildi:** yeni `src/utils/errors.js` —
+  `toUserMessage(error, {rules, fallback})`. Ortak kural (RLS/yetki hatası →
+  "Bu işlem için yetkiniz yok.") tek yerde sabit; her çağıran kendi özel
+  kurallarını (`rules: [{match, message}]`) ve varsayılan mesajını (`fallback`,
+  string ya da `(error) => string`) parametre olarak geçiyor. Düzeltme
+  sırasında CLAUDE.md'nin daha önce yakalamadığı **üçüncü** bir kopya bulundu:
+  `TedarikKuyrugu.jsx`'in kendi `toUserMessage()`'ı (backlog notu yalnızca
+  `DailyReportForm.jsx`/`FaturaOlusturModal.jsx`'i biliyordu) — üçü de artık
+  ortak fonksiyona delege ediyor, yerel `toUserMessage()` sarmalayıcıları ince
+  birer parametre-geçiş fonksiyonu olarak kaldı (çağıran taraflar değişmedi).
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Satın alma/finans liste ekranları RPC kullanmıyor:** `TabSatinAlmaTalepListesi.jsx`,
@@ -692,12 +703,6 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
   dosyasında duruyor — iş gündeme gelirse oradan devam edilebilir.
 - **Frontend 6/19 rolü tanıyor** (yukarı bkz.) — `ROLE_TABS`/`ROLE_LABEL`/`Sidebar.jsx`
   genişletilmeli, idealde `roles` tablosundan okunan bir izin matrisiyle.
-- **`toUserMessage()` üç ayrı dosyada bağımsız tanımlı** — `DailyReportForm.jsx`,
-  `FaturaOlusturModal.jsx` (2026-07-16'da eklendi), ikisi de kendi if/includes
-  zincirini tekrarlıyor, ortak bir `src/utils/errors.js` yok. Yeni bir modülde
-  Postgres hata çevirisi gerekirse ya bu ikisinden birine benzer yerel bir
-  fonksiyon eklenir ya da bu üçü ortak bir util'e çıkarılır (kullanıcıyla
-  görüşülmeden yapılmamalı, kapsamı büyütür).
 - **Kalite denetimi modülü hiç arayüzü yok** — `quality_inspections` tablosu
   var (0 satır, RLS `USING(true)`, rol/proje kısıtı yok), sıfırdan yazılması
   gerekiyor. (`mechanical_checklist`/`electrical_checklist` tabloları — aynı
@@ -767,34 +772,35 @@ bir sorun — kararsız/flaky, ilgisiz değişikliklerde de başarısız olabili
 ---
 
 ## Son değişiklik
-**17.07.2026 (2) — `tickets.severity` haritası tekilleştirildi.**
+**17.07.2026 (3) — `toUserMessage()` tekilleştirildi.**
 
-Backlog'ta duran bir kod-tekrarı maddesiydi: `TicketListesi.jsx`,
-`TicketDetayModal.jsx`, `YeniTicketModal.jsx` aynı `{düşük,orta,yüksek,kritik}`
-sözlüğünü (renk+label) üç ayrı yerde tanımlıyordu. Yeni `src/utils/ticketSeverity.js`
-eklendi: `SEVERITY_META` (renk/label sözlüğü), `SEVERITY_ORDER` (liste
-sıralaması için), `SEVERITY_OPTIONS` (dropdown'lar için `{value,label}` dizisi).
-`TicketListesi.jsx`/`TicketDetayModal.jsx` artık `SEVERITY_META`'yı `SEVERITY`
-adıyla import ediyor (yerel kopyaları silindi); `TicketListesi.jsx`'in severity
-filtre butonları da `SEVERITY_OPTIONS`'tan türetiliyor; `YeniTicketModal.jsx`'in
-Aciliyet select'indeki 4 hardcoded `<option>` `SEVERITY_OPTIONS.map(...)` oldu.
+Bir önceki tur (`tickets.severity` haritası tekilleştirme) commit'lenip
+push'landıktan (`4cbcee8`) sonra backlog'taki bir sonraki kod-tekrarı maddesi
+alındı: `DailyReportForm.jsx` ve `FaturaOlusturModal.jsx` her biri kendi
+bağımsız Postgres-hata→Türkçe-mesaj çeviricisini tutuyordu. Düzeltmeye
+başlamadan önce yapılan taramada CLAUDE.md'nin backlog notunun bilmediği
+**üçüncü** bir kopya bulundu: `TedarikKuyrugu.jsx`'in kendi `toUserMessage()`'ı
+(daha önceki bir oturumda eklenmişti, backlog'a hiç yazılmamıştı).
 
-Kasıtlı olarak kapsam dışı bırakılan iki benzer yer: `DailyReportForm.jsx`'teki
-`PRIORITY_OPTIONS` ve `DailyReportDetail.jsx`'teki `PRIORITY_COLORS` —
-`daily_report_issues.priority` için, farklı bir alan/ekran, backlog maddesi
-özellikle `tickets.severity`'yi işaret ediyordu.
+Yeni `src/utils/errors.js`: `toUserMessage(error, {rules, fallback})`. Ortak
+kural (RLS/yetki hatası → "Bu işlem için yetkiniz yok.") tek yerde sabit
+(`COMMON_RULES`); her çağıran kendi özel kurallarını (`rules: [{match, message}]`,
+`match` string ya da string dizisi olabilir) ve varsayılan mesajını (`fallback`
+— string ya da orijinal `error.message`'ı koruyan `(error) => string`) parametre
+olarak geçiyor. Üç dosyada da yerel `toUserMessage(e)` sarmalayıcı fonksiyon
+olarak kaldı (yalnızca ortak fonksiyona kendi `rules`/`fallback`'iyle delege
+ediyor) — böylece tek çağrı noktaları (`DailyReportForm.jsx`:714,
+`FaturaOlusturModal.jsx`:70, `TedarikKuyrugu.jsx`:68/87/108) hiç değişmedi.
 
-Doğrulama: `npx vite build` hatasız. Playwright ile santiye_sefi (İzmir) test
-hesabıyla: ticket listesindeki severity rozetleri (Kritik/Orta renkleri) hâlâ
-doğru; "Yeni Ticket" modalının Aciliyet select'i `['Düşük','Orta','Yüksek','Kritik']`
-sırasıyla doğru etiketlerle geliyor.
+Doğrulama: `npx vite build` hatasız (3 dosyadaki import + fonksiyon gövdesi
+değişikliğinden sonra). Mantık satır satır karşılaştırıldı — her orijinal
+if/includes zinciri `rules` dizisine birebir taşındı, fallback semantiği
+(bazı yerlerde `error?.message` korunuyor, bazılarında sabit metin) korundu.
 
-CLAUDE.md'de bu madde "Bilinen açık noktalar"dan çıkarıldı, "Tamamlanan büyük
-görevler"e eklendi.
+CLAUDE.md'de `toUserMessage()` maddesi "Bilinen açık noktalar"dan çıkarıldı,
+"Tamamlanan büyük görevler"e eklendi.
 
-Commit'lenmedi. Repo hâlâ origin/main'in ilerisinde — bu turun + bu oturumdaki
-önceki turların tamamı (proje şablonu v6/risk kategorisi, Genel Proje redesign
-[iki geçiş], günlük rapor↔ticket bağlantısı, satın alma proje yöneticisi
-tedarik katmanı, .md temizliği + Excel şablonu entegrasyonu, ticket description
-sızıntısı — bkz. Tamamlanan büyük görevler) commit'lenmemiş çalışma-alanı
-değişiklikleri birikmiş durumda. Kullanıcı henüz commit/push istemedi.
+Commit'lenmedi. Repo `origin/main`'in ilerisinde — bu tur (`errors.js`
+tekilleştirme, 4 dosya) commit'lenmemiş çalışma-alanında. Bir önceki tur
+(Genel Proje redesign 2. geçiş + tarih-farkında ilerleme + ticket description
+sızıntısı + severity haritası) zaten `4cbcee8` ile commit'lenip push'landı.

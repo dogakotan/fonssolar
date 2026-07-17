@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useWeather } from '../../hooks/useWeather'
 import { resolveProjectByAssignedId } from '../../utils/projectResolver'
+import { toUserMessage as translateError } from '../../utils/errors'
 
 function todayStr() {
   const d = new Date()
@@ -76,15 +77,16 @@ function normalizeMachineType(value) {
   return MACHINE_TYPE_ALIASES[key] || (MACHINERY_PRESETS.includes(key) ? key : '')
 }
 
+const DAILY_REPORT_ERROR_RULES = [
+  { match: 'general_status', message: 'Genel durum geçersiz. Lütfen listeden seçin.' },
+  { match: ['machinery_logs_status', 'machine'], message: 'Makine durumu geçersiz. Lütfen listeden seçin.' },
+  { match: 'weather', message: 'Hava durumu geçersiz. Lütfen listeden seçin.' },
+  { match: ['department', 'shift'], message: 'Personel bilgisi geçersiz. Lütfen listeden seçin.' },
+  { match: ['duplicate', 'unique'], message: 'Bu tarih için zaten bir rapor var.' },
+]
+
 function toUserMessage(e) {
-  const m = (e?.message || '').toLowerCase()
-  if (m.includes('general_status')) return 'Genel durum geçersiz. Lütfen listeden seçin.'
-  if (m.includes('machinery_logs_status') || m.includes('machine')) return 'Makine durumu geçersiz. Lütfen listeden seçin.'
-  if (m.includes('weather')) return 'Hava durumu geçersiz. Lütfen listeden seçin.'
-  if (m.includes('department') || m.includes('shift')) return 'Personel bilgisi geçersiz. Lütfen listeden seçin.'
-  if (m.includes('row-level security') || m.includes('permission')) return 'Bu işlem için yetkiniz yok.'
-  if (m.includes('duplicate') || m.includes('unique')) return 'Bu tarih için zaten bir rapor var.'
-  return 'Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.'
+  return translateError(e, { rules: DAILY_REPORT_ERROR_RULES, fallback: 'Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.' })
 }
 
 const CATEGORY_LABELS = {

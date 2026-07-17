@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { toUserMessage as translateError } from '../../utils/errors'
 
 // Satın alma talebi onaylandıktan sonra muhasebenin faturayı kesmesi için kullanılır.
 // invoices.purchase_request_id set edilerek kaydedilir; DB tetikleyicisi (sync_purchase_request_from_invoice)
@@ -16,15 +17,13 @@ function requestCategoryToInvoiceCategory(category) {
   return 'diger'
 }
 
+const INVOICE_ERROR_RULES = [
+  { match: 'henüz proje yöneticisi tarafından tedarik aşamasına alınmadı', message: 'Bu talep için tedarikçi/satın alma bilgisi henüz girilmedi. Fatura eklemeden önce proje yöneticisinin tedarik adımını tamamlaması gerekiyor.' },
+  { match: ['duplicate', 'unique'], message: 'Bu talep için zaten bir fatura kaydı var.' },
+]
+
 function toUserMessage(error) {
-  const m = (error?.message || '').toLocaleLowerCase('tr-TR')
-  if (m.includes('henüz proje yöneticisi tarafından tedarik aşamasına alınmadı'))
-    return 'Bu talep için tedarikçi/satın alma bilgisi henüz girilmedi. Fatura eklemeden önce proje yöneticisinin tedarik adımını tamamlaması gerekiyor.'
-  if (m.includes('duplicate') || m.includes('unique'))
-    return 'Bu talep için zaten bir fatura kaydı var.'
-  if (m.includes('row-level security') || m.includes('permission'))
-    return 'Bu işlem için yetkiniz yok.'
-  return error?.message || 'Fatura kaydedilemedi. Lütfen tekrar deneyin.'
+  return translateError(error, { rules: INVOICE_ERROR_RULES, fallback: err => err?.message || 'Fatura kaydedilemedi. Lütfen tekrar deneyin.' })
 }
 
 export default function FaturaOlusturModal({ request, onClose, onSaved }) {

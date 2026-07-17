@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import Pager from '../../../components/ui/Pager'
 import { normalizeStatus } from '../../../utils/satinAlma'
+import { toUserMessage as translateError } from '../../../utils/errors'
 
 const PAGE_SIZE = 10
 const DOC_BUCKET = 'ticket-ekleri'
@@ -30,9 +31,7 @@ function requesterName(request) {
 }
 
 function toUserMessage(error) {
-  const m = (error?.message || '').toLocaleLowerCase('tr-TR')
-  if (m.includes('row-level security') || m.includes('permission')) return 'Bu işlem için yetkiniz yok.'
-  return error?.message || 'Kaydedilemedi. Lütfen tekrar deneyin.'
+  return translateError(error, { fallback: err => err?.message || 'Kaydedilemedi. Lütfen tekrar deneyin.' })
 }
 
 function TedarikBilgisiModal({ request, onClose, onSaved }) {
