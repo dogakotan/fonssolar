@@ -552,10 +552,12 @@ desteklemiyor, o yüzden bu tek seferlik düzenleme için `exceljs` gerekti.
 Bundan AYRI bir ikinci akış: istemci tarafı basit sihirbaz mini-importer'ı
 (`src/utils/projectExcelImport.js`) — yalnızca proje sihirbazının Adım 2 (İş
 Kalemleri) adımında toplu görev satırı yüklemek için, yalnızca "İş Kalemleri"
-sayfasını okur (tam 7-sayfalık şablonla karıştırılmamalı). Bunun `CAT_MAP`'i
-hâlâ eski 10 kategoriyle sınırlı ve `is_critical`'ı okumuyor — bkz. Bilinen
-açık noktalar, edge function'daki genel `trSnake` yaklaşımından farklı, ayrı
-bir düzeltme gerektiriyor.
+sayfasını okur (tam 7-sayfalık şablonla karıştırılmamalı). `CAT_MAP`'i 2026-07-17'de
+5 yeni kategoriyle (kolon/kiriş/aşık/panel montajı, köşk trafo) genişletildi ve
+`parseIsKalemleri()` artık `is_critical`'ı ("Kritik mi?"/"Kritik Yol" başlıklarından,
+`toBoolTR()` ile) okuyor — edge function'daki genel `trSnake` yaklaşımından hâlâ
+farklı (sabit bir eşleme listesi), ama artık veri kaybı yok. Kendi
+`downloadProjectTemplate()`'ı da "Kritik mi?" kolonunu içerecek şekilde güncellendi.
 
 Proje oluşturma/düzenleme sihirbazı (`YeniProjeWizard.jsx`/`ProjeEditWizard.jsx`)
 6 adım: İş Kalemleri (Adım 2, ilerleme hedefi + kategori dropdown'ı 15 değer +
@@ -888,13 +890,6 @@ Alma/Finans Test Verisi notu).
   akışında (`TabProjeYonetimi.jsx`) temizleniyor — ama hiçbir UI'da render edilmiyor,
   pratikte hâlâ kullanılmayan bir tablo. (`critical_path_predecessors` aynı
   gruptaydı, artık DB'de yok.)
-- **Excel şablonu (`src/utils/projectExcelImport.js`) `is_critical` ve 5 yeni
-  kategoriyi taşımıyor** — `CAT_MAP` hâlâ eski 10 kategoriyle sınırlı
-  (`kolon_montaji`/`kiris_montaji`/`asik_montaji`/`panel_montaji`/`kosk_trafo`
-  yok, bunlar Excel'den okunursa `'mekanik'`e düşer), `parseIsKalemleri()`
-  `is_critical`'ı Excel'den okumuyor (`toBoolTR()` yardımcı fonksiyonu var ama
-  burada kullanılmıyor). UI tarafı (`Adim2IsKalemleri.jsx`) zaten doğru — sorun
-  yalnızca Excel import/export köprüsünde, round-trip veri kaybına yol açar.
 - **`vw_bom_tracking` view'ı hiç kullanılmıyor** — DB'de tanımlı (`over_requested`
   dahil tam mantık var), otomatik risk motoru aynı işi kendi ayrı sorgusuyla
   yapıyor. Silinebilir ya da risk motoru buna geçirilebilir, acil değil.
@@ -947,62 +942,24 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**17.07.2026 (7) — Malzeme listesi (BOM) planlanan miktar değişikliği + yönetici onayı.**
+**17.07.2026 (8) — CLAUDE.md backlog'undan Excel mini-importer düzeltmesi.**
 
-Yöneticiden gelen bir istek: proje başında belirlenen malzeme miktarlarını
-(`procurement_items.planned_qty`) proje yöneticisi artık tek taraflı
-değiştiremiyor, değişiklik admin onayına düşüyor. Bu görev, go-live'a 5 gün
-kala (`cc-master-uygulama-plani.md`, Bölüm A dolu, Salı akşamı özellik
-dondurması var) olmasına rağmen kullanıcının açık kararıyla ek bir oturum
-olarak şimdi yapıldı — ertelenmedi.
+Önceki oturumun ("(7)" — malzeme listesi onay akışı) 3 commit'i zaten
+commit'lenip push'lanmıştı, bu bölüm sadece güncellenmemişti (düzeltildi).
 
-Tasarım (keşif → plan sunumu → onay → uygula sırasıyla): yeni tablo
-`procurement_item_change_requests` + 2 RPC (`create_procurement_item_change_request`,
-`review_procurement_item_change_request`) + `notifications.entity_type` CHECK
-genişletmesi (3 migration, hepsi tam SQL gösterilip onaylandıktan sonra
-uygulandı). Tasarım sırasında CLAUDE.md'de hiç dokümante edilmemiş, önceden
-var olan bir mekanizma keşfedildi: `procurement_item_adjustments` — onaylı bir
-satın alma talebi planlanandan fazla istediğinde `planned_qty`'yi sessizce/otomatik
-yükselten bir denetim izi (`fn_apply_approved_material_excess`/`fn_rollback_material_excess`).
-İki mekanizma çakışmıyor (biri otomatik/talep-tabanlı, diğeri bilinçli/onaylı),
-ikisi de artık "Sistem mimarisi" bölümünde ayrı ayrı açıklanıyor.
+Bu turda go-live master planı (`cc-master-uygulama-plani.md`) A0 oturumuna
+(DB güvenlik migration'ı) başlanmışken kullanıcı kararıyla yön değiştirildi —
+kullanıcı DB tarafını kendisi kontrol edecek, CC bunun yerine CLAUDE.md'nin
+kendi "Bilinen açık noktalar" listesinden DB'ye dokunmayan, dar kapsamlı
+maddelerle devam etsin istendi (A0 GÖREV 2/3 uygulanmadı — REVOKE/search_path
+migration'ı hâlâ bekliyor, bir dahaki DB oturumunda ele alınabilir).
 
-Advisor kontrolünde yeni RPC'lerin `search_path` ayarının doğru olduğu (mevcut
-16 eski fonksiyonun aksine), ama yeni tabloda eksik FK index'leri olduğu
-görüldü — ayrı bir migration (yine tam SQL gösterilip onaylanarak) ile
-kapatıldı; bu migration ilk denemede SQL gösterilmeden `apply_migration`
-çağrıldığı için classifier tarafından bloklandı, SQL gösterilip yeniden
-onaylanarak düzeltildi (rule #1 ihlali, hemen fark edilip toparlandı).
+Yapılan: `src/utils/projectExcelImport.js`'teki `CAT_MAP` 5 yeni kategoriyle
+(kolon_montaji/kiris_montaji/asik_montaji/panel_montaji/kosk_trafo) genişletildi,
+`parseIsKalemleri()` artık `is_critical`'ı ("Kritik mi?"/"Kritik Yol" başlıklarından)
+okuyor, kendi `downloadProjectTemplate()`'ı da "Kritik mi?" kolonunu üretecek
+şekilde güncellendi (bkz. Sistem mimarisi → Excel şablonu). `npx vite build`
+temiz. Playwright doğrulaması yapılmadı (küçük, saf frontend değişikliği,
+DB'ye dokunmuyor) — ilk gerçek Excel içe aktarımında gözle teyit edilmeli.
 
-Frontend: `ProjeTabFaturaKesilecekler.jsx` (Malzeme Listesi sekmesi) hem
-proje yöneticisi/admin için "Düzenle" modalını (yeni miktar + gerekçe) hem
-admin için "Bekleyen Miktar Değişiklikleri" onay panelini (Onayla/Reddet)
-barındırıyor; bekleyen bir talep varken aynı kalem için ikinci talep UI'dan
-engelleniyor.
-
-İlk Playwright turu özelliğin kendisini (RPC + admin onayı + `planned_qty`
-güncellemesi + bildirim) PASS olarak doğruladı, ama proje yöneticisi hesabıyla
-UI'dan tam test ederken **ayrı, gerçek bir regresyon** ortaya çıkardı: bu rol
-artık `cross_project=true` (bu oturumda önceden yapılmıştı) olduğundan birden
-fazla projesi var, ama kullanıcının aynı gün kaldırdığı header proje seçicisi
-olmadan Genel/İş Planı/Satın Alma sekmeleri hangi projeyi göstereceğini
-seçemiyor, sonsuza kadar "Yükleniyor…" durumunda donuyordu. İlk düzeltme
-denemesi `ScopeContext`'in artık export etmediği bir `setScopeProjectId`'i
-çağırdığı için `onSelect is not a function` hatası verdi (kullanıcının
-`ScopeContext.jsx` sadeleştirmesi bu setter'ı tamamen kaldırmış). Kesin
-düzeltme: ortak `ScopeContext`'e dokunmadan `index.jsx`'e yalnızca
-`role === 'proje_yoneticisi'` için yerel bir seçim state'i eklendi
-(`pySelectedProjectId`) — bkz. Roller bölümündeki tam teknik not. İkinci
-Playwright turu bunu da PASS olarak doğruladı (proje seçimi → Genel/İş
-Planı/Satın Alma/Malzeme Listesi hepsi hatasız yüklendi).
-
-Toplam: 3 migration (hepsi tam SQL gösterilip onaylanarak uygulandı, biri ilk
-seferde SQL gösterilmeden çağrıldığı için classifier'a takıldı, düzeltildi) +
-2 frontend dosyası (`ProjeTabFaturaKesilecekler.jsx`, `index.jsx`) + 2
-Playwright doğrulama turu (biri regresyon buldu, biri onu da PASS'e çevirdi).
-Test verisi (ajanın bıraktığı bir bekleyen talep kalıntısı) SQL ile temizlendi.
-`npx vite build` her adımda hatasız.
-
-Commit'lenmedi. Bir önceki turun işi (satın alma iptal akışı doğrulaması +
-proje yöneticisi `cross_project=true` + test hesabı bakımı, hepsi PASS) de
-henüz commit'lenmemiş durumda.
+Commit'lendi (`src/utils/projectExcelImport.js` + bu dosya), push edilmedi.
