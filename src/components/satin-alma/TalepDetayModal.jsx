@@ -195,8 +195,9 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
             </section>
           </div>
 
+          {type === 'Malzeme' && (
           <section style={CARD}>
-            <h3 style={TITLE}>Malzeme / Hizmet Miktar Kontrol</h3>
+            <h3 style={TITLE}>Malzeme Miktar Kontrol</h3>
             {breakdown.length === 0 ? (
               <p style={{ margin: 0, fontSize: 12.5, color: '#64748B' }}>Kalem girilmemiş; miktar kontrolü yapılamıyor.</p>
             ) : (
@@ -243,6 +244,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
               </div>
             )}
           </section>
+          )}
 
           <section style={CARD}>
             <h3 style={TITLE}>Açıklama</h3>

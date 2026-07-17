@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { getProjects } from '../../api'
+import { useAuth } from '../../context/AuthContext'
 
 const formatCurrency = (amount) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
@@ -161,8 +162,13 @@ function FaturaEkleModal({ onClose, onSaved }) {
 }
 
 // ── Fatura Detay Modal ────────────────────────────────────────────────────────
-function FaturaDetayModal({ invoice, onClose }) {
+function FaturaDetayModal({ invoice, onClose, onCancelled }) {
+  const { isAdmin, isMuhasebe } = useAuth()
   const [approvals, setApprovals] = useState([])
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [cancelNote, setCancelNote] = useState('')
+  const [cancelSaving, setCancelSaving] = useState(false)
+  const [cancelErr, setCancelErr] = useState('')
 
   useEffect(() => {
     if (!invoice) return
@@ -175,7 +181,26 @@ function FaturaDetayModal({ invoice, onClose }) {
   }, [invoice?.id])
 
   if (!invoice) return null
-  const st = STATUS_BADGE[invoice.status] || { bg: '#F3F4F6', color: '#111827', label: invoice.status }
+
+  // fn_validate_invoice_status_transition artık onaylandı->reddedildi geçişine de izin veriyor —
+  // hem "onay sürecinde reddedildi" hem "onaylandıktan sonra iptal edildi" aynı DB durumunu (reddedildi)
+  // paylaşıyor. İkisini ayırt etmek için: step 2 onayı gerçekten "onaylandı" olarak kapanmışsa,
+  // fatura sonradan iptal edilmiş demektir (normal red akışında step onayı hiç tamamlanmaz).
+  const cancelledAfterApproval = invoice.status === 'reddedildi' && approvals.some(a => a.step === 2 && a.status === 'onaylandı')
+  const st = cancelledAfterApproval
+    ? { bg: '#FEF3C7', color: '#92400E', label: 'İptal Edildi (Onay Sonrası)' }
+    : STATUS_BADGE[invoice.status] || { bg: '#F3F4F6', color: '#111827', label: invoice.status }
+  const canCancel = (isAdmin || isMuhasebe) && invoice.status === 'onaylandı'
+
+  async function handleCancel() {
+    setCancelSaving(true)
+    setCancelErr('')
+    const { error } = await supabase.from('invoices').update({ status: 'reddedildi' }).eq('id', invoice.id)
+    setCancelSaving(false)
+    if (error) { setCancelErr(error.message || 'İptal edilemedi.'); return }
+    onCancelled?.()
+    onClose()
+  }
 
   const STEP_STYLE = {
     onaylandı:  { bg: '#D1FAE5', color: '#065F46', icon: '✓' },
@@ -257,6 +282,41 @@ function FaturaDetayModal({ invoice, onClose }) {
             </div>
           )}
         </div>
+
+        {canCancel && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #E5E7EB' }}>
+            {!showCancelConfirm ? (
+              <button
+                onClick={() => setShowCancelConfirm(true)}
+                style={{ background: '#FEF2F2', color: '#DC2626', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+              >
+                Faturayı İptal Et
+              </button>
+            ) : (
+              <div>
+                <p style={{ margin: '0 0 10px', fontSize: 12.5, color: '#92400E', background: '#FEF3C7', borderRadius: 8, padding: '8px 12px' }}>
+                  ⚠ Bu fatura zaten onaylanmış. İptal edilirse ilgili maliyet kaydı silinir ve bağlı satın alma talebi tekrar "Onaylandı" durumuna döner, yeniden fatura kesilebilir.
+                </p>
+                {cancelErr && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{cancelErr}</p>}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    onClick={() => setShowCancelConfirm(false)}
+                    style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    Vazgeç
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={cancelSaving}
+                    style={{ background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: cancelSaving ? 0.7 : 1 }}
+                  >
+                    {cancelSaving ? 'İptal ediliyor…' : 'Evet, İptal Et'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -398,7 +458,7 @@ export default function FaturaListesi() {
       </div>
 
       {showAdd    && <FaturaEkleModal  onClose={() => setShowAdd(false)}      onSaved={fetchInvoices} />}
-      {detayFatura && <FaturaDetayModal invoice={detayFatura} onClose={() => setDetayFatura(null)} />}
+      {detayFatura && <FaturaDetayModal invoice={detayFatura} onClose={() => setDetayFatura(null)} onCancelled={fetchInvoices} />}
     </>
   )
 }

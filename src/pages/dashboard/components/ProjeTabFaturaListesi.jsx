@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { getProjects } from '../../../api'
+import { useAuth } from '../../../context/AuthContext'
 
 const formatCurrency = (amount) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
@@ -159,12 +160,52 @@ function FaturaEkleModal({ onClose, onSaved, defaultProjectId }) {
   )
 }
 
+function FaturaIptalModal({ invoice, onClose, onSaved }) {
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function handleConfirm() {
+    setSaving(true)
+    setErr('')
+    const { error } = await supabase.from('invoices').update({ status: 'reddedildi' }).eq('id', invoice.id)
+    setSaving(false)
+    if (error) { setErr(error.message || 'İptal edilemedi.'); return }
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: 460 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Faturayı İptal Et</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: '#92400E', background: '#FEF3C7', borderRadius: 8, padding: '8px 12px' }}>
+          ⚠ {invoice.invoice_no || 'Bu fatura'} zaten onaylanmış. İptal edilirse ilgili maliyet kaydı silinir ve bağlı satın alma talebi tekrar "Onaylandı" durumuna döner, yeniden fatura kesilebilir.
+        </p>
+        {err && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{err}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" onClick={onClose} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Vazgeç
+          </button>
+          <button type="button" disabled={saving} onClick={handleConfirm} style={{ background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Kaydediliyor…' : 'Evet, İptal Et'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ProjeTabFaturaListesi({ projectId, filterDate }) {
+  const { isAdmin, isMuhasebe } = useAuth()
   const [invoices,     setInvoices]     = useState([])
   const [loading,      setLoading]      = useState(true)
   const [page,         setPage]         = useState(0)
   const [filterStatus, setFilterStatus] = useState('hepsi')
   const [showAdd,      setShowAdd]      = useState(false)
+  const [cancelling,   setCancelling]   = useState(null)
 
   async function fetchInvoices() {
     setLoading(true)
@@ -185,7 +226,8 @@ export default function ProjeTabFaturaListesi({ projectId, filterDate }) {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged      = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
-  const TH = ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM']
+  const canCancel = isAdmin || isMuhasebe
+  const TH = ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM', ...(canCancel ? ['İŞLEMLER'] : [])]
 
   return (
     <>
@@ -252,6 +294,18 @@ export default function ProjeTabFaturaListesi({ projectId, filterDate }) {
                       <td style={{ padding: '14px 16px' }}>
                         <span style={{ background: b.bg, color: b.color, fontSize: 12, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>{b.label}</span>
                       </td>
+                      {canCancel && (
+                        <td style={{ padding: '14px 16px' }}>
+                          {inv.status === 'onaylandı' ? (
+                            <button
+                              onClick={() => setCancelling(inv)}
+                              style={{ background: '#FEF2F2', color: '#DC2626', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >
+                              İptal Et
+                            </button>
+                          ) : '—'}
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
@@ -282,6 +336,7 @@ export default function ProjeTabFaturaListesi({ projectId, filterDate }) {
       </div>
 
       {showAdd && <FaturaEkleModal onClose={() => setShowAdd(false)} onSaved={fetchInvoices} defaultProjectId={projectId} />}
+      {cancelling && <FaturaIptalModal invoice={cancelling} onClose={() => setCancelling(null)} onSaved={fetchInvoices} />}
     </>
   )
 }

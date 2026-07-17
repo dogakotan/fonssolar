@@ -194,12 +194,73 @@ function TedarikBilgisiModal({ request, onClose, onSaved }) {
   )
 }
 
+function TedarikIptalModal({ request, onClose, onSaved }) {
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function handleConfirm() {
+    if (!note.trim()) return
+    setSaving(true)
+    setErr('')
+
+    const existingNotes = request.notes || ''
+    const combinedNotes = [existingNotes, `[Tedarik iptal] ${note.trim()}`].filter(Boolean).join('\n')
+
+    const { error } = await supabase
+      .from('purchase_requests')
+      .update({ status: 'iptal', notes: combinedNotes })
+      .eq('id', request.id)
+      .eq('project_id', request.project_id)
+
+    setSaving(false)
+    if (error) { setErr(toUserMessage(error)); return }
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: 460, maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Tedariki İptal Et</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: '#64748B' }}>
+          {requestTitle(request)} için tedarikçi bulunamadıysa talebi iptal edebilirsiniz. Talep "İptal Edildi" durumuna geçer, tedarik kuyruğundan kalkar.
+        </p>
+
+        <label style={lbl}>İptal Gerekçesi *</label>
+        <textarea
+          autoFocus
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="Örn: Tedarikçi bulunamadı, talep gerekçesi geçersizleşti..."
+          style={{ ...inp, resize: 'vertical', minHeight: 70, marginBottom: 16 }}
+        />
+
+        {err && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{err}</p>}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" onClick={onClose} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Vazgeç
+          </button>
+          <button type="button" disabled={saving || !note.trim()} onClick={handleConfirm} style={{ background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: (saving || !note.trim()) ? 0.7 : 1 }}>
+            {saving ? 'Kaydediliyor…' : 'İptali Onayla'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function TedarikKuyrugu({ projectId }) {
   const [tab, setTab] = useState('bekleyen')
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [selected, setSelected] = useState(null)
+  const [cancelling, setCancelling] = useState(null)
   const [page, setPage] = useState(0)
 
   useEffect(() => { if (projectId) fetchData() }, [projectId])
@@ -308,13 +369,23 @@ export default function TedarikKuyrugu({ projectId }) {
                       </>
                     )}
                     <td style={{ ...TD, whiteSpace: 'nowrap' }}>
-                      <button onClick={() => setSelected(request)} style={{
-                        background: tab === 'bekleyen' ? '#185FA5' : '#EFF6FF',
-                        color: tab === 'bekleyen' ? '#fff' : '#185FA5',
-                        border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                      }}>
-                        {tab === 'bekleyen' ? 'Tedarik Bilgisi Gir' : 'Düzenle'}
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => setSelected(request)} style={{
+                          background: tab === 'bekleyen' ? '#185FA5' : '#EFF6FF',
+                          color: tab === 'bekleyen' ? '#fff' : '#185FA5',
+                          border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                        }}>
+                          {tab === 'bekleyen' ? 'Tedarik Bilgisi Gir' : 'Düzenle'}
+                        </button>
+                        {tab === 'bekleyen' && (
+                          <button onClick={() => setCancelling(request)} style={{
+                            background: '#FEF2F2', color: '#DC2626',
+                            border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                          }}>
+                            İptal Et
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -332,6 +403,14 @@ export default function TedarikKuyrugu({ projectId }) {
         <TedarikBilgisiModal
           request={selected}
           onClose={() => setSelected(null)}
+          onSaved={fetchData}
+        />
+      )}
+
+      {cancelling && (
+        <TedarikIptalModal
+          request={cancelling}
+          onClose={() => setCancelling(null)}
           onSaved={fetchData}
         />
       )}
