@@ -912,10 +912,13 @@ Alma/Finans Test Verisi notu).
   tutarsız bulunmuştu (5 kayıttan 3'ü), düzeltildiğine dair kayıt yok — yeni
   bir görev bu alana değiyorsa önce `select id, role, role_key from profiles`
   ile doğrula.
-- **RLS temizliği bekliyor:** `procurement_items`/`schedule_activities`/
-  `quality_inspections`/`work_packages` hâlâ `USING(true)` (rol/proje kısıtı yok); `profiles`/
-  `purchase_requests` üzerinde eski+yeni politika birikimi (`multiple_permissive_policies`)
-  var. Acil değil, ileride bir RLS temizlik migration'ında ele alınmalı.
+- **RLS temizliği bekliyor:** `schedule_activities`/`quality_inspections`/`work_packages`
+  hâlâ `USING(true)` (rol/proje kısıtı yok) — **not (2026-07-17): `procurement_items` bu
+  listeden çıkarıldı**, malzeme miktarı onay akışı için yapılan taramada zaten
+  `has_project_access(project_id)` politikasıyla korunduğu görüldü, önceki not yanlıştı.
+  `profiles`/`purchase_requests` üzerinde eski+yeni politika birikimi
+  (`multiple_permissive_policies`) var. Acil değil, ileride bir RLS temizlik
+  migration'ında ele alınmalı.
 - **Realtime ölçek notu:** P0 tablolarında `REPLICA IDENTITY FULL` var (DELETE/UPDATE
   RLS'i için gerekliydi). Supabase üretim ölçeğinde Broadcast-from-database'e
   geçişi öneriyor — bu projenin ölçeğinde (2 test projesi) şimdilik gerekmiyor,
