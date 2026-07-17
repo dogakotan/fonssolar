@@ -106,7 +106,11 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   panelin kendi İptal (state snapshot'a döner) / Kaydet ve Kapat davranışı var.
   Panel içi tablolar yatay scroll yerine dikey kart listesi (`CARD_ROW`).
   "Malzeme Kullanımı" bölümü formda YOK (kaldırıldı, `daily_report_material_usage`
-  tablosu kullanımda değil). "İlerleme Girişi" paneli `project_tasks`'tan
+  tablosu kullanımda değil) — **kalıcı karar (2026-07-17 teyit edildi):** BOM/malzeme
+  kullanımı günlük raporun kapsamında OLMAYACAK, şantiye şefi kullanılan malzemeyi
+  günlük raporla girmeyecek; bu bir "unutulmuş iş" değil, bilinçli kapsam dışı
+  bırakma — geri getirilmesi teklif edilirse önce bu kararı hatırlat. "İlerleme
+  Girişi" paneli `project_tasks`'tan
   (task_id bazlı) beslenir. "Sorunlar" bölümündeki her satır `daily_report_issues`'a
   `save_daily_report`'un `p_issues`'una yazılır (bkz. RPC katmanı) — satırın
   `id`/`ticket_id`'si state'te korunur (`newIssueRow()`/prefill), satır
@@ -901,8 +905,6 @@ Alma/Finans Test Verisi notu).
   `personnel_log_entries`/`machinery_logs` sorgusu yapıyor (seçili rapor/dönem
   için). Muhtemelen kasıtlı ("güncel durum" vs "geçmişe dönük rapor") ama
   doğrulanmadı.
-- **`DailyReportForm.jsx`'e BOM seçimi UI'sı bağlanmadı** — `daily_report_material_usage.bom_item_id`
-  FK şema seviyesinde hazır (FAZ5), form alanına henüz eklenmedi.
 - **`profiles.role` / `profiles.role_key` iki ayrı kolon** — FAZ1 denetiminde
   tutarsız bulunmuştu (5 kayıttan 3'ü), düzeltildiğine dair kayıt yok — yeni
   bir görev bu alana değiyorsa önce `select id, role, role_key from profiles`
