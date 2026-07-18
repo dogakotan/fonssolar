@@ -377,15 +377,12 @@ export default function FaturaListesi({ projectId = null, filterDate = null }) {
 
   async function fetchInvoices() {
     setLoading(true)
-    let query = supabase.from('invoices').select('*, suppliers(name)')
-    if (projectId) {
-      query = query
-        .eq('project_id', projectId)
-        .lte('invoice_date', filterDate || new Date().toISOString().split('T')[0])
-    }
-    const { data, error } = await query.order('invoice_date', { ascending: false })
-    if (error) console.error('invoices fetch error:', error)
-    setInvoices(data || [])
+    const { data, error } = await supabase.rpc('get_invoices_list', {
+      p_project_id: projectId || null,
+      p_filter_date: filterDate || null,
+    })
+    if (error || !data?.authorized) console.error('invoices fetch error:', error)
+    setInvoices(data?.invoices || [])
     setLoading(false)
   }
 
