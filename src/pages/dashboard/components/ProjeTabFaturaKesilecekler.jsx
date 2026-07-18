@@ -142,46 +142,25 @@ function BekleyenDegisikliklerPanel({ items, onReviewed }) {
   )
 }
 
-export default function ProjeTabFaturaKesilecekler({ rows = [], loading, projectId }) {
+export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pendingChanges = [], onPendingChanged }) {
   const { isAdmin, role } = useAuth()
   const [page, setPage] = useState(0)
   const [editingRow, setEditingRow] = useState(null)
-  const [pending, setPending] = useState([])
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages - 1)
   const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
   const canRequest = isAdmin || role === 'proje_yoneticisi'
   const canReview = isAdmin
+  const pending = canRequest ? pendingChanges : []
 
   useEffect(() => { setPage(0) }, [rows.length])
-
-  async function fetchPending() {
-    if (!projectId || !canRequest) { setPending([]); return }
-    const { data, error } = await supabase
-      .from('procurement_item_change_requests')
-      .select('*, procurement_items(equipment, unit)')
-      .eq('project_id', projectId)
-      .eq('status', 'bekliyor')
-      .order('requested_at', { ascending: true })
-    if (error) return
-
-    const rows = data || []
-    const requesterIds = [...new Set(rows.map(r => r.requested_by).filter(Boolean))]
-    if (requesterIds.length === 0) { setPending(rows); return }
-
-    const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', requesterIds)
-    const nameById = new Map((profiles || []).map(p => [p.id, p.full_name]))
-    setPending(rows.map(r => ({ ...r, requester_name: nameById.get(r.requested_by) || null })))
-  }
-
-  useEffect(() => { fetchPending() }, [projectId, canRequest])
 
   const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
 
   return (
     <div>
-      {canReview && <BekleyenDegisikliklerPanel items={pending} onReviewed={fetchPending} />}
+      {canReview && <BekleyenDegisikliklerPanel items={pending} onReviewed={onPendingChanged} />}
 
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -272,7 +251,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, project
         <MiktarDuzenleModal
           row={editingRow}
           onClose={() => setEditingRow(null)}
-          onSaved={fetchPending}
+          onSaved={onPendingChanged}
         />
       )}
     </div>

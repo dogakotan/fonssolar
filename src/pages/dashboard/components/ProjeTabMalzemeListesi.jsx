@@ -13,6 +13,7 @@ export default function ProjeTabMalzemeListesi({ projectId, filterDate }) {
   const authorized = overview?.authorized ?? true
   const requests = overview?.requests || []
   const procurement = overview?.procurement_items || []
+  const pendingChanges = overview?.pending_changes || []
   const dateBoundary = new Date((filterDate || new Date().toISOString().split('T')[0]) + 'T23:59:59')
   const requestsUntilDate = requests.filter(request => !request.created_at || new Date(request.created_at) <= dateBoundary)
   const rows = buildMaterialListRows(procurement, requestsUntilDate)
@@ -22,7 +23,7 @@ export default function ProjeTabMalzemeListesi({ projectId, filterDate }) {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <ProjeTabFaturaKesilecekler rows={rows} loading={loading} projectId={projectId} />
+      <ProjeTabFaturaKesilecekler rows={rows} loading={loading} pendingChanges={pendingChanges} onPendingChanged={refetch} />
     </div>
   )
 }
