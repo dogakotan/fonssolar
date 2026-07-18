@@ -1013,18 +1013,22 @@ Alma/Finans Test Verisi notu).
 - **`vw_bom_tracking` view'ı hiç kullanılmıyor** — DB'de tanımlı (`over_requested`
   dahil tam mantık var), otomatik risk motoru aynı işi kendi ayrı sorgusuyla
   yapıyor. Silinebilir ya da risk motoru buna geçirilebilir, acil değil.
-- **Genel Proje kartlarındaki personel/makine sayıları ile günlük rapor
-  export'u farklı kaynaklardan besleniyor** (teyit gerekli) —
-  `ProjectOverviewDashboard.jsx`/`TabGenel.jsx` `get_project_dashboard`/
-  `get_project_by_date`'in `personnel`/`machinery` node'larından (en son rapor
-  bazlı) besleniyor; `exportDailyReport`/`exportPeriodicReport` ham
-  `personnel_log_entries`/`machinery_logs` sorgusu yapıyor (seçili rapor/dönem
-  için). Muhtemelen kasıtlı ("güncel durum" vs "geçmişe dönük rapor") ama
-  doğrulanmadı.
-- **`profiles.role` / `profiles.role_key` iki ayrı kolon** — FAZ1 denetiminde
-  tutarsız bulunmuştu (5 kayıttan 3'ü), düzeltildiğine dair kayıt yok — yeni
-  bir görev bu alana değiyorsa önce `select id, role, role_key from profiles`
-  ile doğrula.
+- **Genel Proje kartlarındaki personel/makine sayıları ile dönem export'u
+  farklı kaynaklardan besleniyor — DOĞRULANDI, kasıtlı (2026-07-18):**
+  `ProjectOverviewDashboard.jsx` `get_project_by_date`'in `personnel`/`machinery`
+  node'larından besleniyor — bu RPC seçili tarihe kadarki **en son TEK günlük
+  raporun** (`ORDER BY report_date DESC LIMIT 1`) personel/makine kayıtlarını
+  döner, yani "o tarih itibarıyla anlık durum". `ProjeDetay.jsx`'teki
+  `buildPeriodReportData`/`exportSelectedDailyReportExcel`/`exportSelectedDailyReportPDF`
+  ise seçilen tarih aralığındaki/raporundaki `personnel_log_entries`/
+  `machinery_logs` satırlarını toplar — "dönem toplamı" ya da "o rapora özel".
+  İki farklı metrik, iki farklı amaç (anlık durum vs kümülatif rapor), bug
+  DEĞİL — madde kapandı.
+- **`profiles.role` / `profiles.role_key` iki ayrı kolon — ARTIK GEÇERSİZ
+  (2026-07-18'de doğrulandı):** `profiles` tablosunda `role` kolonu hiç yok
+  (bir noktada kaldırılmış), yalnızca `role_key` var; frontend zaten tutarlı
+  şekilde yalnızca `role_key` okuyor/yazıyor (`TabKullanicilar.jsx` dahil).
+  Eski FAZ1 denetim notu artık tarihsel, madde kapandı.
 - **RLS temizliği bekliyor:** `schedule_activities`/`quality_inspections`/`work_packages`
   hâlâ `USING(true)` (rol/proje kısıtı yok) — **not (2026-07-17): `procurement_items` bu
   listeden çıkarıldı**, malzeme miktarı onay akışı için yapılan taramada zaten
@@ -1060,46 +1064,32 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**18.07.2026 (12) — Frontend rol tanıma 6→19 role genişletildi.**
+**18.07.2026 (13) — İki doğrulama maddesi kapatıldı (kod değişikliği yok, yalnızca araştırma).**
 
-Önceki turda ("(11)", artık Tamamlanan büyük görevler'de) RPC migrasyonu
-maddesi kapatıldıktan sonra kullanıcı "Refactor/tekilleştirme bekleyenler"
-listesindeki son maddeye (rol tanıma) geçti. `roles` tablosundan güncel
-`is_manager`/`cross_project` bayrakları çekilip 13 tanınmayan rol 3 gruba
-ayrıldı, kullanıcıya `AskUserQuestion` ile hangi grubun hangi demeti alacağı
-soruldu (2 soru): (1) `is_manager=true` olan 2 rol (`maliyet_kontrolcu`,
-`proje_koordinatoru`) nasıl eşlensin — kullanıcı "koordinator ile aynı" dedi
-(proje_koordinatoru→birebir koordinator, maliyet_kontrolcu→Genel+Projeler+Finans);
-(2) kalan 11 tek-projeli saha/teknik rolü (özel modülü olmayanlar) için ne
-yapılsın — kullanıcı "hepsine santiye_sefi'nin genel demeti" dedi (Genel+İş
-Planı+Satın Alma+Tickets+Bildirimler, Günlük Rapor formu HARİÇ), `lojistik_tedarik`
-(`cross_project=true` olmasına rağmen) dahil hepsi aynı tek-proje demetine dahil
-edildi.
+Rol genişletmesinin ("(12)", artık Tamamlanan büyük görevler'de) ardından
+kullanıcı "Bilinen açık noktalar"daki iki doğrulama/teyit maddesiyle devam
+etti:
 
-Uygulama: `src/pages/dashboard/index.jsx`'e `FIELD_SPECIALIST_ROLES`/
-`FIELD_SPECIALIST_TABS` sabitleri + `ROLE_TABS`/`ROLE_DEFAULT`/`ROLE_LABEL`
-genişletmesi + yeni bir `is-plani` render dalı (`TabIsPlan projectId={projectId}`,
-`siteChiefView` geçilmeden — proje_yoneticisi ile aynı, tam görünüm) eklendi.
-`Sidebar.jsx`'te `SAHA_ROLES`'e `proje_koordinatoru` + 11 saha rolü eklendi
-(Genel/Satın Alma/Tickets otomatik geldi), `projeler`/`finans` item'larının
-`roles` dizilerine `proje_koordinatoru`/`maliyet_kontrolcu` eklendi, `is-plani`
-item'ına 11 saha rolü eklendi. `ProjeDetay.jsx`'in iç sekmeleri zaten
-`role !== 'proje_yoneticisi'` gibi permissive kontroller kullandığından
-(`canViewFinanceAndTickets`) değişiklik gerekmedi — yeni roller "Projeler"den
-bir projeye girince otomatik doğru çalışıyor. Drive-by düzeltme:
-`TabSatinAlma.jsx`'teki artık yanlış bir yorum (önceki RPC migrasyonundan
-kalma, "ham sorgu koşuyor" diyordu) düzeltildi.
+1. **`profiles.role`/`role_key` tutarsızlığı** — `information_schema.columns`
+   ile doğrudan kontrol edildi: `profiles` tablosunda `role` kolonu artık HİÇ
+   YOK (bir noktada kaldırılmış, CLAUDE.md'ye hiç yansımamış), yalnızca
+   `role_key` var. Frontend (`TabKullanicilar.jsx` dahil) zaten yalnızca
+   `role_key` okuyup yazıyor — `grep` ile `profiles.role` (role_key hariç)
+   okuyan hiçbir yer bulunamadı. Eski FAZ1 denetim notu tamamen geçersiz,
+   madde kapandı.
+2. **Genel Proje kartı personel/makine sayıları vs dönem export'u farklı
+   kaynak** — `get_project_by_date` RPC'sinin kaynağı `pg_get_functiondef`
+   ile okundu: `personnel`/`machinery` node'ları seçili tarihe kadarki **en
+   son TEK günlük raporun** kayıtlarını dönüyor (`ORDER BY report_date DESC
+   LIMIT 1`) — yani "o tarih itibarıyla anlık durum". `ProjeDetay.jsx`'teki
+   `buildPeriodReportData`/`exportSelectedDailyReportExcel`/`exportSelectedDailyReportPDF`
+   ise seçilen tarih aralığı/rapor için `personnel_log_entries`/`machinery_logs`
+   satırlarını topluyor — "dönem toplamı" ya da "o rapora özel". İki ayrı
+   metrik, iki ayrı amaç (anlık durum vs kümülatif rapor) — kasıtlı, bug
+   değil, madde kapandı.
 
-Doğrulama: `npx vite build` + `npx eslint src` temiz (0 hata). Tarayıcıdan elle
-test bu oturumda yapılmadı — kullanıcının her yeni rol grubundan bir test
-hesabıyla (veya `profiles.role` elle değiştirip) sidebar görünürlüğünü ve
-İş Planı/Satın Alma/Finans erişimini kontrol etmesi gerekiyor.
+CLAUDE.md güncellendi: her iki madde "Bilinen açık noktalar"da "DOĞRULANDI/
+ARTIK GEÇERSİZ" olarak işaretlendi (silinmedi, gelecekte aynı soru tekrar
+sorulursa referans olarak kalsın diye).
 
-CLAUDE.md güncellendi: Roller bölümüne yeni gruplama detayı eklendi, "Bilinen
-açık noktalar"daki "6/19 rol" maddesi "19/19 tanınıyor ama hâlâ hardcoded"
-olarak düzeltildi (kalıcı çözüm — `roles` tablosundan okunan izin matrisi —
-hâlâ yapılmadı, ayrı bir görev).
-
-Commit'lendi, main'e doğrudan (ayrı branch açılmadı), push edilmedi — kullanıcı
-"en son sırayla test edelim" dedi, bu oturumdaki tüm değişiklikler test sırası
-çıkarılıp birlikte gözden geçirilecek, push en sona bırakıldı.
+Kod değişikliği yok, commit yok.
