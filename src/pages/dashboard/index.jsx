@@ -36,25 +36,51 @@ const TABS = {
   bildirimler:       { title: 'Bildirimler',        subtitle: 'Tüm bildirimleriniz' },
 }
 
+// Tek projeye kilitli saha/teknik uzman rolleri — henüz kendi özel modülleri yok
+// (bkz. CLAUDE.md "Hiç yapılmamış modüller"), bu yüzden hepsi santiye_sefi'nin
+// genel demetini (Genel Bakış/İş Planı/Satın Alma/Tickets) paylaşıyor, ama
+// santiye_sefi'ye özel Günlük Rapor formu/listesi olmadan.
+const FIELD_SPECIALIST_ROLES = [
+  'elektrik_sefi', 'mekanik_sef', 'isg_sorumlusu', 'kalite_kontrol_sefi',
+  'enh_sorumlusu', 'proje_kurulum_sefi', 'proje_tasarim_sorumlusu',
+  'evrak_takip', 'operasyon_sorumlusu', 'is_makinesi_operator', 'lojistik_tedarik',
+]
+const FIELD_SPECIALIST_TABS = ['genel', 'is-plani', 'satin-alma', 'tickets', 'bildirimler']
+
 const ROLE_TABS = {
   muhasebe:          ['finans', 'bildirimler'],
   proje_yoneticisi:  ['genel', 'projeler', 'is-plani', 'satin-alma', 'bildirimler'],
   santiye_sefi:      ['genel', 'is-plani', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets', 'bildirimler'],
+  ...Object.fromEntries(FIELD_SPECIALIST_ROLES.map(role => [role, FIELD_SPECIALIST_TABS])),
 }
 
 const ROLE_DEFAULT = {
   muhasebe:          'finans',
   proje_yoneticisi:  'genel',
   santiye_sefi:      'genel',
+  ...Object.fromEntries(FIELD_SPECIALIST_ROLES.map(role => [role, 'genel'])),
 }
 
 const ROLE_LABEL = {
-  admin:             'Yönetici',
-  muhasebe:          'Muhasebe',
-  santiye_sefi:      'Şantiye Şefi',
-  muhendis:          'Mühendis',
-  koordinator:       'Koordinatör',
-  proje_yoneticisi:  'Proje Yöneticisi',
+  admin:                     'Yönetici',
+  muhasebe:                  'Muhasebe',
+  santiye_sefi:              'Şantiye Şefi',
+  muhendis:                  'Mühendis',
+  koordinator:               'Koordinatör',
+  proje_yoneticisi:          'Proje Yöneticisi',
+  proje_koordinatoru:        'Proje Koordinatörü',
+  maliyet_kontrolcu:         'Maliyet Kontrolcü',
+  elektrik_sefi:             'Elektrik Şefi',
+  mekanik_sef:               'Mekanik Şef',
+  isg_sorumlusu:             'İSG Sorumlusu',
+  kalite_kontrol_sefi:       'Kalite Kontrol Şefi',
+  enh_sorumlusu:             'ENH Sorumlusu',
+  proje_kurulum_sefi:        'Proje Kurulum Şefi',
+  proje_tasarim_sorumlusu:   'Proje Tasarım Sorumlusu',
+  evrak_takip:               'Evrak Takip',
+  operasyon_sorumlusu:       'Operasyon Sorumlusu',
+  is_makinesi_operator:      'İş Makinesi Operatörü',
+  lojistik_tedarik:          'Lojistik ve Tedarik',
 }
 
 function getHeaderInitials(name) {
@@ -279,6 +305,9 @@ export default function Dashboard() {
           !scopeProjectId && scopeProjects.length > 1
             ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />
             : <TabIsPlan projectId={scopeProjectId} />
+        )}
+        {activeTab === 'is-plani'     && FIELD_SPECIALIST_ROLES.includes(role) && (
+          <TabIsPlan projectId={projectId} />
         )}
         {activeTab === 'bildirimler'  && <TabBildirimler onNavigate={handleTabChange} />}
         {activeTab === 'genel'        && role === 'proje_yoneticisi' && (

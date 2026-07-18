@@ -1,7 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
 
-const SAHA_ROLES = ['admin', 'santiye_sefi', 'muhendis', 'koordinator']
+// Henüz kendi özel modülü olmayan, tek projeye kilitli saha/teknik uzman rolleri —
+// santiye_sefi ile aynı Genel Bakış/İş Planı/Satın Alma/Tickets demetini paylaşıyor
+// (bkz. index.jsx FIELD_SPECIALIST_ROLES, CLAUDE.md Roller bölümü).
+const FIELD_SPECIALIST_ROLES = [
+  'elektrik_sefi', 'mekanik_sef', 'isg_sorumlusu', 'kalite_kontrol_sefi',
+  'enh_sorumlusu', 'proje_kurulum_sefi', 'proje_tasarim_sorumlusu',
+  'evrak_takip', 'operasyon_sorumlusu', 'is_makinesi_operator', 'lojistik_tedarik',
+]
+const SAHA_ROLES = ['admin', 'santiye_sefi', 'muhendis', 'koordinator', 'proje_koordinatoru', ...FIELD_SPECIALIST_ROLES]
 const OPERATION_ROLES = [...SAHA_ROLES, 'proje_yoneticisi']
 
 export default function Sidebar({ active, onTab, onLogout, isOpen }) {
@@ -29,7 +37,7 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'is-plani', label: 'İş Planı',
-      roles: ['santiye_sefi', 'proje_yoneticisi'],
+      roles: ['santiye_sefi', 'proje_yoneticisi', ...FIELD_SPECIALIST_ROLES],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="4" width="18" height="18" rx="2"/>
@@ -51,7 +59,7 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'projeler', label: 'Projeler',
-      roles: ['admin', 'muhendis', 'koordinator', 'proje_yoneticisi'],
+      roles: ['admin', 'muhendis', 'koordinator', 'proje_koordinatoru', 'maliyet_kontrolcu', 'proje_yoneticisi'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M2 20h20"/><path d="M5 20V8l7-6 7 6v12"/><path d="M9 20v-6h6v6"/>
@@ -71,7 +79,7 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'finans', label: 'Finans',
-      roles: ['admin', 'muhasebe'],
+      roles: ['admin', 'muhasebe', 'maliyet_kontrolcu'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
