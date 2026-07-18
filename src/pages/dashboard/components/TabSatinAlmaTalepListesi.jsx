@@ -35,7 +35,7 @@ function materialTitle(request) {
 }
 
 function requesterName(request) {
-  return request.profiles?.full_name || request.requester_name || request.requested_by_name || request.created_by_name || '—'
+  return request.requester_name || request.requested_by_name || request.created_by_name || '—'
 }
 
 function requestNo(request) {
@@ -48,7 +48,7 @@ function requestNo(request) {
 function requestType(request) {
   if (request.category === 'malzeme') return 'Malzeme'
   if (request.category === 'hizmet') return 'Hizmet'
-  const text = `${request.title || ''} ${(request.purchase_request_items || []).map(item => item.name).join(' ')}`.toLocaleLowerCase('tr-TR')
+  const text = `${request.title || ''} ${(request.items || []).map(item => item.name).join(' ')}`.toLocaleLowerCase('tr-TR')
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'Hizmet' : 'Malzeme'
 }
 
@@ -110,24 +110,17 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
   async function fetchData() {
     setLoading(true)
     setErrorMessage('')
-    let query = supabase
-      .from('purchase_requests')
-      .select(projectId ? '*, purchase_request_items(*)' : '*, purchase_request_items(*), projects(name)')
-      .order('created_at', { ascending: false })
-
-    if (projectId) {
-      query = query
-        .eq('project_id', projectId)
-        .lte('created_at', (filterDate || new Date().toISOString().split('T')[0]) + 'T23:59:59')
-    }
-    if (onlyPending) query = query.in('status', ['bekliyor', 'beklemede', 'talep_olusturuldu', 'talep_oluşturuldu'])
 
     const [requestsResult, materialResult] = await Promise.all([
-      query,
+      supabase.rpc('get_purchase_requests_list', {
+        p_project_id: projectId || null,
+        p_filter_date: filterDate || null,
+        p_only_pending: onlyPending,
+      }),
       projectId && !procurement ? supabase.from('procurement_items').select('*').eq('project_id', projectId) : Promise.resolve(null),
     ])
 
-    if (requestsResult.error) {
+    if (requestsResult.error || !requestsResult.data?.authorized) {
       console.error('purchase_requests load error:', requestsResult.error)
       setErrorMessage('Satın alma talepleri yüklenemedi.')
       setRequests([])
@@ -135,30 +128,13 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
       return
     }
 
-    const rows = requestsResult.data || []
-    const requestedByIds = [...new Set(rows.map(row => row.requested_by).filter(Boolean))]
-
-    if (requestedByIds.length > 0) {
-      const { data: profiles, error: profileError } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', requestedByIds)
-
-      if (profileError) {
-        console.error('profiles load error:', profileError)
-        setRequests(rows)
-      } else {
-        const profileById = new Map((profiles || []).map(profile => [profile.id, profile]))
-        setRequests(rows.map(row => ({ ...row, profiles: profileById.get(row.requested_by) || null })))
-      }
-    } else {
-      setRequests(rows)
-    }
+    const rows = requestsResult.data.requests || []
+    setRequests(rows)
 
     if (projectId) {
       const totals = new Map()
       rows.filter(row => normalizeStatus(row.status) === 'bekliyor').forEach(row => {
-        ;(row.purchase_request_items || []).forEach(item => {
+        ;(row.items || []).forEach(item => {
           const key = materialKey(item.name)
           if (!key) return
           totals.set(key, (totals.get(key) || 0) + toNumber(item.quantity))
@@ -198,7 +174,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
     groupByProjectId(requests.filter(row => normalizeStatus(row.status) === 'bekliyor')).forEach((group, groupProjectId) => {
       const totals = new Map()
       group.rows.forEach(row => {
-        ;(row.purchase_request_items || []).forEach(item => {
+        ;(row.items || []).forEach(item => {
           const key = materialKey(item.name)
           if (!key) return
           totals.set(key, (totals.get(key) || 0) + toNumber(item.quantity))
@@ -325,7 +301,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                 const isPending = normalizeStatus(request.status) === 'bekliyor'
                 const rowMaterialPlan = projectId ? materialPlan : (materialPlanByProject.get(request.project_id) || EMPTY_MAP)
                 const rowRequestedTotals = projectId ? requestedTotals : (requestedTotalsByProject.get(request.project_id) || EMPTY_MAP)
-                const risk = riskState(request.purchase_request_items || [], rowMaterialPlan, rowRequestedTotals, requestType(request).toLocaleLowerCase('tr-TR'))
+                const risk = riskState(request.items || [], rowMaterialPlan, rowRequestedTotals, requestType(request).toLocaleLowerCase('tr-TR'))
                 return (
                   <tr
                     key={request.id}
@@ -341,7 +317,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                       </div>
                     </td>
                     {!projectId && (
-                      <td style={{ ...TD, color: 'var(--color-text-sub)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={request.projects?.name || ''}>{request.projects?.name || '—'}</td>
+                      <td style={{ ...TD, color: 'var(--color-text-sub)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={request.project_name || ''}>{request.project_name || '—'}</td>
                     )}
                     <td style={{ ...TD, minWidth: 150 }}>
                       <div style={{ display: 'grid', gap: 4 }}>

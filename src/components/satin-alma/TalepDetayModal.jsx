@@ -64,7 +64,7 @@ const emptyMap = new Map()
 export default function TalepDetayModal({ request, talepId, materialPlan = emptyMap, requestedTotals = emptyMap, onClose }) {
   const { isAdmin, isMuhasebe, user } = useAuth()
   const [data, setData] = useState(request || null)
-  const [items, setItems] = useState(request?.purchase_request_items || [])
+  const [items, setItems] = useState(request?.items || [])
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -74,15 +74,12 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
     async function load() {
       const id = request?.id || talepId
       if (!id) return
-      const { data: req, error } = await supabase
-        .from('purchase_requests')
-        .select('*, purchase_request_items(*), suppliers(name)')
-        .eq('id', id)
-        .single()
+      const { data, error } = await supabase.rpc('get_purchase_request_detail', { p_id: id })
+      const req = data?.authorized ? data.request : null
 
       if (!error && req) {
         setData({ ...request, ...req })
-        setItems(req.purchase_request_items || request?.purchase_request_items || [])
+        setItems(req.items || request?.items || [])
       }
     }
     load()
@@ -93,7 +90,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const canAct = isAdmin && status === 'bekliyor'
   const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
   const description = req.description || req.request_note || req.notes || '-'
-  const requester = req.profiles?.full_name || req.requester_name || req.requested_by_name || req.created_by_name || '—'
+  const requester = req.requester_name || req.requested_by_name || req.created_by_name || '—'
   const type = requestType(req, items)
   const anyTracked = breakdown.some(row => !(type === 'Malzeme' && row.planned <= 0))
   const approvalDate = req.approved_at || req.updated_at
