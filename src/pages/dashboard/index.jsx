@@ -16,6 +16,7 @@ import TabIsPlan from './components/TabIsPlan'
 import TabBildirimler from './components/TabBildirimler'
 import ProjeDetay from './components/ProjeDetay'
 import TabProjeYonetimi from './components/TabProjeYonetimi'
+import KaliteKontrolListesi from '../../components/kalite-kontrol/KaliteKontrolListesi'
 import FloatingAgent from '../../components/agent/FloatingAgent'
 import NotificationBell from '../../components/ui/NotificationBell'
 import DailyReportForm from '../../components/daily-report/DailyReportForm'
@@ -33,6 +34,7 @@ const TABS = {
   'daily-report':    { title: 'Günlük Rapor Gir',  subtitle: 'Saha günlük raporu oluştur veya düzenle' },
   'rapor-listesi':   { title: 'Raporlarım',         subtitle: 'Geçmiş günlük raporlar' },
   'is-plani':        { title: 'İş Planı',           subtitle: 'Proje iş programı ve görev takibi' },
+  'kalite-kontrol':  { title: 'Kalite Kontrol',      subtitle: 'Denetim kayıtları ve punch list takibi' },
   bildirimler:       { title: 'Bildirimler',        subtitle: 'Tüm bildirimleriniz' },
 }
 
@@ -52,6 +54,9 @@ const ROLE_TABS = {
   proje_yoneticisi:  ['genel', 'projeler', 'is-plani', 'satin-alma', 'bildirimler'],
   santiye_sefi:      ['genel', 'is-plani', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets', 'bildirimler'],
   ...Object.fromEntries(FIELD_SPECIALIST_ROLES.map(role => [role, FIELD_SPECIALIST_TABS])),
+  // kalite_kontrol_sefi jenerik FIELD_SPECIALIST_TABS demetini genişletir — kendi Kalite
+  // Kontrol modülü var artık, bu yüzden yukarıdaki spread'i override eden özel bir kayıt.
+  kalite_kontrol_sefi: ['genel', 'is-plani', 'satin-alma', 'kalite-kontrol', 'tickets', 'bildirimler'],
 }
 
 const ROLE_DEFAULT = {
@@ -308,6 +313,9 @@ export default function Dashboard() {
         )}
         {activeTab === 'is-plani'     && FIELD_SPECIALIST_ROLES.includes(role) && (
           <TabIsPlan projectId={projectId} />
+        )}
+        {activeTab === 'kalite-kontrol' && role === 'kalite_kontrol_sefi' && (
+          <KaliteKontrolListesi projectId={projectId} />
         )}
         {activeTab === 'bildirimler'  && <TabBildirimler onNavigate={handleTabChange} />}
         {activeTab === 'genel'        && role === 'proje_yoneticisi' && (

@@ -4,6 +4,7 @@ import { exportGunlukRaporPdf, exportGunlukRaporExcel } from '../../../utils/exp
 import TicketListesi from '../../../components/tickets/TicketListesi'
 import ProjeTabSatinAlma from './ProjeTabSatinAlma'
 import ProjeTabMalzemeListesi from './ProjeTabMalzemeListesi'
+import KaliteKontrolListesi from '../../../components/kalite-kontrol/KaliteKontrolListesi'
 import ProjeTabFinans from './ProjeTabFinans'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
@@ -1136,6 +1137,9 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           <button onClick={() => setTab('malzeme-listesi')} style={tab === 'malzeme-listesi' ? tabBtnActive : tabBtn}>
             Malzeme Listesi
           </button>
+          <button onClick={() => setTab('kalite-kontrol')} style={tab === 'kalite-kontrol' ? tabBtnActive : tabBtn}>
+            Kalite Kontrol
+          </button>
           {canViewFinanceAndTickets && (
             <button onClick={() => setTab('finans')} style={tab === 'finans' ? tabBtnActive : tabBtn}>
               Finans
@@ -1302,6 +1306,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
       ) : tab === 'malzeme-listesi' ? (
         <ProjeTabMalzemeListesi projectId={projectId} filterDate={filterDate} />
+      ) : tab === 'kalite-kontrol' ? (
+        <KaliteKontrolListesi projectId={projectId} filterDate={filterDate} />
       ) : tab === 'finans' && canViewFinanceAndTickets ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'raporlar' ? (
