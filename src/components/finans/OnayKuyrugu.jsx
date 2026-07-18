@@ -119,6 +119,12 @@ function InvoiceTable({ invoices, onAction, actionLoading, readonly }) {
 
   const toggle = (id) => setExpanded(e => e === id ? null : id)
 
+  const statusMeta = (status) => ({
+    onaylandı: { bg: '#D1FAE5', color: '#065F46', label: 'Tamamlandı' },
+    reddedildi: { bg: '#FEE2E2', color: '#991B1B', label: 'İptal / Reddedildi' },
+    yönetici_onayında: { bg: '#EFF6FF', color: '#185FA5', label: 'Yönetici Onayında' },
+  })[status] || { bg: '#EFF6FF', color: '#185FA5', label: 'Yönetici Onayında' }
+
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
       <thead>
@@ -173,8 +179,8 @@ function InvoiceTable({ invoices, onAction, actionLoading, readonly }) {
                 </td>
                 <td style={{ padding: '14px 20px' }} onClick={e => e.stopPropagation()}>
                   {readonly ? (
-                    <span style={{ background: '#EFF6FF', color: '#185FA5', fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>
-                      Yönetici Onayında
+                    <span style={{ background: statusMeta(inv.status).bg, color: statusMeta(inv.status).color, fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>
+                      {statusMeta(inv.status).label}
                     </span>
                   ) : (
                     <ActionButtons inv={inv} onAction={onAction} actionLoading={actionLoading} />
@@ -206,35 +212,49 @@ function Section({ title, badge, badgeBg, badgeColor, children }) {
   )
 }
 
-export default function OnayKuyrugu() {
+// projectId yoksa (menü modu): tüm projeler, 2 bölüm (Muhasebe + Yönetici). projectId doluysa
+// (proje modu): yalnız o proje, aynı 2 bölüm + son 20 kapanan faturayı gösteren 3. bölüm.
+export default function OnayKuyrugu({ projectId = null }) {
   const { isAdmin, isMuhasebe, user } = useAuth()
   const [muhasebeKuyrugu, setMuhasebeKuyrugu] = useState([])
   const [yoneticiKuyrugu, setYoneticiKuyrugu] = useState([])
+  const [kapananFaturalar, setKapananFaturalar] = useState([])
   const [loading,         setLoading]         = useState(true)
   const [actionLoading,   setActionLoading]   = useState(null)
 
-  useEffect(() => { fetchData() }, [isAdmin, isMuhasebe])
+  useEffect(() => { fetchData() }, [projectId, isAdmin, isMuhasebe])
 
   async function fetchData() {
     setLoading(true)
     const sel = '*, suppliers(name), projects(name)'
+    const withProject = (q) => projectId ? q.eq('project_id', projectId) : q
 
     if (isMuhasebe) {
-      const [mRes, yRes] = await Promise.all([
-        supabase.from('invoices').select(sel)
-          .in('status', ['bekliyor', 'muhasebe_onayında'])
-          .order('invoice_date', { ascending: true }),
-        supabase.from('invoices').select(sel)
-          .eq('status', 'yönetici_onayında')
-          .order('invoice_date', { ascending: true }),
-      ])
+      const queries = [
+        withProject(supabase.from('invoices').select(sel).in('status', ['bekliyor', 'muhasebe_onayında'])).order('invoice_date', { ascending: true }),
+        withProject(supabase.from('invoices').select(sel).eq('status', 'yönetici_onayında')).order('invoice_date', { ascending: true }),
+      ]
+      if (projectId) {
+        queries.push(
+          withProject(supabase.from('invoices').select(sel).in('status', ['onaylandı', 'reddedildi'])).order('invoice_date', { ascending: false }).limit(20)
+        )
+      }
+      const [mRes, yRes, cRes] = await Promise.all(queries)
       setMuhasebeKuyrugu(mRes.data || [])
       setYoneticiKuyrugu(yRes.data || [])
+      setKapananFaturalar(projectId ? (cRes?.data || []) : [])
     } else if (isAdmin) {
-      const { data } = await supabase.from('invoices').select(sel)
-        .eq('status', 'yönetici_onayında')
-        .order('invoice_date', { ascending: true })
-      setYoneticiKuyrugu(data || [])
+      const queries = [
+        withProject(supabase.from('invoices').select(sel).eq('status', 'yönetici_onayında')).order('invoice_date', { ascending: true }),
+      ]
+      if (projectId) {
+        queries.push(
+          withProject(supabase.from('invoices').select(sel).in('status', ['onaylandı', 'reddedildi'])).order('invoice_date', { ascending: false }).limit(20)
+        )
+      }
+      const [yRes, cRes] = await Promise.all(queries)
+      setYoneticiKuyrugu(yRes.data || [])
+      setKapananFaturalar(projectId ? (cRes?.data || []) : [])
     }
 
     setLoading(false)
@@ -288,7 +308,7 @@ export default function OnayKuyrugu() {
       )}
 
       <Section
-        title={isAdmin ? 'Yönetici Onay Kuyruğu' : 'Yönetici Onayında'}
+        title={isAdmin ? (projectId ? 'Fatura Onay Bekleyenler' : 'Yönetici Onay Kuyruğu') : 'Yönetici Onayında'}
         badge={`${yoneticiKuyrugu.length} fatura`}
         badgeBg="#EFF6FF" badgeColor="#185FA5"
       >
@@ -302,6 +322,19 @@ export default function OnayKuyrugu() {
             />
         }
       </Section>
+
+      {projectId && (
+        <Section
+          title="Tamamlanan / İptal Edilen"
+          badge={`${kapananFaturalar.length} fatura`}
+          badgeBg="#F3F4F6" badgeColor="#374151"
+        >
+          {kapananFaturalar.length === 0
+            ? <EmptyState text="Tamamlanan veya iptal edilen fatura yok" />
+            : <InvoiceTable invoices={kapananFaturalar} onAction={() => {}} actionLoading={actionLoading} readonly />
+          }
+        </Section>
+      )}
 
     </div>
   )

@@ -9,8 +9,8 @@ import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
 import ProjeTabFinansYanPanel, { KurCard } from './ProjeTabFinansYanPanel'
 import MaliyetOzetTable from './MaliyetOzetTable'
-import ProjeTabFaturaListesi from './ProjeTabFaturaListesi'
-import ProjeTabOnayKuyrugu from './ProjeTabOnayKuyrugu'
+import FaturaListesi from '../../../components/finans/FaturaListesi'
+import OnayKuyrugu from '../../../components/finans/OnayKuyrugu'
 import ProjeTabMaliyetTablosu from './ProjeTabMaliyetTablosu'
 
 const EMPTY_KPI = {
@@ -125,8 +125,8 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
           </div>
         </>
       )}
-      {tab === 'faturalar' && <ProjeTabFaturaListesi projectId={projectId} filterDate={filterDate} />}
-      {tab === 'onay'      && <ProjeTabOnayKuyrugu projectId={projectId} />}
+      {tab === 'faturalar' && <FaturaListesi projectId={projectId} filterDate={filterDate} />}
+      {tab === 'onay'      && <OnayKuyrugu projectId={projectId} />}
       {tab === 'maliyet'   && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
     </div>
   )
