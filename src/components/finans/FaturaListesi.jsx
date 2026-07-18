@@ -20,9 +20,9 @@ const STATUS_BADGE = {
 const PAGE_SIZE = 10
 
 // ── Fatura Ekle Modal ─────────────────────────────────────────────────────────
-function FaturaEkleModal({ onClose, onSaved }) {
+function FaturaEkleModal({ onClose, onSaved, defaultProjectId }) {
   const [form, setForm] = useState({
-    supplier_id: '', project_id: '', invoice_no: '', invoice_date: '',
+    supplier_id: '', project_id: defaultProjectId || '', invoice_no: '', invoice_date: '',
     due_date: '', amount: '', vat_rate: '20', category: 'malzeme', description: '',
   })
   const [suppliers, setSuppliers] = useState([])
@@ -46,7 +46,7 @@ function FaturaEkleModal({ onClose, onSaved }) {
     e.preventDefault()
     setSaving(true)
     setErr(null)
-    const { data: newInv, error } = await supabase.from('invoices').insert({
+    const { error } = await supabase.from('invoices').insert({
       supplier_id:  form.supplier_id  || null,
       project_id:   form.project_id   || null,
       invoice_no:   form.invoice_no,
@@ -90,7 +90,7 @@ function FaturaEkleModal({ onClose, onSaved }) {
             </div>
             <div>
               <label style={lbl}>Proje</label>
-              <select style={inp} value={form.project_id} onChange={e => set('project_id', e.target.value)}>
+              <select style={inp} value={form.project_id} onChange={e => set('project_id', e.target.value)} disabled={!!defaultProjectId}>
                 <option value="">Seçiniz</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -161,7 +161,7 @@ function FaturaEkleModal({ onClose, onSaved }) {
   )
 }
 
-// ── Fatura Detay Modal ────────────────────────────────────────────────────────
+// ── Fatura Detay Modal (menü modu: onay zinciri + içinden iptal) ─────────────
 function FaturaDetayModal({ invoice, onClose, onCancelled }) {
   const { isAdmin, isMuhasebe } = useAuth()
   const [approvals, setApprovals] = useState([])
@@ -322,33 +322,83 @@ function FaturaDetayModal({ invoice, onClose, onCancelled }) {
   )
 }
 
+// ── Fatura İptal Modal (proje modu: sade onay adımlı iptal) ──────────────────
+function FaturaIptalModal({ invoice, onClose, onSaved }) {
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function handleConfirm() {
+    setSaving(true)
+    setErr('')
+    const { error } = await supabase.from('invoices').update({ status: 'reddedildi' }).eq('id', invoice.id)
+    setSaving(false)
+    if (error) { setErr(error.message || 'İptal edilemedi.'); return }
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: 460 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Faturayı İptal Et</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <p style={{ margin: '0 0 16px', fontSize: 12.5, color: '#92400E', background: '#FEF3C7', borderRadius: 8, padding: '8px 12px' }}>
+          ⚠ {invoice.invoice_no || 'Bu fatura'} zaten onaylanmış. İptal edilirse ilgili maliyet kaydı silinir ve bağlı satın alma talebi tekrar "Onaylandı" durumuna döner, yeniden fatura kesilebilir.
+        </p>
+        {err && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{err}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button type="button" onClick={onClose} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+            Vazgeç
+          </button>
+          <button type="button" disabled={saving} onClick={handleConfirm} style={{ background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
+            {saving ? 'Kaydediliyor…' : 'Evet, İptal Et'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function FaturaListesi() {
+// projectId/filterDate yoksa (menü modu): tüm projelerin faturaları, serbest proje seçici,
+// "Detay" → onay zinciri modalı. projectId doluysa (proje modu): yalnız o projenin faturaları
+// (filterDate'e kadar), kilitli proje seçici, admin/muhasebe için doğrudan "İptal Et".
+export default function FaturaListesi({ projectId = null, filterDate = null }) {
+  const { isAdmin, isMuhasebe } = useAuth()
   const [invoices,     setInvoices]     = useState([])
   const [loading,      setLoading]      = useState(true)
   const [page,         setPage]         = useState(0)
   const [filterStatus, setFilterStatus] = useState('hepsi')
   const [showAdd,      setShowAdd]      = useState(false)
   const [detayFatura,  setDetayFatura]  = useState(null)
+  const [cancelling,   setCancelling]   = useState(null)
 
   async function fetchInvoices() {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('*, suppliers(name)')
-      .order('invoice_date', { ascending: false })
+    let query = supabase.from('invoices').select('*, suppliers(name)')
+    if (projectId) {
+      query = query
+        .eq('project_id', projectId)
+        .lte('invoice_date', filterDate || new Date().toISOString().split('T')[0])
+    }
+    const { data, error } = await query.order('invoice_date', { ascending: false })
     if (error) console.error('invoices fetch error:', error)
     setInvoices(data || [])
     setLoading(false)
   }
 
-  useEffect(() => { fetchInvoices() }, [])
+  useEffect(() => { fetchInvoices() }, [projectId, filterDate])
 
   const filtered   = filterStatus === 'hepsi' ? invoices : invoices.filter(i => i.status === filterStatus)
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged      = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
-  const TH = ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM', 'İŞLEMLER']
+  const canCancel = isAdmin || isMuhasebe
+  const TH = projectId
+    ? ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM', ...(canCancel ? ['İŞLEMLER'] : [])]
+    : ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM', 'İŞLEMLER']
 
   return (
     <>
@@ -394,7 +444,7 @@ export default function FaturaListesi() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 960 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: projectId ? 860 : 960 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
                   {TH.map(h => (
@@ -419,14 +469,29 @@ export default function FaturaListesi() {
                       <td style={{ padding: '14px 16px' }}>
                         <span style={{ background: b.bg, color: b.color, fontSize: 12, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>{b.label}</span>
                       </td>
-                      <td style={{ padding: '14px 16px' }}>
-                        <button
-                          onClick={() => setDetayFatura(inv)}
-                          style={{ background: 'transparent', color: '#185FA5', border: '1px solid #185FA5', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
-                        >
-                          Detay
-                        </button>
-                      </td>
+                      {projectId ? (
+                        canCancel && (
+                          <td style={{ padding: '14px 16px' }}>
+                            {inv.status === 'onaylandı' ? (
+                              <button
+                                onClick={() => setCancelling(inv)}
+                                style={{ background: '#FEF2F2', color: '#DC2626', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
+                              >
+                                İptal Et
+                              </button>
+                            ) : '—'}
+                          </td>
+                        )
+                      ) : (
+                        <td style={{ padding: '14px 16px' }}>
+                          <button
+                            onClick={() => setDetayFatura(inv)}
+                            style={{ background: 'transparent', color: '#185FA5', border: '1px solid #185FA5', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
+                          >
+                            Detay
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
@@ -457,8 +522,10 @@ export default function FaturaListesi() {
         )}
       </div>
 
-      {showAdd    && <FaturaEkleModal  onClose={() => setShowAdd(false)}      onSaved={fetchInvoices} />}
-      {detayFatura && <FaturaDetayModal invoice={detayFatura} onClose={() => setDetayFatura(null)} onCancelled={fetchInvoices} />}
+      {showAdd && <FaturaEkleModal onClose={() => setShowAdd(false)} onSaved={fetchInvoices} defaultProjectId={projectId} />}
+      {projectId
+        ? cancelling && <FaturaIptalModal invoice={cancelling} onClose={() => setCancelling(null)} onSaved={fetchInvoices} />
+        : detayFatura && <FaturaDetayModal invoice={detayFatura} onClose={() => setDetayFatura(null)} onCancelled={fetchInvoices} />}
     </>
   )
 }

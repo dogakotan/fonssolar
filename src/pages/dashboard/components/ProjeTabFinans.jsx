@@ -9,7 +9,7 @@ import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
 import ProjeTabFinansYanPanel, { KurCard } from './ProjeTabFinansYanPanel'
 import MaliyetOzetTable from './MaliyetOzetTable'
-import ProjeTabFaturaListesi from './ProjeTabFaturaListesi'
+import FaturaListesi from '../../../components/finans/FaturaListesi'
 import ProjeTabOnayKuyrugu from './ProjeTabOnayKuyrugu'
 import ProjeTabMaliyetTablosu from './ProjeTabMaliyetTablosu'
 
@@ -125,7 +125,7 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
           </div>
         </>
       )}
-      {tab === 'faturalar' && <ProjeTabFaturaListesi projectId={projectId} filterDate={filterDate} />}
+      {tab === 'faturalar' && <FaturaListesi projectId={projectId} filterDate={filterDate} />}
       {tab === 'onay'      && <ProjeTabOnayKuyrugu projectId={projectId} />}
       {tab === 'maliyet'   && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
     </div>
