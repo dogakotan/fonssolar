@@ -990,8 +990,9 @@ proje kapsamı"]` bulamıyor); bu, header'daki global proje seçicinin
 2026-07-17'de kaldırılmasından kalma **önceden var olan, bu refactor'den
 bağımsız** bir test/kod uyumsuzluğu — testin kendisi güncellenmedi (kapsam
 dışı), yalnızca not edildi. Tarayıcıdan gerçek elle gezinme bu oturumda
-mümkün değildi (headless ortam) — kullanıcının ilk fırsatta 4 ekranı
-(Menü→Finans, Menü→Satın Alma, Proje→Finans, Proje→Satın Alma) elle gezip
-teyit etmesi önerilir.
+(headless ortam) yapılamadı; kullanıcı sonrasında 4 ekranı (Menü→Finans,
+Menü→Satın Alma, Proje→Finans, Proje→Satın Alma) kendisi gezip **görsel
+olarak bozukluk olmadığını teyit etti**.
 
-3 faz commit'lendi, branch push edilmedi, main'e merge edilmedi.
+Branch `refactor/birlesik-list-bilesenleri` main'e merge edilip push'landı
+(`19df2ab..68ad6a8`). Görev kapandı.
