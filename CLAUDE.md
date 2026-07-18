@@ -380,8 +380,7 @@ noktalar) — bu tur hızlı, dosya-içi bir genişletme.
 ### RPC katmanı (canlı)
 
 **Okuma:** `get_dashboard_summary(p_project_id)`, `get_project_gantt(p_project_id, p_filter_date)`,
-`get_project_dashboard(p_project_id, p_effective_date)` (frontend'den artık HİÇ çağrılmıyor —
-bkz. Bilinen açık noktalar), `get_daily_report_detail(p_report_id)`,
+`get_daily_report_detail(p_report_id)`,
 `get_daily_reports_list(p_project_id, p_start_date, p_end_date, p_page, p_page_size)`,
 `get_proje_detay(p_project_id)`, `get_santiye_dashboard(p_project_id, p_today)`,
 `get_project_by_date(p_project_id, p_date)` (`ProjeDetay.jsx`'in "Genel Proje" sekmesinin —
@@ -461,10 +460,6 @@ EXECUTE kapalı, yalnızca başka SECURITY DEFINER fonksiyonlardan çağrılır.
 OR cross_project OR profiles.project_id OR user_project_access).
 `user_has_project_access(p_project_id)`/`user_can_access_report(p_report_id)` —
 RLS politikalarında kullanılan ince katmanlar, ikisi de artık yukarıdakilere delege eder.
-`get_project_dashboard` de artık diğer proje-bazlı RPC'lerle aynı
-`get_project_scope`/`authorized` desenini kullanıyor (2026-07-16'da eklendi —
-daha önce hiç yetki kontrolü yoktu, herhangi bir authenticated kullanıcı
-erişimi olmayan bir projenin verisini görebiliyordu).
 
 **Bildirim:** `notify_managers(...)`, `notify_role(...)`, `notify_user(...)` —
 `daily_reports`/`purchase_requests`/`invoices`/`tickets`/`ticket_comments`
@@ -573,10 +568,10 @@ proje oluştururken "Riskler" sayfasını hiç okumuyor, yalnızca mevcut projey
 güncelleme yaparken okuyor (`isNewProject` kontrolü, `project_category_weights`
 seed mantığıyla aynı desende ama ters yönde).
 
-### Modül → tablo haritası (32 tablo + 6 view + `notifications`)
+### Modül → tablo haritası (30 tablo + 6 view + `notifications`)
 | Modül | Tablolar |
 |---|---|
-| Proje yönetimi | projects, project_tasks, project_category_weights, work_packages¹, schedule_activities¹, project_risks |
+| Proje yönetimi | projects, project_tasks, project_category_weights, project_risks |
 | Günlük saha raporlama | daily_reports, daily_tasks, personnel_log_entries, machinery_logs, daily_report_photos, daily_report_issues, daily_report_material_usage |
 | İmalat ilerlemesi | progress_daily |
 | Satın alma (7 adım) | purchase_requests, purchase_request_items, purchase_request_status_log |
@@ -585,10 +580,6 @@ seed mantığıyla aynı desende ama ters yönde).
 | Kullanıcı yönetimi | roles, profiles, user_project_access |
 | Bildirim | notifications |
 | Destek / diğer | tickets, ticket_comments, ticket_history, agent_reports, procurement_items, procurement_item_adjustments, procurement_item_change_requests |
-
-¹ Yetim/arayüzsüz — bkz. Bilinen açık noktalar. (`critical_path_items`,
-`critical_path_predecessors`, `mechanical_checklist`, `electrical_checklist`
-tabloları DB'den tamamen kaldırıldı — artık yetim değil, yok.)
 
 View'lar (hepsi `security_invoker=on`): `project_cost_summary`, `personnel_logs`,
 `vw_delayed_tasks`, `vw_monthly_progress`, `vw_project_progress_summary`,
@@ -1019,6 +1010,18 @@ Alma/Finans Test Verisi notu).
   **Kapsam dışı bırakıldı (bilinçli, ayrı gelecek görev):** foto yükleme,
   yüksek/kritik bulgular için `daily_report_issues` deseniyle otomatik ticket
   bağlantısı, denetim sonucu için ayrı bir onay/imza zinciri.
+- **3 orphan/kullanılmayan DB nesnesi temizlendi (2026-07-18):** Bağımlılık
+  taraması (Explore agent + doğrudan `pg_proc`/`pg_constraint` sorgusu) üçünün
+  de güvenle silinebilir olduğunu doğruladı, kullanıcı onayıyla migration
+  uygulandı: `DROP TABLE work_packages` (0 satır, hiçbir dosyada/RPC'de/
+  trigger'da referansı yoktu), `DROP TABLE schedule_activities` (0 satır;
+  eşlik eden kod temizliği: `agentContext.js`'in `ctxIsPlan()` fonksiyonundan
+  her zaman boş dönen sorgu + "Aktivite Planı" bölümü kaldırıldı,
+  `TabProjeYonetimi.jsx`'in `PROJECT_DELETE_TABLES` dizisinden çıkarıldı),
+  `DROP FUNCTION get_project_dashboard(text, date)` (onu kullanan tek bileşen
+  2026-07-16'da zaten silinmişti, RPC'nin kendisi bu turda kaldırıldı).
+  `npx vite build`/`npx eslint src` temiz, `get_advisors` yeni bir uyarı
+  göstermedi.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
@@ -1048,15 +1051,6 @@ Alma/Finans Test Verisi notu).
   (`mechanical_checklist`/`electrical_checklist` tabloları — aynı gruptaki
   mekanik/elektrik checklist'ler — DB'den tamamen kaldırıldı, bu artık onlar
   için geçerli değil.)
-- **`work_packages` yetim tablo, `schedule_activities` yarı-yetim** —
-  `work_packages` gerçekten hiçbir dosyada kullanılmıyor (frontend'deki
-  `wps`/"work_packages" değişkeni kafa karıştırıcı bir isimlendirme: `get_proje_detay`
-  RPC'sinin `work_packages` JSON node'u aslında `project_tasks`'tan geliyor, gerçek
-  `work_packages` tablosuna hiç dokunmuyor). `schedule_activities` ise teknik olarak
-  okunuyor (`agentContext.js:106`, her zaman boş dönen bir sorgu) ve proje silme
-  akışında (`TabProjeYonetimi.jsx`) temizleniyor — ama hiçbir UI'da render edilmiyor,
-  pratikte hâlâ kullanılmayan bir tablo. (`critical_path_predecessors` aynı
-  gruptaydı, artık DB'de yok.)
 - **`vw_bom_tracking` view'ı hiç kullanılmıyor** — DB'de tanımlı (`over_requested`
   dahil tam mantık var), otomatik risk motoru aynı işi kendi ayrı sorgusuyla
   yapıyor. Silinebilir ya da risk motoru buna geçirilebilir, acil değil.
@@ -1076,29 +1070,19 @@ Alma/Finans Test Verisi notu).
   (bir noktada kaldırılmış), yalnızca `role_key` var; frontend zaten tutarlı
   şekilde yalnızca `role_key` okuyor/yazıyor (`TabKullanicilar.jsx` dahil).
   Eski FAZ1 denetim notu artık tarihsel, madde kapandı.
-- **RLS temizliği bekliyor:** `schedule_activities`/`work_packages`
-  hâlâ `USING(true)` (rol/proje kısıtı yok) — **not (2026-07-17): `procurement_items` bu
-  listeden çıkarıldı**, malzeme miktarı onay akışı için yapılan taramada zaten
-  `has_project_access(project_id)` politikasıyla korunduğu görüldü, önceki not yanlıştı.
-  **not (2026-07-18): `quality_inspections` de bu listeden çıkarıldı** — Kalite
-  denetimi modülü eklenirken kontrol edildi, tablo zaten `user_has_project_access`
-  ile korumalıymış (eski not yanlıştı, ne zaman düzeltildiği bilinmiyor); yeni
-  `quality_inspection_findings` tablosu da aynı desenle düzgün RLS'li oluşturuldu.
-  `profiles`/`purchase_requests` üzerinde eski+yeni politika birikimi
-  (`multiple_permissive_policies`) var. Acil değil, ileride bir RLS temizlik
-  migration'ında ele alınmalı.
+- **RLS temizliği bekliyor:** `profiles`/`purchase_requests` üzerinde eski+yeni
+  politika birikimi (`multiple_permissive_policies`) var. Acil değil, ileride
+  bir RLS temizlik migration'ında ele alınmalı. (Bu maddenin eski hali
+  `work_packages`/`schedule_activities`/`procurement_items`/`quality_inspections`'ı
+  da "USING(true), rol/proje kısıtı yok" diye listeliyordu — hepsi yanlış çıktı
+  ya da artık geçersiz: `procurement_items`/`quality_inspections` zaten
+  `has_project_access`/`user_has_project_access` ile korumalıymış, `work_packages`/
+  `schedule_activities` ise 2026-07-18'de tablo olarak tamamen silindi, bkz.
+  Tamamlanan büyük görevler.)
 - **Realtime ölçek notu:** P0 tablolarında `REPLICA IDENTITY FULL` var (DELETE/UPDATE
   RLS'i için gerekliydi). Supabase üretim ölçeğinde Broadcast-from-database'e
   geçişi öneriyor — bu projenin ölçeğinde (2 test projesi) şimdilik gerekmiyor,
   ileride gündeme gelirse bu kararı birlikte gözden geçir.
-- **`get_project_dashboard` RPC'si artık hiçbir yerden çağrılmıyor** — onu
-  kullanan tek bileşen (`TabGenel.jsx`'in `ProjectDashboard` alt bileşeni)
-  2026-07-16'da silindi (bkz. Tamamlanan büyük görevler). RPC'nin kendisi
-  DB'de duruyor (silinmedi — bu bir migration kararı, ayrıca istenmeden
-  yapılmadı), `get_project_by_date`'ten fazladan alanları var (`inspections`,
-  `pending_pr`, `open_tickets`, ayrı `personnel`/`machinery` şekli) ama
-  hiçbiri artık okunmuyor. İleride ya silinmeli (temizlik migration'ı) ya da
-  gerçek bir ihtiyaç çıkarsa yeniden bir ekrana bağlanmalı.
 - **Proje sihirbazında ilerleme kategori ağırlıkları düzenlenemiyor** —
   `project_category_weights` yalnızca SQL ile yönetiliyor, sihirbaza/ayarlar
   ekranına bir düzenleme arayüzü eklenmedi.
@@ -1115,43 +1099,31 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**18.07.2026 (15) — Kalite Denetimi modülü (temel kapsam) eklendi.**
+**18.07.2026 (16) — 3 orphan/kullanılmayan DB nesnesi temizlendi.**
 
-Bir önceki turda test sırası tamamlanıp push edildikten sonra kullanıcı
-"Bilinen açık noktalar"daki en büyük maddeyle devam etmeyi seçti: Kalite
-Denetimi modülü (`kalite_kontrol_sefi` rolü için — daha önce hiç arayüzü
-yoktu). Plan modunda araştırılıp kullanıcıya kapsam soruldu; "Temel modül"
-seçildi (foto yükleme ve otomatik ticket bağlantısı ayrı bir gelecek göreve
-bırakıldı). Detaylar "Tamamlanan büyük görevler"de (bkz. "Kalite denetimi
-modülü — temel kapsam").
+Kalite Denetimi modülünün ardından ("(15)", artık Tamamlanan büyük görevler'de)
+kullanıcı "Bilinen açık noktalar"daki küçük, hızlı kapanabilir karar
+maddelerinden devam etti: `work_packages`/`schedule_activities` tablolarının
+ve `get_project_dashboard` RPC'sinin silinip silinmeyeceği.
 
-Özet: 4 migration (onaylı) — `quality_inspections`'a `created_by`, yeni
-`quality_inspection_findings` tablosu + RLS, 2 yazma RPC'si
-(`save_quality_inspection`/`update_quality_finding_status`), 2 okuma RPC'si
-(`get_quality_inspections_list`/`get_quality_inspection_detail`, hepsi
-`REVOKE ... FROM PUBLIC, anon`). Frontend: `src/components/kalite-kontrol/`
-(3 dosya, baştan tek bileşen — menü/proje modu ayrımı yok), nav/rol
-entegrasyonu (`kalite_kontrol_sefi` artık jenerik 11'lik demetten ayrıldı,
-kendi sekmesi var; admin/koordinator/muhendis `ProjeDetay`'dan erişiyor).
+Explore agent + doğrudan `pg_proc`/`pg_constraint`/satır sayısı sorgularıyla
+bağımlılık taraması yapıldı — üçü de "GÜVENLE SİLİNEBİLİR" çıktı (0 satır,
+hiçbir FK/trigger/RPC referansı yok). Kullanıcıya tam SQL gösterilip onay
+alındıktan sonra tek migration'da uygulandı: `DROP TABLE work_packages`,
+`DROP TABLE schedule_activities`, `DROP FUNCTION get_project_dashboard(text, date)`.
 
-Test sırasında bulunan 2 gerçek sorun, ikisi de düzeltildi:
-1. **Ortam kaynaklı (kod bugı değil):** İzmir test hesabının 2026-07-17'den
-   kalma ek `user_project_access` kaydı (`test-bursa-mudanya-ges`) yüzünden
-   `get_my_projects()` 2 proje döndürüyor, `AuthContext`'in `projectId`'yi
-   tek projeye daraltamıyor — modal proje seçici gösteriyor (kilitli
-   olması gerekirken). Silinmedi (amacı belirsiz, araştırmadan silme riskli),
-   test bunu handle edecek şekilde yazıldı.
-2. **Gerçek RPC bugı:** Aynı transaction içinde art arda eklenen bulgular
-   Postgres'in transaction-sabit `now()`'ı yüzünden aynı `created_at`'ı
-   alıyordu — `get_quality_inspection_detail`'in `ORDER BY`'ına `f.id`
-   tiebreaker migration'ı ile düzeltildi.
+Eşlik eden kod temizliği: `agentContext.js`'in `ctxIsPlan()` fonksiyonundan
+`schedule_activities`'i okuyan (her zaman boş dönen) sorgu + "Aktivite Planı"
+context bölümü kaldırıldı; `TabProjeYonetimi.jsx`'in proje-silme temizlik
+dizisinden (`PROJECT_DELETE_TABLES`) `schedule_activities` çıkarıldı.
+`get_proje_detay` RPC'sinin `work_packages` adlı JSON alanı (`ProjeDetay.jsx`'te
+kullanılıyor) gerçek tabloya değil `project_tasks`'a bağlı olduğu için
+dokunulmadı — kafa karıştırıcı bir isimlendirme ama davranış değişikliği
+gerektirmiyor.
 
-Playwright ile uçtan uca doğrulandı (izmir hesabının rolü geçici
-`kalite_kontrol_sefi`'ye çekilip test sonunda `santiye_sefi`'ye geri alındı):
-sidebar doğru, denetim+2 bulgu oluşturma, bulgu durumu "çözüldü" yapma
-kalıcı, admin'in `ProjeDetay`'dan aynı veriyi görmesi — hepsi PASS. Test
-verisi silindi. `tests/faz-e.spec.js` regresyonu: yeni bir sorun yok (F PASS,
-A/B/D aynı bilinen header-seçici kökünden bağımsız olarak başarısız).
-`npx vite build`/`npx eslint src` temiz.
+`npx vite build`/`npx eslint src` temiz, `get_advisors` yeni bir uyarı
+göstermedi (aynı önceden var olan büyük A0 backlog listesi). Detaylar
+"Tamamlanan büyük görevler"de (bkz. "3 orphan/kullanılmayan DB nesnesi
+temizlendi").
 
 Commit yapıldı, push kullanıcı onayı bekliyor (henüz push edilmedi).

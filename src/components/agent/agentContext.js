@@ -93,20 +93,13 @@ async function ctxIsPlan(projectId, selectedDate) {
   const pid     = projectId && projectId !== 'genel' ? projectId : null
   const ceiling = dateCeiling(selectedDate)
 
-  const [wpRes, schedRes, progRes] = await Promise.allSettled([
+  const [wpRes, progRes] = await Promise.allSettled([
     withDateFilter(
       supabase.from('project_tasks')
         .select('task_name, status, progress_pct, planned_end, category')
         .match(pid ? { project_id: pid } : {})
         .order('planned_end', { ascending: true })
         .limit(30),
-      ceiling
-    ),
-    withDateFilter(
-      supabase.from('schedule_activities')
-        .select('activity_name, status, completion_pct, priority')
-        .match(pid ? { project_id: pid } : {})
-        .order('activity_no', { ascending: true }),
       ceiling
     ),
     supabase
@@ -117,15 +110,10 @@ async function ctxIsPlan(projectId, selectedDate) {
   ])
 
   const wps  = wpRes.status    === 'fulfilled' ? (wpRes.value.data    || []) : []
-  const acts = schedRes.status === 'fulfilled' ? (schedRes.value.data || []) : []
   const progs = progRes.status === 'fulfilled' ? (progRes.value.data  || []) : []
 
   const wpLines = wps.map(w =>
     `  - [${w.status}] ${w.task_name} | İlerleme: %${fmt(w.progress_pct)} | Bitiş: ${fmt(w.planned_end)}`
-  )
-
-  const actLines = acts.map(a =>
-    `  - [${a.status}] ${a.activity_name} | %${fmt(a.completion_pct)} | Öncelik: ${fmt(a.priority)}`
   )
 
   const progLines = progs.map(p => {
@@ -135,7 +123,6 @@ async function ctxIsPlan(projectId, selectedDate) {
 
   return [
     section('İş Paketleri', wpLines),
-    section('Aktivite Planı', actLines),
     section('İmalat İlerlemesi', progLines),
   ].filter(Boolean).join('\n')
 }

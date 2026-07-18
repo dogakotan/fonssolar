@@ -26,7 +26,7 @@ const SUB_TABLES = [
 ]
 
 const PROJECT_DELETE_TABLES = [
-  'schedule_activities', 'agent_reports', 'quality_inspections',
+  'agent_reports', 'quality_inspections',
 ]
 
 const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu.xlsx'
