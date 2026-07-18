@@ -331,11 +331,45 @@ rollerin (admin/manager) `scopeProjectId=null` = "Tüm Projeler" davranışına
 DOKUNULMADI. Playwright ile 2. denemede tam PASS doğrulandı (konsol hatası yok,
 proje seçimi → Genel/İş Planı/Satın Alma verisi doğru yükleniyor).
 
-**Bilinen fark:** Frontend hâlâ yalnızca 6 rolü tanıyor (`ROLE_TABS`/`ROLE_LABEL`
-`src/pages/dashboard/index.jsx`, nav `Sidebar.jsx`) — admin, muhasebe,
-santiye_sefi, muhendis, koordinator, proje_yoneticisi. Diğer 13 rolle giren
-bir kullanıcı kısıtsız `TabGenel` görür ama sidebar'da o rol için tanımlı nav
-item'ı yoksa gezinemez.
+**Frontend artık 19 rolün tamamını tanıyor (2026-07-18'de genişletildi).**
+Önceden yalnızca 6 rol (admin, muhasebe, santiye_sefi, muhendis, koordinator,
+proje_yoneticisi) `ROLE_TABS`/`ROLE_LABEL`/`Sidebar.jsx`'te tanımlıydı; diğer
+13 rolle giren bir kullanıcı sidebar'da yalnızca "Bildirimler"i görüyordu.
+Kullanıcıyla birlikte 3 gruba ayrıldı:
+- **`koordinator` ile birebir aynı erişim:** `proje_koordinatoru` — `SAHA_ROLES`e
+  eklendi (Genel/Projeler/Satın Alma/Tickets), `ROLE_TABS`'ta hiç kaydı yok
+  (koordinator/muhendis/admin gibi "kısıtsız" — yalnızca Sidebar görünürlüğü
+  gate ediyor, route seviyesinde kısıt yok; bu, mevcut yönetici rollerinin
+  hepsinde zaten var olan bir desen, yeni bir açık değil).
+- **`maliyet_kontrolcu` (muhasebe+koordinator karışımı):** Genel + Projeler +
+  Finans (`Sidebar.jsx`'te bu 3 item'ın `roles` dizisine eklendi), aynı şekilde
+  `ROLE_TABS`'ta kısıtsız.
+- **11 tek-projeli saha/teknik uzman rolü** (`elektrik_sefi`, `mekanik_sef`,
+  `isg_sorumlusu`, `kalite_kontrol_sefi`, `enh_sorumlusu`, `proje_kurulum_sefi`,
+  `proje_tasarim_sorumlusu`, `evrak_takip`, `operasyon_sorumlusu`,
+  `is_makinesi_operator`, `lojistik_tedarik`) — henüz kendi özel modülleri
+  yok (kalite kontrol/İSG/ENH gibi modüller hâlâ "Hiç yapılmamış modüller"de),
+  bu yüzden hepsi `santiye_sefi`'nin genel demetini paylaşıyor: Genel Bakış +
+  İş Planı + Satın Alma + Tickets + Bildirimler (`FIELD_SPECIALIST_ROLES`
+  sabiti hem `index.jsx`'te hem `Sidebar.jsx`'te ayrı ayrı tanımlı — iki dosya
+  arasında paylaşılan bir roller modülü yok, mevcut kod stiliyle tutarlı),
+  ama `santiye_sefi`'ye özel Günlük Rapor formu/listesi (`daily-report`/
+  `rapor-listesi`) VERİLMEDİ — o bileşenler saha şefine özel. Bu 11 rol
+  `ROLE_TABS`'ta kısıtlı (yalnızca bu 5 sekme) ve `ROLE_DEFAULT`'ta `genel`.
+  `TabIsPlan`'a `siteChiefView` geçilmiyor (santiye_sefi'ye özel sadeleştirilmiş
+  görünüm bu 11 role uygulanmıyor, `proje_yoneticisi` ile aynı davranış —
+  görev sorumlusu/notlar dahil tam görünüm). `lojistik_tedarik` (`cross_project=true`
+  olmasına rağmen) bilinçli olarak diğer 10 saha rolüyle aynı tek-proje
+  (`profiles.project_id`) demetine dahil edildi — kullanıcı "hepsine aynı
+  demet" dedi, `proje_yoneticisi`'nin çoklu-proje deseni burada kullanılmadı.
+
+Bu değişiklik yalnızca sidebar görünürlüğü/üst-seviye sekme yönlendirmesi —
+`ProjeDetay.jsx`'in iç sekmeleri zaten `role !== 'proje_yoneticisi'` gibi
+permissive kontroller kullandığından (bkz. `canViewFinanceAndTickets`) yeni
+roller "Projeler" sekmesinden bir projeye girdiklerinde otomatik doğru
+çalışıyor, ayrı bir değişiklik gerekmedi. Kalıcı/ideal çözüm hâlâ
+`roles` tablosundan okunan bir izin matrisi olurdu (bkz. Bilinen açık
+noktalar) — bu tur hızlı, dosya-içi bir genişletme.
 
 ### RPC katmanı (canlı)
 
@@ -927,6 +961,16 @@ Alma/Finans Test Verisi notu).
   (talepler + detay + onay/red + fatura oluştur) ve Finans (faturalar + onay
   kuyruğu + kapanan faturalar) ekranlarını hem menü hem proje modunda ilk
   fırsatta test etmesi gerekiyor.
+- **Frontend rol tanıma 6→19 genişletildi (2026-07-18):** `ROLE_TABS`/`ROLE_LABEL`
+  (`src/pages/dashboard/index.jsx`) ve nav görünürlüğü (`Sidebar.jsx`) artık
+  `roles` tablosundaki tüm 19 rolü tanıyor (bkz. Roller bölümü — 3 grup:
+  `proje_koordinatoru`→koordinator ile aynı, `maliyet_kontrolcu`→Genel+Projeler+Finans,
+  11 saha/teknik rolü→`FIELD_SPECIALIST_ROLES` ortak demeti: Genel+İş Planı+
+  Satın Alma+Tickets+Bildirimler, santiye_sefi'nin Günlük Rapor formu hariç).
+  Yalnızca sidebar görünürlüğü + `is-plani` için yeni bir render dalı eklendi —
+  `ProjeDetay.jsx`'in iç sekmeleri zaten permissive olduğundan değişmedi.
+  `TabSatinAlma.jsx`'teki artık yanlış olan bir yorum (`TabSatinAlmaTalepListesi
+  ham sorgu koşuyor` diyordu, RPC migrasyonundan kalma) da düzeltildi.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
@@ -946,8 +990,12 @@ Alma/Finans Test Verisi notu).
   tasarım gereği yalnızca proje kapsamlı. İkisi de birleştirilmedi/birleştirilmeyecek.
   Eski 5 fazlı teknik plan dosyası (`C:\Users\fonss\Claude\Projects\Fons Solar\satin-alma-finans-birlestirme-cc-prompt.md`)
   artık tarihsel referans, güncel değil.
-- **Frontend 6/19 rolü tanıyor** (yukarı bkz.) — `ROLE_TABS`/`ROLE_LABEL`/`Sidebar.jsx`
-  genişletilmeli, idealde `roles` tablosundan okunan bir izin matrisiyle.
+- **Frontend artık 19/19 rolü tanıyor (2026-07-18'de kapandı, yukarı bkz. Roller
+  bölümü)** — ama hâlâ hardcoded `ROLE_TABS`/`ROLE_LABEL`/`Sidebar.jsx` dizileri
+  ile yönetiliyor, `roles` tablosundan okunan gerçek bir izin matrisi DEĞİL.
+  11 saha/teknik rolü kendi özel modülleri olmadığı için hepsi aynı jenerik
+  demeti paylaşıyor (Genel/İş Planı/Satın Alma/Tickets) — kalite kontrol/İSG/ENH
+  gibi modüller yazılınca bu rollerin erişimi yeniden gözden geçirilmeli.
 - **Kalite denetimi modülü hiç arayüzü yok** — `quality_inspections` tablosu
   var (0 satır, RLS `USING(true)`, rol/proje kısıtı yok), sıfırdan yazılması
   gerekiyor. (`mechanical_checklist`/`electrical_checklist` tabloları — aynı
@@ -1012,47 +1060,46 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**18.07.2026 (11) — Kalan ham-sorgulu liste ekranları RPC'ye taşındı, madde tamamen kapatıldı.**
+**18.07.2026 (12) — Frontend rol tanıma 6→19 role genişletildi.**
 
-Önceki turda ("(10)", artık Tamamlanan büyük görevler'de) yapılan RPC pilotunun
-(`ProjeTabFaturaKesilecekler.jsx` → `get_satin_alma_overview.pending_changes`)
-ardından kullanıcı "bu listeyi komple bitiricez" dedi — kalan 3 bileşen
-(`TabSatinAlmaTalepListesi.jsx`, `FaturaListesi.jsx`, `OnayKuyrugu.jsx`) için de
-tam RPC taşıması yapıldı. Araştırma sırasında `TabSatinAlmaTalepListesi.jsx`'ten
-açılan `TalepDetayModal.jsx`'in de kendi ayrı ham detay sorgusu koştuğu görülüp
-kapsama eklendi.
+Önceki turda ("(11)", artık Tamamlanan büyük görevler'de) RPC migrasyonu
+maddesi kapatıldıktan sonra kullanıcı "Refactor/tekilleştirme bekleyenler"
+listesindeki son maddeye (rol tanıma) geçti. `roles` tablosundan güncel
+`is_manager`/`cross_project` bayrakları çekilip 13 tanınmayan rol 3 gruba
+ayrıldı, kullanıcıya `AskUserQuestion` ile hangi grubun hangi demeti alacağı
+soruldu (2 soru): (1) `is_manager=true` olan 2 rol (`maliyet_kontrolcu`,
+`proje_koordinatoru`) nasıl eşlensin — kullanıcı "koordinator ile aynı" dedi
+(proje_koordinatoru→birebir koordinator, maliyet_kontrolcu→Genel+Projeler+Finans);
+(2) kalan 11 tek-projeli saha/teknik rolü (özel modülü olmayanlar) için ne
+yapılsın — kullanıcı "hepsine santiye_sefi'nin genel demeti" dedi (Genel+İş
+Planı+Satın Alma+Tickets+Bildirimler, Günlük Rapor formu HARİÇ), `lojistik_tedarik`
+(`cross_project=true` olmasına rağmen) dahil hepsi aynı tek-proje demetine dahil
+edildi.
 
-4 yeni RPC yazıldı (hepsi ayrı migration, SQL onaylı): `get_purchase_requests_list`,
-`get_purchase_request_detail`, `get_invoices_list`, `get_invoice_approval_queue`
-(tam alan listesi RPC katmanında). Migration sonrası `get_advisors` bir
-tutarsızlık ortaya çıkardı: bu projede yeni fonksiyonlar varsayılan olarak
-`anon`/`PUBLIC`'e de execute yetkisi alıyormuş (kardeş RPC'ler `get_satin_alma_overview`
-vb.'de bu zaten `REVOKE` edilmişti, pratikte veri sızdırmıyordu çünkü
-`get_project_scope` `auth.uid()`'a dayanıyor, ama tutarsızdı) — 5. bir migration
-ile (`REVOKE EXECUTE ... FROM PUBLIC, anon`) düzeltildi, kullanıcı onayıyla.
+Uygulama: `src/pages/dashboard/index.jsx`'e `FIELD_SPECIALIST_ROLES`/
+`FIELD_SPECIALIST_TABS` sabitleri + `ROLE_TABS`/`ROLE_DEFAULT`/`ROLE_LABEL`
+genişletmesi + yeni bir `is-plani` render dalı (`TabIsPlan projectId={projectId}`,
+`siteChiefView` geçilmeden — proje_yoneticisi ile aynı, tam görünüm) eklendi.
+`Sidebar.jsx`'te `SAHA_ROLES`'e `proje_koordinatoru` + 11 saha rolü eklendi
+(Genel/Satın Alma/Tickets otomatik geldi), `projeler`/`finans` item'larının
+`roles` dizilerine `proje_koordinatoru`/`maliyet_kontrolcu` eklendi, `is-plani`
+item'ına 11 saha rolü eklendi. `ProjeDetay.jsx`'in iç sekmeleri zaten
+`role !== 'proje_yoneticisi'` gibi permissive kontroller kullandığından
+(`canViewFinanceAndTickets`) değişiklik gerekmedi — yeni roller "Projeler"den
+bir projeye girince otomatik doğru çalışıyor. Drive-by düzeltme:
+`TabSatinAlma.jsx`'teki artık yanlış bir yorum (önceki RPC migrasyonundan
+kalma, "ham sorgu koşuyor" diyordu) düzeltildi.
 
-Frontend (3 faz, her fazın kendi commit'i): `TabSatinAlmaTalepListesi.jsx` +
-`TalepDetayModal.jsx` → `get_purchase_requests_list`/`get_purchase_request_detail`
-(`requester_name`/`items`/`project_name` alan adları değişti, ilgili yerler
-güncellendi); `FaturaListesi.jsx` → `get_invoices_list`; `OnayKuyrugu.jsx` →
-`get_invoice_approval_queue` (üç kuyruk tek çağrıda). Tüm yazma (`update`/`insert`)
-çağrıları BİLİNÇLİ OLARAK değiştirilmedi (kural #6 yalnızca çok-tablolu yazmalar
-için RPC şartı koyuyor). `FaturaEkleModal`/`YeniTalepModal` dropdown sorguları ve
-`FaturaDetayModal`'ın on-demand `invoice_approvals` sorgusu da kapsam dışı
-bırakıldı (küçük/jenerik).
+Doğrulama: `npx vite build` + `npx eslint src` temiz (0 hata). Tarayıcıdan elle
+test bu oturumda yapılmadı — kullanıcının her yeni rol grubundan bir test
+hesabıyla (veya `profiles.role` elle değiştirip) sidebar görünürlüğünü ve
+İş Planı/Satın Alma/Finans erişimini kontrol etmesi gerekiyor.
 
-Doğrulama: her migration sonrası `get_advisors`; her faz sonrası `npx vite build`/
-`npx eslint src` temiz (0 hata); `grep -rn "\.from('purchase_requests')\|\.from('invoices')"
-src/` ile 4 hedef dosyada okuma amaçlı ham sorgu kalmadığı, yalnızca bilinçli
-yazmaların kaldığı doğrulandı; her RPC `execute_sql` ile gerçek proje verisiyle
-(Kayseri test projesi) çağrılıp JSON şeklinin beklenen gibi (`items`,
-`requester_name`, `project_name`, `suppliers.name` vb.) çıktığı gözle teyit
-edildi. Tarayıcıdan elle/Playwright testi bu oturumda yapılmadı (headless ortam) —
-kullanıcının Satın Alma (talepler + detay + onay/red + fatura oluştur) ve Finans
-(faturalar + onay kuyruğu + kapanan faturalar) ekranlarını hem menü hem proje
-modunda ilk fırsatta test etmesi gerekiyor.
+CLAUDE.md güncellendi: Roller bölümüne yeni gruplama detayı eklendi, "Bilinen
+açık noktalar"daki "6/19 rol" maddesi "19/19 tanınıyor ama hâlâ hardcoded"
+olarak düzeltildi (kalıcı çözüm — `roles` tablosundan okunan izin matrisi —
+hâlâ yapılmadı, ayrı bir görev).
 
-"Satın alma/finans liste ekranları RPC kullanmıyor" maddesi tamamen kapandı,
-"Bilinen açık noktalar"dan kaldırıldı.
-
-6 commit main'e doğrudan yapıldı (ayrı branch açılmadı), push edilmedi.
+Commit'lendi, main'e doğrudan (ayrı branch açılmadı), push edilmedi — kullanıcı
+"en son sırayla test edelim" dedi, bu oturumdaki tüm değişiklikler test sırası
+çıkarılıp birlikte gözden geçirilecek, push en sona bırakıldı.
