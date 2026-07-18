@@ -26,9 +26,10 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
   const requests = overview?.requests || []
   const procurement = overview?.procurement_items || []
   const refresh = refetch
-  // TabSatinAlmaTalepListesi kendi ham purchase_requests sorgusunu koşuyor (RPC'den bağımsız)
-  // — overview.requests'in Realtime ile tazelenmesi liste tablosuna yansımaz. refreshKey'i
-  // bump ederek çocuk bileşenin kendi fetchData'sını da tetikliyoruz.
+  // TabSatinAlmaTalepListesi kendi get_purchase_requests_list RPC çağrısını yapıyor
+  // (bu overview'dan bağımsız) — bu yüzden overview.requests'in Realtime ile tazelenmesi
+  // liste tablosuna yansımaz. refreshKey'i bump ederek çocuk bileşenin kendi fetchData'sını
+  // da tetikliyoruz.
   const [refreshKey, setRefreshKey] = useState(0)
   useRealtimeRefresh(
     ['purchase_requests'],
