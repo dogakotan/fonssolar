@@ -367,6 +367,23 @@ bileşenin kendi ham `procurement_item_change_requests` sorgusu kaldırıldı),
 `get_satin_alma_overview_all()`,
 `get_finans_overview(p_project_id, p_as_of_date)`, `get_finans_overview_all(p_as_of_date)`,
 `get_delayed_tasks_scoped(p_project_id)`, `get_my_role()`, `get_my_projects()`.
+**Liste/detay RPC'leri (2026-07-18'de eklendi — `get_satin_alma_overview*`/`get_finans_overview*`
+yalnızca özet/agregat döndürdüğü için tam tablo/kuyruk görünümleri bunlara taşınamadı, ayrı,
+dar amaçlı RPC'ler yazıldı):** `get_purchase_requests_list(p_project_id, p_filter_date,
+p_only_pending)` (`TabSatinAlmaTalepListesi.jsx`; `p_project_id` NULL ise menü modu — tüm
+erişilebilir projeler + `project_name`, doluysa proje modu + tarih filtresi; her satırda
+`to_jsonb(purchase_requests satırı)` + `items` (`purchase_request_items`) + `requester_name`),
+`get_purchase_request_detail(p_id)` (`TalepDetayModal.jsx`'in kendi detay sorgusu — aynı satır
+şekli + `suppliers.name`), `get_invoices_list(p_project_id, p_filter_date)`
+(`components/finans/FaturaListesi.jsx`), `get_invoice_approval_queue(p_project_id)`
+(`components/finans/OnayKuyrugu.jsx` — `muhasebe_kuyrugu`/`yonetici_kuyrugu`/`kapanan_faturalar`
+alanları, rol bazlı doldurma sunucu tarafında `get_my_role()` ile yapılıyor). Dördü de
+`SECURITY DEFINER` + yalnızca `authenticated`'a `GRANT EXECUTE` (bu projede yeni fonksiyonlar
+varsayılan olarak `anon`/`PUBLIC`'e de execute yetkisi alıyor — bu 4'ünde fark edilip
+`REVOKE`'landı, yeni bir RPC yazılırken bu kontrol tekrar yapılmalı). Bu RPC'ler yalnızca OKUMA
+taşıyor — `updateStatus`/`handleAction`/`handleCancel` gibi tek-tablo yazmalar hâlâ frontend'den
+doğrudan `.update()`/`.insert()` ile yapılıyor (DB trigger'ları kademeleri yönetiyor, kural #6
+yalnızca çok-tablolu yazmalar için RPC şartı koyuyor).
 
 **Yazma:** `create_purchase_request_with_items(p_project_id, p_title, p_urgency, p_request_note, p_requested_by, p_items, p_category)`,
 `save_daily_report(p_project_id, p_report_date, p_created_by, p_general_status, p_worker_count, p_weather, p_weather_note, p_notes, p_personnel, p_machinery, p_progress, p_daily_tasks, p_materials, p_issues, p_task_progress)`
@@ -884,27 +901,34 @@ Alma/Finans Test Verisi notu).
   edilip push'landı (`19df2ab..68ad6a8`), kullanıcı 4 ekranı elle gezip görsel
   teyit etti; `tests/faz-e.spec.js` test A önceden var olan, bu işten bağımsız
   bir hata (header'daki proje seçicisinin 2026-07-17'de kaldırılmasından kalma).
+- **Kalan ham-sorgulu liste ekranları RPC'ye taşındı (2026-07-18):** Bileşen
+  birleştirmesinin ardından "Satın alma/finans liste ekranları RPC kullanmıyor"
+  maddesi tamamen kapatıldı. Önce dar kapsamlı bir pilot (`ProjeTabFaturaKesilecekler.jsx` →
+  `get_satin_alma_overview`'a additive `pending_changes` alanı, bkz. RPC katmanı),
+  ardından kullanıcı kararıyla kalan 3 bileşen için 4 yeni RPC yazıldı
+  (`get_purchase_requests_list`, `get_purchase_request_detail`, `get_invoices_list`,
+  `get_invoice_approval_queue` — detay RPC katmanında). `TabSatinAlmaTalepListesi.jsx`
+  + ondan açılan `TalepDetayModal.jsx`'in kendi ayrı detay sorgusu, `components/finans/FaturaListesi.jsx`,
+  `components/finans/OnayKuyrugu.jsx` bu RPC'leri kullanacak şekilde güncellendi;
+  tüm yazma (`update`/`insert`) çağrıları DEĞİŞMEDEN kalındı (kural #6 yalnızca
+  çok-tablolu yazmalar için RPC şartı koyuyor, DB trigger'ları zaten kademeleri
+  yönetiyor). Migration'lar sırasında bir güvenlik tutarsızlığı bulundu ve
+  düzeltildi: bu projede yeni fonksiyonlar varsayılan olarak `anon`/`PUBLIC`'e de
+  execute yetkisi alıyormuş (kardeş RPC'ler `get_satin_alma_overview` vb.'de bu
+  zaten `REVOKE` edilmişti) — 4 yeni RPC için de `REVOKE ... FROM PUBLIC, anon`
+  migration'ı uygulandı. `FaturaEkleModal`/`YeniTalepModal` dropdown sorguları ve
+  `FaturaDetayModal`'ın on-demand `invoice_approvals` sorgusu bilinçli olarak
+  kapsam dışı bırakıldı (küçük/jenerik, "liste ekranı" şikayetinin konusu değil).
+  Her migration sonrası `get_advisors` kontrol edildi, her faz sonrası
+  `npx vite build`/`npx eslint src` temiz (0 hata), `grep` ile hiçbir hedef
+  dosyada okuma amaçlı ham `.from()` sorgusu kalmadığı doğrulandı, RPC'ler
+  `execute_sql` ile gerçek proje verisiyle test edildi. Tarayıcıdan elle uçtan
+  uca test bu oturumda yapılamadı (headless ortam) — kullanıcının Satın Alma
+  (talepler + detay + onay/red + fatura oluştur) ve Finans (faturalar + onay
+  kuyruğu + kapanan faturalar) ekranlarını hem menü hem proje modunda ilk
+  fırsatta test etmesi gerekiyor.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
-- **Satın alma/finans liste ekranları RPC kullanmıyor:** `TabSatinAlmaTalepListesi.jsx`,
-  `components/finans/FaturaListesi.jsx`, `components/finans/OnayKuyrugu.jsx`
-  kendi ham sorgularını koşuyor, halbuki karşılığı olan
-  `get_satin_alma_overview*`/`get_finans_overview*` zaten mevcut — ama bu 3'ü
-  RPC'ye taşınamıyor çünkü o RPC'ler yalnızca özet/agregat veri (KPI,
-  `costBuckets`, 6 kayıtlık `recentActivity`, sadeleştirilmiş `requests[]`)
-  döndürüyor; tam tablo/kuyruk görünümü için gereken onlarca alan (fatura no,
-  tarihler, tedarik/fatura alanları, `profiles`/`suppliers` join'leri) eksik —
-  taşımak yeni/genişletilmiş RPC'ler + büyük bir frontend yeniden bağlama
-  gerektirir, ayrı bir görev olarak bekliyor. Güvenlik acil değil (RLS zaten
-  proje bazlı), tutarlılık işi. Realtime yansıması `refreshKey` bump
-  deseniyle (bkz. Frontend yapısı) telafi edildi.
-  **Not (2026-07-18):** Bu maddenin eski hâli `ProjeTabFaturaKesilecekler.jsx`
-  ve `ProjeTabMaliyetTablosu.jsx`'i de listeliyordu — ikisi de yanlıştı.
-  `ProjeTabMaliyetTablosu.jsx` zaten hiç ham sorgu koşmuyordu (`get_finans_overview`'dan
-  gelen `costBuckets` prop'unu kullanıyor). `ProjeTabFaturaKesilecekler.jsx`
-  bu turda gerçekten RPC'ye taşındı — `get_satin_alma_overview`'a additive
-  `pending_changes` alanı eklendi (bkz. RPC katmanı), bileşenin kendi
-  `procurement_item_change_requests` sorgusu (`fetchPending()`) kaldırıldı.
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
   kod tekrarı büyük ölçüde giderildi (2026-07-18):** `FaturaListesi`↔
   `ProjeTabFaturaListesi`, `OnayKuyrugu`↔`ProjeTabOnayKuyrugu`, `TalepListesi`
@@ -988,45 +1012,47 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**18.07.2026 (10) — RPC pilotu: Malzeme Listesi bekleyen değişiklikleri.**
+**18.07.2026 (11) — Kalan ham-sorgulu liste ekranları RPC'ye taşındı, madde tamamen kapatıldı.**
 
-Bir önceki görevin ("(9)" — liste bileşenleri birleştirmesi, artık Tamamlanan
-büyük görevler'de) ardından, aynı "Bilinen açık noktalar" listesindeki
-"ham sorguları RPC'ye taşıma" maddesiyle devam edildi. Araştırma (3 paralel
-Explore taraması + RPC kaynaklarının `pg_proc`'tan doğrudan okunması) şunu
-gösterdi: listelenen 5 bileşenden `ProjeTabMaliyetTablosu.jsx` zaten hiç ham
-sorgu koşmuyormuş (düzeltildi), kalan 4 gerçek offenderdan 3'ü
-(`TabSatinAlmaTalepListesi.jsx`, `FaturaListesi.jsx`, `OnayKuyrugu.jsx`)
-mevcut overview RPC'lerine taşınamıyor (o RPC'ler yalnızca özet/agregat veri
-döndürüyor, tam tablo için gereken onlarca alan eksik — yeni RPC tasarımı
-gerektiren ayrı, büyük bir görev). Kullanıcı bu bulgudan sonra en düşük
-riskli, dar kapsamlı 4.'yü (`ProjeTabFaturaKesilecekler.jsx`) pilot olarak
-seçti.
+Önceki turda ("(10)", artık Tamamlanan büyük görevler'de) yapılan RPC pilotunun
+(`ProjeTabFaturaKesilecekler.jsx` → `get_satin_alma_overview.pending_changes`)
+ardından kullanıcı "bu listeyi komple bitiricez" dedi — kalan 3 bileşen
+(`TabSatinAlmaTalepListesi.jsx`, `FaturaListesi.jsx`, `OnayKuyrugu.jsx`) için de
+tam RPC taşıması yapıldı. Araştırma sırasında `TabSatinAlmaTalepListesi.jsx`'ten
+açılan `TalepDetayModal.jsx`'in de kendi ayrı ham detay sorgusu koştuğu görülüp
+kapsama eklendi.
 
-Yapılan: `get_satin_alma_overview(p_project_id)`'ye additive bir
-`pending_changes` alanı eklendi (1 migration, onaylı — `procurement_item_change_requests`
-tablosundan `status='bekliyor'` satırları + `profiles`/`procurement_items`
-join'iyle `requester_name`/`equipment`/`unit`, mevcut `requests`/`procurement_items`
-alanlarına dokunulmadı, `_all()` varyantına eklenmedi çünkü Malzeme Listesi'nin
-menü seviyesinde karşılığı yok). Frontend: `ProjeTabFaturaKesilecekler.jsx`'in
-kendi `fetchPending()` ham sorgusu tamamen kaldırıldı, veriyi artık üst
-bileşenden (`ProjeTabMalzemeListesi.jsx`, zaten aynı RPC'yi çağırıyordu)
-`pendingChanges`/`onPendingChanged` prop'uyla alıyor; yazma RPC'leri
-(`create_procurement_item_change_request`, `review_procurement_item_change_request`)
-değişmedi. `canRequest` iken boş dizi davranışı (`!canRequest` ise
-`pending=[]`) frontend'de aynen korundu.
+4 yeni RPC yazıldı (hepsi ayrı migration, SQL onaylı): `get_purchase_requests_list`,
+`get_purchase_request_detail`, `get_invoices_list`, `get_invoice_approval_queue`
+(tam alan listesi RPC katmanında). Migration sonrası `get_advisors` bir
+tutarsızlık ortaya çıkardı: bu projede yeni fonksiyonlar varsayılan olarak
+`anon`/`PUBLIC`'e de execute yetkisi alıyormuş (kardeş RPC'ler `get_satin_alma_overview`
+vb.'de bu zaten `REVOKE` edilmişti, pratikte veri sızdırmıyordu çünkü
+`get_project_scope` `auth.uid()`'a dayanıyor, ama tutarsızdı) — 5. bir migration
+ile (`REVOKE EXECUTE ... FROM PUBLIC, anon`) düzeltildi, kullanıcı onayıyla.
 
-Doğrulama: migration sonrası `get_advisors` yeni bir uyarı göstermedi (yalnızca
-önceden var olan genel `SECURITY DEFINER` notu); `execute_sql` ile fonksiyon
-canlıda hatasız çalıştığı ve join sorgusunun sözdizimsel olarak geçerli olduğu
-teyit edildi; `npx vite build` + `npx eslint src` temiz; `grep -rn
-"procurement_item_change_requests" src/` artık hiç ham `.from()` çağrısı
-kalmadığını (yalnızca RPC isimleri var) doğruladı. Tarayıcıdan elle/Playwright
-testi bu oturumda yapılmadı — kullanıcının bir sonraki fırsatta Malzeme
-Listesi'nde miktar değişikliği talebi açıp admin onayının çalıştığını teyit
-etmesi gerekiyor.
+Frontend (3 faz, her fazın kendi commit'i): `TabSatinAlmaTalepListesi.jsx` +
+`TalepDetayModal.jsx` → `get_purchase_requests_list`/`get_purchase_request_detail`
+(`requester_name`/`items`/`project_name` alan adları değişti, ilgili yerler
+güncellendi); `FaturaListesi.jsx` → `get_invoices_list`; `OnayKuyrugu.jsx` →
+`get_invoice_approval_queue` (üç kuyruk tek çağrıda). Tüm yazma (`update`/`insert`)
+çağrıları BİLİNÇLİ OLARAK değiştirilmedi (kural #6 yalnızca çok-tablolu yazmalar
+için RPC şartı koyuyor). `FaturaEkleModal`/`YeniTalepModal` dropdown sorguları ve
+`FaturaDetayModal`'ın on-demand `invoice_approvals` sorgusu da kapsam dışı
+bırakıldı (küçük/jenerik).
 
-Kalan 3 bileşen (`TabSatinAlmaTalepListesi`, `FaturaListesi`, `OnayKuyrugu`)
-RPC'ye taşınmadı — "Bilinen açık noktalar"da ayrı bir görev olarak duruyor.
+Doğrulama: her migration sonrası `get_advisors`; her faz sonrası `npx vite build`/
+`npx eslint src` temiz (0 hata); `grep -rn "\.from('purchase_requests')\|\.from('invoices')"
+src/` ile 4 hedef dosyada okuma amaçlı ham sorgu kalmadığı, yalnızca bilinçli
+yazmaların kaldığı doğrulandı; her RPC `execute_sql` ile gerçek proje verisiyle
+(Kayseri test projesi) çağrılıp JSON şeklinin beklenen gibi (`items`,
+`requester_name`, `project_name`, `suppliers.name` vb.) çıktığı gözle teyit
+edildi. Tarayıcıdan elle/Playwright testi bu oturumda yapılmadı (headless ortam) —
+kullanıcının Satın Alma (talepler + detay + onay/red + fatura oluştur) ve Finans
+(faturalar + onay kuyruğu + kapanan faturalar) ekranlarını hem menü hem proje
+modunda ilk fırsatta test etmesi gerekiyor.
 
-Commit'lendi (`ba69d0c`, main'e doğrudan — ayrı branch açılmadı), push edilmedi.
+"Satın alma/finans liste ekranları RPC kullanmıyor" maddesi tamamen kapandı,
+"Bilinen açık noktalar"dan kaldırıldı.
+
+6 commit main'e doğrudan yapıldı (ayrı branch açılmadı), push edilmedi.
