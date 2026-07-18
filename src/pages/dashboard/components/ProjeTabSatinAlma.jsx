@@ -6,8 +6,8 @@ import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import { classifyMaterials, classifyRequestTypes, normalizeStatus } from '../../../utils/satinAlma'
 import ProjeTabSatinAlmaStats from './ProjeTabSatinAlmaStats'
-import ProjeTabTalepListesi from './ProjeTabTalepListesi'
-import ProjeTabSaOnayKuyrugu from './ProjeTabSaOnayKuyrugu'
+import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
+import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
 import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 import TedarikKuyrugu from './TedarikKuyrugu'
 
@@ -26,7 +26,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
   const requests = overview?.requests || []
   const procurement = overview?.procurement_items || []
   const refresh = refetch
-  // ProjeTabTalepListesi kendi ham purchase_requests sorgusunu koşuyor (RPC'den bağımsız)
+  // TabSatinAlmaTalepListesi kendi ham purchase_requests sorgusunu koşuyor (RPC'den bağımsız)
   // — overview.requests'in Realtime ile tazelenmesi liste tablosuna yansımaz. refreshKey'i
   // bump ederek çocuk bileşenin kendi fetchData'sını da tetikliyoruz.
   const [refreshKey, setRefreshKey] = useState(0)
@@ -96,9 +96,9 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
         ))}
       </div>
       {tab === 'talepler' && (
-        <ProjeTabTalepListesi projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} siteChiefView={siteChiefView} />
+        <TabSatinAlmaTalepListesi projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} siteChiefView={siteChiefView} />
       )}
-      {tab === 'onay' && isAdmin && <ProjeTabSaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
+      {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
       {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} />}
     </div>
   )
