@@ -358,7 +358,13 @@ node'u `category` alanını da döndürüyor (önceden dönmüyordu, kategori ro
 düşüyordu) ve artık `source` filtresi YOK — hem manuel hem otomatik açık riskler dönüyor,
 "yalnızca otomatik göster" kararı frontend'de `ProjectOverviewDashboard.jsx`'in
 `source==='otomatik'` filtresiyle uygulanıyor),
-`get_satin_alma_overview(p_project_id)`, `get_satin_alma_overview_all()`,
+`get_satin_alma_overview(p_project_id)` (`pending_changes` alanı 2026-07-18'de eklendi —
+`procurement_item_change_requests`'ten `status='bekliyor'` satırları + `profiles`/`procurement_items`
+join'iyle `requester_name`/`equipment`/`unit`; yalnızca tek-proje varyantında, `_all()`'a
+eklenmedi çünkü Malzeme Listesi menü seviyesinde hiç yok — `ProjeTabMalzemeListesi.jsx`
+`ProjeTabFaturaKesilecekler.jsx`'e bunu `pendingChanges`/`onPendingChanged` prop'uyla geçiriyor,
+bileşenin kendi ham `procurement_item_change_requests` sorgusu kaldırıldı),
+`get_satin_alma_overview_all()`,
 `get_finans_overview(p_project_id, p_as_of_date)`, `get_finans_overview_all(p_as_of_date)`,
 `get_delayed_tasks_scoped(p_project_id)`, `get_my_role()`, `get_my_projects()`.
 
@@ -859,16 +865,46 @@ Alma/Finans Test Verisi notu).
   besleniyor, Riskler/Maliyet sadeleşti). `TabIsPlan.jsx` kritik yol
   mantığından çıkarıldı (basit gecikme kuralı: `Riskli`/`Normal`), KPI şeridi
   3 karta indirildi, ölü kod temizlendi.
+- **Genel/ProjeTab liste bileşenleri birleştirmesi (2026-07-18):** Menü (tüm
+  projeler) ile proje detayı (tek proje) için ayrı yazılmış kopya liste
+  bileşenleri tek bileşende birleştirildi — `components/finans/FaturaListesi.jsx`
+  (`projectId`/`filterDate` opsiyonel; `projectId` yokken menü davranışı/Detay
+  modalı, doluyken proje davranışı/doğrudan "İptal Et"), `components/finans/OnayKuyrugu.jsx`
+  (`projectId` opsiyonel; doluyken ek "Tamamlanan/İptal Edilen" 3. bölüm),
+  `TabSatinAlmaTalepListesi.jsx` + sarmalayıcı `TabSatinAlmaOnayKuyrugu.jsx`
+  (`filterDate`/`siteChiefView` opsiyonel; PROJE kolonu ve proje-bazlı malzeme
+  planı gruplaması yalnızca menü modunda). `ProjeTabFaturaListesi.jsx`,
+  `ProjeTabOnayKuyrugu.jsx`, `ProjeTabTalepListesi.jsx`, `ProjeTabSaOnayKuyrugu.jsx`
+  silindi. Süreçte CLAUDE.md'nin bu konudaki eski notunun **yanlış** olduğu
+  ortaya çıktı: listelenen 5 çiftten yalnızca bu 3'ü gerçek kopyaydı —
+  `MaliyetOzetTable`/`ProjeTabMaliyetTablosu` kasıtlı olarak farklı iki bileşen
+  (özet vs. filtre+export'lu detaylı görünüm), `ProjeTabFaturaKesilecekler.jsx`
+  (Malzeme Listesi/BOM) menü seviyesinde hiç karşılığı yok — ikisi de
+  birleştirilmedi. `refactor/birlesik-list-bilesenleri` branch'i main'e merge
+  edilip push'landı (`19df2ab..68ad6a8`), kullanıcı 4 ekranı elle gezip görsel
+  teyit etti; `tests/faz-e.spec.js` test A önceden var olan, bu işten bağımsız
+  bir hata (header'daki proje seçicisinin 2026-07-17'de kaldırılmasından kalma).
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Satın alma/finans liste ekranları RPC kullanmıyor:** `TabSatinAlmaTalepListesi.jsx`,
-  `components/finans/FaturaListesi.jsx`, `components/finans/OnayKuyrugu.jsx`,
-  `ProjeTabFaturaKesilecekler.jsx`, `ProjeTabMaliyetTablosu.jsx` kendi ham
-  sorgularını koşuyor, halbuki karşılığı olan
-  `get_satin_alma_overview*`/`get_finans_overview*` zaten mevcut. Güvenlik acil
-  değil (RLS zaten proje bazlı), tutarlılık işi. Realtime yansıması `refreshKey`
-  bump deseniyle (bkz. Frontend yapısı) telafi edildi, ama kalıcı çözüm (ham
-  sorguyu RPC'ye taşımak) hâlâ yapılmadı.
+  `components/finans/FaturaListesi.jsx`, `components/finans/OnayKuyrugu.jsx`
+  kendi ham sorgularını koşuyor, halbuki karşılığı olan
+  `get_satin_alma_overview*`/`get_finans_overview*` zaten mevcut — ama bu 3'ü
+  RPC'ye taşınamıyor çünkü o RPC'ler yalnızca özet/agregat veri (KPI,
+  `costBuckets`, 6 kayıtlık `recentActivity`, sadeleştirilmiş `requests[]`)
+  döndürüyor; tam tablo/kuyruk görünümü için gereken onlarca alan (fatura no,
+  tarihler, tedarik/fatura alanları, `profiles`/`suppliers` join'leri) eksik —
+  taşımak yeni/genişletilmiş RPC'ler + büyük bir frontend yeniden bağlama
+  gerektirir, ayrı bir görev olarak bekliyor. Güvenlik acil değil (RLS zaten
+  proje bazlı), tutarlılık işi. Realtime yansıması `refreshKey` bump
+  deseniyle (bkz. Frontend yapısı) telafi edildi.
+  **Not (2026-07-18):** Bu maddenin eski hâli `ProjeTabFaturaKesilecekler.jsx`
+  ve `ProjeTabMaliyetTablosu.jsx`'i de listeliyordu — ikisi de yanlıştı.
+  `ProjeTabMaliyetTablosu.jsx` zaten hiç ham sorgu koşmuyordu (`get_finans_overview`'dan
+  gelen `costBuckets` prop'unu kullanıyor). `ProjeTabFaturaKesilecekler.jsx`
+  bu turda gerçekten RPC'ye taşındı — `get_satin_alma_overview`'a additive
+  `pending_changes` alanı eklendi (bkz. RPC katmanı), bileşenin kendi
+  `procurement_item_change_requests` sorgusu (`fetchPending()`) kaldırıldı.
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
   kod tekrarı büyük ölçüde giderildi (2026-07-18):** `FaturaListesi`↔
   `ProjeTabFaturaListesi`, `OnayKuyrugu`↔`ProjeTabOnayKuyrugu`, `TalepListesi`
@@ -952,47 +988,45 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**18.07.2026 (9) — Genel/ProjeTab liste bileşenleri birleştirmesi (refactor).**
+**18.07.2026 (10) — RPC pilotu: Malzeme Listesi bekleyen değişiklikleri.**
 
-CLAUDE.md'nin "Bilinen açık noktalar" listesindeki, kullanıcı isteğiyle ertelenmiş
-kod-tekrarı maddesiyle bu turda devam edildi. Ayrı bir `refactor/birlesik-list-bilesenleri`
-branch'inde, eski 5 fazlı plan dosyası (`satin-alma-finans-birlestirme-cc-prompt.md`)
-temel alınarak ama önce 3 paralel Explore agent'ıyla güncel kod hâli doğrulanarak
-3 fazda yürütüldü (her fazın kendi commit'i var):
+Bir önceki görevin ("(9)" — liste bileşenleri birleştirmesi, artık Tamamlanan
+büyük görevler'de) ardından, aynı "Bilinen açık noktalar" listesindeki
+"ham sorguları RPC'ye taşıma" maddesiyle devam edildi. Araştırma (3 paralel
+Explore taraması + RPC kaynaklarının `pg_proc`'tan doğrudan okunması) şunu
+gösterdi: listelenen 5 bileşenden `ProjeTabMaliyetTablosu.jsx` zaten hiç ham
+sorgu koşmuyormuş (düzeltildi), kalan 4 gerçek offenderdan 3'ü
+(`TabSatinAlmaTalepListesi.jsx`, `FaturaListesi.jsx`, `OnayKuyrugu.jsx`)
+mevcut overview RPC'lerine taşınamıyor (o RPC'ler yalnızca özet/agregat veri
+döndürüyor, tam tablo için gereken onlarca alan eksik — yeni RPC tasarımı
+gerektiren ayrı, büyük bir görev). Kullanıcı bu bulgudan sonra en düşük
+riskli, dar kapsamlı 4.'yü (`ProjeTabFaturaKesilecekler.jsx`) pilot olarak
+seçti.
 
-1. `components/finans/FaturaListesi.jsx` — artık opsiyonel `projectId`/`filterDate`
-   alıyor; `projectId` yokken menü davranışı (tüm projeler, serbest proje seçici,
-   Detay→onay zinciri modalı), doluyken proje davranışı (yalnız o proje, kilitli
-   seçici, doğrudan "İptal Et"). `ProjeTabFaturaListesi.jsx` silindi.
-2. `components/finans/OnayKuyrugu.jsx` — opsiyonel `projectId`; doluyken 3. bir
-   "Tamamlanan/İptal Edilen" bölümü (son 20 fatura) ek olarak render ediliyor,
-   yönetici bölümünün admin başlığı da moda göre değişiyor ("Yönetici Onay
-   Kuyruğu" vs "Fatura Onay Bekleyenler"). `ProjeTabOnayKuyrugu.jsx` silindi.
-3. `TabSatinAlmaTalepListesi.jsx` (+ sarmalayıcı `TabSatinAlmaOnayKuyrugu.jsx`) —
-   opsiyonel `filterDate`/`siteChiefView` eklendi; PROJE kolonu ve proje-bazlı
-   malzeme planı gruplaması (`groupByProjectId`) yalnızca `projectId` yokken,
-   `filterDate`/tekil malzeme planı state'i ve `siteChiefView` süzmesi yalnızca
-   `projectId` doluyken devrede. `ProjeTabTalepListesi.jsx` ve
-   `ProjeTabSaOnayKuyrugu.jsx` silindi.
+Yapılan: `get_satin_alma_overview(p_project_id)`'ye additive bir
+`pending_changes` alanı eklendi (1 migration, onaylı — `procurement_item_change_requests`
+tablosundan `status='bekliyor'` satırları + `profiles`/`procurement_items`
+join'iyle `requester_name`/`equipment`/`unit`, mevcut `requests`/`procurement_items`
+alanlarına dokunulmadı, `_all()` varyantına eklenmedi çünkü Malzeme Listesi'nin
+menü seviyesinde karşılığı yok). Frontend: `ProjeTabFaturaKesilecekler.jsx`'in
+kendi `fetchPending()` ham sorgusu tamamen kaldırıldı, veriyi artık üst
+bileşenden (`ProjeTabMalzemeListesi.jsx`, zaten aynı RPC'yi çağırıyordu)
+`pendingChanges`/`onPendingChanged` prop'uyla alıyor; yazma RPC'leri
+(`create_procurement_item_change_request`, `review_procurement_item_change_request`)
+değişmedi. `canRequest` iken boş dizi davranışı (`!canRequest` ise
+`pending=[]`) frontend'de aynen korundu.
 
-Süreçte CLAUDE.md'nin eski notunun **yanlış** olduğu ortaya çıktı: listelenen
-5 çiftten yalnızca yukarıdaki 3'ü gerçek kopyaydı.
-`MaliyetOzetTable`/`ProjeTabMaliyetTablosu` kasıtlı olarak farklı iki bileşen
-(özet vs. filtre+export'lu detaylı görünüm, ikisi de her iki ekranda kullanılıyor),
-`ProjeTabFaturaKesilecekler.jsx` (Malzeme Listesi/BOM) menü seviyesinde hiç
-karşılığı yok (BOM projeye özgü, tasarım gereği yalnızca proje kapsamlı) — ikisi
-de birleştirilmedi, "Bilinen açık noktalar" buna göre düzeltildi.
+Doğrulama: migration sonrası `get_advisors` yeni bir uyarı göstermedi (yalnızca
+önceden var olan genel `SECURITY DEFINER` notu); `execute_sql` ile fonksiyon
+canlıda hatasız çalıştığı ve join sorgusunun sözdizimsel olarak geçerli olduğu
+teyit edildi; `npx vite build` + `npx eslint src` temiz; `grep -rn
+"procurement_item_change_requests" src/` artık hiç ham `.from()` çağrısı
+kalmadığını (yalnızca RPC isimleri var) doğruladı. Tarayıcıdan elle/Playwright
+testi bu oturumda yapılmadı — kullanıcının bir sonraki fırsatta Malzeme
+Listesi'nde miktar değişikliği talebi açıp admin onayının çalıştığını teyit
+etmesi gerekiyor.
 
-Doğrulama: her fazdan sonra `npx vite build` + `npx eslint src` temiz (0 hata).
-`npm run test:e2e` (`tests/faz-e.spec.js`) hem değişiklik öncesi hem sonrası
-çalıştırıldı — ikisinde de aynı tek hata (test A, `select[title="Görüntülenecek
-proje kapsamı"]` bulamıyor); bu, header'daki global proje seçicinin
-2026-07-17'de kaldırılmasından kalma **önceden var olan, bu refactor'den
-bağımsız** bir test/kod uyumsuzluğu — testin kendisi güncellenmedi (kapsam
-dışı), yalnızca not edildi. Tarayıcıdan gerçek elle gezinme bu oturumda
-(headless ortam) yapılamadı; kullanıcı sonrasında 4 ekranı (Menü→Finans,
-Menü→Satın Alma, Proje→Finans, Proje→Satın Alma) kendisi gezip **görsel
-olarak bozukluk olmadığını teyit etti**.
+Kalan 3 bileşen (`TabSatinAlmaTalepListesi`, `FaturaListesi`, `OnayKuyrugu`)
+RPC'ye taşınmadı — "Bilinen açık noktalar"da ayrı bir görev olarak duruyor.
 
-Branch `refactor/birlesik-list-bilesenleri` main'e merge edilip push'landı
-(`19df2ab..68ad6a8`). Görev kapandı.
+Commit'lendi (`ba69d0c`, main'e doğrudan — ayrı branch açılmadı), push edilmedi.
