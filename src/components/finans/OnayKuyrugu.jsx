@@ -226,37 +226,19 @@ export default function OnayKuyrugu({ projectId = null }) {
 
   async function fetchData() {
     setLoading(true)
-    const sel = '*, suppliers(name), projects(name)'
-    const withProject = (q) => projectId ? q.eq('project_id', projectId) : q
-
-    if (isMuhasebe) {
-      const queries = [
-        withProject(supabase.from('invoices').select(sel).in('status', ['bekliyor', 'muhasebe_onayında'])).order('invoice_date', { ascending: true }),
-        withProject(supabase.from('invoices').select(sel).eq('status', 'yönetici_onayında')).order('invoice_date', { ascending: true }),
-      ]
-      if (projectId) {
-        queries.push(
-          withProject(supabase.from('invoices').select(sel).in('status', ['onaylandı', 'reddedildi'])).order('invoice_date', { ascending: false }).limit(20)
-        )
-      }
-      const [mRes, yRes, cRes] = await Promise.all(queries)
-      setMuhasebeKuyrugu(mRes.data || [])
-      setYoneticiKuyrugu(yRes.data || [])
-      setKapananFaturalar(projectId ? (cRes?.data || []) : [])
-    } else if (isAdmin) {
-      const queries = [
-        withProject(supabase.from('invoices').select(sel).eq('status', 'yönetici_onayında')).order('invoice_date', { ascending: true }),
-      ]
-      if (projectId) {
-        queries.push(
-          withProject(supabase.from('invoices').select(sel).in('status', ['onaylandı', 'reddedildi'])).order('invoice_date', { ascending: false }).limit(20)
-        )
-      }
-      const [yRes, cRes] = await Promise.all(queries)
-      setYoneticiKuyrugu(yRes.data || [])
-      setKapananFaturalar(projectId ? (cRes?.data || []) : [])
+    const { data, error } = await supabase.rpc('get_invoice_approval_queue', { p_project_id: projectId || null })
+    if (error || !data?.authorized) {
+      console.error('invoice approval queue fetch error:', error)
+      setMuhasebeKuyrugu([])
+      setYoneticiKuyrugu([])
+      setKapananFaturalar([])
+      setLoading(false)
+      return
     }
 
+    setMuhasebeKuyrugu(data.muhasebe_kuyrugu || [])
+    setYoneticiKuyrugu(data.yonetici_kuyrugu || [])
+    setKapananFaturalar(data.kapanan_faturalar || [])
     setLoading(false)
   }
 
