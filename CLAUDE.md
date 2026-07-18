@@ -1022,6 +1022,29 @@ Alma/Finans Test Verisi notu).
   2026-07-16'da zaten silinmişti, RPC'nin kendisi bu turda kaldırıldı).
   `npx vite build`/`npx eslint src` temiz, `get_advisors` yeni bir uyarı
   göstermedi.
+- **RLS sertleştirme — `auth_rls_initplan` + `multiple_permissive_policies`
+  (2026-07-18):** CLAUDE.md'nin "`profiles`/`purchase_requests` üzerinde eski+yeni
+  politika birikimi var" iddiası `get_advisors`(performance) + `pg_policies` ile
+  doğrulanırken **yanlış çıktı** — `profiles`'ta hiç birikim/çakışma yok (her
+  action için tam 1 politika, zaten `(select auth.uid())` sarmalı). Gerçek sorun
+  yalnızca `purchase_requests`'in `UPDATE`'inde 2 permissive politikaydı
+  (`pr_update`, `pr_update_proje_yoneticisi` — muhasebetli DB-PERF-002/003
+  denetimi kapandıktan SONRA, "Proje Yöneticisi Tedarik" görevinde eklenmiş).
+  Ayrıca 7 politika ham `auth.uid()` kullanıyordu (`(select auth.uid())` sarmalı
+  yok): `projects.projects_select`, `purchase_requests.purchase_requests_select`,
+  `purchase_request_items.{pr_items_select,pr_items_insert,pr_items_update,pr_items_delete}`,
+  `procurement_item_change_requests.picr_insert`. Tek migration'da: 7 politika
+  `ALTER POLICY` ile sarmalandı (matematiksel olarak birebir aynı, davranış
+  değişikliği yok), `purchase_requests`'in 2 UPDATE politikası `DROP` edilip
+  `USING (A OR B)` / `WITH CHECK (A_check OR B_check)` şeklinde tek
+  `purchase_requests_update` politikasında birleştirildi (permissive politikalar
+  zaten OR'lanarak değerlendirildiğinden matematiksel olarak birebir aynı — yalnızca
+  politika sayısı azaldı). `get_advisors` migration sonrası bu 8 uyarının (1
+  `multiple_permissive_policies` + 7 `auth_rls_initplan`) hepsinin kalktığını
+  doğruladı. Playwright ile uçtan uca doğrulandı (santiye_sefi talep oluşturur →
+  admin onaylar [merged policy'nin admin dalı] → proje_yoneticisi `TedarikKuyrugu`'ndan
+  `satin_alindi`'ye ilerletir [merged policy'nin proje_yoneticisi dalı] — üçü de
+  PASS); test verisi silindi. Frontend dosyası değişmedi (yalnızca DB migration).
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
@@ -1070,15 +1093,6 @@ Alma/Finans Test Verisi notu).
   (bir noktada kaldırılmış), yalnızca `role_key` var; frontend zaten tutarlı
   şekilde yalnızca `role_key` okuyor/yazıyor (`TabKullanicilar.jsx` dahil).
   Eski FAZ1 denetim notu artık tarihsel, madde kapandı.
-- **RLS temizliği bekliyor:** `profiles`/`purchase_requests` üzerinde eski+yeni
-  politika birikimi (`multiple_permissive_policies`) var. Acil değil, ileride
-  bir RLS temizlik migration'ında ele alınmalı. (Bu maddenin eski hali
-  `work_packages`/`schedule_activities`/`procurement_items`/`quality_inspections`'ı
-  da "USING(true), rol/proje kısıtı yok" diye listeliyordu — hepsi yanlış çıktı
-  ya da artık geçersiz: `procurement_items`/`quality_inspections` zaten
-  `has_project_access`/`user_has_project_access` ile korumalıymış, `work_packages`/
-  `schedule_activities` ise 2026-07-18'de tablo olarak tamamen silindi, bkz.
-  Tamamlanan büyük görevler.)
 - **Realtime ölçek notu:** P0 tablolarında `REPLICA IDENTITY FULL` var (DELETE/UPDATE
   RLS'i için gerekliydi). Supabase üretim ölçeğinde Broadcast-from-database'e
   geçişi öneriyor — bu projenin ölçeğinde (2 test projesi) şimdilik gerekmiyor,
@@ -1099,31 +1113,29 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**18.07.2026 (16) — 3 orphan/kullanılmayan DB nesnesi temizlendi.**
+**18.07.2026 (17) — RLS sertleştirme: `auth_rls_initplan` + `multiple_permissive_policies` kapatıldı.**
 
-Kalite Denetimi modülünün ardından ("(15)", artık Tamamlanan büyük görevler'de)
-kullanıcı "Bilinen açık noktalar"daki küçük, hızlı kapanabilir karar
-maddelerinden devam etti: `work_packages`/`schedule_activities` tablolarının
-ve `get_project_dashboard` RPC'sinin silinip silinmeyeceği.
+Orphan DB nesnelerinin temizlenmesinin ardından ("(16)", artık Tamamlanan büyük
+görevler'de) kullanıcı "RLS sertleştirme" maddesiyle devam etti. `get_advisors`
+(performance) + doğrudan `pg_policies` sorgusuyla CLAUDE.md'nin eski iddiası
+doğrulandı: **`profiles`'ta hiç sorun yokmuş** (yanlış eski not), gerçek sorun
+yalnızca `purchase_requests`'in `UPDATE`'inde 2 çakışan permissive politika
+(`pr_update`/`pr_update_proje_yoneticisi`) + 7 politikada ham `auth.uid()`
+kullanımıydı (`(select auth.uid())` sarmalı yok — `projects`, `purchase_requests`,
+`purchase_request_items` x4, `procurement_item_change_requests`).
 
-Explore agent + doğrudan `pg_proc`/`pg_constraint`/satır sayısı sorgularıyla
-bağımlılık taraması yapıldı — üçü de "GÜVENLE SİLİNEBİLİR" çıktı (0 satır,
-hiçbir FK/trigger/RPC referansı yok). Kullanıcıya tam SQL gösterilip onay
-alındıktan sonra tek migration'da uygulandı: `DROP TABLE work_packages`,
-`DROP TABLE schedule_activities`, `DROP FUNCTION get_project_dashboard(text, date)`.
+Tam SQL plan modunda hazırlanıp onaylandı, tek migration'da uygulandı: 7 politika
+`ALTER POLICY` ile sarmalandı (matematiksel olarak birebir aynı sonuç), 2 UPDATE
+politikası `DROP` edilip `USING (A OR B)`/`WITH CHECK` ile tek politikada
+birleştirildi (permissive politikalar zaten OR'lanarak değerlendirildiğinden
+davranış değişikliği yok — yalnızca politika sayısı azaldı). `get_advisors`
+migration sonrası bu 8 uyarının hepsinin kalktığını doğruladı.
 
-Eşlik eden kod temizliği: `agentContext.js`'in `ctxIsPlan()` fonksiyonundan
-`schedule_activities`'i okuyan (her zaman boş dönen) sorgu + "Aktivite Planı"
-context bölümü kaldırıldı; `TabProjeYonetimi.jsx`'in proje-silme temizlik
-dizisinden (`PROJECT_DELETE_TABLES`) `schedule_activities` çıkarıldı.
-`get_proje_detay` RPC'sinin `work_packages` adlı JSON alanı (`ProjeDetay.jsx`'te
-kullanılıyor) gerçek tabloya değil `project_tasks`'a bağlı olduğu için
-dokunulmadı — kafa karıştırıcı bir isimlendirme ama davranış değişikliği
-gerektirmiyor.
-
-`npx vite build`/`npx eslint src` temiz, `get_advisors` yeni bir uyarı
-göstermedi (aynı önceden var olan büyük A0 backlog listesi). Detaylar
-"Tamamlanan büyük görevler"de (bkz. "3 orphan/kullanılmayan DB nesnesi
-temizlendi").
+Playwright ile uçtan uca doğrulandı (gerçek bir satın alma talebiyle):
+santiye_sefi talep oluşturur → admin onaylar (birleştirilmiş politikanın admin
+dalı) → proje_yoneticisi `TedarikKuyrugu`'ndan `satin_alindi`'ye ilerletir
+(birleştirilmiş politikanın proje_yoneticisi dalı) — PASS. Test verisi silindi.
+`tests/faz-e.spec.js` regresyonu: yeni sorun yok (F PASS). Frontend dosyası
+değişmedi (yalnızca DB migration). Detaylar "Tamamlanan büyük görevler"de.
 
 Commit yapıldı, push kullanıcı onayı bekliyor (henüz push edilmedi).
