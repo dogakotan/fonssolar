@@ -1064,32 +1064,46 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**18.07.2026 (13) — İki doğrulama maddesi kapatıldı (kod değişikliği yok, yalnızca araştırma).**
+**18.07.2026 (14) — Bu oturumun tüm işleri Playwright ile test sırasıyla
+doğrulandı, origin/main'e push edildi.**
 
-Rol genişletmesinin ("(12)", artık Tamamlanan büyük görevler'de) ardından
-kullanıcı "Bilinen açık noktalar"daki iki doğrulama/teyit maddesiyle devam
-etti:
+Önceki 3 görevin (liste bileşen birleştirmesi, Satın Alma/Finans RPC
+migrasyonu, rol genişletmesi 6→19) + 2 doğrulama maddesinin ardından
+kullanıcı "test sırası çıkaralım en son sırayla test edelim" demişti; bu
+oturumda o sıra uygulandı (admin/proje_yoneticisi/izmir test hesapları +
+geçici rol değişiklikleriyle, Playwright üzerinden canlı Supabase projesine
+karşı):
 
-1. **`profiles.role`/`role_key` tutarsızlığı** — `information_schema.columns`
-   ile doğrudan kontrol edildi: `profiles` tablosunda `role` kolonu artık HİÇ
-   YOK (bir noktada kaldırılmış, CLAUDE.md'ye hiç yansımamış), yalnızca
-   `role_key` var. Frontend (`TabKullanicilar.jsx` dahil) zaten yalnızca
-   `role_key` okuyup yazıyor — `grep` ile `profiles.role` (role_key hariç)
-   okuyan hiçbir yer bulunamadı. Eski FAZ1 denetim notu tamamen geçersiz,
-   madde kapandı.
-2. **Genel Proje kartı personel/makine sayıları vs dönem export'u farklı
-   kaynak** — `get_project_by_date` RPC'sinin kaynağı `pg_get_functiondef`
-   ile okundu: `personnel`/`machinery` node'ları seçili tarihe kadarki **en
-   son TEK günlük raporun** kayıtlarını dönüyor (`ORDER BY report_date DESC
-   LIMIT 1`) — yani "o tarih itibarıyla anlık durum". `ProjeDetay.jsx`'teki
-   `buildPeriodReportData`/`exportSelectedDailyReportExcel`/`exportSelectedDailyReportPDF`
-   ise seçilen tarih aralığı/rapor için `personnel_log_entries`/`machinery_logs`
-   satırlarını topluyor — "dönem toplamı" ya da "o rapora özel". İki ayrı
-   metrik, iki ayrı amaç (anlık durum vs kümülatif rapor) — kasıtlı, bug
-   değil, madde kapandı.
+1. **Rol genişletmesi** — `elektrik_sefi` (11 saha rolü demeti) ve
+   `maliyet_kontrolcu` bundle'ları test edildi (izmir test hesabının
+   `role_key`'i geçici değiştirilip test sonunda `santiye_sefi`'ye geri
+   alındı). **Gerçek bir bug bulundu ve düzeltildi:** `Sidebar.jsx`'teki
+   `genel` nav item'ının `roles` dizisine `maliyet_kontrolcu` eklenmesi
+   unutulmuştu (plan bunu öngörüyordu, uygulama sırasında atlanmış) — bu rol
+   varsayılan olarak Genel Bakış sekmesine düşüyor ama sidebar'da o sekmeye
+   dönecek buton yoktu, kullanıcı sıkışıp kalıyordu. Tek satırlık düzeltme.
+2. **Satın Alma RPC ekranları** (talep listesi, `get_purchase_request_detail`
+   detay modalı, onay kuyruğu) — admin ile uçtan uca PASS, gerçek proje
+   verisiyle doğrulandı.
+3. **Finans RPC ekranları** (`get_invoices_list`, `get_invoice_approval_queue`)
+   — PASS.
+4. **Malzeme Listesi RPC pilotu** — `create_procurement_item_change_request`
+   → admin `review_procurement_item_change_request` onayı →
+   `procurement_items.planned_qty` güncellemesi uçtan uca PASS; test
+   sırasında değiştirilen gerçek BOM kalemi (`DC Kablo 4mm2`, İzmir projesi)
+   test sonunda orijinal miktarına geri alındı.
+5. **`tests/faz-e.spec.js` regresyonu** — A/B/D testleri `test.describe.serial`
+   nedeniyle birbirini tetikleyerek aynı tek kökten (header'daki proje
+   seçicisinin 2026-07-17'de kullanıcı tarafından kaldırılması, test dosyası
+   güncellenmemiş) başarısız oluyor; izole çalıştırıldığında üçü de aynı
+   `scopeSelect` locator'ının bulunamaması hatasını veriyor — F (API seviyesi,
+   UI'a bağımlı değil) PASS. Bu oturumdaki değişikliklerden kaynaklanan
+   **yeni bir regresyon yok**, doğrulandı.
 
-CLAUDE.md güncellendi: her iki madde "Bilinen açık noktalar"da "DOĞRULANDI/
-ARTIK GEÇERSİZ" olarak işaretlendi (silinmedi, gelecekte aynı soru tekrar
-sorulursa referans olarak kalsın diye).
+Test sırasında ayrıca `ProjeTabSatinAlma.jsx`'te `TabSatinAlma.jsx`'te daha
+önce düzeltilmiş olan bayat bir RPC yorumunun bir kopyası daha bulundu ve
+düzeltildi (davranış değişikliği yok).
 
-Kod değişikliği yok, commit yok.
+`npx vite build` + `npx eslint src` temiz (0 hata). 12 commit (bu oturumun
+tamamı: 3 ana görev + 2 doğrulama + bu turda bulunan 2 küçük düzeltme)
+kullanıcı onayıyla `origin/main`'e push edildi (`68ad6a8..d5a1bb7`).
