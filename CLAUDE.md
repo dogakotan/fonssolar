@@ -348,20 +348,26 @@ Kullanıcıyla birlikte 3 gruba ayrıldı:
   `isg_sorumlusu`, `kalite_kontrol_sefi`, `enh_sorumlusu`, `proje_kurulum_sefi`,
   `proje_tasarim_sorumlusu`, `evrak_takip`, `operasyon_sorumlusu`,
   `is_makinesi_operator`, `lojistik_tedarik`) — henüz kendi özel modülleri
-  yok (kalite kontrol/İSG/ENH gibi modüller hâlâ "Hiç yapılmamış modüller"de),
-  bu yüzden hepsi `santiye_sefi`'nin genel demetini paylaşıyor: Genel Bakış +
-  İş Planı + Satın Alma + Tickets + Bildirimler (`FIELD_SPECIALIST_ROLES`
-  sabiti hem `index.jsx`'te hem `Sidebar.jsx`'te ayrı ayrı tanımlı — iki dosya
-  arasında paylaşılan bir roller modülü yok, mevcut kod stiliyle tutarlı),
-  ama `santiye_sefi`'ye özel Günlük Rapor formu/listesi (`daily-report`/
-  `rapor-listesi`) VERİLMEDİ — o bileşenler saha şefine özel. Bu 11 rol
+  yok (İSG/ENH gibi modüller hâlâ "Hiç yapılmamış modüller"de), bu yüzden
+  hepsi `santiye_sefi`'nin genel demetini paylaşıyor: Genel Bakış + İş Planı +
+  Satın Alma + Tickets + Bildirimler (`FIELD_SPECIALIST_ROLES` sabiti hem
+  `index.jsx`'te hem `Sidebar.jsx`'te ayrı ayrı tanımlı — iki dosya arasında
+  paylaşılan bir roller modülü yok, mevcut kod stiliyle tutarlı), ama
+  `santiye_sefi`'ye özel Günlük Rapor formu/listesi (`daily-report`/
+  `rapor-listesi`) VERİLMEDİ — o bileşenler saha şefine özel. Bu roller
   `ROLE_TABS`'ta kısıtlı (yalnızca bu 5 sekme) ve `ROLE_DEFAULT`'ta `genel`.
   `TabIsPlan`'a `siteChiefView` geçilmiyor (santiye_sefi'ye özel sadeleştirilmiş
-  görünüm bu 11 role uygulanmıyor, `proje_yoneticisi` ile aynı davranış —
+  görünüm bu rollere uygulanmıyor, `proje_yoneticisi` ile aynı davranış —
   görev sorumlusu/notlar dahil tam görünüm). `lojistik_tedarik` (`cross_project=true`
-  olmasına rağmen) bilinçli olarak diğer 10 saha rolüyle aynı tek-proje
+  olmasına rağmen) bilinçli olarak diğer saha rolleriyle aynı tek-proje
   (`profiles.project_id`) demetine dahil edildi — kullanıcı "hepsine aynı
   demet" dedi, `proje_yoneticisi`'nin çoklu-proje deseni burada kullanılmadı.
+  **İstisna (2026-07-18):** `kalite_kontrol_sefi` artık bu jenerik 11'lik
+  demetin PARÇASI DEĞİL — kendi Kalite Kontrol modülü var (bkz. Tamamlanan
+  büyük görevler), bu yüzden `FIELD_SPECIALIST_ROLES` dizisinde (Sidebar'ın
+  `SAHA_ROLES`/`is-plani` görünürlüğü için) kalmaya devam ediyor ama
+  `index.jsx`'in `ROLE_TABS`'ında kendi özel kaydı var (`FIELD_SPECIALIST_TABS`
+  yerine `[..., 'kalite-kontrol', ...]`).
 
 Bu değişiklik yalnızca sidebar görünürlüğü/üst-seviye sekme yönlendirmesi —
 `ProjeDetay.jsx`'in iç sekmeleri zaten `role !== 'proje_yoneticisi'` gibi
@@ -419,6 +425,14 @@ taşıyor — `updateStatus`/`handleAction`/`handleCancel` gibi tek-tablo yazmal
 doğrudan `.update()`/`.insert()` ile yapılıyor (DB trigger'ları kademeleri yönetiyor, kural #6
 yalnızca çok-tablolu yazmalar için RPC şartı koyuyor).
 
+**Kalite denetimi RPC'leri (2026-07-18'de eklendi, bkz. Tamamlanan büyük görevler):**
+`get_quality_inspections_list(p_project_id, p_filter_date)` (`get_purchase_requests_list`
+ile aynı dual-mode desen — `KaliteKontrolListesi.jsx`, her satırda `finding_count`/`open_count`),
+`get_quality_inspection_detail(p_id)` (`DenetimDetayModal.jsx` — tam `findings[]` listesi,
+`ORDER BY f.created_at, f.id` — aynı transaction içinde art arda eklenen bulgular Postgres'in
+transaction-sabit `now()`'ı yüzünden aynı `created_at`'ı alabiliyor, `f.id` tiebreaker'ı
+görüntüleme sırasının kararsız/rastgele olmasını önlüyor). İkisi de `REVOKE ... FROM PUBLIC, anon`.
+
 **Yazma:** `create_purchase_request_with_items(p_project_id, p_title, p_urgency, p_request_note, p_requested_by, p_items, p_category)`,
 `save_daily_report(p_project_id, p_report_date, p_created_by, p_general_status, p_worker_count, p_weather, p_weather_note, p_notes, p_personnel, p_machinery, p_progress, p_daily_tasks, p_materials, p_issues, p_task_progress)`
 — tek overload (eski 11/14 parametreli overload'lar kaldırıldı). `p_progress`
@@ -432,6 +446,12 @@ güncelleme (ticket_id korunur, mükerrer ticket açılmaz), payload'da id'si
 olmayan mevcut satırlar silinir. Frontend (`DailyReportForm.jsx`) `get_daily_report_detail`'den
 gelen `issues[].id`'yi state'te saklayıp geri göndermek ZORUNDA — göndermezse
 her kayıtta yeni ticket açılır (bkz. Trigger zincirleri). `update_procurement_status(...)`.
+`save_quality_inspection(p_project_id, p_inspection_date, p_inspector, p_category, p_created_by,
+p_id?, p_result, p_notes, p_findings)` — `p_id` NULL ise yeni denetim, doluysa güncelleme;
+`p_findings` (bulgu/punch-list satırları) `save_daily_report`'un personel/makine alt tabloları
+gibi delete+reinsert (id-bazlı upsert DEĞİL — bu modülde ticket bağlantısı yok, id korumaya
+gerek yok). `update_quality_finding_status(p_finding_id, p_status)` — tek-tablo, listeden/detaydan
+hızlı durum değiştirme (kural #6 kapsamı dışı).
 
 **Yetki/kapsam çekirdeği:** `get_project_scope(p_project_id)` — tüm dual-scope
 (tek proje/Tüm Projeler) RPC'lerin ortak yetki katmanı (`roles.is_manager` OR
@@ -553,7 +573,7 @@ proje oluştururken "Riskler" sayfasını hiç okumuyor, yalnızca mevcut projey
 güncelleme yaparken okuyor (`isNewProject` kontrolü, `project_category_weights`
 seed mantığıyla aynı desende ama ters yönde).
 
-### Modül → tablo haritası (31 tablo + 6 view + `notifications`)
+### Modül → tablo haritası (32 tablo + 6 view + `notifications`)
 | Modül | Tablolar |
 |---|---|
 | Proje yönetimi | projects, project_tasks, project_category_weights, work_packages¹, schedule_activities¹, project_risks |
@@ -561,7 +581,7 @@ seed mantığıyla aynı desende ama ters yönde).
 | İmalat ilerlemesi | progress_daily |
 | Satın alma (7 adım) | purchase_requests, purchase_request_items, purchase_request_status_log |
 | Fatura ve maliyet | invoices, invoice_approvals, suppliers, budget_lines, cost_allocations |
-| Teknik kontrol¹ | quality_inspections |
+| Kalite denetimi | quality_inspections, quality_inspection_findings |
 | Kullanıcı yönetimi | roles, profiles, user_project_access |
 | Bildirim | notifications |
 | Destek / diğer | tickets, ticket_comments, ticket_history, agent_reports, procurement_items, procurement_item_adjustments, procurement_item_change_requests |
@@ -971,6 +991,34 @@ Alma/Finans Test Verisi notu).
   `ProjeDetay.jsx`'in iç sekmeleri zaten permissive olduğundan değişmedi.
   `TabSatinAlma.jsx`'teki artık yanlış olan bir yorum (`TabSatinAlmaTalepListesi
   ham sorgu koşuyor` diyordu, RPC migrasyonundan kalma) da düzeltildi.
+- **Kalite denetimi modülü — temel kapsam (2026-07-18):** Daha önce hiç arayüzü
+  olmayan `quality_inspections` tablosu (0 satır) artık gerçek bir modül:
+  `created_by` kolonu eklendi, yeni `quality_inspection_findings` (punch list
+  satırları — konum/açıklama/şiddet/durum/sorumlu/çözülme tarihi) tablosu +
+  RLS'i, 4 RPC (`save_quality_inspection`, `update_quality_finding_status`,
+  `get_quality_inspections_list`, `get_quality_inspection_detail` — hepsi
+  `REVOKE ... FROM PUBLIC, anon`). Frontend: `src/components/kalite-kontrol/`
+  altında tek bir `KaliteKontrolListesi.jsx` (menü/proje modu opsiyonel
+  `projectId`/`filterDate` ile, bu oturumun Task 1'inden öğrenilen "baştan tek
+  bileşen" dersiyle) + `DenetimDetayModal.jsx` (bulgu durumu hızlı değiştirme)
+  + `YeniDenetimModal.jsx` (oluştur/düzenle, dinamik bulgu satırları). Şiddet
+  için yeni sözlük yazılmadı, `src/utils/ticketSeverity.js` reuse edildi.
+  `kalite_kontrol_sefi` artık jenerik `FIELD_SPECIALIST_ROLES` demetinden
+  ayrıldı — kendi `ROLE_TABS` kaydı (Genel+İş Planı+Satın Alma+**Kalite
+  Kontrol**+Tickets+Bildirimler) + Sidebar'da özel nav item + `ProjeDetay.jsx`'e
+  yeni "Kalite Kontrol" sekmesi (admin/koordinator/muhendis için, İş Planı ile
+  aynı desen). Test sırasında bulunup düzeltilen küçük bir bug: aynı transaction
+  içinde art arda eklenen bulgular Postgres'in transaction-sabit `now()`'ı
+  yüzünden aynı `created_at`'ı alabiliyordu, bu da bulgu listesi sırasının
+  sayfa yenilemeleri arasında kararsız/rastgele görünmesine yol açıyordu —
+  `get_quality_inspection_detail`'in `ORDER BY`'ına `f.id` tiebreaker'ı eklendi.
+  Playwright ile (izmir test hesabının `role_key`'i geçici `kalite_kontrol_sefi`ye
+  çekilerek) uçtan uca doğrulandı: sidebar doğru sekmeleri gösteriyor, denetim +
+  2 bulgu oluşturma, bulgu durumu "çözüldü" yapma kalıcı, admin'in `ProjeDetay`
+  içinden aynı veriyi görmesi — hepsi PASS; test verisi silindi, rol geri alındı.
+  **Kapsam dışı bırakıldı (bilinçli, ayrı gelecek görev):** foto yükleme,
+  yüksek/kritik bulgular için `daily_report_issues` deseniyle otomatik ticket
+  bağlantısı, denetim sonucu için ayrı bir onay/imza zinciri.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
@@ -993,14 +1041,13 @@ Alma/Finans Test Verisi notu).
 - **Frontend artık 19/19 rolü tanıyor (2026-07-18'de kapandı, yukarı bkz. Roller
   bölümü)** — ama hâlâ hardcoded `ROLE_TABS`/`ROLE_LABEL`/`Sidebar.jsx` dizileri
   ile yönetiliyor, `roles` tablosundan okunan gerçek bir izin matrisi DEĞİL.
-  11 saha/teknik rolü kendi özel modülleri olmadığı için hepsi aynı jenerik
-  demeti paylaşıyor (Genel/İş Planı/Satın Alma/Tickets) — kalite kontrol/İSG/ENH
-  gibi modüller yazılınca bu rollerin erişimi yeniden gözden geçirilmeli.
-- **Kalite denetimi modülü hiç arayüzü yok** — `quality_inspections` tablosu
-  var (0 satır, RLS `USING(true)`, rol/proje kısıtı yok), sıfırdan yazılması
-  gerekiyor. (`mechanical_checklist`/`electrical_checklist` tabloları — aynı
-  gruptaki mekanik/elektrik checklist'ler — DB'den tamamen kaldırıldı, bu artık
-  onlar için geçerli değil.)
+  10 saha/teknik rolü (kalite_kontrol_sefi artık kendi modülüne kavuştu, bkz.
+  Tamamlanan büyük görevler → Kalite denetimi modülü) hâlâ aynı jenerik demeti
+  paylaşıyor (Genel/İş Planı/Satın Alma/Tickets) — İSG/ENH gibi modüller
+  yazılınca bu rollerin erişimi yeniden gözden geçirilmeli.
+  (`mechanical_checklist`/`electrical_checklist` tabloları — aynı gruptaki
+  mekanik/elektrik checklist'ler — DB'den tamamen kaldırıldı, bu artık onlar
+  için geçerli değil.)
 - **`work_packages` yetim tablo, `schedule_activities` yarı-yetim** —
   `work_packages` gerçekten hiçbir dosyada kullanılmıyor (frontend'deki
   `wps`/"work_packages" değişkeni kafa karıştırıcı bir isimlendirme: `get_proje_detay`
@@ -1029,10 +1076,14 @@ Alma/Finans Test Verisi notu).
   (bir noktada kaldırılmış), yalnızca `role_key` var; frontend zaten tutarlı
   şekilde yalnızca `role_key` okuyor/yazıyor (`TabKullanicilar.jsx` dahil).
   Eski FAZ1 denetim notu artık tarihsel, madde kapandı.
-- **RLS temizliği bekliyor:** `schedule_activities`/`quality_inspections`/`work_packages`
+- **RLS temizliği bekliyor:** `schedule_activities`/`work_packages`
   hâlâ `USING(true)` (rol/proje kısıtı yok) — **not (2026-07-17): `procurement_items` bu
   listeden çıkarıldı**, malzeme miktarı onay akışı için yapılan taramada zaten
   `has_project_access(project_id)` politikasıyla korunduğu görüldü, önceki not yanlıştı.
+  **not (2026-07-18): `quality_inspections` de bu listeden çıkarıldı** — Kalite
+  denetimi modülü eklenirken kontrol edildi, tablo zaten `user_has_project_access`
+  ile korumalıymış (eski not yanlıştı, ne zaman düzeltildiği bilinmiyor); yeni
+  `quality_inspection_findings` tablosu da aynı desenle düzgün RLS'li oluşturuldu.
   `profiles`/`purchase_requests` üzerinde eski+yeni politika birikimi
   (`multiple_permissive_policies`) var. Acil değil, ileride bir RLS temizlik
   migration'ında ele alınmalı.
@@ -1064,46 +1115,43 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**18.07.2026 (14) — Bu oturumun tüm işleri Playwright ile test sırasıyla
-doğrulandı, origin/main'e push edildi.**
+**18.07.2026 (15) — Kalite Denetimi modülü (temel kapsam) eklendi.**
 
-Önceki 3 görevin (liste bileşen birleştirmesi, Satın Alma/Finans RPC
-migrasyonu, rol genişletmesi 6→19) + 2 doğrulama maddesinin ardından
-kullanıcı "test sırası çıkaralım en son sırayla test edelim" demişti; bu
-oturumda o sıra uygulandı (admin/proje_yoneticisi/izmir test hesapları +
-geçici rol değişiklikleriyle, Playwright üzerinden canlı Supabase projesine
-karşı):
+Bir önceki turda test sırası tamamlanıp push edildikten sonra kullanıcı
+"Bilinen açık noktalar"daki en büyük maddeyle devam etmeyi seçti: Kalite
+Denetimi modülü (`kalite_kontrol_sefi` rolü için — daha önce hiç arayüzü
+yoktu). Plan modunda araştırılıp kullanıcıya kapsam soruldu; "Temel modül"
+seçildi (foto yükleme ve otomatik ticket bağlantısı ayrı bir gelecek göreve
+bırakıldı). Detaylar "Tamamlanan büyük görevler"de (bkz. "Kalite denetimi
+modülü — temel kapsam").
 
-1. **Rol genişletmesi** — `elektrik_sefi` (11 saha rolü demeti) ve
-   `maliyet_kontrolcu` bundle'ları test edildi (izmir test hesabının
-   `role_key`'i geçici değiştirilip test sonunda `santiye_sefi`'ye geri
-   alındı). **Gerçek bir bug bulundu ve düzeltildi:** `Sidebar.jsx`'teki
-   `genel` nav item'ının `roles` dizisine `maliyet_kontrolcu` eklenmesi
-   unutulmuştu (plan bunu öngörüyordu, uygulama sırasında atlanmış) — bu rol
-   varsayılan olarak Genel Bakış sekmesine düşüyor ama sidebar'da o sekmeye
-   dönecek buton yoktu, kullanıcı sıkışıp kalıyordu. Tek satırlık düzeltme.
-2. **Satın Alma RPC ekranları** (talep listesi, `get_purchase_request_detail`
-   detay modalı, onay kuyruğu) — admin ile uçtan uca PASS, gerçek proje
-   verisiyle doğrulandı.
-3. **Finans RPC ekranları** (`get_invoices_list`, `get_invoice_approval_queue`)
-   — PASS.
-4. **Malzeme Listesi RPC pilotu** — `create_procurement_item_change_request`
-   → admin `review_procurement_item_change_request` onayı →
-   `procurement_items.planned_qty` güncellemesi uçtan uca PASS; test
-   sırasında değiştirilen gerçek BOM kalemi (`DC Kablo 4mm2`, İzmir projesi)
-   test sonunda orijinal miktarına geri alındı.
-5. **`tests/faz-e.spec.js` regresyonu** — A/B/D testleri `test.describe.serial`
-   nedeniyle birbirini tetikleyerek aynı tek kökten (header'daki proje
-   seçicisinin 2026-07-17'de kullanıcı tarafından kaldırılması, test dosyası
-   güncellenmemiş) başarısız oluyor; izole çalıştırıldığında üçü de aynı
-   `scopeSelect` locator'ının bulunamaması hatasını veriyor — F (API seviyesi,
-   UI'a bağımlı değil) PASS. Bu oturumdaki değişikliklerden kaynaklanan
-   **yeni bir regresyon yok**, doğrulandı.
+Özet: 4 migration (onaylı) — `quality_inspections`'a `created_by`, yeni
+`quality_inspection_findings` tablosu + RLS, 2 yazma RPC'si
+(`save_quality_inspection`/`update_quality_finding_status`), 2 okuma RPC'si
+(`get_quality_inspections_list`/`get_quality_inspection_detail`, hepsi
+`REVOKE ... FROM PUBLIC, anon`). Frontend: `src/components/kalite-kontrol/`
+(3 dosya, baştan tek bileşen — menü/proje modu ayrımı yok), nav/rol
+entegrasyonu (`kalite_kontrol_sefi` artık jenerik 11'lik demetten ayrıldı,
+kendi sekmesi var; admin/koordinator/muhendis `ProjeDetay`'dan erişiyor).
 
-Test sırasında ayrıca `ProjeTabSatinAlma.jsx`'te `TabSatinAlma.jsx`'te daha
-önce düzeltilmiş olan bayat bir RPC yorumunun bir kopyası daha bulundu ve
-düzeltildi (davranış değişikliği yok).
+Test sırasında bulunan 2 gerçek sorun, ikisi de düzeltildi:
+1. **Ortam kaynaklı (kod bugı değil):** İzmir test hesabının 2026-07-17'den
+   kalma ek `user_project_access` kaydı (`test-bursa-mudanya-ges`) yüzünden
+   `get_my_projects()` 2 proje döndürüyor, `AuthContext`'in `projectId`'yi
+   tek projeye daraltamıyor — modal proje seçici gösteriyor (kilitli
+   olması gerekirken). Silinmedi (amacı belirsiz, araştırmadan silme riskli),
+   test bunu handle edecek şekilde yazıldı.
+2. **Gerçek RPC bugı:** Aynı transaction içinde art arda eklenen bulgular
+   Postgres'in transaction-sabit `now()`'ı yüzünden aynı `created_at`'ı
+   alıyordu — `get_quality_inspection_detail`'in `ORDER BY`'ına `f.id`
+   tiebreaker migration'ı ile düzeltildi.
 
-`npx vite build` + `npx eslint src` temiz (0 hata). 12 commit (bu oturumun
-tamamı: 3 ana görev + 2 doğrulama + bu turda bulunan 2 küçük düzeltme)
-kullanıcı onayıyla `origin/main`'e push edildi (`68ad6a8..d5a1bb7`).
+Playwright ile uçtan uca doğrulandı (izmir hesabının rolü geçici
+`kalite_kontrol_sefi`'ye çekilip test sonunda `santiye_sefi`'ye geri alındı):
+sidebar doğru, denetim+2 bulgu oluşturma, bulgu durumu "çözüldü" yapma
+kalıcı, admin'in `ProjeDetay`'dan aynı veriyi görmesi — hepsi PASS. Test
+verisi silindi. `tests/faz-e.spec.js` regresyonu: yeni bir sorun yok (F PASS,
+A/B/D aynı bilinen header-seçici kökünden bağımsız olarak başarısız).
+`npx vite build`/`npx eslint src` temiz.
+
+Commit yapıldı, push kullanıcı onayı bekliyor (henüz push edilmedi).
