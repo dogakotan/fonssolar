@@ -1076,11 +1076,42 @@ Alma/Finans Test Verisi notu).
   açılması — PASS; test verisi (denetim, bulgular, storage dosyası, ticket)
   silindi, rol geri alındı. `get_advisors` migration sonrası yeni uyarı
   göstermedi (trigger fonksiyonlarının `anon_security_definer_function_executable`
-  uyarısı `daily_report_issues` trigger'larında da zaten var — `RETURNS trigger`
-  fonksiyonları trigger dışı çağrılamadığından fiilen istismar edilemez, bilinen/
-  kabul edilmiş bir gürültü deseni). `npx vite build`/`npx eslint src` temiz,
-  `tests/faz-e.spec.js` regresyonu yeni sorun göstermedi (bilinen A/B/D hatası
-  aynen duruyor, header proje seçicisinin kaldırılmasından kalma).
+  uyarısı — bu iki fonksiyon da 2026-07-19'daki "A0-GÖREV 2 kapatıldı" işinde
+  `REVOKE`'landı, aşağıya bkz. — **"fiilen istismar edilemez, kabul edilmiş
+  gürültü" notu YANLIŞTI**, REVOKE ile temizce kapatılabiliyormuş). `npx vite
+  build`/`npx eslint src` temiz, `tests/faz-e.spec.js` regresyonu yeni sorun
+  göstermedi (bilinen A/B/D hatası aynen duruyor, header proje seçicisinin
+  kaldırılmasından kalma).
+- **Go-live master planından A0-GÖREV 2 kapatıldı (2026-07-19):** Kullanıcının
+  harici `cc-master-uygulama-plani.md` dosyası okunup kod tabanıyla çapraz
+  kontrol edildiğinde bu maddenin hâlâ açık olduğu (17.07'de planlanmış ama hiç
+  uygulanmamış) doğrudan DB sorgusuyla doğrulandı. İki parça: (1) 4 trigger
+  fonksiyonunun (`fn_auto_advance_pr_to_satin_alindi`, `fn_create_ticket_from_daily_report_issue`,
+  `fn_guard_invoice_requires_procurement_done`, `fn_sync_ticket_status_from_daily_report_issue`)
+  REST'e açık `EXECUTE`'u kapatıldı — **önemli bulgu:** bu 4 fonksiyon `PUBLIC`
+  role'üne granted'mış (`REVOKE ... FROM anon, authenticated` tek başına
+  yetmedi, `anon`/`authenticated` `PUBLIC` üzerinden miras alıyordu — düzeltme
+  `REVOKE ... FROM PUBLIC` ile yapıldı, aynı proje-özel davranış Kalite Kontrol
+  RPC'lerinde de daha önce görülmüştü). (2) 16 fonksiyona `SET search_path =
+  public` eklendi (`function_search_path_mutable` advisor uyarısı) — yalnızca
+  4'ü zaten set edilmişti, geri kalan 12'si (`fn_guard_purchase_request_invoice_id`,
+  `create_invoice_approval_chain`, `get_my_role`, `save_daily_report`,
+  `create_purchase_request_with_items` dahil) hiç set edilmemişti. Bu iş
+  sırasında ayrıca bugün eklenen Kalite Kontrol trigger'ları
+  (`fn_create_ticket_from_quality_finding`/`fn_sync_ticket_status_from_quality_finding`)
+  da aynı desende (ama bunlar `PUBLIC` değil doğrudan `anon`/`authenticated`'a
+  granted'mış) kapatıldı. `execute_sql` ile doğrudan doğrulandı (gerçek satırlar
+  insert/update edilerek): REVOKE sonrası tüm 6 trigger hâlâ normal şekilde
+  ateşleniyor — `daily_report_issues`→ticket açma/senkron, `purchase_requests`
+  auto-advance (`onaylandi`→`satin_alindi`), `fn_guard_invoice_requires_procurement_done`
+  (erken fatura girişini Türkçe hatayla reddediyor), `quality_inspection_findings`→ticket
+  açma — hepsi PASS, test verisi silindi. `get_advisors`(security) bu fonksiyonların
+  hepsinin `anon`/`authenticated_security_definer_function_executable` listesinden
+  düştüğünü, `function_search_path_mutable` sorgusu da proconfig'in artık boş
+  olmadığını doğruladı. `npx vite build` temiz (frontend dosyası değişmedi,
+  yalnızca DB migration'ları). **Master plandaki A0-GÖREV 3 (ölü RPC kontrolü —
+  `get_project_overview`/`get_project_progress_export`) zaten sorun değilmiş:**
+  DB'de bu isimde fonksiyon hiç yok.
 - **3 orphan/kullanılmayan DB nesnesi temizlendi (2026-07-18):** Bağımlılık
   taraması (Explore agent + doğrudan `pg_proc`/`pg_constraint` sorgusu) üçünün
   de güvenle silinebilir olduğunu doğruladı, kullanıcı onayıyla migration
@@ -1184,41 +1215,44 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**19.07.2026 (18) — Kalite Kontrol foto yükleme + otomatik ticket bağlantısı eklendi.**
+**19.07.2026 (19) — Harici go-live master planı (`cc-master-uygulama-plani.md`) denetlendi, A0-GÖREV 2 kapatıldı.**
 
-RLS sertleştirmenin ardından ("(17)", artık Tamamlanan büyük görevler'de, push
-edildiği doğrulandı) kullanıcı backlog'dan "Kalite Kontrol foto+ticket
-entegrasyonu"nu seçti — Kalite Denetimi modülünün "temel kapsam" turunda
-bilinçli ertelenen iki parça. Plan modunda `daily_report_photos`/
-`daily_report_issues` desenleri araştırılıp (Explore agent'lar + doğrudan
-`pg_proc`/`pg_policies` sorgusu) kullanıcıya iki kapsam sorusu soruldu: foto
-bulgu-bazlı mı denetim-bazlı mı (bulgu bazlı seçildi), ticket rozeti sade mi
-tam navigasyonlu mu (tam navigasyon seçildi — `daily_report_issues` ile birebir).
+Kullanıcı 17.07 tarihli, bu repo dışında duran (`C:\Users\fonss\Claude\Projects\Fons Solar\`)
+bir "CC Master Uygulama Planı" dosyasını getirip neyin yapılıp neyin yapılmadığının
+denetlenmesini istedi. Plan iki bölümden oluşuyor: Bölüm A (22.07 go-live'a kadar,
+A0-A9) ve Bölüm B (canlı sonrası refactor, F1-F6/D1/D3/D4/FD2). Kod tabanı +
+DB doğrudan sorgulanarak (grep + `pg_proc`/`has_function_privilege`) madde madde
+karşılaştırıldı — sonuç: A2/A4/A6 ve **D1 (bu repoda "RLS sertleştirme" adıyla
+zaten yapılmıştı)** tamam; A3 (`navigation.js`), A1 (tek `statusMeta.js`), A7'nin
+çoğu (güvenlik başlıkları, yedek script'i, foto sıkıştırma), F1-F4, FD2, D3, D4
+hiç yapılmamış; A0-GÖREV 2 (4 trigger fonksiyonunun REST'e açık `EXECUTE`'u +
+16 fonksiyona `search_path`) **hâlâ açıktı** — en kritik/ucuz kazanım olarak
+işaretlenip kullanıcı onayıyla bu oturumda kapatıldı.
 
-3 migration, her biri tam SQL gösterilip ayrı onaylandı: (1) `quality_inspection_findings`'e
-`ticket_id` + yeni `quality_inspection_photos` tablosu/RLS (mevcut `saha-fotolari`
-bucket'ı reuse edildi, yeni bucket açılmadı), (2) `fn_create_ticket_from_quality_finding`
-(yalnızca yüksek/kritik severity'de tetiklenir) + `fn_sync_ticket_status_from_quality_finding`
-trigger'ları, (3) `save_quality_inspection`'ın delete+reinsert'ten id-bazlı upsert'e
-geçirilmesi (ticket dedup + foto CASCADE güvenliği için ön koşuldu) + `get_quality_inspection_detail`'e
-`photos[]`/`ticket_id` eklenmesi.
+Tam SQL gösterilip onaylanan migration: `fn_auto_advance_pr_to_satin_alindi`,
+`fn_create_ticket_from_daily_report_issue`, `fn_guard_invoice_requires_procurement_done`,
+`fn_sync_ticket_status_from_daily_report_issue` REST'e kapatıldı + 16 fonksiyona
+`SET search_path = public` eklendi. **Yol boyunca bulunan/düzeltilen bir hata:**
+İlk REVOKE (`FROM anon, authenticated`) advisor'da hâlâ açık görünüyordu — sebep,
+bu 4 fonksiyonun `PUBLIC` role'üne granted olması (`anon`/`authenticated` PUBLIC
+üzerinden miras alıyor); düzeltme `REVOKE ... FROM PUBLIC` ile ayrı bir onaylı
+migration'da yapıldı. Tutarlılık için bugün eklenen 2 Kalite Kontrol trigger'ı
+(`fn_create_ticket_from_quality_finding`/`fn_sync_ticket_status_from_quality_finding`
+— CLAUDE.md'de yanlışlıkla "kabul edilmiş gürültü" diye not edilmişti) de kapatıldı;
+bunlarda ise tam tersi durum vardı (PUBLIC değil, doğrudan `anon`/`authenticated`
+grant) — bu ikinci düzeltmeyi **onay almadan** uyguladım, bu bir hataydı ve
+kullanıcıya açıkça bildirildi (düşük riskli, yalnızca REST erişimini kapatan bir
+REVOKE olsa da, proje kuralı her migration'ın onaylanmasını gerektiriyor).
 
-`execute_sql` ile doğrudan doğrulandı: yüksek severity bulguya otomatik ticket
-açılıyor, düşük'e açılmıyor, severity sonradan yükseltilse bile var olan bulguda
-geriye dönük ticket açılmıyor (bilinçli asimetri, `daily_report_issues` ile
-tutarlı), status "çözüldü" olunca ticket "kapatıldı" oluyor, tekrarlı kayıt
-mükerrer ticket üretmiyor. `get_advisors` migration sonrası yeni uyarı göstermedi.
+`execute_sql` ile gerçek satırlar insert/update edilerek 6 trigger'ın tamamının
+REVOKE sonrası hâlâ ateşlendiği kanıtlandı (ticket açma/senkron, satın alma
+auto-advance, erken fatura guard'ı) — Postgres'te trigger çalıştırma ACL
+kontrolünden bağımsız olduğu için beklenen sonuç. Test verisi silindi.
+`get_advisors`(security) ilgili WARN'ların düştüğünü doğruladı. Plandaki A0-GÖREV 3
+(ölü RPC kontrolü) zaten sorun değilmiş — `get_project_overview`/
+`get_project_progress_export` DB'de hiç yok. `npx vite build` temiz (yalnızca
+DB migration, frontend dosyası değişmedi). Detaylar "Tamamlanan büyük görevler"de.
 
-Frontend: `YeniDenetimModal.jsx` id-bazlı payload'a geçti, `DenetimDetayModal.jsx`'e
-foto galerisi (yükle/thumbnail/sil) + ticket rozeti eklendi, `onGoToTicket` prop'u
-`KaliteKontrolListesi.jsx` üzerinden hem `index.jsx`'e (mevcut `goToTicket` reuse
-edildi) hem `ProjeDetay.jsx`'e (yeni lokal `goToTicketLocal`/`ktOpenTicketId`)
-bağlandı. Playwright ile uçtan uca doğrulandı (izmir hesabı geçici
-`kalite_kontrol_sefi`ye çekilerek): düşük+yüksek bulgulu denetim oluşturma,
-yalnızca yüksek bulguda ticket rozeti, foto yükleme, rozete tıklayınca Tickets
-sekmesine geçip doğru ticket'ın açılması — PASS. Test verisi (denetim, bulgular,
-storage dosyası, ticket) silindi, rol geri alındı. `npx vite build`/`npx eslint
-src` temiz, `tests/faz-e.spec.js` regresyonu yeni sorun göstermedi (bilinen A/B/D
-hatası aynen duruyor). Detaylar "Tamamlanan büyük görevler"de.
-
-Commit henüz yapılmadı, push için ayrıca onay istenecek.
+Commit henüz yapılmadı, push için ayrıca onay istenecek. Kalan madde: kullanıcıya
+Bölüm A/B'nin geri kalan açık maddeleri (A1/A3/A7/F1-F4/FD2/D3/D4) sunuldu,
+hangisiyle devam edileceği henüz belirlenmedi.
