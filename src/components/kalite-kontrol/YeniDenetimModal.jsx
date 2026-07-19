@@ -27,7 +27,7 @@ function todayISO() {
 }
 
 function newFindingRow() {
-  return { location: '', description: '', severity: 'orta', status: 'açık', assigned_to: '' }
+  return { id: null, location: '', description: '', severity: 'orta', status: 'açık', assigned_to: '' }
 }
 
 export default function YeniDenetimModal({ defaultProjectId, editInspection = null, onClose, onSaved }) {
@@ -42,7 +42,7 @@ export default function YeniDenetimModal({ defaultProjectId, editInspection = nu
   const [notes, setNotes] = useState(editInspection?.notes || '')
   const [findings, setFindings] = useState(
     editInspection?.findings?.length
-      ? editInspection.findings.map(f => ({ location: f.location || '', description: f.description || '', severity: f.severity, status: f.status, assigned_to: f.assigned_to || '' }))
+      ? editInspection.findings.map(f => ({ id: f.id || null, location: f.location || '', description: f.description || '', severity: f.severity, status: f.status, assigned_to: f.assigned_to || '' }))
       : [newFindingRow()]
   )
   const [saving, setSaving] = useState(false)
@@ -78,6 +78,7 @@ export default function YeniDenetimModal({ defaultProjectId, editInspection = nu
       p_notes: notes.trim() || null,
       p_created_by: user.id,
       p_findings: validFindings.map(f => ({
+        id: f.id || null, // mevcut bulgu — backend'in mükerrer ticket açmaması için şart
         location: f.location.trim() || null,
         description: f.description.trim(),
         severity: f.severity,

@@ -27,7 +27,7 @@ function ResultBadge({ result }) {
 
 // projectId yoksa (menü modu): tüm erişilebilir projelerin denetimleri, PROJE kolonu.
 // projectId doluysa (proje modu): yalnız o proje (filterDate'e kadar).
-export default function KaliteKontrolListesi({ projectId = null, filterDate = null }) {
+export default function KaliteKontrolListesi({ projectId = null, filterDate = null, onGoToTicket }) {
   const { isAdmin, role } = useAuth()
   const [inspections, setInspections] = useState([])
   const [loading, setLoading] = useState(true)
@@ -155,6 +155,7 @@ export default function KaliteKontrolListesi({ projectId = null, filterDate = nu
         <DenetimDetayModal
           inspectionId={selectedId}
           onClose={() => { setSelectedId(null); fetchData() }}
+          onGoToTicket={onGoToTicket}
         />
       )}
     </div>

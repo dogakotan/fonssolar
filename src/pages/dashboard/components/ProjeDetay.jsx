@@ -619,6 +619,14 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const { role } = useAuth()
   const canViewFinanceAndTickets = role !== 'proje_yoneticisi'
   const [tab, setTab]                = useState('genel')
+  const [ktOpenTicketId, setKtOpenTicketId] = useState(null)
+
+  // Kalite Kontrol'deki "Ticket açıldı" rozetine tıklayınca: Tickets sekmesine
+  // geç, o ticket'ı doğrudan aç (index.jsx'teki goToTicket ile aynı desen).
+  function goToTicketLocal(ticketId) {
+    setTab('tickets')
+    setKtOpenTicketId(ticketId)
+  }
 
   const [project, setProject]        = useState(null)
   const [wps, setWPs]                = useState([])
@@ -1301,13 +1309,18 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       {tab === 'ekip' ? (
         <EkipListesi projectId={projectId} />
       ) : tab === 'tickets' && canViewFinanceAndTickets ? (
-        <TicketListesi projectId={projectId} filterDate={filterDate} />
+        <TicketListesi
+          projectId={projectId}
+          filterDate={filterDate}
+          openTicketId={ktOpenTicketId}
+          onOpenedTicket={() => setKtOpenTicketId(null)}
+        />
       ) : tab === 'satin-alma' ? (
         <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
       ) : tab === 'malzeme-listesi' ? (
         <ProjeTabMalzemeListesi projectId={projectId} filterDate={filterDate} />
       ) : tab === 'kalite-kontrol' ? (
-        <KaliteKontrolListesi projectId={projectId} filterDate={filterDate} />
+        <KaliteKontrolListesi projectId={projectId} filterDate={filterDate} onGoToTicket={goToTicketLocal} />
       ) : tab === 'finans' && canViewFinanceAndTickets ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'raporlar' ? (

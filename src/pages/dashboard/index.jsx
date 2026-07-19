@@ -315,7 +315,7 @@ export default function Dashboard() {
           <TabIsPlan projectId={projectId} />
         )}
         {activeTab === 'kalite-kontrol' && role === 'kalite_kontrol_sefi' && (
-          <KaliteKontrolListesi projectId={projectId} />
+          <KaliteKontrolListesi projectId={projectId} onGoToTicket={goToTicket} />
         )}
         {activeTab === 'bildirimler'  && <TabBildirimler onNavigate={handleTabChange} />}
         {activeTab === 'genel'        && role === 'proje_yoneticisi' && (

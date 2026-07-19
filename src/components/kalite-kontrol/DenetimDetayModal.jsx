@@ -19,12 +19,13 @@ function Badge({ meta, value }) {
   )
 }
 
-export default function DenetimDetayModal({ inspectionId, onClose }) {
-  const { isAdmin, role } = useAuth()
+export default function DenetimDetayModal({ inspectionId, onClose, onGoToTicket }) {
+  const { user, isAdmin, role } = useAuth()
   const [inspection, setInspection] = useState(null)
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [busyFindingId, setBusyFindingId] = useState(null)
+  const [uploadingFindingId, setUploadingFindingId] = useState(null)
   const [showEdit, setShowEdit] = useState(false)
 
   const canManage = isAdmin || role === 'kalite_kontrol_sefi'
@@ -56,6 +57,38 @@ export default function DenetimDetayModal({ inspectionId, onClose }) {
       await load()
     }
     setBusyFindingId(null)
+  }
+
+  async function uploadPhoto(finding, file) {
+    setUploadingFindingId(finding.id)
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const path = `${inspection.project_id}/kalite-kontrolu/${finding.id}/${Date.now()}_${safeName}`
+    const { error: uploadErr } = await supabase.storage.from('saha-fotolari').upload(path, file)
+    if (uploadErr) {
+      console.error('quality photo upload error:', uploadErr)
+      setErrorMessage('Fotoğraf yüklenemedi.')
+      setUploadingFindingId(null)
+      return
+    }
+    const { error: insertErr } = await supabase.from('quality_inspection_photos').insert({
+      finding_id: finding.id,
+      project_id: inspection.project_id,
+      storage_path: path,
+      uploaded_by: user?.id,
+    })
+    if (insertErr) {
+      console.error('quality_inspection_photos insert error:', insertErr)
+      setErrorMessage('Fotoğraf kaydedilemedi.')
+    } else {
+      await load()
+    }
+    setUploadingFindingId(null)
+  }
+
+  async function removePhoto(photo) {
+    await supabase.storage.from('saha-fotolari').remove([photo.storage_path])
+    await supabase.from('quality_inspection_photos').delete().eq('id', photo.id)
+    await load()
   }
 
   if (showEdit && inspection) {
@@ -156,6 +189,62 @@ export default function DenetimDetayModal({ inspectionId, onClose }) {
                             <Badge meta={STATUS_META} value={finding.status} />
                           )}
                         </div>
+                      </div>
+
+                      {finding.ticket_id && (
+                        <button
+                          type="button"
+                          onClick={() => onGoToTicket?.(finding.ticket_id)}
+                          style={{
+                            marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6,
+                            background: '#EFF6FF', color: '#185FA5', border: '1px solid #BFDBFE',
+                            borderRadius: 999, padding: '4px 12px', fontSize: 11.5, fontWeight: 600,
+                            cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          🎫 Ticket açıldı →
+                        </button>
+                      )}
+
+                      <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                        {(finding.photos || []).map(photo => {
+                          const url = supabase.storage.from('saha-fotolari').getPublicUrl(photo.storage_path).data.publicUrl
+                          return (
+                            <div key={photo.id} style={{ position: 'relative' }}>
+                              <a href={url} target="_blank" rel="noreferrer">
+                                <img src={url} alt="" style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 8, border: '1px solid #E5E7EB' }} />
+                              </a>
+                              {photo.uploaded_by === user?.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => removePhoto(photo)}
+                                  title="Sil"
+                                  style={{
+                                    position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%',
+                                    background: '#991B1B', color: '#fff', border: 'none', fontSize: 11, lineHeight: 1,
+                                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  }}
+                                >×</button>
+                              )}
+                            </div>
+                          )
+                        })}
+                        {canManage && (
+                          <label style={{
+                            width: 56, height: 56, borderRadius: 8, border: '1px dashed #D1D5DB',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 11, color: '#6B7280', cursor: 'pointer', textAlign: 'center',
+                          }}>
+                            {uploadingFindingId === finding.id ? '…' : '+ Foto'}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              disabled={uploadingFindingId === finding.id}
+                              onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadPhoto(finding, f) }}
+                              style={{ display: 'none' }}
+                            />
+                          </label>
+                        )}
                       </div>
                     </div>
                   ))}
