@@ -3,7 +3,11 @@ import { supabase } from '../../../lib/supabase'
 import YeniProjeWizard from '../wizard/YeniProjeWizard'
 import ProjeEditWizard from '../wizard/ProjeEditWizard'
 import { importProjectExcel, exportProjectExcelBlob, downloadBlob, formatImportSummary } from '../../../utils/projectExcelBridge'
+import { PROJECT_STATUS_META } from '../../../utils/projectStatus'
 
+// Not: bu ekranın 'iptal edildi' etiketi ("İptal Edildi") diğer ekranlardan
+// ("İptal") kasıtlı olarak farklı — PROJECT_STATUS_META'nın ortak label'ı
+// yerine burada yerel bırakıldı (davranış değişikliği yapılmadı).
 const STATUS_LABEL = {
   aktif:          'Aktif',
   beklemede:      'Beklemede',
@@ -11,12 +15,7 @@ const STATUS_LABEL = {
   'iptal edildi': 'İptal Edildi',
 }
 
-const STATUS_COLOR = {
-  aktif:          { bg: '#dcfce7', color: '#166534' },
-  beklemede:      { bg: '#fef9c3', color: '#854d0e' },
-  'tamamlandı':   { bg: '#dbeafe', color: '#1e40af' },
-  'iptal edildi': { bg: '#fee2e2', color: '#991b1b' },
-}
+const STATUS_COLOR = PROJECT_STATUS_META
 
 const SUB_TABLES = [
   'project_tasks',

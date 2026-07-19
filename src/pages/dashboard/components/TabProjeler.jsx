@@ -1,12 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getProjects } from '../../../api'
-
-const STATUS_MAP = {
-  aktif:          { bg: '#dcfce7', color: '#166534', label: 'Aktif' },
-  tamamlandı:     { bg: '#dbeafe', color: '#1e40af', label: 'Tamamlandı' },
-  beklemede:      { bg: '#fef9c3', color: '#854d0e', label: 'Beklemede' },
-  'iptal edildi': { bg: '#fee2e2', color: '#991b1b', label: 'İptal' },
-}
+import { PROJECT_STATUS_META } from '../../../utils/projectStatus'
 
 const TYPE_OPTIONS = [
   { value: 'tümü',                 label: 'Tüm Tipler' },
@@ -108,7 +102,7 @@ export default function TabProjeler({ onSelectProject }) {
             </thead>
             <tbody>
               {filtered.map(p => {
-                const sc      = STATUS_MAP[p.status] || { bg: '#f1f5f9', color: '#475569', label: 'Aktif' }
+                const sc      = PROJECT_STATUS_META[p.status] || { bg: '#f1f5f9', color: '#475569', label: 'Aktif' }
                 const cap     = p.capacity_kwp ? `${Number(p.capacity_kwp).toLocaleString('tr-TR')} kWp` : '—'
                 const end     = dateTr(p.target_date)
                 const typeLbl = TYPE_LABEL[p.project_type] || '—'

@@ -3,6 +3,7 @@ import { unzipSync, strFromU8, strToU8 } from 'fflate'
 import { supabase } from '../../../lib/supabase'
 import { getProjects } from '../../../api'
 import ProgBar from '../../../components/ui/ProgBar'
+import { PROJECT_STATUS_META } from '../../../utils/projectStatus'
 import ExportButton from '../../../components/ui/ExportButton'
 import DateNavigator from '../../../components/ui/DateNavigator'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
@@ -94,13 +95,6 @@ function shortId(id) {
 // ─────────────────────────────────────────────────────────
 //  Yardımcı
 // ─────────────────────────────────────────────────────────
-const STATUS_MAP = {
-  aktif:          { badge: 'green', label: 'Aktif' },
-  tamamlandı:     { badge: 'blue',  label: 'Tamamlandı' },
-  beklemede:      { badge: 'amber', label: 'Beklemede' },
-  'iptal edildi': { badge: 'red',   label: 'İptal' },
-}
-
 const TYPE_LABEL = {
   arazi_ges:            'Arazi GES',
   endustriyel_cati_ges: 'Endüstriyel Çatı GES',
@@ -498,14 +492,14 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
                 <tr><td colSpan={6} style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--color-muted)' }}>Proje bulunamadı.</td></tr>
               )}
               {displayProjects.map(p => {
-                const s = STATUS_MAP[p.status] || { badge: 'blue', label: 'Aktif' }
+                const s = PROJECT_STATUS_META[p.status] || { badgeClass: 'blue', label: 'Aktif' }
                 return (
                   <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => onSelectProject?.(p.id, p.name)}>
                     <td className="fw">{p.name}</td>
                     <td>{p.location || '—'}</td>
                     <td>{p.capacity_kwp?.toLocaleString('tr-TR') || '—'}</td>
                     <td>{p.capacity_kwe?.toLocaleString('tr-TR') || '—'}</td>
-                    <td><span className={`badge ${s.badge}`}>● {s.label}</span></td>
+                    <td><span className={`badge ${s.badgeClass}`}>● {s.label}</span></td>
                     <td><ProgBar pct={p.progress || 0} /></td>
                   </tr>
                 )
@@ -519,7 +513,7 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
             <p style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--color-muted)', margin: 0 }}>Proje bulunamadı.</p>
           )}
           {!loading && displayProjects.map(p => {
-            const s = STATUS_MAP[p.status] || { badge: 'blue', label: 'Aktif' }
+            const s = PROJECT_STATUS_META[p.status] || { badgeClass: 'blue', label: 'Aktif' }
             return (
               <div key={p.id} className="proj-mob-card" onClick={() => onSelectProject?.(p.id, p.name)}>
                 <div className="proj-mob-card-title">{p.name}</div>
@@ -528,7 +522,7 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
                   {p.capacity_kwp && <><span style={{ color: '#D1D5DB' }}>·</span><span>{p.capacity_kwp.toLocaleString('tr-TR')} kWp</span></>}
                 </div>
                 <div className="proj-mob-card-prog">
-                  <span className={`badge ${s.badge}`}>● {s.label}</span>
+                  <span className={`badge ${s.badgeClass}`}>● {s.label}</span>
                   <ProgBar pct={p.progress || 0} />
                 </div>
               </div>
