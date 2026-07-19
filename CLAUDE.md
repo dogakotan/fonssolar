@@ -1112,6 +1112,37 @@ Alma/Finans Test Verisi notu).
   yalnızca DB migration'ları). **Master plandaki A0-GÖREV 3 (ölü RPC kontrolü —
   `get_project_overview`/`get_project_progress_export`) zaten sorun değilmiş:**
   DB'de bu isimde fonksiyon hiç yok.
+- **Master plan A1 (proje statüsü map konsolidasyonu, daraltılmış kapsam,
+  2026-07-19):** Plandaki A1 maddesi 17.07'de yazılmıştı; 18.07'deki büyük
+  birleştirme turunda hedeflerinin bir kısmı zaten farklı isimlerle kapanmıştı
+  (ticket severity → `ticketSeverity.js`, satın alma → `satinAlma.js`, kalite
+  denetimi → `qualityInspection.js`). Güncel durum 2 Explore agent'ıyla tam
+  taranınca planın hiç bahsetmediği **10 ayrı status/severity map domaini**
+  bulundu, bir kısmı gerçek çakışma (aynı domain iki farklı dosyada iki farklı
+  renk/etiket seti). Hepsini tek oturumda birleştirmek riskli olacağından yalnızca
+  **proje statüsü** (`projects.status`, DB constraint'iyle doğrulanmış 4 değer:
+  aktif/tamamlandı/beklemede/iptal edildi) bu oturumda kapatıldı, 2 ayrı commit'te:
+  (1) saf refactor — yeni `src/utils/projectStatus.js` (`PROJECT_STATUS_META`),
+  `TabGenel.jsx`/`TabProjeler.jsx`/`TabProjeYonetimi.jsx`'in birbirinden bağımsız
+  duran renk map'lerini buradan besler hale geldi, davranış değişikliği yok
+  (Playwright ile 3 ekranda rozet metni/rengi öncesi-sonrası aynı doğrulandı) —
+  `TabProjeYonetimi.jsx`'in "İptal Edildi" etiketi (diğerlerinde "İptal") kasıtlı
+  olarak yerel bırakıldı, birleştirilmedi; (2) ayrı bug-fix commit'i —
+  `ProjectOverviewDashboard.jsx`'in `STATUS_LABEL`'ı DB'de hiç var olmayan
+  `askida`/`gecikti` değerlerini listeliyordu ve gerçek `iptal edildi`'yi hiç
+  içermiyordu (muhtemelen görev/task status'uyla karışmış eski bir kopyala-yapıştır
+  hatası) — iptal edilmiş bir proje "Genel Proje" ekranında ham `iptal edildi`
+  metnini gösteriyordu, artık doğru 4 değerden okuyor. Test verisiyle (Kayseri
+  projesi geçici `iptal edildi` yapılıp) Playwright ile doğrulandı, sonra geri alındı.
+
+  **"A1-devam" — bulunan ama bilinçli kapsam dışı bırakılan, ayrı bir oturum
+  gerektiren 4 madde (bkz. Bilinen açık noktalar):** risk severity (3 farklı
+  yerde, birbirinden ve `ticketSeverity.js`'den bağımsız), satın alma statüsü
+  çakışması (`StatusBadge.jsx`'in `PR_STATUS`'ü ile `TalepDetayModal.jsx`'in
+  yerel `STATUS_META`'sı farklı renk/etiket veriyor), ticket statüsü çakışması
+  (`StatusBadge.jsx`'in `TK_STATUS`'ü ile `TicketDetayModal.jsx`'in yerel
+  `STATUS`'ü arasında `iptal_edildi` tutarsızlığı), günlük rapor genel durumu
+  (3 farklı tanım + `DailyReportList.jsx`'te büyük/küçük harf duplicate key bug'ı).
 - **3 orphan/kullanılmayan DB nesnesi temizlendi (2026-07-18):** Bağımlılık
   taraması (Explore agent + doğrudan `pg_proc`/`pg_constraint` sorgusu) üçünün
   de güvenle silinebilir olduğunu doğruladı, kullanıcı onayıyla migration
@@ -1149,6 +1180,21 @@ Alma/Finans Test Verisi notu).
   PASS); test verisi silindi. Frontend dosyası değişmedi (yalnızca DB migration).
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
+- **"A1-devam" — status/severity map çakışmaları (2026-07-19'da bulundu, ayrı
+  oturum gerektiriyor, bkz. Tamamlanan büyük görevler → Master plan A1):**
+  (1) Risk severity (`project_risks.severity`) 3 bağımsız yerde temsil ediliyor
+  (`Adim4Riskler.jsx` dropdown, `ProjectOverviewDashboard.jsx`'in `RISK_BADGE`/
+  `SEV_BORDER`'ı) — hiçbiri `ticketSeverity.js`'in `SEVERITY_META`'sıyla senkron
+  değil, `RISK_BADGE`'in S-eğrisi grafiğinde nasıl tüketildiği henüz incelenmedi.
+  (2) Satın alma statüsü: `StatusBadge.jsx`'in `PR_STATUS`'ü (tone-bazlı) ile
+  `TalepDetayModal.jsx`'in yerel `STATUS_META`'sı (hex-bazlı) farklı renk/etiket
+  veriyor — hangisinin kazanacağı görsel/iş kararı gerektiriyor. (3) Ticket
+  statüsü: aynı şekilde `StatusBadge.jsx`'in `TK_STATUS`'ü ile
+  `TicketDetayModal.jsx`'in yerel `STATUS`'ü arasında `iptal_edildi` tutarsızlığı
+  var. (4) Günlük rapor genel durumu (`DailyReportForm.jsx`/`DailyReportList.jsx`/
+  `ProjectOverviewDashboard.jsx` arasında 3 farklı tanım, `DailyReportList.jsx`'te
+  büyük/küçük harf duplicate key bug'ı) — `daily_reports.general_status`'un DB
+  constraint'i henüz doğrulanmadı.
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
   kod tekrarı büyük ölçüde giderildi (2026-07-18):** `FaturaListesi`↔
   `ProjeTabFaturaListesi`, `OnayKuyrugu`↔`ProjeTabOnayKuyrugu`, `TalepListesi`
@@ -1215,44 +1261,27 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**19.07.2026 (19) — Harici go-live master planı (`cc-master-uygulama-plani.md`) denetlendi, A0-GÖREV 2 kapatıldı.**
+**19.07.2026 (20) — Master plan A1 (proje statüsü map konsolidasyonu) kapatıldı, sıralı devam kararı alındı.**
 
-Kullanıcı 17.07 tarihli, bu repo dışında duran (`C:\Users\fonss\Claude\Projects\Fons Solar\`)
-bir "CC Master Uygulama Planı" dosyasını getirip neyin yapılıp neyin yapılmadığının
-denetlenmesini istedi. Plan iki bölümden oluşuyor: Bölüm A (22.07 go-live'a kadar,
-A0-A9) ve Bölüm B (canlı sonrası refactor, F1-F6/D1/D3/D4/FD2). Kod tabanı +
-DB doğrudan sorgulanarak (grep + `pg_proc`/`has_function_privilege`) madde madde
-karşılaştırıldı — sonuç: A2/A4/A6 ve **D1 (bu repoda "RLS sertleştirme" adıyla
-zaten yapılmıştı)** tamam; A3 (`navigation.js`), A1 (tek `statusMeta.js`), A7'nin
-çoğu (güvenlik başlıkları, yedek script'i, foto sıkıştırma), F1-F4, FD2, D3, D4
-hiç yapılmamış; A0-GÖREV 2 (4 trigger fonksiyonunun REST'e açık `EXECUTE`'u +
-16 fonksiyona `search_path`) **hâlâ açıktı** — en kritik/ucuz kazanım olarak
-işaretlenip kullanıcı onayıyla bu oturumda kapatıldı.
+A0-GÖREV 2'nin ardından ("(19)", artık Tamamlanan büyük görevler'de, push edildi)
+kullanıcı kalan master plan maddelerinde (A1/A3/A7/F1-F4/FD2/D3/D4) **"sırayla
+git"** dedi — yani sıradaki her maddeyi tek tek, kendi keşif→plan→onay→uygula
+döngüsüyle işlemeye başla. İlk madde A1 için 2 Explore agent'ıyla güncel durum
+tam tarandı: planın 17.07'de bahsettiği kopyaların bir kısmı 18.07'deki
+birleştirmede zaten kapanmıştı, ama tarama planın hiç bilmediği 10 status/severity
+map domaini + gerçek çakışmalar ortaya çıkardı (bkz. Tamamlanan büyük görevler →
+Master plan A1). Kapsam bilinçli olarak **proje statüsüne** daraltıldı (DB
+constraint'iyle 4 değer doğrulandı), geri kalan 4 alt-madde "A1-devam" olarak
+Bilinen açık noktalar'a not edildi.
 
-Tam SQL gösterilip onaylanan migration: `fn_auto_advance_pr_to_satin_alindi`,
-`fn_create_ticket_from_daily_report_issue`, `fn_guard_invoice_requires_procurement_done`,
-`fn_sync_ticket_status_from_daily_report_issue` REST'e kapatıldı + 16 fonksiyona
-`SET search_path = public` eklendi. **Yol boyunca bulunan/düzeltilen bir hata:**
-İlk REVOKE (`FROM anon, authenticated`) advisor'da hâlâ açık görünüyordu — sebep,
-bu 4 fonksiyonun `PUBLIC` role'üne granted olması (`anon`/`authenticated` PUBLIC
-üzerinden miras alıyor); düzeltme `REVOKE ... FROM PUBLIC` ile ayrı bir onaylı
-migration'da yapıldı. Tutarlılık için bugün eklenen 2 Kalite Kontrol trigger'ı
-(`fn_create_ticket_from_quality_finding`/`fn_sync_ticket_status_from_quality_finding`
-— CLAUDE.md'de yanlışlıkla "kabul edilmiş gürültü" diye not edilmişti) de kapatıldı;
-bunlarda ise tam tersi durum vardı (PUBLIC değil, doğrudan `anon`/`authenticated`
-grant) — bu ikinci düzeltmeyi **onay almadan** uyguladım, bu bir hataydı ve
-kullanıcıya açıkça bildirildi (düşük riskli, yalnızca REST erişimini kapatan bir
-REVOKE olsa da, proje kuralı her migration'ın onaylanmasını gerektiriyor).
+Yeni `src/utils/projectStatus.js` (`PROJECT_STATUS_META`) — `TabGenel.jsx`/
+`TabProjeler.jsx`/`TabProjeYonetimi.jsx` buradan besleniyor (saf refactor commit'i,
+Playwright ile 3 ekranda rozet metni/rengi birebir aynı doğrulandı), ayrı bir
+commit'te `ProjectOverviewDashboard.jsx`'in yanlış/eksik `STATUS_LABEL`'ı (DB'de
+olmayan `askida`/`gecikti` değerleri, eksik `iptal edildi`) düzeltildi — test
+verisiyle (Kayseri projesi geçici `iptal edildi`) doğrulanıp geri alındı. `npx
+vite build`/`npx eslint src` her commit sonrası temiz, `tests/faz-e.spec.js`
+regresyon (F testi) PASS. 2 commit yapıldı (`8e4d95b` refactor, `d6545a2` bugfix),
+push için onay istenecek.
 
-`execute_sql` ile gerçek satırlar insert/update edilerek 6 trigger'ın tamamının
-REVOKE sonrası hâlâ ateşlendiği kanıtlandı (ticket açma/senkron, satın alma
-auto-advance, erken fatura guard'ı) — Postgres'te trigger çalıştırma ACL
-kontrolünden bağımsız olduğu için beklenen sonuç. Test verisi silindi.
-`get_advisors`(security) ilgili WARN'ların düştüğünü doğruladı. Plandaki A0-GÖREV 3
-(ölü RPC kontrolü) zaten sorun değilmiş — `get_project_overview`/
-`get_project_progress_export` DB'de hiç yok. `npx vite build` temiz (yalnızca
-DB migration, frontend dosyası değişmedi). Detaylar "Tamamlanan büyük görevler"de.
-
-Commit henüz yapılmadı, push için ayrıca onay istenecek. Kalan madde: kullanıcıya
-Bölüm A/B'nin geri kalan açık maddeleri (A1/A3/A7/F1-F4/FD2/D3/D4) sunuldu,
-hangisiyle devam edileceği henüz belirlenmedi.
+Sıradaki madde: A3 (rol/menü tek kaynak, `src/config/navigation.js`).
