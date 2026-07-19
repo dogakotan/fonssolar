@@ -430,7 +430,21 @@ ile aynı dual-mode desen — `KaliteKontrolListesi.jsx`, her satırda `finding_
 `get_quality_inspection_detail(p_id)` (`DenetimDetayModal.jsx` — tam `findings[]` listesi,
 `ORDER BY f.created_at, f.id` — aynı transaction içinde art arda eklenen bulgular Postgres'in
 transaction-sabit `now()`'ı yüzünden aynı `created_at`'ı alabiliyor, `f.id` tiebreaker'ı
-görüntüleme sırasının kararsız/rastgele olmasını önlüyor). İkisi de `REVOKE ... FROM PUBLIC, anon`.
+görüntüleme sırasının kararsız/rastgele olmasını önlüyor; her finding'e ayrıca `ticket_id` +
+`photos[]` — `quality_inspection_photos`'tan `id, storage_path, caption, uploaded_by, created_at`,
+aynı `created_at, id` tiebreaker'ı — dahil, 2026-07-19'da eklendi, bkz. foto+ticket görevi).
+İkisi de `REVOKE ... FROM PUBLIC, anon`.
+
+**`save_quality_inspection` artık id-bazlı upsert (2026-07-19'da değiştirildi):** önceden
+bulgular her kayıtta delete+reinsert ediliyordu (bkz. Bilinen açık noktalar'daki eski not,
+artık geçersiz) — bu, foto/ticket bağlantısı eklenince iki soruna yol açacaktı: (1) her
+düzenlemede INSERT tetiklenip mükerrer ticket açılması, (2) `quality_inspection_photos`'un
+`finding_id`'ye `ON DELETE CASCADE` FK'si yüzünden fotoğrafların sessizce silinmesi. Artık
+`daily_report_issues`'daki gibi id-bazlı: `p_findings` öğeleri opsiyonel `id` taşıyor, `id`
+yoksa INSERT (trigger tetiklenir), `id` varsa UPDATE (severity dahil, ama INSERT olmadığı için
+ticket tekrar açılmaz — severity sonradan yükseltilirse geriye dönük ticket AÇILMAZ, bilinçli
+asimetri, `daily_report_issues`'ta da aynısı var), payload'da id'si olmayan mevcut satırlar
+silinir (bağlı fotoğrafları da CASCADE ile gider — bulgu formdan kaldırılınca beklenen davranış).
 
 **Yazma:** `create_purchase_request_with_items(p_project_id, p_title, p_urgency, p_request_note, p_requested_by, p_items, p_category)`,
 `save_daily_report(p_project_id, p_report_date, p_created_by, p_general_status, p_worker_count, p_weather, p_weather_note, p_notes, p_personnel, p_machinery, p_progress, p_daily_tasks, p_materials, p_issues, p_task_progress)`
@@ -501,6 +515,21 @@ pending sarı, okunmuş+pending normal, resolved yeşil.
   olarak delete+reinsert YERİNE id-bazlı upsert yapar (bkz. RPC katmanı →
   `save_daily_report`) — bu ayrım kasıtlı, aksi halde her kayıtta mükerrer
   ticket açılırdı.
+- `quality_inspection_findings` INSERT (2026-07-19'da eklendi, `daily_report_issues`
+  zincirinin birebir aynısı ama filtreli) → `fn_create_ticket_from_quality_finding()`:
+  yalnızca `severity IN ('yüksek','kritik')` ise çalışır (düşük/orta bulgular hiç ticket
+  açmaz — `daily_report_issues`'tan FARKI budur, o her sorun için ticket açar).
+  `title='Kalite Bulgusu' || (' — '||location)`, `description=NEW.description` (bu
+  tabloda `__ISSUE_META__` paketleme YOK, severity/status/assigned_to zaten gerçek
+  kolon), `category='genel'` (tickets'ın `category` CHECK'i yalnızca genel/elektrik/
+  mekanik'e izin veriyor, "kalite" diye bir değer yok), `severity=NEW.severity`,
+  `status` `NEW.status`'tan map (açık→gönderildi, devam ediyor→işlemde, çözüldü→kapatıldı),
+  `created_by`=denetimi oluşturan, `assigned_to`=serbest metin eşleşmesi. Sonraki
+  `quality_inspection_findings` UPDATE'lerinde `status` değişirse
+  `fn_sync_ticket_status_from_quality_finding()` bağlı ticket'ın `status`'unu senkronlar
+  (tek yönlü, `daily_report_issues` deseniyle birebir aynı). **Bilinçli asimetri:**
+  severity sonradan yükseltilirse (örn. orta→kritik) geriye dönük ticket AÇILMAZ —
+  yalnızca INSERT tetikler (`daily_report_issues`'ta da aynı kısıtlama var).
 - Yukarıdaki tablolar + `daily_reports`/`purchase_requests`/`invoices`/`tickets`/`ticket_comments` INSERT/status değişimi → bildirim trigger'ları (bkz. yukarı).
 
 **"Gerçekleşen maliyet" kanonik tanımı:** `invoices.status IN ('onaylandı','ödendi')`,
@@ -568,7 +597,7 @@ proje oluştururken "Riskler" sayfasını hiç okumuyor, yalnızca mevcut projey
 güncelleme yaparken okuyor (`isNewProject` kontrolü, `project_category_weights`
 seed mantığıyla aynı desende ama ters yönde).
 
-### Modül → tablo haritası (30 tablo + 6 view + `notifications`)
+### Modül → tablo haritası (31 tablo + 6 view + `notifications`)
 | Modül | Tablolar |
 |---|---|
 | Proje yönetimi | projects, project_tasks, project_category_weights, project_risks |
@@ -576,7 +605,7 @@ seed mantığıyla aynı desende ama ters yönde).
 | İmalat ilerlemesi | progress_daily |
 | Satın alma (7 adım) | purchase_requests, purchase_request_items, purchase_request_status_log |
 | Fatura ve maliyet | invoices, invoice_approvals, suppliers, budget_lines, cost_allocations |
-| Kalite denetimi | quality_inspections, quality_inspection_findings |
+| Kalite denetimi | quality_inspections, quality_inspection_findings, quality_inspection_photos |
 | Kullanıcı yönetimi | roles, profiles, user_project_access |
 | Bildirim | notifications |
 | Destek / diğer | tickets, ticket_comments, ticket_history, agent_reports, procurement_items, procurement_item_adjustments, procurement_item_change_requests |
@@ -1007,9 +1036,51 @@ Alma/Finans Test Verisi notu).
   çekilerek) uçtan uca doğrulandı: sidebar doğru sekmeleri gösteriyor, denetim +
   2 bulgu oluşturma, bulgu durumu "çözüldü" yapma kalıcı, admin'in `ProjeDetay`
   içinden aynı veriyi görmesi — hepsi PASS; test verisi silindi, rol geri alındı.
-  **Kapsam dışı bırakıldı (bilinçli, ayrı gelecek görev):** foto yükleme,
-  yüksek/kritik bulgular için `daily_report_issues` deseniyle otomatik ticket
-  bağlantısı, denetim sonucu için ayrı bir onay/imza zinciri.
+  **Kapsam dışı bırakıldı (bilinçli, ayrı gelecek görev — foto+ticket kısmı
+  2026-07-19'da tamamlandı, bkz. aşağıdaki madde):** denetim sonucu için ayrı
+  bir onay/imza zinciri hâlâ yok.
+- **Kalite Kontrol foto yükleme + otomatik ticket bağlantısı (2026-07-19):**
+  Kalite Denetimi modülünün "temel kapsam" turunda bilinçli ertelenen iki parça
+  tamamlandı. Foto: yeni `quality_inspection_photos` tablosu (bulgu/finding
+  bazlı — `daily_report_photos` deseniyle birebir aynı, `finding_id` FK'si
+  `ON DELETE CASCADE`), mevcut `saha-fotolari` bucket'ı reuse edildi (yeni
+  bucket açılmadı), path `{project_id}/kalite-kontrolu/{finding_id}/{timestamp}_
+  {isim}` — ilk segment `project_id` olduğu için bucket'ın mevcut
+  `storage_delete` policy'sindeki `foldername(name)[1]` kontrolüyle otomatik
+  uyumlu, yeni bir storage policy gerekmedi. Yükleme/silme `DailyReportForm.jsx`
+  ile aynı stil: RPC değil, doğrudan `supabase.storage`/`.from()` (tek tablo
+  yazma, kural #6 kapsamı dışı); silme yetkisi yalnızca yükleyene ait
+  (`daily_report_photos`'un `drp_delete` deseniyle birebir aynı, admin dahil
+  başkası silemez). Ticket: `quality_inspection_findings`'e `ticket_id` kolonu +
+  2 yeni trigger (`fn_create_ticket_from_quality_finding`/
+  `fn_sync_ticket_status_from_quality_finding` — bkz. Trigger zincirleri) ile
+  yalnızca `yüksek`/`kritik` severity'li bulgular otomatik ticket açıyor
+  (`daily_report_issues`'tan farklı olarak düşük/orta hiç ticket açmaz).
+  `DenetimDetayModal.jsx`'e `daily_report_issues` ile birebir aynı "🎫 Ticket
+  açıldı →" rozeti eklendi (tam navigasyon: tıklanınca Tickets sekmesine geçip
+  ticket'ı doğrudan açıyor) — bunun için `index.jsx`'teki mevcut `goToTicket`
+  generic olarak yeniden kullanıldı, `ProjeDetay.jsx`'e ise kendi lokal tab
+  state'ine uygun ayrı bir `goToTicketLocal`/`ktOpenTicketId` eklendi (ikisi de
+  `KaliteKontrolListesi`/`DenetimDetayModal`'a yeni `onGoToTicket` prop'uyla akıyor).
+  Bu iki özelliğin ön koşulu olarak `save_quality_inspection` RPC'si delete+reinsert'ten
+  `daily_report_issues` deseniyle id-bazlı upsert'e geçirildi (bkz. RPC katmanı) —
+  aksi halde her düzenlemede mükerrer ticket açılır, fotoğraflar CASCADE ile
+  sessizce silinirdi. `execute_sql` ile doğrudan doğrulandı: yüksek severity
+  bulguya ticket açılıyor, aynı bulgunun severity'si sonradan yükseltilirse
+  (var olan id ile UPDATE) geriye dönük ticket AÇILMIYOR (bilinçli asimetri),
+  status "çözüldü" yapılınca ticket "kapatıldı" oluyor, tekrarlı save mükerrer
+  ticket üretmiyor. Playwright ile (izmir hesabı geçici `kalite_kontrol_sefi`ye
+  çekilerek) uçtan uca doğrulandı: düşük+yüksek bulgulu denetim oluşturma,
+  yalnızca yüksek bulguda ticket rozeti görünmesi, foto yükleme/thumbnail
+  gösterimi, rozete tıklayınca Tickets sekmesine geçip doğru ticket'ın
+  açılması — PASS; test verisi (denetim, bulgular, storage dosyası, ticket)
+  silindi, rol geri alındı. `get_advisors` migration sonrası yeni uyarı
+  göstermedi (trigger fonksiyonlarının `anon_security_definer_function_executable`
+  uyarısı `daily_report_issues` trigger'larında da zaten var — `RETURNS trigger`
+  fonksiyonları trigger dışı çağrılamadığından fiilen istismar edilemez, bilinen/
+  kabul edilmiş bir gürültü deseni). `npx vite build`/`npx eslint src` temiz,
+  `tests/faz-e.spec.js` regresyonu yeni sorun göstermedi (bilinen A/B/D hatası
+  aynen duruyor, header proje seçicisinin kaldırılmasından kalma).
 - **3 orphan/kullanılmayan DB nesnesi temizlendi (2026-07-18):** Bağımlılık
   taraması (Explore agent + doğrudan `pg_proc`/`pg_constraint` sorgusu) üçünün
   de güvenle silinebilir olduğunu doğruladı, kullanıcı onayıyla migration
@@ -1113,29 +1184,41 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**18.07.2026 (17) — RLS sertleştirme: `auth_rls_initplan` + `multiple_permissive_policies` kapatıldı.**
+**19.07.2026 (18) — Kalite Kontrol foto yükleme + otomatik ticket bağlantısı eklendi.**
 
-Orphan DB nesnelerinin temizlenmesinin ardından ("(16)", artık Tamamlanan büyük
-görevler'de) kullanıcı "RLS sertleştirme" maddesiyle devam etti. `get_advisors`
-(performance) + doğrudan `pg_policies` sorgusuyla CLAUDE.md'nin eski iddiası
-doğrulandı: **`profiles`'ta hiç sorun yokmuş** (yanlış eski not), gerçek sorun
-yalnızca `purchase_requests`'in `UPDATE`'inde 2 çakışan permissive politika
-(`pr_update`/`pr_update_proje_yoneticisi`) + 7 politikada ham `auth.uid()`
-kullanımıydı (`(select auth.uid())` sarmalı yok — `projects`, `purchase_requests`,
-`purchase_request_items` x4, `procurement_item_change_requests`).
+RLS sertleştirmenin ardından ("(17)", artık Tamamlanan büyük görevler'de, push
+edildiği doğrulandı) kullanıcı backlog'dan "Kalite Kontrol foto+ticket
+entegrasyonu"nu seçti — Kalite Denetimi modülünün "temel kapsam" turunda
+bilinçli ertelenen iki parça. Plan modunda `daily_report_photos`/
+`daily_report_issues` desenleri araştırılıp (Explore agent'lar + doğrudan
+`pg_proc`/`pg_policies` sorgusu) kullanıcıya iki kapsam sorusu soruldu: foto
+bulgu-bazlı mı denetim-bazlı mı (bulgu bazlı seçildi), ticket rozeti sade mi
+tam navigasyonlu mu (tam navigasyon seçildi — `daily_report_issues` ile birebir).
 
-Tam SQL plan modunda hazırlanıp onaylandı, tek migration'da uygulandı: 7 politika
-`ALTER POLICY` ile sarmalandı (matematiksel olarak birebir aynı sonuç), 2 UPDATE
-politikası `DROP` edilip `USING (A OR B)`/`WITH CHECK` ile tek politikada
-birleştirildi (permissive politikalar zaten OR'lanarak değerlendirildiğinden
-davranış değişikliği yok — yalnızca politika sayısı azaldı). `get_advisors`
-migration sonrası bu 8 uyarının hepsinin kalktığını doğruladı.
+3 migration, her biri tam SQL gösterilip ayrı onaylandı: (1) `quality_inspection_findings`'e
+`ticket_id` + yeni `quality_inspection_photos` tablosu/RLS (mevcut `saha-fotolari`
+bucket'ı reuse edildi, yeni bucket açılmadı), (2) `fn_create_ticket_from_quality_finding`
+(yalnızca yüksek/kritik severity'de tetiklenir) + `fn_sync_ticket_status_from_quality_finding`
+trigger'ları, (3) `save_quality_inspection`'ın delete+reinsert'ten id-bazlı upsert'e
+geçirilmesi (ticket dedup + foto CASCADE güvenliği için ön koşuldu) + `get_quality_inspection_detail`'e
+`photos[]`/`ticket_id` eklenmesi.
 
-Playwright ile uçtan uca doğrulandı (gerçek bir satın alma talebiyle):
-santiye_sefi talep oluşturur → admin onaylar (birleştirilmiş politikanın admin
-dalı) → proje_yoneticisi `TedarikKuyrugu`'ndan `satin_alindi`'ye ilerletir
-(birleştirilmiş politikanın proje_yoneticisi dalı) — PASS. Test verisi silindi.
-`tests/faz-e.spec.js` regresyonu: yeni sorun yok (F PASS). Frontend dosyası
-değişmedi (yalnızca DB migration). Detaylar "Tamamlanan büyük görevler"de.
+`execute_sql` ile doğrudan doğrulandı: yüksek severity bulguya otomatik ticket
+açılıyor, düşük'e açılmıyor, severity sonradan yükseltilse bile var olan bulguda
+geriye dönük ticket açılmıyor (bilinçli asimetri, `daily_report_issues` ile
+tutarlı), status "çözüldü" olunca ticket "kapatıldı" oluyor, tekrarlı kayıt
+mükerrer ticket üretmiyor. `get_advisors` migration sonrası yeni uyarı göstermedi.
 
-Commit yapıldı, push kullanıcı onayı bekliyor (henüz push edilmedi).
+Frontend: `YeniDenetimModal.jsx` id-bazlı payload'a geçti, `DenetimDetayModal.jsx`'e
+foto galerisi (yükle/thumbnail/sil) + ticket rozeti eklendi, `onGoToTicket` prop'u
+`KaliteKontrolListesi.jsx` üzerinden hem `index.jsx`'e (mevcut `goToTicket` reuse
+edildi) hem `ProjeDetay.jsx`'e (yeni lokal `goToTicketLocal`/`ktOpenTicketId`)
+bağlandı. Playwright ile uçtan uca doğrulandı (izmir hesabı geçici
+`kalite_kontrol_sefi`ye çekilerek): düşük+yüksek bulgulu denetim oluşturma,
+yalnızca yüksek bulguda ticket rozeti, foto yükleme, rozete tıklayınca Tickets
+sekmesine geçip doğru ticket'ın açılması — PASS. Test verisi (denetim, bulgular,
+storage dosyası, ticket) silindi, rol geri alındı. `npx vite build`/`npx eslint
+src` temiz, `tests/faz-e.spec.js` regresyonu yeni sorun göstermedi (bilinen A/B/D
+hatası aynen duruyor). Detaylar "Tamamlanan büyük görevler"de.
+
+Commit henüz yapılmadı, push için ayrıca onay istenecek.
