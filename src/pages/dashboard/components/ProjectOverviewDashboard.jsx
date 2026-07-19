@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { useWeather } from '../../../hooks/useWeather'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { normalizeStatus, statusLabel } from '../../../utils/satinAlma'
+import { PROJECT_STATUS_META } from '../../../utils/projectStatus'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import {
@@ -32,14 +33,6 @@ const TASK_CATEGORY_LABEL = {
   asik_montaji:   'Aşık Montajı',
   panel_montaji:  'Panel Montajı',
   kosk_trafo:     'Köşk Trafo',
-}
-
-const STATUS_LABEL = {
-  aktif: 'Aktif',
-  tamamlandi: 'Tamamlandı',
-  beklemede: 'Beklemede',
-  askida: 'Askıda',
-  gecikti: 'Gecikti',
 }
 
 const RISK_BADGE = {
@@ -547,7 +540,7 @@ export default function ProjectOverviewDashboard({
             <div>
               <DetailRow label="Proje Adı" value={currentProject?.name} />
               <DetailRow label="Proje Türü" value={TYPE_LABEL[currentProject?.project_type] || currentProject?.project_type || 'Arazi GES'} tone="primary" />
-              <DetailRow label="Durumu" value={STATUS_LABEL[currentProject?.status] || currentProject?.status || '—'} tone="success" />
+              <DetailRow label="Durumu" value={PROJECT_STATUS_META[currentProject?.status]?.label || currentProject?.status || '—'} tone="success" />
               <DetailRow label="Konumu" value={currentProject?.location} />
               <DetailRow label="Başlangıç" value={fmtDate(currentProject?.start_date)} />
               <DetailRow label="Bitiş" value={fmtDate(currentProject?.target_date)} />
