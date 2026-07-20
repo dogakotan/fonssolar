@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signOut } from '../../lib/supabase'
+import { supabase, signOut } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useScope } from '../../context/ScopeContext'
 import Sidebar from '../../components/layouts/Sidebar'
@@ -95,6 +95,7 @@ export default function Dashboard() {
   const [openRequestId,       setOpenRequestId]        = useState(null)
   const [openInvoiceId,       setOpenInvoiceId]        = useState(null)
   const [invoiceProjectId,    setInvoiceProjectId]     = useState(null)
+  const [initialProjectTab,   setInitialProjectTab]    = useState(null)
   const navigate = useNavigate()
 
   // Kısıtlı roller → başlangıç sekmesi
@@ -111,8 +112,25 @@ export default function Dashboard() {
   function handleSelectProject(id, name) {
     setSelectedProjectId(id)
     setSelectedProjectName(name)
+    setInitialProjectTab(null)
     setShowProjectDetail(true)
     setActiveTab('projeler')
+  }
+
+  // Bildirimler'den bir malzeme miktarı değişikliği bildirimine tıklanınca: ilgili
+  // projenin ProjeDetay'ına, doğrudan Malzeme Listesi sekmesiyle açık şekilde git
+  // (tek kayıt detay modalı yok, en azından doğru yere götürür). Proje adı bildirimde
+  // yok — ProjeDetay zaten kendi projesini RPC'den çekiyor, header'daki kısa süreli
+  // başlık için burada ayrıca hızlıca çekilir.
+  function goToProjectTab(id, tab) {
+    setSelectedProjectId(id)
+    setSelectedProjectName('')
+    setInitialProjectTab(tab)
+    setShowProjectDetail(true)
+    setActiveTab('projeler')
+    supabase.from('projects').select('name').eq('id', id).maybeSingle().then(({ data }) => {
+      if (data?.name) setSelectedProjectName(data.name)
+    })
   }
 
   function handleTabChange(tab) {
@@ -297,6 +315,7 @@ export default function Dashboard() {
             onBack={() => setShowProjectDetail(false)}
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
+            initialTab={initialProjectTab}
           />
         )}
         {activeTab === 'satin-alma'   && role === 'santiye_sefi' && (

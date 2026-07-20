@@ -614,8 +614,8 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 }
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate }) {
-  const [tab, setTab]                = useState('genel')
+export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab }) {
+  const [tab, setTab]                = useState(initialTab || 'genel')
   const [project, setProject]        = useState(null)
   const [wps, setWPs]                = useState([])
   const [progressSummary, setProgressSummary] = useState(null)
