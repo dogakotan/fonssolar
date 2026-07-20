@@ -1207,6 +1207,20 @@ Alma/Finans Test Verisi notu).
   testi bekleniyor** (headless ortamda yapılamadı): yönetici + şantiye şefi +
   proje yöneticisi ile login → sidebar/tab'lar öncekiyle birebir aynı olmalı.
   7 commit yapıldı, henüz push edilmedi (onay bekliyor).
+- **A5 (Muhasebe/Finans rol ekranı) sırasında bulunan 2 RLS açığı kapatıldı
+  (2026-07-20, 2 migration, ikisi de onaylı):** (1) `purchase_requests_insert`
+  policy'sinin `WITH CHECK`'i `(auth.uid() IS NOT NULL) OR (...)` şeklindeydi —
+  ilk dal her authenticated istekte true olduğundan bu bir no-op'tu: herhangi bir
+  rol herhangi bir proje için sahte satın alma talebi doğrudan `.insert()` ile
+  oluşturabiliyordu (uygulamanın kendisi bunu hiç yapmıyor — `create_purchase_request_with_items`
+  SECURITY DEFINER olduğundan bu policy'yi görmüyor — ama RLS son savunma
+  hattıdır, "UI kullanmıyor" güvenlik değildir). Düzeltme: `requested_by =
+  (select auth.uid()) AND has_project_access(project_id)`. (2) `pr_items_insert`
+  policy'si `admin` ile birlikte `muhasebe`'ye de herhangi bir projenin
+  `purchase_request_items`'ına yazma izni veriyordu, UI'da hiç kullanılmıyordu —
+  `muhasebe` policy'den çıkarıldı. `get_advisors`(security) migration'lar
+  sonrası yeni uyarı göstermedi, `pg_policy` ile her ikisi de doğrulandı.
+  Frontend dosyası değişmedi.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Orphan Kalite Kontrol RPC'leri (2026-07-20'de kaldırılan modülden kalıntı):**
@@ -1345,4 +1359,34 @@ Reddedildi" vs "Onaylandı"/"Reddedildi") — bugünkü onay kuyruğu filtresi
 ölü kod olarak silindi (gerçek bir status birleştirmesi değil, bkz. "A1-devam"
 hâlâ ayrı bir görev). A4 kapandı, ek DB/frontend işi gerekmiyor.
 
-Sıradaki madde: A5 (Muhasebe/Finans rol ekranı).
+**A5 (Muhasebe/Finans rol ekranı) gözden geçirmesi (aynı oturum, kapandı):**
+Keşifte UI tarafının zaten büyük ölçüde hazır olduğu görüldü — `navigation.js`
+muhasebe'yi `['finans','bildirimler']`e kısıtlıyor, `TabFinans.jsx` zaten ortak/
+paylaşılan bileşen (yeni bileşen yazılmadı, yalnızca `Maliyet Tablosu` alt-sekmesi
+`isAdmin` ile gizli). A5'in DB-doğrulama adımı (`muhasebe`'nin RLS yazma
+yetkilerini SQL ile listele) sırasında **iki gerçek RLS bulgusu** çıktı, ikisi de
+kullanıcı onayıyla migration'la kapatıldı:
+
+1. **Kritik, rol-bağımsız:** `purchase_requests_insert` policy'sinin
+   `WITH CHECK`'i `(auth.uid() IS NOT NULL) OR (...)` şeklindeydi — ilk dal her
+   authenticated istekte true olduğundan **herhangi bir rol herhangi bir proje
+   için, herhangi bir `requested_by` değeriyle** doğrudan `.insert()` çağrısıyla
+   sahte satın alma talebi oluşturabiliyordu (`create_purchase_request_with_items`
+   RPC'si SECURITY DEFINER olduğundan bu policy'yi hiç görmüyor, frontend de bu
+   tabloya hiç doğrudan `.insert()` yapmıyor — yani gerçek akışa hiçbir etkisi
+   yoktu, salt bir RLS backstop deliği). Düzeltme: `requested_by = (select
+   auth.uid()) AND has_project_access(project_id)`.
+2. **Muhasebe'ye özel:** `pr_items_insert` policy'si `admin` ile birlikte
+   `muhasebe`'ye de **herhangi bir projenin** `purchase_request_items`'ına yazma
+   izni veriyordu — UI'da muhasebe bu tabloya hiç dokunmuyor (yalnızca fatura
+   akışıyla ilgileniyor). `muhasebe` array'den çıkarıldı, `admin`/
+   `proje_yoneticisi`/kendi talebini açan kullanıcı dalları aynen kaldı.
+
+`get_advisors`(security) migration'lar sonrası yeni bir uyarı göstermedi. Frontend
+dosyası değişmedi (yalnızca 2 DB migration). A5 bu haliyle kapandı — muhasebe için
+ayrı bir ekran/bileşen yazmaya gerek kalmadı.
+
+Sıradaki madde: A6 (Proje yöneticisi rol ekranı — not: `satin_alma_uzmani` →
+`proje_yoneticisi` geçişi ve Tedarik Kuyruğu 2026-07-16/17'de zaten tamamlanmıştı,
+A6'ya başlarken bunun üzerine ne eklenmesi gerektiği netleştirilmeli, A4/A5'teki
+gibi muhtemelen küçük bir gözden geçirme olacak).
