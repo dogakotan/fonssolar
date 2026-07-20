@@ -789,7 +789,9 @@ Alma/Finans Test Verisi notu).
   eklendi (`useRealtimeRefresh`, debounce'lu); Playwright regresyon suite'i
   (`tests/faz-e.spec.js`) kalıcı altyapı olarak eklendi.
 - **FAZ1-5 iş akışları:** Bildirim sistemi (`notifications` + trigger'lar +
-  `NotificationBell`), BOM takibi (`vw_bom_tracking`, `bom_item_id`), Finans/
+  `NotificationBell`), BOM takibi (`vw_bom_tracking` — 2026-07-20'de hiç
+  kullanılmadığı için kaldırıldı, bkz. Tamamlanan büyük görevler, `bom_item_id`
+  kolonu hâlâ geçerli), Finans/
   maliyet netleştirme (kanonik "gerçekleşen" tanımı + `cost_allocations`
   otomatik senkron), Ticket düzeltmeleri (`project_id` nullable, `ticket_attachments`),
   Günlük rapor müşteri export'u (`buildPeriodReportData` + Roboto Unicode PDF
@@ -1266,7 +1268,9 @@ Alma/Finans Test Verisi notu).
   (kullanıcı kararı — `KaliteKontrolListesi.jsx`/`DenetimDetayModal.jsx`/
   `YeniDenetimModal.jsx`/`qualityInspection.js` silindi, Sidebar/ProjeDetay/index.jsx
   nav girişleri kaldırıldı, `kalite_kontrol_sefi` jenerik saha demetine geri döndü —
-  DB'ye dokunulmadı, bkz. Bilinen açık noktalar → orphan RPC notu); (2) **Finans
+  o gün DB'ye dokunulmamıştı, orphan RPC/tablolar 2026-07-20'de A1-devam sonrası
+  ayrı bir migration'la temizlendi, bkz. Tamamlanan büyük görevler → ilgili girdi);
+  (2) **Finans
   sadeleştirmesi** (`FaturaListesi.jsx` satır tıklaması artık doğrudan detay
   modalını açıyor, `OnayKuyrugu.jsx` yalnızca fiilen bekleyen faturaları
   gösterecek şekilde filtrelendi + "Tamamlanan/İptal Edilen" bölümü kaldırıldı,
@@ -1396,16 +1400,21 @@ Alma/Finans Test Verisi notu).
   her yeni export eklendiğinde beklenen +1 `react-refresh/only-export-components`
   uyarısı dışında yeni hata yok). Migration/RLS gerekmedi (tamamen salt-okunur
   render katmanı).
+- **Orphan Kalite Kontrol RPC/tablo/trigger'ları + kullanılmayan `vw_bom_tracking`
+  view'ı silindi (2026-07-20, 1 migration, onaylı):** Kalite Kontrol modülünün
+  geri gelmeyeceği netleşince `get_quality_inspections_list`,
+  `get_quality_inspection_detail`, `save_quality_inspection`,
+  `update_quality_finding_status`, `fn_create_ticket_from_quality_finding`,
+  `fn_sync_ticket_status_from_quality_finding` + `quality_inspections`/
+  `quality_inspection_findings`/`quality_inspection_photos` (3'ü de 0 satır,
+  veri kaybı yok) kalıcı olarak kaldırıldı. `vw_bom_tracking` da aynı migration'da
+  silindi — otomatik risk motoru (`fn_recompute_auto_risks`'in "malzeme_fazla_talep"
+  kuralı) zaten aynı karşılaştırmayı (istenen vs planlanan miktar) kendi ayrı,
+  daha basit sorgusuyla yapıyordu, view'a hiç bağlı değildi; motor DEĞİŞMEDİ,
+  yalnızca kullanılmayan view kaldırıldı. `get_advisors` (security+performance)
+  migration sonrası yeni uyarı göstermedi.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
-- **Orphan Kalite Kontrol RPC'leri (2026-07-20'de kaldırılan modülden kalıntı):**
-  `get_quality_inspections_list`, `get_quality_inspection_detail`, `save_quality_inspection`,
-  `update_quality_finding_status` DB'de duruyor (kullanıcı yalnızca frontend modülünü
-  kaldırdı, DB'ye dokunulmadı) ama artık hiçbir frontend bileşeni bunları çağırmıyor.
-  `quality_inspections`/`quality_inspection_findings`/`quality_inspection_photos`
-  tabloları ve ilgili trigger'lar (`fn_create_ticket_from_quality_finding` vb.) da
-  aynı şekilde kullanımda değil. Silinmedi — kullanıcı modülü yeniden isterse veri/
-  şema hazır kalsın diye bilinçli olarak korundu.
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
   kod tekrarı büyük ölçüde giderildi (2026-07-18):** `FaturaListesi`↔
   `ProjeTabFaturaListesi`, `OnayKuyrugu`↔`ProjeTabOnayKuyrugu`, `TalepListesi`
@@ -1435,9 +1444,6 @@ Alma/Finans Test Verisi notu).
   (`mechanical_checklist`/`electrical_checklist` tabloları — aynı gruptaki
   mekanik/elektrik checklist'ler — DB'den tamamen kaldırıldı, bu artık onlar
   için geçerli değil.)
-- **`vw_bom_tracking` view'ı hiç kullanılmıyor** — DB'de tanımlı (`over_requested`
-  dahil tam mantık var), otomatik risk motoru aynı işi kendi ayrı sorgusuyla
-  yapıyor. Silinebilir ya da risk motoru buna geçirilebilir, acil değil.
 - **Genel Proje kartlarındaki personel/makine sayıları ile dönem export'u
   farklı kaynaklardan besleniyor — DOĞRULANDI, kasıtlı (2026-07-18):**
   `ProjectOverviewDashboard.jsx` `get_project_by_date`'in `personnel`/`machinery`
@@ -1474,50 +1480,50 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**20.07.2026 — Çok uzun oturum: repo hijyeni + master plan Bölüm A (A3-A7) +
-proje yöneticisi/muhasebe sayfa erişimi + Bildirimler sayfası zenginleştirmesi/
-görsel yeniden tasarımı + PR_STATUS düzeltmesi + "is-plani" boş ekran riski +
-"A1-devam" tekilleştirmesinin tamamı kapatıldı. 13 commit push edildi, 7 yeni
-commit daha var (is-plani fix + A1-devam'ın 4 parçası + CLAUDE.md güncellemeleri) —
-henüz push edilmedi, onay bekliyor.**
+**20.07.2026 — Çok uzun oturum, go-live'dan bir gün önce (özellik dondurması
+günü): repo hijyeni + master plan Bölüm A (A3-A7) + proje yöneticisi/muhasebe
+sayfa erişimi + Bildirimler zenginleştirmesi/görsel yeniden tasarımı +
+"is-plani" boş ekran riski + "A1-devam" tekilleştirmesi + orphan DB temizliği.
+6 commit push edildi. DB tarafında 1 migration (onaylı) uygulandı.**
 
 Özet (detaylar Tamamlanan büyük görevler'de): (1) kirli working tree temizlendi,
 master plan Bölüm A'nın kalan maddeleri kapatıldı — 3 RLS açığı bulunup
 düzeltildi; (2) proje erişim kuralı doğrulandı, belgesiz bir test projesi
 temizlendi; (3) **Plan mode** ile proje yöneticisi/muhasebe sayfa erişimi
 yeniden tasarlandı, 3 gerçek erişim bug'ı bulundu/düzeltildi; (4) **Plan mode**
-ile Bildirimler zenginleştirildi (rozet+derin bağlantı), sonra ayrı bir turda
-görünümü yeniden tasarlandı (filtre çipleri, tarih grupları, ikonlu satırlar) +
-satın alma/ticket bildirimlerine `ApprovalStepsHorizontal.jsx` ile yatay onay
-süreci göstergesi eklendi + `PR_STATUS`'un eksik 3 durumu tamamlandı; (5)
-**Plan mode** ile `index.jsx`'teki latent "is-plani" boş ekran riski kapatıldı
-(kısıtsız rollerde stale localStorage sekmesi artık 'genel'e düşüyor); (6)
-**Plan mode** ile "A1-devam" tam kapatıldı — ticket statüsü (`TK_STATUS` eksik
-değer + `ticketStatus.js` dedup), risk severity (`RISK_BADGE.orta` tek satır),
-günlük rapor durumu (`DAILY_REPORT_STATUS` + 6 ölü legacy anahtar temizliği),
-satın alma statüsü (6 farklı temsil → kanonik `PR_STATUS`, 4 dosya) — bkz.
-Sistem mimarisi ilgili bölümler + Bilinen açık noktalar altındaki ayrıntılı not.
-Bölüm A (A0-A7) CC tarafı tamamen kapandı, Bölüm B "canlı ≥ 2 hafta" kriterini
-karşılamadığından beklemede.
+ile Bildirimler zenginleştirildi (rozet+derin bağlantı), sonra görünümü yeniden
+tasarlandı (filtre çipleri, tarih grupları, ikonlu satırlar) + satın alma/ticket
+bildirimlerine `ApprovalStepsHorizontal.jsx` ile yatay onay süreci göstergesi
+eklendi + `PR_STATUS`'un eksik 3 durumu tamamlandı; (5) **Plan mode** ile
+`index.jsx`'teki latent "is-plani" boş ekran riski kapatıldı; (6) **Plan mode**
+ile "A1-devam" tam kapatıldı (ticket statüsü, risk severity, günlük rapor
+durumu, satın alma statüsü — 4 domain); (7) go-live'a 1 gün kala **kapsam
+bilinçli daraltıldı** — kalan backlog'un 3 büyük maddesi (rol izin matrisi,
+proje sihirbazı kategori ağırlığı editörü, Adım5Tedarik yeniden tasarımı)
+kullanıcı kararıyla Bölüm B'ye (canlı sonrası) ertelendi, yalnızca 2 düşük
+riskli DB temizliği bugün yapıldı: orphan Kalite Kontrol RPC/tablo/trigger'ları
++ kullanılmayan `vw_bom_tracking` view'ı tek migration'la silindi (`get_advisors`
+temiz). Bölüm A (A0-A7) CC tarafı tamamen kapandı, A8 (go-live) yarın —
+Bölüm B "canlı ≥ 2 hafta" kriterini karşılamadığından beklemede.
 
-`npx eslint src`/`npx vite build` her adımda temiz (26 warning — StatusBadge.jsx'e
-her yeni export'ta beklenen +1 uyarı dışında hepsi pre-existing, 0 yeni hata).
-Migration/RLS gerekmedi (A1-devam tamamen salt-okunur render katmanı).
-**SEN kabul testi bekleniyor** (henüz push edilmedi):
+`npx eslint src`/`npx vite build` her adımda temiz (26 warning, hepsi
+pre-existing desenle aynı — 0 yeni hata). **SEN kabul testi bekleniyor**
+(push edildi):
 - Proje yöneticisi bir projeye girip Finans (salt-okunur)/Tickets (tam yetki)
   doğru mu; muhasebe üst seviye Finans'ta proje filtresi çalışıyor mu.
-- Bildirimler sayfasında: filtre çipleri/tarih grupları, satın alma/ticket
-  bildirimlerindeki yatay onay süreci göstergesi, fatura/malzeme değişikliği
-  rozetleri, her bildirim tipine tıklamanın doğru kaydı açması (özellikle proje
-  yöneticisi'nin projenin TÜM ticket'larını görmesi).
-- **Yeni:** paylaşımlı bir cihazda admin/koordinator gibi bir rolle girip
-  "is-plani" sekmesinde takılı kalınmadığını doğrula (localStorage'ı elle
-  `is-plani`'ye ayarlayıp rol değiştirerek test edilebilir).
-- **Yeni:** Satın Alma listesi/Tedarik Kuyruğu/Malzeme Listesi geçmişi/Talep
-  Detayı'ndaki durum rozetlerinin hepsinin artık aynı (10 değerli) etiket
-  setini kullandığını, `TedarikKuyrugu.jsx`'in artık "Muhasebeye yönlendirildi"
-  yerine kanonik "Satın Alındı" gösterdiğini kontrol et. Ticket listesinde
-  iptal edilmiş bir ticket varsa (ya da oluşturup) doğru rozeti gösterdiğini,
-  günlük rapor listesindeki durum rozetinin (Normal/Dikkat/Kritik) ve Genel
-  Proje'deki risk rozetlerinin (kritik/yüksek/orta/düşük 4 ayrı renk) doğru
-  göründüğünü doğrula.
+- Bildirimler: filtre çipleri/tarih grupları, satın alma/ticket bildirimlerindeki
+  yatay onay süreci göstergesi, fatura/malzeme değişikliği rozetleri, her
+  bildirim tipine tıklamanın doğru kaydı açması (özellikle proje yöneticisi'nin
+  projenin TÜM ticket'larını görmesi).
+- Paylaşımlı bir cihazda admin/koordinator gibi bir rolle "is-plani"de takılı
+  kalınmadığını doğrula.
+- Satın Alma/Tedarik Kuyruğu/Malzeme Listesi/Talep Detayı rozetlerinin aynı
+  (10 değerli) etiketi kullandığını, ticket/günlük rapor/risk rozetlerinin
+  doğru göründüğünü kontrol et.
+- Kalite Kontrol'e dair hiçbir ekranın/işlevin artık görünmediğini (zaten
+  frontend'i 2 gün önce kaldırılmıştı, bugün yalnızca DB kalıntısı temizlendi
+  — davranış değişikliği beklenmiyor) teyit et.
+
+**Sıradaki adım (kullanıcıyla konuşuldu):** Bugün kullanıcı kendi frontend
+düzenlemelerini yapacak, CC bunları kontrol edecek; yarın (Çarşamba) go-live
+işlemlerine (A8 — bkz. `cc-master-uygulama-plani.md`) geçilecek.
