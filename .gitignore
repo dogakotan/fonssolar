@@ -40,6 +40,10 @@ yarn-error.log*
 # Vercel
 .vercel
 
+# DB yedekleme (A7 - production hazirlik) - kimlik bilgisi + dump dosyalari git'e girmez
+scripts/db-backup/.env.local
+scripts/db-backup/backups/
+
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
