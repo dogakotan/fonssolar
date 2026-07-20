@@ -1176,8 +1176,58 @@ Alma/Finans Test Verisi notu).
   admin onaylar [merged policy'nin admin dalı] → proje_yoneticisi `TedarikKuyrugu`'ndan
   `satin_alindi`'ye ilerletir [merged policy'nin proje_yoneticisi dalı] — üçü de
   PASS); test verisi silindi. Frontend dosyası değişmedi (yalnızca DB migration).
+- **Repo hijyeni + Kalite Kontrol modülü kaldırma + Finans sadeleştirme + Master
+  plan A3 (2026-07-20):** Oturum başında working tree'de commit edilmemiş, önceki
+  bir oturumdan kalma A7 işleri (vercel.json güvenlik header'ları, `scripts/db-backup/`
+  günlük yedekleme scripti, `src/utils/imageCompression.js` — foto yükleme
+  noktalarında client-side sıkıştırma) + ayrı bir `AuthContext`/`getProjects`
+  bugfix'i (çok projeli/`cross_project` rollerde ana proje ataması ve `projects`
+  RLS'inin gösteremediği projelerin `get_project_by_date` ile tamamlanması)
+  bulundu; kullanıcı onayıyla mantıksal 4 ayrı commit'e bölündü. Oturum sırasında
+  kullanıcı eşzamanlı olarak editörde iki ayrı değişiklik daha yaptı (onlar da
+  ayrı commit'lendi): (1) ayrı **Kalite Kontrol modülünün tamamen kaldırılması**
+  (kullanıcı kararı — `KaliteKontrolListesi.jsx`/`DenetimDetayModal.jsx`/
+  `YeniDenetimModal.jsx`/`qualityInspection.js` silindi, Sidebar/ProjeDetay/index.jsx
+  nav girişleri kaldırıldı, `kalite_kontrol_sefi` jenerik saha demetine geri döndü —
+  DB'ye dokunulmadı, bkz. Bilinen açık noktalar → orphan RPC notu); (2) **Finans
+  sadeleştirmesi** (`FaturaListesi.jsx` satır tıklaması artık doğrudan detay
+  modalını açıyor, `OnayKuyrugu.jsx` yalnızca fiilen bekleyen faturaları
+  gösterecek şekilde filtrelendi + "Tamamlanan/İptal Edilen" bölümü kaldırıldı,
+  `ProjeTabFinans.jsx` sekme çubuğu inline style'dan `.finans-tabs`/`.finans-tab`
+  CSS sınıflarına taşındı).
+
+  Ardından **Master plan A3** (rol/menü tek kaynak) uygulandı: keşifte
+  `index.jsx`'in `ROLE_TABS`/`ROLE_DEFAULT`'ı ile `Sidebar.jsx`'in per-item
+  `roles` dizileri karşılaştırıldı, 19 rolün tamamında tutarsızlık bulunmadı
+  (tek latent bulgu `is-plani` render boşluğu, bkz. Bilinen açık noktalar — kural
+  gereği davranış değiştirilmeden olduğu gibi taşındı). Yeni `src/config/navigation.js`
+  (`NAVIGATION[role] = {tabs, defaultTab, sidebarItems}`, `FIELD_SPECIALIST_ROLES`/
+  `ROLE_LABEL` de buraya taşındı) — `index.jsx` ve `Sidebar.jsx` artık yalnızca
+  buradan okuyor. `npx vite build`/`npx eslint src` her adımda temiz. **SEN kabul
+  testi bekleniyor** (headless ortamda yapılamadı): yönetici + şantiye şefi +
+  proje yöneticisi ile login → sidebar/tab'lar öncekiyle birebir aynı olmalı.
+  7 commit yapıldı, henüz push edilmedi (onay bekliyor).
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
+- **Orphan Kalite Kontrol RPC'leri (2026-07-20'de kaldırılan modülden kalıntı):**
+  `get_quality_inspections_list`, `get_quality_inspection_detail`, `save_quality_inspection`,
+  `update_quality_finding_status` DB'de duruyor (kullanıcı yalnızca frontend modülünü
+  kaldırdı, DB'ye dokunulmadı) ama artık hiçbir frontend bileşeni bunları çağırmıyor.
+  `quality_inspections`/`quality_inspection_findings`/`quality_inspection_photos`
+  tabloları ve ilgili trigger'lar (`fn_create_ticket_from_quality_finding` vb.) da
+  aynı şekilde kullanımda değil. Silinmedi — kullanıcı modülü yeniden isterse veri/
+  şema hazır kalsın diye bilinçli olarak korundu.
+- **A3 keşfinde bulunan latent "is-plani" render boşluğu (davranış değişikliği
+  yasak olduğu için düzeltilmedi, bkz. Tamamlanan büyük görevler → A3):**
+  `index.jsx`'in `dash-content`'inde `is-plani` sekmesi yalnızca `santiye_sefi`,
+  `proje_yoneticisi` ve `FIELD_SPECIALIST_ROLES` için render dalına sahip; admin/
+  koordinator/proje_koordinatoru/muhendis/maliyet_kontrolcu/muhasebe için hiç dal
+  yok. Bugün UI'dan erişilemiyor (Sidebar bu rollere item'ı göstermiyor, ROLE_TABS
+  kısıtı da yok ama hiçbir yer `activeTab`'ı `is-plani` yapmıyor), ama
+  `dashboard-active-tab` düz `localStorage`'da tutulduğundan paylaşımlı bir
+  cihazda önceki bir rolün bıraktığı değer + rol değişince `NAVIGATION[role].defaultTab`
+  olmayan bu 6 rol → teorik olarak boş ekran. Küçük, ayrı bir düzeltme
+  (örn. başlangıç sekmesi doğrulamasının rol uygunluğunu da kontrol etmesi).
 - **"A1-devam" — status/severity map çakışmaları (2026-07-19'da bulundu, ayrı
   oturum gerektiriyor, bkz. Tamamlanan büyük görevler → Master plan A1):**
   (1) Risk severity (`project_risks.severity`) 3 bağımsız yerde temsil ediliyor
@@ -1211,10 +1261,12 @@ Alma/Finans Test Verisi notu).
   Eski 5 fazlı teknik plan dosyası (`C:\Users\fonss\Claude\Projects\Fons Solar\satin-alma-finans-birlestirme-cc-prompt.md`)
   artık tarihsel referans, güncel değil.
 - **Frontend artık 19/19 rolü tanıyor (2026-07-18'de kapandı, yukarı bkz. Roller
-  bölümü)** — ama hâlâ hardcoded `ROLE_TABS`/`ROLE_LABEL`/`Sidebar.jsx` dizileri
-  ile yönetiliyor, `roles` tablosundan okunan gerçek bir izin matrisi DEĞİL.
-  10 saha/teknik rolü (kalite_kontrol_sefi artık kendi modülüne kavuştu, bkz.
-  Tamamlanan büyük görevler → Kalite denetimi modülü) hâlâ aynı jenerik demeti
+  bölümü)** — 2026-07-20'de (A3) `ROLE_TABS`/`ROLE_DEFAULT`/`ROLE_LABEL`/
+  `Sidebar.jsx`'in per-item `roles` dizileri tek dosyaya (`src/config/navigation.js`,
+  `NAVIGATION[role] = {tabs, defaultTab, sidebarItems}`) konsolide edildi, ama
+  hâlâ hardcoded — `roles` tablosundan okunan gerçek bir izin matrisi DEĞİL.
+  `kalite_kontrol_sefi` (2026-07-20'de kendi modülü kaldırıldığı için, bkz.
+  Tamamlanan büyük görevler) dahil 11 saha/teknik rolü hâlâ aynı jenerik demeti
   paylaşıyor (Genel/İş Planı/Satın Alma/Tickets) — İSG/ENH gibi modüller
   yazılınca bu rollerin erişimi yeniden gözden geçirilmeli.
   (`mechanical_checklist`/`electrical_checklist` tabloları — aynı gruptaki
@@ -1259,37 +1311,30 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**20.07.2026 — Kullanıcı tercihi: ayrı Kalite Kontrol modülü istenmiyor.**
+**20.07.2026 — Repo hijyeni + Kalite Kontrol modülü kaldırma + Finans sadeleştirme + Master plan A3 tamamlandı.**
 
-Kullanıcı, uygulamadaki ayrı “Kalite Kontrol” bölümünü istemediğini belirtti. Bu
-nedenle modülün menü/proje detayı girişleri ve yalnız bu modüle ait frontend kodu
-kaldırıldı. Yeni bir Kalite Kontrol ekranı veya menü girişi kullanıcı açıkça
-yeniden istemedikçe eklenmemeli. Mevcut `kalite_kontrol_sefi` rolü ve geçmiş
-veritabanı yapıları/verileri bu karardan ayrı tutuldu ve korunuyor.
+Kullanıcı "sırayla git" akışına devam etti. Oturum önce kirli working tree'yi
+temizledi (bkz. Tamamlanan büyük görevler için tam detay): önceki oturumdan kalan
+commit'lenmemiş A7 işleri (vercel.json güvenlik header'ları, DB yedekleme
+scripti, foto sıkıştırma) + bir `AuthContext`/`getProjects` bugfix'i mantıksal
+commit'lere bölündü; kullanıcı eşzamanlı olarak editörde Kalite Kontrol
+modülünü tamamen kaldırdı (kendi kararı) ve Finans ekranlarını sadeleştirdi
+(fatura satırına tıklama, onay kuyruğu filtresi) — ikisi de ayrı commit oldu.
 
----
+Ardından **Master plan A3** (rol/menü tek kaynak) yapıldı: `index.jsx`
+(`ROLE_TABS`/`ROLE_DEFAULT`) ile `Sidebar.jsx` (per-item `roles` dizileri)
+karşılaştırıldı, 19 rolde tutarsızlık bulunmadı (tek latent bulgu: `is-plani`
+render boşluğu 6 rol için — davranış değiştirmeden olduğu gibi taşındı, bkz.
+Bilinen açık noktalar). Yeni `src/config/navigation.js`
+(`NAVIGATION[role] = {tabs, defaultTab, sidebarItems}`) — `index.jsx`/
+`Sidebar.jsx` artık yalnızca buradan besleniyor, `FIELD_SPECIALIST_ROLES`/
+`ROLE_LABEL` de tekilleştirildi. `npx vite build`/`npx eslint src` her adımda
+temiz. **SEN kabul testi bekleniyor** (headless ortamda yapılamadı — yönetici +
+şantiye şefi + proje yöneticisi ile login, sidebar/tab'lar öncekiyle birebir
+aynı olmalı). 7 commit yapıldı, push için onay istenecek.
 
-**19.07.2026 (20) — Master plan A1 (proje statüsü map konsolidasyonu) kapatıldı, sıralı devam kararı alındı.**
-
-A0-GÖREV 2'nin ardından ("(19)", artık Tamamlanan büyük görevler'de, push edildi)
-kullanıcı kalan master plan maddelerinde (A1/A3/A7/F1-F4/FD2/D3/D4) **"sırayla
-git"** dedi — yani sıradaki her maddeyi tek tek, kendi keşif→plan→onay→uygula
-döngüsüyle işlemeye başla. İlk madde A1 için 2 Explore agent'ıyla güncel durum
-tam tarandı: planın 17.07'de bahsettiği kopyaların bir kısmı 18.07'deki
-birleştirmede zaten kapanmıştı, ama tarama planın hiç bilmediği 10 status/severity
-map domaini + gerçek çakışmalar ortaya çıkardı (bkz. Tamamlanan büyük görevler →
-Master plan A1). Kapsam bilinçli olarak **proje statüsüne** daraltıldı (DB
-constraint'iyle 4 değer doğrulandı), geri kalan 4 alt-madde "A1-devam" olarak
-Bilinen açık noktalar'a not edildi.
-
-Yeni `src/utils/projectStatus.js` (`PROJECT_STATUS_META`) — `TabGenel.jsx`/
-`TabProjeler.jsx`/`TabProjeYonetimi.jsx` buradan besleniyor (saf refactor commit'i,
-Playwright ile 3 ekranda rozet metni/rengi birebir aynı doğrulandı), ayrı bir
-commit'te `ProjectOverviewDashboard.jsx`'in yanlış/eksik `STATUS_LABEL`'ı (DB'de
-olmayan `askida`/`gecikti` değerleri, eksik `iptal edildi`) düzeltildi — test
-verisiyle (Kayseri projesi geçici `iptal edildi`) doğrulanıp geri alındı. `npx
-vite build`/`npx eslint src` her commit sonrası temiz, `tests/faz-e.spec.js`
-regresyon (F testi) PASS. 2 commit yapıldı (`8e4d95b` refactor, `d6545a2` bugfix),
-push için onay istenecek.
-
-Sıradaki madde: A3 (rol/menü tek kaynak, `src/config/navigation.js`).
+Sıradaki madde: A4 (Finans birleştirme — not: A2/A4'ün asıl hedefi olan liste
+bileşeni birleştirmesi 2026-07-18'de zaten yapıldı, bu oturumdaki Finans
+sadeleştirmesi ayrı/ek bir iyileştirme; A4'ün DB tarafı — fatura onaylanınca
+cost_allocations senkronu — zaten canlı ve test edilmiş durumda, A4'e
+başlarken bunun üstüne ne eklenmesi gerektiği netleştirilmeli).
