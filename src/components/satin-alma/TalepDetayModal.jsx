@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { riskBreakdownForItems, normalizeStatus, isAwaitingInvoice } from '../../utils/satinAlma'
+import Badge, { PR_STATUS } from '../ui/StatusBadge'
 import FaturaOlusturModal from './FaturaOlusturModal'
 
 const fmtQty = (value) =>
@@ -10,26 +11,10 @@ const fmtQty = (value) =>
 const fmtDate = (date) =>
   date ? new Date(date).toLocaleDateString('tr-TR') : '-'
 
-const STATUS_META = {
-  bekliyor: { bg: '#FEF3C7', color: '#92400E', label: 'Bekliyor' },
-  onaylandi: { bg: '#D1FAE5', color: '#065F46', label: 'Onaylandı' },
-  red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Red Edildi' },
-  satin_alindi: { bg: '#DBEAFE', color: '#1E40AF', label: 'Satın Alındı' },
-  fatura_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Sürecinde' },
-  fatura_onay_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura Onayında' },
-  faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Faturası Kesildi' },
-  iptal: { bg: '#E5E7EB', color: '#374151', label: 'İptal Edildi' },
-}
-
 const CARD = { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: 14, minWidth: 0 }
 const TITLE = { margin: '0 0 10px', fontSize: 13, fontWeight: 800, color: '#0F172A' }
 const LABEL = { margin: 0, fontSize: 11, color: '#64748B' }
 const VALUE = { margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: '#0F172A' }
-
-function Badge({ status }) {
-  const meta = STATUS_META[normalizeStatus(status)] || { bg: '#F3F4F6', color: '#374151', label: status || '-' }
-  return <span style={{ background: meta.bg, color: meta.color, borderRadius: 999, padding: '4px 10px', fontSize: 11, fontWeight: 800 }}>{meta.label}</span>
-}
 
 function requestNo(req) {
   if (req.request_no || req.code) return req.request_no || req.code
@@ -132,7 +117,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Talep Detayı</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{requestNo(req)} · {req.title || req.material_name || 'Satın alma talebi'}</p>
           </div>
-          <Badge status={req.status} />
+          <Badge map={PR_STATUS} value={req.status} />
           <button onClick={onClose} style={{ border: 'none', background: 'transparent', color: '#64748B', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
         </header>
 

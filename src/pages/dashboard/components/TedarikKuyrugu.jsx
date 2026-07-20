@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import Pager from '../../../components/ui/Pager'
+import Badge, { PR_STATUS } from '../../../components/ui/StatusBadge'
 import { normalizeStatus } from '../../../utils/satinAlma'
 import { toUserMessage as translateError } from '../../../utils/errors'
 import { compressImageFile } from '../../../utils/imageCompression'
@@ -380,9 +381,7 @@ export default function TedarikKuyrugu({ projectId }) {
                       <td style={TD}>{requesterName(request)}</td>
                       <td style={TD}>{fmtDate(request.created_at)}</td>
                       <td style={{ ...TD, whiteSpace: 'nowrap' }}>
-                        <span style={{ background: waitingPm ? '#DBEAFE' : '#FEF3C7', color: waitingPm ? '#1E40AF' : '#92400E', fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 999 }}>
-                          {waitingPm ? 'Proje yöneticisinde' : 'Muhasebeye yönlendirildi'}
-                        </span>
+                        <Badge map={PR_STATUS} value={request.status} />
                       </td>
                       <td style={{ ...TD, whiteSpace: 'nowrap' }}>
                         {canAct && waitingPm ? (

@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import { toUserMessage as translateError } from '../../../utils/errors'
 import Pager from '../../../components/ui/Pager'
+import Badge, { PR_STATUS } from '../../../components/ui/StatusBadge'
 
 const PAGE_SIZE = 10
 const ROW_HEIGHT = 44
@@ -222,7 +223,10 @@ function MalzemeGecmisiModal({ row, requests, onClose }) {
                   <strong style={{ color: reversed ? '#991B1B' : '#166534', fontSize: 13 }}>+{formatQty(adjustment.delta_qty)} {row.unit}</strong>
                   <span style={{ fontSize: 11, fontWeight: 700, color: reversed ? '#991B1B' : '#166534' }}>{reversed ? 'Geri alındı' : 'Onaylandı ve listeye eklendi'}</span>
                 </div>
-                <p style={{ margin: '5px 0 0', color: '#475569', fontSize: 12 }}>{request?.title || request?.material_name || 'Bağlı satın alma talebi'}{request?.status ? ` · ${String(request.status).replace(/_/g, ' ')}` : ''}</p>
+                <p style={{ margin: '5px 0 0', color: '#475569', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span>{request?.title || request?.material_name || 'Bağlı satın alma talebi'}</span>
+                  {request?.status && <Badge map={PR_STATUS} value={request.status} />}
+                </p>
                 <p style={{ margin: '3px 0 0', color: '#64748B', fontSize: 11.5 }}>{adjustment.created_at ? new Date(adjustment.created_at).toLocaleString('tr-TR') : '—'}</p>
               </div>
             })}

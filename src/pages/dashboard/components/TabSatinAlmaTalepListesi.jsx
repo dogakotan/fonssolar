@@ -5,6 +5,7 @@ import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
 import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModal'
 import Pager from '../../../components/ui/Pager'
+import Badge, { PR_STATUS } from '../../../components/ui/StatusBadge'
 import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
 
 const STATUS_FILTERS = [
@@ -219,21 +220,6 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
     setActionLoading(null)
   }
 
-  function FlowBadge({ request }) {
-    const normalized = normalizeStatus(request.status)
-    const info = {
-      onaylandi: { bg: '#DBEAFE', color: '#1E40AF', label: 'Proje yöneticisinde' },
-      satin_alindi: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura bekleniyor' },
-      fatura_bekliyor: { bg: '#FEF3C7', color: '#92400E', label: 'Fatura bekleniyor' },
-      fatura_onay_bekliyor: { bg: '#EDE9FE', color: '#5B21B6', label: 'Fatura onayında' },
-      faturasi_kesildi: { bg: '#D1FAE5', color: '#065F46', label: 'Tamamlandı' },
-      red_edildi: { bg: '#FEE2E2', color: '#991B1B', label: 'Reddedildi' },
-      iptal: { bg: '#E5E7EB', color: '#374151', label: 'İptal' },
-    }[normalized] || { bg: '#F3F4F6', color: '#64748B', label: 'Bekliyor' }
-
-    return <span style={{ background: info.bg, color: info.color, fontSize: 11.5, fontWeight: 700, padding: '4px 10px', borderRadius: 999, whiteSpace: 'nowrap' }}>{info.label}</span>
-  }
-
   const filtered = requests.filter(request => {
     // Şantiye şefi görünümünde sadece kendi oluşturduğu talepler listelenir — proje
     // içindeki diğer kişilerin (yönetici vb.) talepleri gösterilmez.
@@ -356,7 +342,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                           </button>
                         </div>
                       ) : isPending ? (
-                        <FlowBadge request={request} />
+                        <Badge map={PR_STATUS} value={request.status} />
                       ) : canInvoice && isAwaitingInvoice(request) ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
                           <button onClick={event => { event.stopPropagation(); setFaturaRequest(request) }} style={{ background: '#EDE9FE', color: '#5B21B6', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -364,7 +350,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                           </button>
                         </div>
                       ) : (
-                        <FlowBadge request={request} />
+                        <Badge map={PR_STATUS} value={request.status} />
                       )}
                     </td>
                   </tr>
