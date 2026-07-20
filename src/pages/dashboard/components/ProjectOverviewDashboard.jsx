@@ -35,11 +35,13 @@ const TASK_CATEGORY_LABEL = {
   kosk_trafo:     'Köşk Trafo',
 }
 
+// SEV_BORDER'la (aşağıda) tutarlı 4 ayrı ton — 'orta' önceden 'yüksek' ile aynı 'amber'
+// rengi kullanıyordu, SEV_BORDER'daki gri (#94a3b8) ile çelişiyordu, ayrım kayboluyordu.
 const RISK_BADGE = {
   kritik: 'red',
   yüksek: 'amber',
   yuksek: 'amber',
-  orta: 'amber',
+  orta: 'gray',
   düşük: 'blue',
   dusuk: 'blue',
 }
