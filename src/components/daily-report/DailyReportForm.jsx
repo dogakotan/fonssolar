@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useWeather } from '../../hooks/useWeather'
 import { resolveProjectByAssignedId } from '../../utils/projectResolver'
 import { toUserMessage as translateError } from '../../utils/errors'
+import { compressImageFile } from '../../utils/imageCompression'
 
 function todayStr() {
   const d = new Date()
@@ -684,7 +685,11 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         p_notes:          reportNotesPayload(formData) || null,
         p_personnel:      persRows,
         p_machinery:      validMach,
+        // RPC'nin tek kanonik imzasında geriye uyumluluk için kalan alanlar.
+        // Bu formda eski ilerleme/malzeme bölümleri artık kullanılmıyor.
+        p_progress:       [],
         p_daily_tasks:    taskRows,
+        p_materials:      [],
         p_issues:         validIssues,
         p_task_progress:  progressRows,
       })
@@ -694,9 +699,10 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       // Fotoğraflar: Storage API'ye Postgres fonksiyonundan erişilemediği için
       // yükleme + kayıt istemci tarafında ayrı kalır.
       for (const photo of photos) {
-        const safeName = photo.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const uploadFile = await compressImageFile(photo.file)
+        const safeName = uploadFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const path = `${effectiveProjectId}/${formData.report_date}/${Date.now()}_${safeName}`
-        const { error: uploadErr } = await supabase.storage.from('saha-fotolari').upload(path, photo.file)
+        const { error: uploadErr } = await supabase.storage.from('saha-fotolari').upload(path, uploadFile)
         if (uploadErr) throw uploadErr
         const { error: photoInsertErr } = await supabase.from('daily_report_photos').insert({
           report_id:    rid,

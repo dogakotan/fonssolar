@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
+import { compressImageFile } from '../../utils/imageCompression'
 
 const ROW = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -107,8 +108,9 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
     if (err) { setError('Ticket oluşturulamadı. Lütfen tekrar deneyin.'); setSaving(false); return }
 
     for (const file of files) {
-      const path = `${inserted.id}/${Date.now()}-${file.name}`
-      const { error: uploadErr } = await supabase.storage.from('ticket-ekleri').upload(path, file)
+      const uploadFile = await compressImageFile(file)
+      const path = `${inserted.id}/${Date.now()}-${uploadFile.name}`
+      const { error: uploadErr } = await supabase.storage.from('ticket-ekleri').upload(path, uploadFile)
       if (!uploadErr) {
         await supabase.from('ticket_attachments').insert({
           ticket_id: inserted.id,

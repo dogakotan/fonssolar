@@ -4,6 +4,7 @@ import { useAuth } from '../../../context/AuthContext'
 import Pager from '../../../components/ui/Pager'
 import { normalizeStatus } from '../../../utils/satinAlma'
 import { toUserMessage as translateError } from '../../../utils/errors'
+import { compressImageFile } from '../../../utils/imageCompression'
 
 const PAGE_SIZE = 10
 const DOC_BUCKET = 'ticket-ekleri'
@@ -80,8 +81,9 @@ function TedarikBilgisiModal({ request, onClose, onSaved }) {
     let delivery_document_url = request.delivery_document_url || null
     if (file) {
       setUploading(true)
-      const path = `tedarik/${request.id}/${Date.now()}-${file.name}`
-      const { error: uploadErr } = await supabase.storage.from(DOC_BUCKET).upload(path, file)
+      const uploadFile = await compressImageFile(file)
+      const path = `tedarik/${request.id}/${Date.now()}-${uploadFile.name}`
+      const { error: uploadErr } = await supabase.storage.from(DOC_BUCKET).upload(path, uploadFile)
       setUploading(false)
       if (uploadErr) { setErr(toUserMessage(uploadErr)); setSaving(false); return }
       delivery_document_url = path
