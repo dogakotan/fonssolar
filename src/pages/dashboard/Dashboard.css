@@ -1745,3 +1745,48 @@ body, #root { overflow-x: hidden; }
   .bildirim-row { gap: 10px; }
   .bildirim-meta { align-items: flex-start; flex-direction: row-reverse; gap: 8px; }
 }
+
+/* ── Yatay onay süreci göstergesi (ApprovalStepsHorizontal.jsx) ── */
+.approval-steps-h { margin: 8px 0 2px; max-width: 420px; }
+.approval-steps-h-track { display: flex; align-items: center; position: relative; height: 16px; }
+.approval-steps-h-track::before {
+  content: '';
+  position: absolute;
+  left: calc(50% / var(--approval-steps-count, 5));
+  right: calc(50% / var(--approval-steps-count, 5));
+  top: 50%;
+  height: 2px;
+  background: var(--color-border-md);
+  transform: translateY(-50%);
+  z-index: 0;
+}
+.approval-steps-h-dotcol {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+.approval-steps-h-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-border-md);
+  box-shadow: 0 0 0 3px var(--color-surface);
+}
+.approval-steps-h-dot.done { background: var(--color-success); }
+.approval-steps-h-dot.active { background: var(--color-warning); }
+.approval-steps-h-dot.rejected { background: var(--color-danger); }
+.approval-steps-h-labels { display: flex; margin-top: 4px; }
+.approval-steps-h-label {
+  flex: 1;
+  text-align: center;
+  font-size: 9.5px;
+  line-height: 1.25;
+  color: var(--color-muted-light);
+  padding: 0 2px;
+  overflow-wrap: break-word;
+}
+.approval-steps-h-label.done,
+.approval-steps-h-label.active { color: var(--color-text); font-weight: 600; }
+.approval-steps-h-label.rejected { color: var(--color-danger); font-weight: 600; }

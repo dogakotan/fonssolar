@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
-import Badge, { PR_STATUS, TK_STATUS, INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS } from '../../../components/ui/StatusBadge'
+import Badge, { TK_STATUS, INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS } from '../../../components/ui/StatusBadge'
 import Pager from '../../../components/ui/Pager'
+import ApprovalStepsHorizontal from '../../../components/ui/ApprovalStepsHorizontal'
+import { buildApprovalSteps } from '../../../utils/satinAlma'
 import { MANAGER_ROLES } from '../../../config/navigation'
 
 const BADGE_MAP = {
-  purchase_request: PR_STATUS,
   ticket: TK_STATUS,
   invoice: INVOICE_STATUS,
   procurement_item_change_request: PROCUREMENT_CHANGE_STATUS,
@@ -256,7 +257,10 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                       <div className="bildirim-body">
                         <p className="bildirim-title">{n.title}</p>
                         {n.body && <p className="bildirim-desc">{n.body}</p>}
-                        {live && (
+                        {live && live.kind === 'purchase_request' && (
+                          <ApprovalStepsHorizontal steps={buildApprovalSteps(live.status)} />
+                        )}
+                        {live && live.kind !== 'purchase_request' && (
                           <p className="bildirim-live">
                             Şu an: <Badge map={BADGE_MAP[live.kind]} value={live.status} />
                           </p>

@@ -43,6 +43,27 @@ export function isAwaitingInvoice(request) {
   return !request.invoice_id && normalizeStatus(request.status) === 'satin_alindi'
 }
 
+// TalepDetayModal.jsx'in dikey "Onay Süreci" stepper'ıyla birebir aynı 5 adım/karar mantığı —
+// bildirimler sayfasındaki yatay özet burada tekilleştirildi (tarih/tedarikçi detayı olmadan,
+// yalnızca adım durumu — kompakt bildirim satırına sığması için).
+export function buildApprovalSteps(status) {
+  const s = normalizeStatus(status)
+  const isRejected = s === 'red_edildi'
+  const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(s)
+  const procurementActive = s === 'onaylandi'
+  const procurementDone = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(s)
+  const invoiceActive = ['fatura_bekliyor', 'fatura_onay_bekliyor'].includes(s)
+  const invoiceDone = s === 'faturasi_kesildi'
+
+  return [
+    { key: 'talep', label: 'Talep Oluşturuldu', done: true },
+    { key: 'onay', label: isRejected ? 'Onay Reddedildi' : 'Yönetici Onayı', done: approvalDone, active: s === 'bekliyor', rejected: isRejected },
+    { key: 'tedarik', label: 'Tedarikçi / Satın Alma', done: procurementDone, active: procurementActive },
+    { key: 'fatura_bekliyor', label: 'Fatura Bekleniyor', done: invoiceDone, active: invoiceActive },
+    { key: 'fatura_kesildi', label: 'Fatura Kesildi', done: invoiceDone },
+  ]
+}
+
 // Malzeme fiilen satın alınıp projeye ulaştı mı? (fatura süreci bundan sonra, bağımsız ilerler)
 function isDelivered(status) {
   return ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(normalizeStatus(status))
