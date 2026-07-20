@@ -212,13 +212,11 @@ function Section({ title, badge, badgeBg, badgeColor, children }) {
   )
 }
 
-// projectId yoksa (menü modu): tüm projeler, 2 bölüm (Muhasebe + Yönetici). projectId doluysa
-// (proje modu): yalnız o proje, aynı 2 bölüm + son 20 kapanan faturayı gösteren 3. bölüm.
+// Yalnız aktif olarak onay bekleyen faturaları gösterir.
 export default function OnayKuyrugu({ projectId = null }) {
   const { isAdmin, isMuhasebe, user } = useAuth()
   const [muhasebeKuyrugu, setMuhasebeKuyrugu] = useState([])
   const [yoneticiKuyrugu, setYoneticiKuyrugu] = useState([])
-  const [kapananFaturalar, setKapananFaturalar] = useState([])
   const [loading,         setLoading]         = useState(true)
   const [actionLoading,   setActionLoading]   = useState(null)
 
@@ -231,14 +229,16 @@ export default function OnayKuyrugu({ projectId = null }) {
       console.error('invoice approval queue fetch error:', error)
       setMuhasebeKuyrugu([])
       setYoneticiKuyrugu([])
-      setKapananFaturalar([])
       setLoading(false)
       return
     }
 
-    setMuhasebeKuyrugu(data.muhasebe_kuyrugu || [])
-    setYoneticiKuyrugu(data.yonetici_kuyrugu || [])
-    setKapananFaturalar(data.kapanan_faturalar || [])
+    setMuhasebeKuyrugu((data.muhasebe_kuyrugu || []).filter(inv =>
+      ['bekliyor', 'muhasebe_onayında'].includes(inv.status)
+    ))
+    setYoneticiKuyrugu((data.yonetici_kuyrugu || []).filter(inv =>
+      inv.status === 'yönetici_onayında'
+    ))
     setLoading(false)
   }
 
@@ -304,19 +304,6 @@ export default function OnayKuyrugu({ projectId = null }) {
             />
         }
       </Section>
-
-      {projectId && (
-        <Section
-          title="Tamamlanan / İptal Edilen"
-          badge={`${kapananFaturalar.length} fatura`}
-          badgeBg="#F3F4F6" badgeColor="#374151"
-        >
-          {kapananFaturalar.length === 0
-            ? <EmptyState text="Tamamlanan veya iptal edilen fatura yok" />
-            : <InvoiceTable invoices={kapananFaturalar} onAction={() => {}} actionLoading={actionLoading} readonly />
-          }
-        </Section>
-      )}
 
     </div>
   )

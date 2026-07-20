@@ -363,8 +363,8 @@ function FaturaIptalModal({ invoice, onClose, onSaved }) {
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
 // projectId/filterDate yoksa (menü modu): tüm projelerin faturaları, serbest proje seçici,
-// "Detay" → onay zinciri modalı. projectId doluysa (proje modu): yalnız o projenin faturaları
-// (filterDate'e kadar), kilitli proje seçici, admin/muhasebe için doğrudan "İptal Et".
+// Satıra tıklama → tüm fatura bilgileri ve onay zinciri modalı. projectId doluysa
+// (proje modu): yalnız o projenin faturaları (filterDate'e kadar), kilitli proje seçici.
 export default function FaturaListesi({ projectId = null, filterDate = null }) {
   const { isAdmin, isMuhasebe } = useAuth()
   const [invoices,     setInvoices]     = useState([])
@@ -455,7 +455,13 @@ export default function FaturaListesi({ projectId = null, filterDate = null }) {
                 {paged.map(inv => {
                   const b = STATUS_BADGE[inv.status] || { bg: '#F3F4F6', color: '#111827', label: inv.status }
                   return (
-                    <tr key={inv.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                    <tr
+                      key={inv.id}
+                      onClick={() => setDetayFatura(inv)}
+                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F8FAFC' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                    >
                       <td style={{ padding: '14px 16px', fontSize: 14, color: '#111827', fontWeight: 500 }}>{inv.invoice_no || '—'}</td>
                       <td style={{ padding: '14px 16px', fontSize: 14, color: '#111827' }}>{inv.suppliers?.name || '—'}</td>
                       <td style={{ padding: '14px 16px', fontSize: 13, color: '#6B7280', textTransform: 'capitalize' }}>{inv.category || '—'}</td>
@@ -471,7 +477,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null }) {
                           <td style={{ padding: '14px 16px' }}>
                             {inv.status === 'onaylandı' ? (
                               <button
-                                onClick={() => setCancelling(inv)}
+                                onClick={e => { e.stopPropagation(); setCancelling(inv) }}
                                 style={{ background: '#FEF2F2', color: '#DC2626', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
                               >
                                 İptal Et
@@ -482,7 +488,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null }) {
                       ) : (
                         <td style={{ padding: '14px 16px' }}>
                           <button
-                            onClick={() => setDetayFatura(inv)}
+                            onClick={e => { e.stopPropagation(); setDetayFatura(inv) }}
                             style={{ background: 'transparent', color: '#185FA5', border: '1px solid #185FA5', borderRadius: 6, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 500 }}
                           >
                             Detay
@@ -520,9 +526,16 @@ export default function FaturaListesi({ projectId = null, filterDate = null }) {
       </div>
 
       {showAdd && <FaturaEkleModal onClose={() => setShowAdd(false)} onSaved={fetchInvoices} defaultProjectId={projectId} />}
-      {projectId
-        ? cancelling && <FaturaIptalModal invoice={cancelling} onClose={() => setCancelling(null)} onSaved={fetchInvoices} />
-        : detayFatura && <FaturaDetayModal invoice={detayFatura} onClose={() => setDetayFatura(null)} onCancelled={fetchInvoices} />}
+      {detayFatura && (
+        <FaturaDetayModal
+          invoice={detayFatura}
+          onClose={() => setDetayFatura(null)}
+          onCancelled={fetchInvoices}
+        />
+      )}
+      {cancelling && (
+        <FaturaIptalModal invoice={cancelling} onClose={() => setCancelling(null)} onSaved={fetchInvoices} />
+      )}
     </>
   )
 }

@@ -1484,6 +1484,34 @@
   align-items: stretch;
   margin-bottom: 12px;
 }
+.finans-tabs {
+  display: grid;
+  grid-template-columns: repeat(var(--finans-tab-count), minmax(0, 1fr));
+  width: 100%;
+  margin-bottom: 20px;
+  border-bottom: 2px solid var(--color-border-md);
+  overflow: hidden;
+}
+.finans-tab {
+  min-width: 0;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  background: none;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+}
+.finans-tab.active {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+}
 .finans-ozet-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem; }
 .finans-ozet-columns > div:first-child { padding-right: .2rem; border-right: 1px solid #f1f5f9; }
 /* Kart genişledi (2 sütun) — içindeki yazılar da diğer Genel Proje kartlarına göre biraz büyük olsun. */
@@ -1540,6 +1568,8 @@
   .finans-panel-grid { grid-template-columns: 1fr; }
   .finans-ozet-card { grid-column: span 1; }
   .finans-row2-grid { grid-template-columns: 1fr; }
+  .finans-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .finans-tab { margin-bottom: 0; border-bottom-color: var(--color-border); }
 }
 
 /* ── Proje liste satırı — responsive ── */

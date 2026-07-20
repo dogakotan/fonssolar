@@ -81,17 +81,16 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      <div
+        className="finans-tabs"
+        style={{ '--finans-tab-count': TABS.length }}
+      >
         {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{
-            background: 'none', border: 'none', padding: '10px 22px',
-            fontSize: 14, fontWeight: tab === t.key ? 600 : 400,
-            color: tab === t.key ? 'var(--color-primary)' : 'var(--color-muted)',
-            cursor: 'pointer', fontFamily: 'inherit',
-            borderBottom: tab === t.key ? '2px solid var(--color-primary)' : '2px solid transparent',
-            marginBottom: -2,
-            whiteSpace: 'nowrap', flexShrink: 0,
-          }}>
+          <button
+            key={t.key}
+            className={tab === t.key ? 'finans-tab active' : 'finans-tab'}
+            onClick={() => setTab(t.key)}
+          >
             {t.label}
           </button>
         ))}
