@@ -1329,12 +1329,20 @@ Bilinen açık noktalar). Yeni `src/config/navigation.js`
 (`NAVIGATION[role] = {tabs, defaultTab, sidebarItems}`) — `index.jsx`/
 `Sidebar.jsx` artık yalnızca buradan besleniyor, `FIELD_SPECIALIST_ROLES`/
 `ROLE_LABEL` de tekilleştirildi. `npx vite build`/`npx eslint src` her adımda
-temiz. **SEN kabul testi bekleniyor** (headless ortamda yapılamadı — yönetici +
-şantiye şefi + proje yöneticisi ile login, sidebar/tab'lar öncekiyle birebir
-aynı olmalı). 7 commit yapıldı, push için onay istenecek.
+temiz. Kullanıcı 3 rolle (admin/şantiye şefi/proje yöneticisi) elle test etti,
+bozukluk yok — 8 commit push edildi.
 
-Sıradaki madde: A4 (Finans birleştirme — not: A2/A4'ün asıl hedefi olan liste
-bileşeni birleştirmesi 2026-07-18'de zaten yapıldı, bu oturumdaki Finans
-sadeleştirmesi ayrı/ek bir iyileştirme; A4'ün DB tarafı — fatura onaylanınca
-cost_allocations senkronu — zaten canlı ve test edilmiş durumda, A4'e
-başlarken bunun üstüne ne eklenmesi gerektiği netleştirilmeli).
+**A4 gözden geçirmesi (aynı oturum, kapandı):** A4'ün asıl hedefi (Finans liste
+bileşeni birleştirmesi) 2026-07-18'de zaten yapılmıştı — doğrulandı, ölü
+`ProjeTabFaturaListesi.jsx`/`ProjeTabOnayKuyrugu.jsx` kalmamış,
+`TabFinans.jsx`/`ProjeTabFinans.jsx` doğru şekilde ortak `FaturaListesi`/
+`OnayKuyrugu`'yu kullanıyor, `trg_invoice_cost_allocation` DB'de hâlâ etkin.
+Gözden geçirmede küçük bir bulgu çıktı: `OnayKuyrugu.jsx`'in yerel
+`statusMeta()`'sı `onaylandı`/`reddedildi` için `FaturaListesi.jsx`'in
+`STATUS_BADGE`'inden farklı etiketler taşıyordu ("Tamamlandı"/"İptal ve
+Reddedildi" vs "Onaylandı"/"Reddedildi") — bugünkü onay kuyruğu filtresi
+(yalnızca fiilen bekleyen faturalar) bu iki girdiyi zaten ulaşılamaz kılmıştı,
+ölü kod olarak silindi (gerçek bir status birleştirmesi değil, bkz. "A1-devam"
+hâlâ ayrı bir görev). A4 kapandı, ek DB/frontend işi gerekmiyor.
+
+Sıradaki madde: A5 (Muhasebe/Finans rol ekranı).
