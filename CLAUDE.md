@@ -1399,8 +1399,28 @@ değil. `ProjeTabSatinAlma.jsx`'in `procurementManagerView`'ı doğrulandı:
 (`fn_purchase_request_procurement_fields_only`, tutar/başlık değiştirilemez)
 `purchase_requests_update` policy'sinde hâlâ sağlam. Kod/DB değişikliği yok.
 
-Sıradaki madde: A7 (production hazırlık — not: bu oturumun başındaki repo
-hijyeninde vercel.json güvenlik header'ları, DB yedekleme scripti, foto
-sıkıştırma zaten yapılmıştı; A7'nin kalan maddeleri — hardcoded localhost/
-service_role taraması, advisor son turu, import kuru-çalışması, SEN'in
-Dashboard/Vercel/domain işleri — henüz yapılmadı).
+**A7 (production hazırlık) CC tarafı gözden geçirildi (aynı oturum, kapandı):**
+vercel.json header'ları/DB yedekleme scripti/foto sıkıştırma zaten bu oturumun
+başında yapılmıştı. Kalan CC maddeleri tarandı: `service_role` sızıntısı yok,
+gerçek gizli bilgi içeren `.env` git'e girmemiş (yalnızca `.env.example`
+şablonları), hiç `console.log` çağrısı yok. Tek bulgu: `DailyReportList.jsx`/
+`ProjeDetay.jsx`'teki PDF servis endpoint'i `VITE_PDF_SERVICE_URL` set değilse
+`http://127.0.0.1:8002`'ye düşüyor — üretimde bu env var Vercel'de tanımlanmazsa
+PDF export'u sessizce tarayıcıdan localhost'a gitmeye çalışıp başarısız olur
+(veri sızdırmıyor, yalnızca fonksiyon çalışmaz). Kullanıcı kararıyla dokunulmadı
+— go-live öncesi `VITE_PDF_SERVICE_URL`'in Vercel env'e eklendiğinden emin
+olunmalı. `get_advisors` son turu: security'de yalnızca bilinen/ertelenen
+`leaked_password_protection` (Pro plan, A9) ve beklenen SECURITY DEFINER RPC
+uyarıları; performance'ta yalnızca INFO seviyeli unindexed-FK/unused-index
+(bu veri ölçeğinde aksiyon gerektirmiyor). `archive._backup_20260709_*`
+tabloları kullanıcı kararıyla silinmedi (BOM doğrulaması bitince ayrıca
+silinecek, A7'nin SEN listesinde zaten var). Kalan A7 maddeleri (Supabase
+Dashboard ayarları, Vercel Pro/domain, gerçek Excel import kuru-çalışması) SEN
+işi, CC'nin yapacağı bir şey yok.
+
+Bölüm A'nın (A0-A7) CC tarafı bu oturumla tamamen gözden geçirildi/kapandı — A8
+(go-live günü) ve A9 (Pro'ya geçiş) tamamen SEN işi, CC promptu içermiyor.
+
+Sıradaki madde: Bölüm B (canlı sonrası refactor — F1-F4/D1/FD2/D3/D4) henüz
+başlama kriterlerini karşılamıyor ("canlı ≥ 2 hafta" şartı var, go-live henüz
+olmadı) — bu yüzden şimdilik bekliyor, master plan sırası burada duruyor.
