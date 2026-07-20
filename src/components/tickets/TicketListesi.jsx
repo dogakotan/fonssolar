@@ -5,30 +5,10 @@ import YeniTicketModal from './YeniTicketModal'
 import TicketDetayModal from './TicketDetayModal'
 import DateNavigator from '../ui/DateNavigator'
 import { SEVERITY_META as SEVERITY, SEVERITY_ORDER, SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
-
-const STATUS = {
-  'gönderildi':   { bg: '#DBEAFE', color: '#1D4ED8', label: 'Gönderildi' },
-  'açık':         { bg: '#DBEAFE', color: '#1D4ED8', label: 'Gönderildi' },
-  'işlemde':      { bg: '#E5E7EB', color: '#6B7280', label: 'İşlemde' },
-  'kapatıldı':    { bg: '#D1FAE5', color: '#065F46', label: 'Kapatıldı' },
-  'iptal_edildi': { bg: '#F3F4F6', color: '#9CA3AF', label: 'İptal Edildi' },
-}
-const CATEGORY = {
-  'genel':    { bg: '#F3F4F6', color: '#6B7280' },
-  'elektrik': { bg: '#EFF6FF', color: '#185FA5' },
-  'mekanik':  { bg: '#F5F3FF', color: '#7C3AED' },
-}
+import { STATUS_META as STATUS, CATEGORY_META as CATEGORY, STATUS_TABS } from '../../utils/ticketStatus'
 
 const TH = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
-
-const STATUS_TABS = [
-  { key: 'all',          label: 'Tümü' },
-  { key: 'gönderildi',   label: 'Gönderildi' },
-  { key: 'işlemde',      label: 'İşlemde' },
-  { key: 'kapatıldı',    label: 'Kapatıldı' },
-  { key: 'iptal_edildi', label: 'İptal Edildi' },
-]
 
 /* ── Hızlı aksiyon modalı (satır butonu) ── */
 function QuickActionModal({ ticket, action, onClose, onDone }) {

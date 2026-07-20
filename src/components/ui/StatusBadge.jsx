@@ -27,11 +27,14 @@ export const PR_URGENCY = {
   acil:     { label: 'Acil',      tone: 'warning' },
   çok_acil: { label: 'Çok Acil', tone: 'danger' },
 }
+// tickets_status_check (DB) 5 değere izin verir — bu harita önceden yalnızca 4'ünü tanıyordu
+// (iptal_edildi eksikti), iptal edilmiş bir ticket ham enum metnine düşüyordu.
 export const TK_STATUS = {
-  gönderildi: { label: 'Gönderildi', tone: 'primary' },
-  açık:       { label: 'Açık',       tone: 'primary' },
-  işlemde:    { label: 'İşlemde',    tone: 'warning' },
-  kapatıldı:  { label: 'Kapatıldı', tone: 'success' },
+  gönderildi:   { label: 'Gönderildi',   tone: 'primary' },
+  açık:         { label: 'Açık',         tone: 'primary' },
+  işlemde:      { label: 'İşlemde',      tone: 'warning' },
+  kapatıldı:    { label: 'Kapatıldı',    tone: 'success' },
+  iptal_edildi: { label: 'İptal Edildi', tone: 'muted' },
 }
 export const TK_SEVERITY = {
   düşük:  { label: 'Düşük',   tone: 'muted' },
