@@ -1346,6 +1346,20 @@ Alma/Finans Test Verisi notu).
   sekmesine götürülüyor). `NotificationBell.jsx` kullanıcı kararıyla kasıtlı
   dokunulmadı. RLS/migration gerekmedi. `npx eslint src`/`npx vite build` her
   commit sonrası temiz.
+- **Bildirimler görsel yeniden tasarım + yatay onay süreci göstergesi +
+  "is-plani" boş ekran riski kapatıldı (2026-07-20):** bkz. Sistem mimarisi →
+  "Bildirim" bölümündeki ayrıntılı not (filtre çipleri, tarih grupları, ikonlu
+  satırlar, `ApprovalStepsHorizontal.jsx` ile satın alma/ticket bildirimlerinde
+  yatay 5/3 adımlı süreç göstergesi, `PR_STATUS`'a eksik 3 durum eklendi). Ayrıca
+  aşağıda "Bilinen açık noktalar"da duran latent "is-plani" render boşluğu
+  kapatıldı: `index.jsx`'teki "Kısıtlı roller → başlangıç sekmesi" `useEffect`'i
+  artık `NAVIGATION[role]?.defaultTab` yoksa (kısıtsız roller — admin/koordinator/
+  proje_koordinatoru/muhendis/maliyet_kontrolcu) `activeTab === 'is-plani'` olup
+  olmadığını da kontrol edip `'genel'`e düşürüyor — paylaşımlı bir cihazda önceki
+  rolden `localStorage`'da kalan bu değer artık boş ekrana yol açmıyor. Dar
+  kapsamlı, tek koşullu bir düzeltme (yalnızca `is-plani`); diğer sekmelerin
+  (`finans`/`tickets` gibi permissive render koşullu ama sidebar'da görünmeyen
+  kombinasyonların) davranışına dokunulmadı — kasıtlı, ayrı bir konu.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Orphan Kalite Kontrol RPC'leri (2026-07-20'de kaldırılan modülden kalıntı):**
@@ -1356,17 +1370,6 @@ Alma/Finans Test Verisi notu).
   tabloları ve ilgili trigger'lar (`fn_create_ticket_from_quality_finding` vb.) da
   aynı şekilde kullanımda değil. Silinmedi — kullanıcı modülü yeniden isterse veri/
   şema hazır kalsın diye bilinçli olarak korundu.
-- **A3 keşfinde bulunan latent "is-plani" render boşluğu (davranış değişikliği
-  yasak olduğu için düzeltilmedi, bkz. Tamamlanan büyük görevler → A3):**
-  `index.jsx`'in `dash-content`'inde `is-plani` sekmesi yalnızca `santiye_sefi`,
-  `proje_yoneticisi` ve `FIELD_SPECIALIST_ROLES` için render dalına sahip; admin/
-  koordinator/proje_koordinatoru/muhendis/maliyet_kontrolcu/muhasebe için hiç dal
-  yok. Bugün UI'dan erişilemiyor (Sidebar bu rollere item'ı göstermiyor, ROLE_TABS
-  kısıtı da yok ama hiçbir yer `activeTab`'ı `is-plani` yapmıyor), ama
-  `dashboard-active-tab` düz `localStorage`'da tutulduğundan paylaşımlı bir
-  cihazda önceki bir rolün bıraktığı değer + rol değişince `NAVIGATION[role].defaultTab`
-  olmayan bu 6 rol → teorik olarak boş ekran. Küçük, ayrı bir düzeltme
-  (örn. başlangıç sekmesi doğrulamasının rol uygunluğunu da kontrol etmesi).
 - **"A1-devam" — status/severity map çakışmaları (2026-07-19'da bulundu, ayrı
   oturum gerektiriyor, bkz. Tamamlanan büyük görevler → Master plan A1):**
   (1) Risk severity (`project_risks.severity`) 3 bağımsız yerde temsil ediliyor

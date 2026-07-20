@@ -100,8 +100,18 @@ export default function Dashboard() {
 
   // Kısıtlı roller → başlangıç sekmesi
   useEffect(() => {
-    const defaultTab = role && NAVIGATION[role]?.defaultTab
-    if (defaultTab) setActiveTab(defaultTab)
+    if (!role) return
+    const defaultTab = NAVIGATION[role]?.defaultTab
+    if (defaultTab) {
+      setActiveTab(defaultTab)
+      return
+    }
+    // Kısıtsız roller (tabs: null — admin/koordinator/proje_koordinatoru/muhendis/
+    // maliyet_kontrolcu) için 'is-plani' sekmesinin hiç render dalı yok (yalnızca
+    // santiye_sefi/proje_yoneticisi/saha uzmanı rollerinde var, bkz. dash-content).
+    // Paylaşımlı bir cihazda önceki rolden localStorage'da kalan bu değer boş ekrana
+    // yol açabilir — güvenli varsayılana (genel) düş.
+    setActiveTab(current => (current === 'is-plani' ? 'genel' : current))
   }, [role])
 
   useEffect(() => {
