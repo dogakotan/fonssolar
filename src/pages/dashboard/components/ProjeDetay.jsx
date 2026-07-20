@@ -615,8 +615,6 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
 export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate }) {
-  const { role } = useAuth()
-  const canViewFinanceAndTickets = role !== 'proje_yoneticisi'
   const [tab, setTab]                = useState('genel')
   const [project, setProject]        = useState(null)
   const [wps, setWPs]                = useState([])
@@ -633,12 +631,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const exportRef = useRef(null)
   const calendarRef = useRef(null)
   const calendarDays = useMemo(() => buildCalendarDays(calendarMonth), [calendarMonth])
-
-  useEffect(() => {
-    if (!canViewFinanceAndTickets && ['finans', 'tickets'].includes(tab)) {
-      setTab('genel')
-    }
-  }, [canViewFinanceAndTickets, tab])
 
   useEffect(() => {
     function handleOut(e) {
@@ -1135,16 +1127,15 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           <button onClick={() => setTab('malzeme-listesi')} style={tab === 'malzeme-listesi' ? tabBtnActive : tabBtn}>
             Malzeme Listesi
           </button>
-          {canViewFinanceAndTickets && (
-            <button onClick={() => setTab('finans')} style={tab === 'finans' ? tabBtnActive : tabBtn}>
-              Finans
-            </button>
-          )}
-          {canViewFinanceAndTickets && (
-            <button onClick={() => setTab('tickets')} style={tab === 'tickets' ? tabBtnActive : tabBtn}>
-              Ticket
-            </button>
-          )}
+          {/* Finans: proje_yoneticisi de görür ama salt-okunur (bkz. FaturaListesi/OnayKuyrugu
+              içindeki isAdmin/isMuhasebe'den türetilen canAct/readonly). Tickets: tüm roller
+              santiye_sefi ile aynı seviyede tam yetkili (bkz. TicketListesi'nin fetchTickets'ı). */}
+          <button onClick={() => setTab('finans')} style={tab === 'finans' ? tabBtnActive : tabBtn}>
+            Finans
+          </button>
+          <button onClick={() => setTab('tickets')} style={tab === 'tickets' ? tabBtnActive : tabBtn}>
+            Ticket
+          </button>
           <button onClick={() => setTab('raporlar')} style={tab === 'raporlar' ? tabBtnActive : tabBtn}>
             Raporlar
           </button>
@@ -1295,7 +1286,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
       {tab === 'ekip' ? (
         <EkipListesi projectId={projectId} />
-      ) : tab === 'tickets' && canViewFinanceAndTickets ? (
+      ) : tab === 'tickets' ? (
         <TicketListesi
           projectId={projectId}
           filterDate={filterDate}
@@ -1304,7 +1295,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
       ) : tab === 'malzeme-listesi' ? (
         <ProjeTabMalzemeListesi projectId={projectId} filterDate={filterDate} />
-      ) : tab === 'finans' && canViewFinanceAndTickets ? (
+      ) : tab === 'finans' ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'raporlar' ? (
         <DailyReportList projectId={projectId} title="Günlük Raporlar" showHeader={false} />

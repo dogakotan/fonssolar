@@ -392,9 +392,11 @@ export default function FaturaListesi({ projectId = null, filterDate = null }) {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged      = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
-  const canCancel = isAdmin || isMuhasebe
+  // Fatura yazma yetkisi yalnızca admin/muhasebe'de (RLS'in de zaten tek izin verdiği roller) —
+  // proje_yoneticisi (ve Finans'a erişebilen diğer "kısıtsız" roller) Finans'ı salt-okunur görür.
+  const canAct = isAdmin || isMuhasebe
   const TH = projectId
-    ? ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM', ...(canCancel ? ['İŞLEMLER'] : [])]
+    ? ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM', ...(canAct ? ['İŞLEMLER'] : [])]
     : ['FATURA NO', 'TEDARİKÇİ', 'KATEGORİ', 'FATURA TARİHİ', 'VADE TARİHİ', "TUTAR (KDV'SİZ)", "TOPLAM (KDV'Lİ)", 'DURUM', 'İŞLEMLER']
 
   return (
@@ -421,12 +423,14 @@ export default function FaturaListesi({ projectId = null, filterDate = null }) {
               <option value="onaylandı">Onaylandı</option>
               <option value="reddedildi">Reddedildi</option>
             </select>
-            <button
-              onClick={() => setShowAdd(true)}
-              style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}
-            >
-              + Fatura Ekle
-            </button>
+            {canAct && (
+              <button
+                onClick={() => setShowAdd(true)}
+                style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}
+              >
+                + Fatura Ekle
+              </button>
+            )}
           </div>
         </div>
 
@@ -473,7 +477,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null }) {
                         <span style={{ background: b.bg, color: b.color, fontSize: 12, fontWeight: 500, padding: '3px 10px', borderRadius: 20 }}>{b.label}</span>
                       </td>
                       {projectId ? (
-                        canCancel && (
+                        canAct && (
                           <td style={{ padding: '14px 16px' }}>
                             {inv.status === 'onaylandı' ? (
                               <button

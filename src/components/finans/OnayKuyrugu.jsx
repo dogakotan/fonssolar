@@ -300,7 +300,7 @@ export default function OnayKuyrugu({ projectId = null }) {
               invoices={yoneticiKuyrugu}
               onAction={(id, action, note) => handleAction(id, action, note, 2)}
               actionLoading={actionLoading}
-              readonly={isMuhasebe}
+              readonly={!isAdmin}
             />
         }
       </Section>
