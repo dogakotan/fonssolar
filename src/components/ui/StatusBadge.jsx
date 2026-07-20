@@ -54,6 +54,11 @@ export const PROCUREMENT_CHANGE_STATUS = {
   onaylandi:  { label: 'Onaylandı',     tone: 'success' },
   reddedildi: { label: 'Reddedildi',    tone: 'danger' },
 }
+export const DAILY_REPORT_STATUS = {
+  normal: { label: 'Normal', tone: 'success' },
+  dikkat: { label: 'Dikkat', tone: 'warning' },
+  kritik: { label: 'Kritik', tone: 'danger' },
+}
 
 export default function Badge({ map, value }) {
   const entry = map[value] || { label: value || '—', tone: 'muted' }

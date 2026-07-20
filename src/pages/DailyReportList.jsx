@@ -6,6 +6,7 @@ import { useDashboardData } from '../hooks/useDashboardData'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import DailyReportDetail from './DailyReportDetail'
+import Badge, { DAILY_REPORT_STATUS } from '../components/ui/StatusBadge'
 import { exportToExcel, exportToPdf } from '../utils/exportUtils'
 import {
   fetchXlsxTemplate,
@@ -23,18 +24,6 @@ const WEATHER_EMOJI = {
   'Yağmurlu': '🌧️', 'Karlı': '🌨️', 'Fırtınalı': '⛈️', 'Sisli': '🌫️',
   'açık': '☀️', 'parçalı bulutlu': '⛅', 'bulutlu': '☁️',
   'yağmurlu': '🌧️', 'karlı': '🌨️', 'fırtınalı': '⛈️',
-}
-
-const STATUS_COLORS = {
-  'İyi':          { bg: '#D1FAE5', color: '#065F46' },
-  'Normal':       { bg: '#EEF2FF', color: '#3730A3' },
-  'Gecikme Var':  { bg: '#FEF3C7', color: '#92400E' },
-  'Durduruldu':   { bg: '#FEE2E2', color: '#991B1B' },
-  'iyi':          { bg: '#D1FAE5', color: '#065F46' },
-  'normal':       { bg: '#EEF2FF', color: '#3730A3' },
-  'sorunlu':      { bg: '#FEE2E2', color: '#991B1B' },
-  'dikkat':       { bg: '#FEF3C7', color: '#92400E' },
-  'kritik':       { bg: '#FEE2E2', color: '#991B1B' },
 }
 
 function todayStr() {
@@ -648,15 +637,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
                       <span style={{ fontSize: 11, color: '#6B7280', marginLeft: 4 }}>{r.weather || '—'}</span>
                     </td>
                     <td style={TD}>
-                      {r.general_status ? (
-                        <span style={{
-                          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-                          background: STATUS_COLORS[r.general_status]?.bg || '#F3F4F6',
-                          color: STATUS_COLORS[r.general_status]?.color || '#374151',
-                        }}>
-                          {r.general_status}
-                        </span>
-                      ) : '—'}
+                      {r.general_status ? <Badge map={DAILY_REPORT_STATUS} value={r.general_status} /> : '—'}
                     </td>
                     <td style={{ ...TD, fontWeight: 600 }}>{r.worker_count || 0}</td>
                     <td style={{ ...TD, textAlign: 'left', color: '#374151' }}>

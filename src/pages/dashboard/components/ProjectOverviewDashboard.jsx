@@ -4,6 +4,7 @@ import { useWeather } from '../../../hooks/useWeather'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { normalizeStatus, statusLabel } from '../../../utils/satinAlma'
 import { PROJECT_STATUS_META } from '../../../utils/projectStatus'
+import { TONE, DAILY_REPORT_STATUS } from '../../../components/ui/StatusBadge'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import {
@@ -585,8 +586,9 @@ export default function ProjectOverviewDashboard({
                 color: delayColor,
               }
 
+              const dailyStatusMeta = DAILY_REPORT_STATUS[report?.general_status]
               const periodSpecific = reportPeriod === 'daily'
-                ? { label: 'Günlük Rapor Durumu', value: report?.general_status ? (report.general_status === 'normal' ? 'Normal' : report.general_status === 'dikkat' ? 'Dikkat' : 'Kritik') : '—', color: report?.general_status === 'kritik' ? '#ef4444' : report?.general_status === 'dikkat' ? '#f59e0b' : '#16a34a' }
+                ? { label: 'Günlük Rapor Durumu', value: dailyStatusMeta?.label || '—', color: dailyStatusMeta ? TONE[dailyStatusMeta.tone].text : '#64748b' }
                 : reportPeriod === 'weekly'
                   ? { label: 'Aktif Personel', value: totalPersonnel ? `${totalPersonnel} kişi` : '—', color: '#185FA5' }
                   : { label: 'Hava Kayıp Gün', value: `${lostDays} gün`, color: lostDays > 5 ? '#ef4444' : lostDays > 2 ? '#f59e0b' : '#16a34a' }
