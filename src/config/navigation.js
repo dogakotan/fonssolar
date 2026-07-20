@@ -14,6 +14,10 @@ export const FIELD_SPECIALIST_ROLES = [
 
 const FIELD_SPECIALIST_TABS = ['genel', 'is-plani', 'satin-alma', 'tickets', 'bildirimler']
 
+// roles.is_manager=true kümesiyle birebir (DB'den doğrulandı) — Bildirimler'de zincir/adım
+// detayının yalnızca yönetici rollerine gösterilip gösterilmeyeceğini belirlemek için kullanılır.
+export const MANAGER_ROLES = ['admin', 'koordinator', 'maliyet_kontrolcu', 'muhasebe', 'proje_koordinatoru']
+
 // tabs: null → kısıtsız (yönetici gibi roller, handleTabChange hiçbir sekmeyi engellemez).
 // defaultTab: null → rol değişince aktif sekme zorla değiştirilmez.
 const UNRESTRICTED = { tabs: null, defaultTab: null }

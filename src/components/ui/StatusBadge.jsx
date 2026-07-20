@@ -33,6 +33,18 @@ export const TK_SEVERITY = {
   yüksek: { label: 'Yüksek',  tone: 'danger' },
   kritik: { label: 'Kritik',  tone: 'danger' },
 }
+export const INVOICE_STATUS = {
+  bekliyor:           { label: 'Bekliyor',            tone: 'warning' },
+  muhasebe_onayında:  { label: 'Muhasebe Onayında',   tone: 'primary' },
+  yönetici_onayında:  { label: 'Yönetici Onayında',   tone: 'primary' },
+  onaylandı:          { label: 'Onaylandı',           tone: 'success' },
+  reddedildi:         { label: 'Reddedildi',          tone: 'danger' },
+}
+export const PROCUREMENT_CHANGE_STATUS = {
+  bekliyor:   { label: 'Onay Bekliyor', tone: 'warning' },
+  onaylandi:  { label: 'Onaylandı',     tone: 'success' },
+  reddedildi: { label: 'Reddedildi',    tone: 'danger' },
+}
 
 export default function Badge({ map, value }) {
   const entry = map[value] || { label: value || '—', tone: 'muted' }

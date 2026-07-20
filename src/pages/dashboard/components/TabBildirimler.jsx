@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
-import Badge, { PR_STATUS, TK_STATUS } from '../../../components/ui/StatusBadge'
+import Badge, { PR_STATUS, TK_STATUS, INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS } from '../../../components/ui/StatusBadge'
 import Pager from '../../../components/ui/Pager'
+import { MANAGER_ROLES } from '../../../config/navigation'
+
+const BADGE_MAP = {
+  purchase_request: PR_STATUS,
+  ticket: TK_STATUS,
+  invoice: INVOICE_STATUS,
+  procurement_item_change_request: PROCUREMENT_CHANGE_STATUS,
+}
 
 const ENTITY_TAB = {
   purchase_request: 'satin-alma',
@@ -35,9 +43,11 @@ function reminderTone(n) {
 }
 
 export default function TabBildirimler({ onNavigate }) {
-  const { user } = useAuth()
+  const { user, role } = useAuth()
+  const isManager = MANAGER_ROLES.includes(role)
   const [items, setItems] = useState([])
   const [liveStatus, setLiveStatus] = useState({})
+  const [invoiceStepSummary, setInvoiceStepSummary] = useState({})
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
 
@@ -52,18 +62,51 @@ export default function TabBildirimler({ onNavigate }) {
     setItems(data || [])
     setLoading(false)
 
-    // Satın alma talebi / ticket bildirimleri için canlı durumu ayrıca çekilir —
-    // bildirim metni oluşturulduğu andaki durumu dondurur, süreç ilerlediğinde güncellenmez.
+    // Satın alma talebi / ticket / fatura / malzeme miktarı değişikliği bildirimleri için canlı
+    // durum ayrıca çekilir — bildirim metni oluşturulduğu andaki durumu dondurur, süreç
+    // ilerlediğinde güncellenmez.
     const prIds = [...new Set((data || []).filter(n => n.entity_type === 'purchase_request').map(n => n.entity_id))]
     const tkIds = [...new Set((data || []).filter(n => n.entity_type === 'ticket').map(n => n.entity_id))]
-    const [prRes, tkRes] = await Promise.all([
+    const invIds = [...new Set((data || []).filter(n => n.entity_type === 'invoice').map(n => n.entity_id))]
+    const pcrIds = [...new Set((data || []).filter(n => n.entity_type === 'procurement_item_change_request').map(n => n.entity_id))]
+    const [prRes, tkRes, invRes, pcrRes] = await Promise.all([
       prIds.length ? supabase.from('purchase_requests').select('id, status').in('id', prIds) : Promise.resolve({ data: [] }),
       tkIds.length ? supabase.from('tickets').select('id, status').in('id', tkIds) : Promise.resolve({ data: [] }),
+      invIds.length ? supabase.from('invoices').select('id, status').in('id', invIds) : Promise.resolve({ data: [] }),
+      pcrIds.length ? supabase.from('procurement_item_change_requests').select('id, status').in('id', pcrIds) : Promise.resolve({ data: [] }),
     ])
     const map = {}
     ;(prRes.data || []).forEach(r => { map[r.id] = { kind: 'purchase_request', status: r.status } })
     ;(tkRes.data || []).forEach(r => { map[r.id] = { kind: 'ticket', status: r.status } })
+    ;(invRes.data || []).forEach(r => { map[r.id] = { kind: 'invoice', status: r.status } })
+    ;(pcrRes.data || []).forEach(r => { map[r.id] = { kind: 'procurement_item_change_request', status: r.status } })
     setLiveStatus(map)
+
+    // Yalnızca yönetici rollerinde: faturanın onay zincirinde hangi adımda olduğunu göster
+    // (FaturaDetayModal'ın invoice_approvals sorgusuyla aynı tablo, küçük bir özet).
+    if (isManager && invIds.length) {
+      const { data: steps } = await supabase
+        .from('invoice_approvals')
+        .select('invoice_id, step, step_label, status')
+        .in('invoice_id', invIds)
+        .order('step')
+      const byInvoice = {}
+      ;(steps || []).forEach(s => {
+        if (!byInvoice[s.invoice_id]) byInvoice[s.invoice_id] = []
+        byInvoice[s.invoice_id].push(s)
+      })
+      const summary = {}
+      Object.entries(byInvoice).forEach(([invoiceId, rows]) => {
+        const total = rows.length
+        const rejected = rows.find(r => r.status === 'reddedildi')
+        const pending = rows.find(r => r.status === 'bekliyor')
+        const target = rejected || pending || rows[rows.length - 1]
+        if (target) summary[invoiceId] = `Adım ${target.step}/${total}: ${target.step_label}`
+      })
+      setInvoiceStepSummary(summary)
+    } else {
+      setInvoiceStepSummary({})
+    }
   }
 
   useEffect(() => {
@@ -148,7 +191,12 @@ export default function TabBildirimler({ onNavigate }) {
                         {n.body && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{n.body}</p>}
                         {live && (
                           <p style={{ margin: '4px 0 0', fontSize: 12 }}>
-                            Şu an: <Badge map={live.kind === 'ticket' ? TK_STATUS : PR_STATUS} value={live.status} />
+                            Şu an: <Badge map={BADGE_MAP[live.kind]} value={live.status} />
+                          </p>
+                        )}
+                        {isManager && n.entity_type === 'invoice' && invoiceStepSummary[n.entity_id] && (
+                          <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-muted)' }}>
+                            {invoiceStepSummary[n.entity_id]}
                           </p>
                         )}
                         <p style={{ margin: '4px 0 0', fontSize: 10.5, color: 'var(--color-muted-light)' }}>{timeAgo(n.created_at)}</p>
