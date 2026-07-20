@@ -57,7 +57,9 @@ function FaturaEkleModal({ onClose, onSaved, defaultProjectId }) {
       category:     form.category,
       description:  form.description  || null,
       status:       'bekliyor',
-      source:       'manual',
+      // DB constraint (invoices_source_check) yalnızca 'manuel' (TR) kabul ediyor — İngilizce
+      // 'manual' hep constraint ihlaliyle patlıyordu, bu buton hiç çalışmamış olmalıydı.
+      source:       'manuel',
     }).select().single()
     setSaving(false)
     if (error) { setErr(error.message); return }
@@ -184,9 +186,11 @@ function FaturaDetayModal({ invoice, onClose, onCancelled }) {
 
   // fn_validate_invoice_status_transition artık onaylandı->reddedildi geçişine de izin veriyor —
   // hem "onay sürecinde reddedildi" hem "onaylandıktan sonra iptal edildi" aynı DB durumunu (reddedildi)
-  // paylaşıyor. İkisini ayırt etmek için: step 2 onayı gerçekten "onaylandı" olarak kapanmışsa,
-  // fatura sonradan iptal edilmiş demektir (normal red akışında step onayı hiç tamamlanmaz).
-  const cancelledAfterApproval = invoice.status === 'reddedildi' && approvals.some(a => a.step === 2 && a.status === 'onaylandı')
+  // paylaşıyor. İkisini ayırt etmek için: TÜM onay adımları "onaylandı" olarak kapanmışsa fatura
+  // sonradan iptal edilmiş demektir (normal red akışında en az bir adım hiç tamamlanmadan reddedilir).
+  // Adım sayısı sabit değil (2026-07-20'den önce oluşturulmuş faturalarda 2 adım, sonrasında 1 adım
+  // "Yönetici Onayı") — bu yüzden step===2 gibi sabit bir adım numarasına bakılmıyor.
+  const cancelledAfterApproval = invoice.status === 'reddedildi' && approvals.length > 0 && approvals.every(a => a.status === 'onaylandı')
   const st = cancelledAfterApproval
     ? { bg: '#FEF3C7', color: '#92400E', label: 'İptal Edildi (Onay Sonrası)' }
     : STATUS_BADGE[invoice.status] || { bg: '#F3F4F6', color: '#111827', label: invoice.status }

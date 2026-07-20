@@ -214,28 +214,23 @@ function Section({ title, badge, badgeBg, badgeColor, children }) {
 
 // Yalnız aktif olarak onay bekleyen faturaları gösterir.
 export default function OnayKuyrugu({ projectId = null }) {
-  const { isAdmin, isMuhasebe, user } = useAuth()
-  const [muhasebeKuyrugu, setMuhasebeKuyrugu] = useState([])
+  const { isAdmin, user } = useAuth()
   const [yoneticiKuyrugu, setYoneticiKuyrugu] = useState([])
   const [loading,         setLoading]         = useState(true)
   const [actionLoading,   setActionLoading]   = useState(null)
 
-  useEffect(() => { fetchData() }, [projectId, isAdmin, isMuhasebe])
+  useEffect(() => { fetchData() }, [projectId, isAdmin])
 
   async function fetchData() {
     setLoading(true)
     const { data, error } = await supabase.rpc('get_invoice_approval_queue', { p_project_id: projectId || null })
     if (error || !data?.authorized) {
       console.error('invoice approval queue fetch error:', error)
-      setMuhasebeKuyrugu([])
       setYoneticiKuyrugu([])
       setLoading(false)
       return
     }
 
-    setMuhasebeKuyrugu((data.muhasebe_kuyrugu || []).filter(inv =>
-      ['bekliyor', 'muhasebe_onayında'].includes(inv.status)
-    ))
     setYoneticiKuyrugu((data.yonetici_kuyrugu || []).filter(inv =>
       inv.status === 'yönetici_onayında'
     ))
@@ -244,7 +239,10 @@ export default function OnayKuyrugu({ projectId = null }) {
 
   // invoices.status güncellemesi tamamen fn_invoice_approval_cascade trigger'ına bırakılır —
   // burada ayrıca yazmak trigger'la çakışıp onu ezerdi (bkz. DB-WF-001).
-  async function handleAction(invoiceId, action, note, step) {
+  // step numarası artık sabit değil: yeni faturalarda tek adım (step=1) "Yönetici Onayı",
+  // eski (2026-07-20 öncesi oluşturulmuş) faturalarda step=2 "Yönetici Onayı" olabiliyor —
+  // hangisi olursa olsun o an bekleyen (status='bekliyor') satır hedeflenir.
+  async function handleAction(invoiceId, action, note) {
     setActionLoading(invoiceId)
 
     await supabase
@@ -256,7 +254,7 @@ export default function OnayKuyrugu({ projectId = null }) {
         reviewer_id: user.id,
       })
       .eq('invoice_id', invoiceId)
-      .eq('step', step)
+      .eq('status', 'bekliyor')
 
     setActionLoading(null)
     fetchData()
@@ -271,24 +269,6 @@ export default function OnayKuyrugu({ projectId = null }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-      {isMuhasebe && (
-        <Section
-          title="Muhasebe Onay Kuyruğu"
-          badge={`${muhasebeKuyrugu.length} bekliyor`}
-          badgeBg="#FEF3C7" badgeColor="#92400E"
-        >
-          {muhasebeKuyrugu.length === 0
-            ? <EmptyState text="Onay bekleyen fatura yok" />
-            : <InvoiceTable
-                invoices={muhasebeKuyrugu}
-                onAction={(id, action, note) => handleAction(id, action, note, 1)}
-                actionLoading={actionLoading}
-                readonly={false}
-              />
-          }
-        </Section>
-      )}
-
       <Section
         title={isAdmin ? (projectId ? 'Fatura Onay Bekleyenler' : 'Yönetici Onay Kuyruğu') : 'Yönetici Onayında'}
         badge={`${yoneticiKuyrugu.length} fatura`}
@@ -298,7 +278,7 @@ export default function OnayKuyrugu({ projectId = null }) {
           ? <EmptyState text={isAdmin ? 'Onay bekleyen fatura yok' : 'Yönetici onayında fatura yok'} />
           : <InvoiceTable
               invoices={yoneticiKuyrugu}
-              onAction={(id, action, note) => handleAction(id, action, note, 2)}
+              onAction={handleAction}
               actionLoading={actionLoading}
               readonly={!isAdmin}
             />
