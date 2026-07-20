@@ -14,9 +14,17 @@ export const PR_STATUS = {
   talep_olusturuldu:    { label: 'Talep Oluşturuldu',    tone: 'primary' },
   fiyat_girildi:        { label: 'Fiyat Girildi',        tone: 'primary' },
   onay_bekliyor:        { label: 'Onay Bekliyor',        tone: 'warning' },
-  onaylandi:            { label: 'Onaylandı',            tone: 'success' },
+  // "Onaylandı" yalnızca geçmişi anlatır, sıradaki adımı değil — kullanıcı talebin şu an
+  // kimin elinde olduğunu (proje yöneticisi tedarik kuyruğu) görmek istiyor.
+  onaylandi:            { label: 'Proje Yöneticisinde',   tone: 'warning' },
+  // fatura_bekliyor pratikte hiçbir trigger/RPC tarafından üretilmiyor (yalnızca DB
+  // constraint'i izin veriyor) — gerçek akışta fatura oluşturulunca satın alma durumu
+  // doğrudan fatura_onay_bekliyor'a geçiyor ve muhasebe/yönetici onay adımlarının HER
+  // ikisinde de öyle kalıyor (sync_purchase_request_from_invoice). Bu ekranda kimin
+  // sırada olduğu önemli değil, ikisi de aynı metni göstermeli — aksi halde aynı durum
+  // için iki farklı yazı görünüyormuş gibi kafa karıştırıyor.
   fatura_bekliyor:      { label: 'Fatura Bekleniyor',    tone: 'warning' },
-  fatura_onay_bekliyor: { label: 'Fatura Onayı Bekliyor', tone: 'warning' },
+  fatura_onay_bekliyor: { label: 'Fatura Bekleniyor',    tone: 'warning' },
   faturasi_kesildi:     { label: 'Faturası Kesildi',      tone: 'primary' },
   satin_alindi:         { label: 'Satın Alındı',          tone: 'success' },
   reddedildi:           { label: 'Reddedildi',            tone: 'danger' },
