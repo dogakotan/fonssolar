@@ -11,7 +11,7 @@ import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
 import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 import TedarikKuyrugu from './TedarikKuyrugu'
 
-export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false, openRequestId, onOpenedRequest }) {
+export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false, projects, openRequestId, onOpenedRequest }) {
   const { isAdmin, role } = useAuth()
   const canManageProcurement = isAdmin || role === 'proje_yoneticisi'
   const [tab, setTab] = useState(procurementManagerView ? 'tedarik' : 'talepler')
@@ -37,10 +37,13 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
   // liste tablosuna yansımaz. refreshKey'i bump ederek çocuk bileşenin kendi fetchData'sını
   // da tetikliyoruz.
   const [refreshKey, setRefreshKey] = useState(0)
+  // projectId yoksa (proje yöneticisi tüm projeler modu) proje filtresi olmadan
+  // dinlenir — RLS (has_project_access) zaten yalnızca erişilebilir projelerin
+  // olaylarını client'a ulaştırıyor, ekstra bir daraltma gerekmiyor.
   useRealtimeRefresh(
     ['purchase_requests'],
     () => { refetch(); setRefreshKey(k => k + 1) },
-    { enabled: !!projectId, filter: { column: 'project_id', value: projectId } }
+    { enabled: true, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
   )
 
   useEffect(() => {
@@ -115,7 +118,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
         />
       )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
-      {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} />}
+      {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} refreshKey={refreshKey} projects={projects} />}
     </div>
   )
 }

@@ -259,7 +259,7 @@ function TedarikIptalModal({ request, onClose, onSaved }) {
   )
 }
 
-export default function TedarikKuyrugu({ projectId }) {
+export default function TedarikKuyrugu({ projectId, refreshKey, projects = [] }) {
   const { role } = useAuth()
   const canAct = role === 'proje_yoneticisi'
   const [statusFilter, setStatusFilter] = useState('all')
@@ -270,18 +270,23 @@ export default function TedarikKuyrugu({ projectId }) {
   const [cancelling, setCancelling] = useState(null)
   const [page, setPage] = useState(0)
 
-  useEffect(() => { if (projectId) fetchData() }, [projectId])
+  // projectId yoksa (proje yöneticisi tüm projeler modu — cross_project=true) filtre
+  // uygulanmadan çekilir, RLS (has_project_access) erişebildiği projelerle sınırlar.
+  const projectNameById = new Map(projects.map(p => [p.id, p.name]))
+
+  useEffect(() => { fetchData() }, [projectId, refreshKey])
   useEffect(() => { setPage(0) }, [statusFilter, projectId])
 
   async function fetchData() {
     setLoading(true)
     setErrorMessage('')
-    const { data, error } = await supabase
+    let query = supabase
       .from('purchase_requests')
       .select('*, suppliers(name)')
-      .eq('project_id', projectId)
       .in('status', ['onaylandi', 'satin_alindi'])
       .order('updated_at', { ascending: false })
+    if (projectId) query = query.eq('project_id', projectId)
+    const { data, error } = await query
 
     if (error) {
       console.error('purchase_requests load error:', error)
@@ -303,14 +308,6 @@ export default function TedarikKuyrugu({ projectId }) {
     setLoading(false)
   }
 
-  if (!projectId) {
-    return (
-      <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14, background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12 }}>
-        Lütfen üstteki proje seçiciden bir proje seçin.
-      </div>
-    )
-  }
-
   const filtered = requests.filter(request => {
     const normalized = normalizeStatus(request.status)
     if (statusFilter === 'all') return true
@@ -322,8 +319,8 @@ export default function TedarikKuyrugu({ projectId }) {
 
   const STATUS_FILTERS = [
     { key: 'all', label: 'Tüm Durumlar', count: requests.length },
-    { key: 'onaylandi', label: 'İşlem Bekliyor', count: requests.filter(r => normalizeStatus(r.status) === 'onaylandi').length },
-    { key: 'satin_alindi', label: 'Muhasebeye Yönlendirildi', count: requests.filter(r => normalizeStatus(r.status) === 'satin_alindi').length },
+    { key: 'onaylandi', label: PR_STATUS.onaylandi.label, count: requests.filter(r => normalizeStatus(r.status) === 'onaylandi').length },
+    { key: 'satin_alindi', label: PR_STATUS.satin_alindi.label, count: requests.filter(r => normalizeStatus(r.status) === 'satin_alindi').length },
   ]
 
   return (
@@ -362,10 +359,10 @@ export default function TedarikKuyrugu({ projectId }) {
         ) : (
           <>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 900 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: projectId ? 900 : 1000 }}>
               <thead>
                 <tr>
-                  {['TALEP NO', 'TALEP / MALZEME', 'OLUŞTURAN', 'TARİH', 'DURUM', canAct ? 'İŞLEM' : 'AŞAMA'].map(h => (
+                  {['TALEP NO', 'TALEP / MALZEME', ...(!projectId ? ['PROJE'] : []), 'OLUŞTURAN', 'TARİH', 'DURUM', canAct ? 'İŞLEM' : 'AŞAMA'].map(h => (
                     <th key={h} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1, boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)' }}>{h}</th>
                   ))}
                 </tr>
@@ -378,6 +375,9 @@ export default function TedarikKuyrugu({ projectId }) {
                     <tr key={request.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                       <td style={{ ...TD, color: 'var(--color-primary)', fontWeight: 700 }}>{requestNo(request)}</td>
                       <td style={{ ...TD, fontWeight: 700, color: 'var(--color-text)', minWidth: 180 }}>{requestTitle(request)}</td>
+                      {!projectId && (
+                        <td style={{ ...TD, color: 'var(--color-text-sub)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={projectNameById.get(request.project_id) || ''}>{projectNameById.get(request.project_id) || '—'}</td>
+                      )}
                       <td style={TD}>{requesterName(request)}</td>
                       <td style={TD}>{fmtDate(request.created_at)}</td>
                       <td style={{ ...TD, whiteSpace: 'nowrap' }}>
