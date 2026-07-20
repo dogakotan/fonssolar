@@ -533,6 +533,35 @@ ama en azından doğru yere gider (bilinçli, dar kapsamlı bir çözüm).
 `NotificationBell.jsx` kullanıcı kararıyla kasıtlı olarak dokunulmadı, basit kaldı.
 RLS/migration gerekmedi — tamamen frontend, mevcut RPC'ler/tablolar kullanıldı.
 
+**Görsel yeniden tasarım + yatay onay süreci göstergesi (2026-07-20, ayrı bir tur):**
+Yukarıdaki fonksiyonel zenginleştirmenin ardından kullanıcı sayfanın **görünümünün**
+de düz bir liste kalmaması gerektiğini belirtti. Eklenenler (Dashboard.css'e yeni
+`.bildirim-*` sınıfları): Tümü/Okunmamış/tip bazlı filtre çipleri (`ENTITY_META`
+haritasından — sayım rozetli), Bugün/Dün/Bu Hafta/Daha Eski tarih grup başlıkları
+(`dateBucket()`), her tipin kendi ikonuyla (🎫🛒🧾📋⏰📦) kart satırları, hover'lı
+zemin geçişleri, ikonlu boş/yükleniyor durumları. Ayrıca kullanıcı `TalepDetayModal.jsx`'in
+dikey "Onay Süreci" stepper'ını (5 adım: Talep Oluşturuldu → Yönetici Onayı →
+Tedarikçi/Satın Alma → Fatura Bekleniyor → Fatura Kesildi) örnek gösterip bunun
+**yatay** halini bildirimlerde istedi — dikey modale hiç dokunulmadı (git log ile
+doğrulandı), yalnızca aynı 5 adım/karar mantığı `satinAlma.js`'e `buildApprovalSteps()`
+olarak tekilleştirilip yeni `src/components/ui/ApprovalStepsHorizontal.jsx`
+(dot+çizgi+etiket, adım sayısını `--approval-steps-count` CSS custom property'siyle
+alıyor ki 3 ve 5 adımlı kullanımların ikisinde de çizgi doğru hizalansın) ile yatay
+render edildi; `purchase_request` bildirimlerinde artık düz rozet yerine bu gösterge
+var. Aynı istek ticket'a da uygulandı — `TabBildirimler.jsx` içinde yerel
+`buildTicketSteps()` (3 adım: Gönderildi → İşlemde → Kapatıldı, `iptal_edildi`
+ortadaki adımı kırmızı "İptal Edildi" olarak işaretler) eklendi, `TicketDetayModal.jsx`
+değişmedi. Fatura ve malzeme değişikliği bildirimleri hâlâ düz `Badge` kullanıyor
+(fatura zaten kendi "Adım X/2" özetine sahip, malzeme değişikliği tek adımlı).
+Bu tur ayrıca gerçek bir bulguyu da kapattı: `StatusBadge.jsx`'in `PR_STATUS`
+haritası DB'nin 10 durumluk `purchase_requests_status_check`'inin yalnızca 7'sini
+tanıyordu — `fiyat_girildi`/`onay_bekliyor`/`fatura_bekliyor` eksikti, bu 3 durumdaki
+bir talep Badge'in fallback'ine düşüp ham enum metni gösteriyordu. Artık 10/10.
+(Bu düzeltme yalnızca `StatusBadge.jsx`'in kendi haritasını genişletti — `TalepDetayModal.jsx`'in
+yerel `STATUS_META`'sıyla, ticket'ın `StatusBadge.jsx` `TK_STATUS`'üyle
+`TicketDetayModal.jsx`'in yerel `STATUS`'ü arasındaki tutarsızlık hâlâ "A1-devam"
+kapsamında açık, bkz. Bilinen açık noktalar.)
+
 **Trigger zincirleri (frontend bunları yeniden hesaplamamalı):**
 - `daily_reports` → `progress_daily` INSERT/UPDATE/DELETE → `trg_sync_task_progress_from_daily`
   (`sync_task_progress_from_daily()`) → `project_tasks.total_progress`/`progress_pct`
@@ -1421,9 +1450,9 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**20.07.2026 — Uzun oturum: repo hijyeni + master plan Bölüm A (A3-A7) tamamlandı
-+ proje yöneticisi/muhasebe sayfa erişimi + Bildirimler sayfası zenginleştirmesi
-(ikisi de Plan mode ile tasarlandı). Henüz push edilmedi (8 commit).**
+**20.07.2026 — Uzun oturum: repo hijyeni + master plan Bölüm A (A3-A7) +
+proje yöneticisi/muhasebe sayfa erişimi + Bildirimler sayfası zenginleştirmesi
+ve görsel yeniden tasarımı + PR_STATUS düzeltmesi. Push edildi (13 commit).**
 
 Özet (detaylar Tamamlanan büyük görevler'de): (1) kirli working tree temizlendi,
 master plan Bölüm A'nın kalan maddeleri (A3 rol/menü konsolidasyonu →
@@ -1434,18 +1463,27 @@ test projesi) temizlendi; (3) **Plan mode** ile proje yöneticisi (ProjeDetay
 içinde Finans salt-okunur + Tickets tam yetki) ve muhasebe (üst seviye Finans'a
 proje filtresi) sayfa erişimi yeniden tasarlanıp uygulandı — bu sırada
 `FaturaListesi.jsx`/`OnayKuyrugu.jsx`/`TicketListesi.jsx`'te 3 gerçek erişim
-bug'ı bulunup düzeltildi (bkz. Tamamlanan büyük görevler); (4) **Plan mode** ile
-`TabBildirimler.jsx` zenginleştirildi — bkz. Sistem mimarisi → "Bildirim"
-bölümündeki ayrıntılı not. Bölüm A (A0-A7) CC tarafı tamamen kapandı, Bölüm B
+bug'ı bulunup düzeltildi; (4) **Plan mode** ile `TabBildirimler.jsx`
+zenginleştirildi (rozet+derin bağlantı); (5) ayrı bir turda sayfanın **görünümü**
+yeniden tasarlandı (filtre çipleri, tarih grubu başlıkları, ikonlu satırlar) ve
+kullanıcının istediği üzere `TalepDetayModal.jsx`'in dikey "Onay Süreci"
+stepper'ının **yatay** bir versiyonu (`ApprovalStepsHorizontal.jsx`) hem satın
+alma hem ticket bildirimlerine eklendi; (6) yol boyunca gerçek bir bulgu
+kapatıldı: `PR_STATUS` haritası DB'nin 10 durumundan yalnızca 7'sini
+tanıyordu, eksik 3'ü eklendi — bkz. Sistem mimarisi → "Bildirim" bölümündeki
+ayrıntılı notlar. Bölüm A (A0-A7) CC tarafı tamamen kapandı, Bölüm B
 "canlı ≥ 2 hafta" kriterini karşılamadığından beklemede.
 
 `npx eslint src`/`npx vite build` her adımda temiz (25 warning, hepsi
-pre-existing desenle aynı — 0 yeni hata). **SEN kabul testi bekleniyor** (iki
-ayrı özellik için, henüz push edilmedi):
+pre-existing desenle aynı — 0 yeni hata). **SEN kabul testi bekleniyor**
+(push edildi, henüz kullanıcı tarafında elle test edilmedi):
 - Proje yöneticisi bir projeye girip Finans (salt-okunur)/Tickets (tam yetki)
   doğru mu; muhasebe üst seviye Finans'ta proje filtresi çalışıyor mu.
-- Bildirimler sayfasında: fatura/malzeme değişikliği bildirimlerinde durum
-  rozeti doğru mu, yönetici rolüyle fatura "Adım X/2" özeti görünüyor mu, her
-  bildirim tipine tıklamak doğru kaydı/sekmeyi açıyor mu (özellikle satın alma
-  talebi ve fatura derin bağlantıları yeni — proje yöneticisi'nin projenin TÜM
-  ticket'larını görmesi de yeni, dikkatli test edilmeli).
+- Bildirimler sayfasında: filtre çipleri/tarih grupları doğru mu, satın
+  alma/ticket bildirimlerindeki yatay onay süreci göstergesi her durumda
+  (özellikle reddedildi/iptal_edildi) doğru adımı işaretliyor mu, fatura/malzeme
+  değişikliği bildirimlerinde durum rozeti doğru mu, yönetici rolüyle fatura
+  "Adım X/2" özeti görünüyor mu, her bildirim tipine tıklamak doğru kaydı/sekmeyi
+  açıyor mu (satın alma talebi ve fatura derin bağlantıları + proje
+  yöneticisi'nin projenin TÜM ticket'larını görmesi hâlâ en yeni/en riskli
+  değişiklikler, dikkatli test edilmeli).
