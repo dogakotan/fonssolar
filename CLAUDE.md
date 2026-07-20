@@ -485,16 +485,53 @@ OR cross_project OR profiles.project_id OR user_project_access).
 RLS politikalarında kullanılan ince katmanlar, ikisi de artık yukarıdakilere delege eder.
 
 **Bildirim:** `notify_managers(...)`, `notify_role(...)`, `notify_user(...)` —
-`daily_reports`/`purchase_requests`/`invoices`/`tickets`/`ticket_comments`
-INSERT/status trigger'larından çağrılır, `notifications` tablosuna yazar
-(RLS: `recipient_id = auth.uid()`, realtime publication'da). UI:
-`src/components/ui/NotificationBell.jsx`. `pg_cron` (jobid=1, `0 6 * * 1-5` —
-yalnızca hafta içi) → `create_daily_report_reminders()`: o gün `daily_reports`
-girilmemiş her `santiye_sefi` için `entity_type='daily_report_reminder'`/
-`event_type='pending'` bildirimi ekler (başlıkta günün tarihi). Rapor girilince
-`trg_resolve_daily_report_reminder` → `resolve_daily_report_reminder()` aynı
-satırı `event_type='resolved'` yapar. UI rengi (`reminderTone()`): okunmamış+
-pending sarı, okunmuş+pending normal, resolved yeşil.
+`daily_reports`/`purchase_requests`/`invoices`/`tickets`/`ticket_comments`/
+`procurement_item_change_requests` INSERT/status trigger'larından çağrılır,
+`notifications` tablosuna yazar (RLS: `recipient_id = auth.uid()`, realtime
+publication'da). `entity_type` değerleri: `purchase_request`, `invoice`,
+`ticket`, `daily_report`, `daily_report_reminder`, `procurement_item_change_request`.
+UI: header'daki basit özet `src/components/ui/NotificationBell.jsx` (kasıtlı
+olarak basit tutuluyor — bkz. aşağı), tam sayfa
+`src/pages/dashboard/components/TabBildirimler.jsx` (2026-07-20'de zenginleştirildi).
+`pg_cron` (jobid=1, `0 6 * * 1-5` — yalnızca hafta içi) → `create_daily_report_reminders()`:
+o gün `daily_reports` girilmemiş her `santiye_sefi` için
+`entity_type='daily_report_reminder'`/`event_type='pending'` bildirimi ekler
+(başlıkta günün tarihi). Rapor girilince `trg_resolve_daily_report_reminder` →
+`resolve_daily_report_reminder()` aynı satırı `event_type='resolved'` yapar.
+UI rengi (`reminderTone()`): okunmamış+pending sarı, okunmuş+pending normal,
+resolved yeşil.
+
+**`TabBildirimler.jsx` — canlı durum + rol bazlı detay + doğrudan kayıt açma
+(2026-07-20):** Her bildirim satırı artık `purchase_request`/`ticket`'a ek
+olarak `invoice`/`procurement_item_change_request` için de "Şu an: ..." canlı
+durum rozeti gösteriyor (`src/components/ui/StatusBadge.jsx`'in `Badge` bileşeni
++ domain haritaları — `PR_STATUS`/`TK_STATUS`'a ek olarak yeni `INVOICE_STATUS`/
+`PROCUREMENT_CHANGE_STATUS` export'ları, hepsi `BADGE_MAP[entity_type]` ile
+seçiliyor). **Yalnızca yönetici rollerinde** (`src/config/navigation.js`'in yeni
+`MANAGER_ROLES` sabiti — `roles.is_manager=true` kümesiyle birebir: admin/
+koordinator/maliyet_kontrolcu/muhasebe/proje_koordinatoru) fatura bildirimlerinde
+ek olarak `invoice_approvals`'tan hesaplanan "Adım X/2: <adım adı>" özeti
+gösteriliyor — saha rolleri yalnızca düz durum rozetini görür. Bir bildirime
+tıklamak artık yalnızca ilgili sekmeye geçmiyor, **doğrudan kaydı açıyor**:
+ticket (mevcut `openTicketId`/`goToTicket` mekanizması reuse edildi), günlük
+rapor (mevcut `openReportModal`), satın alma talebi (yeni `openRequestId`/
+`onOpenedRequest` — `TabSatinAlmaTalepListesi.jsx`'e eklendi, ticket'taki
+`useEffect` deseninin birebir kopyası, `get_purchase_request_detail` RPC'sini
+kullanır, `TabSatinAlma.jsx`/`ProjeTabSatinAlma.jsx` üzerinden iletilir —
+`ProjeTabSatinAlma` kendi iç sekmesini `'talepler'`e zorlar çünkü
+`procurementManagerView` varsayılan olarak `'tedarik'`de açılıyor), fatura
+(yeni `openInvoiceId`/`onOpenedInvoice` — `FaturaListesi.jsx`'e eklendi,
+`get_invoices_list`'in tek-id varyantı olmadığından doğrudan
+`invoices.select('*, suppliers(name)').eq('id',...)` kullanır — RLS
+doğrulandı, `admin`/`muhasebe`/`proje_koordinatoru`'ye koşulsuz izin veriyor).
+`procurement_item_change_request`'in tek kayıt detay modalı hiç yok (yalnızca
+bir malzemenin TÜM geçmişini gösteren `MalzemeGecmisiModal` var) — bu tip için
+tıklamak yeni `goToProjectTab(id, tab)` (`index.jsx`) ile ilgili projenin
+ProjeDetay'ına, `initialTab` prop'uyla (yeni, `ProjeDetay.jsx`'e eklendi)
+doğrudan Malzeme Listesi sekmesiyle açık şekilde götürüyor — tam kayıt değil
+ama en azından doğru yere gider (bilinçli, dar kapsamlı bir çözüm).
+`NotificationBell.jsx` kullanıcı kararıyla kasıtlı olarak dokunulmadı, basit kaldı.
+RLS/migration gerekmedi — tamamen frontend, mevcut RPC'ler/tablolar kullanıldı.
 
 **Trigger zincirleri (frontend bunları yeniden hesaplamamalı):**
 - `daily_reports` → `progress_daily` INSERT/UPDATE/DELETE → `trg_sync_task_progress_from_daily`
@@ -1264,6 +1301,22 @@ Alma/Finans Test Verisi notu).
   0 yeni). **SEN kabul testi bekleniyor** (headless ortamda yapılamadı): proje
   yöneticisi ile bir projeye girip Finans/Tickets'ın doğru göründüğünü, muhasebe
   ile üst seviye Finans'ta proje filtresinin çalıştığını doğrula.
+- **Bildirimler sayfası (`TabBildirimler.jsx`) zenginleştirmesi (Plan mode ile
+  tasarlandı, aynı oturumda uygulandı, 5 commit):** bkz. Sistem mimarisi →
+  "Bildirim" bölümündeki ayrıntılı not için tam teknik özet. Kısaca: (1)
+  `src/components/ui/StatusBadge.jsx`'e `INVOICE_STATUS`/`PROCUREMENT_CHANGE_STATUS`
+  eklendi, canlı durum rozeti artık fatura/malzeme değişikliği taleplerini de
+  kapsıyor; (2) yeni `MANAGER_ROLES` (`navigation.js`) ile yönetici rolleri
+  faturanın onay zincirinde hangi adımda olduğunu ek olarak görüyor; (3) her
+  bildirim tipi artık tıklanınca doğrudan kaydı açıyor (ticket/günlük rapor
+  mevcut mekanizmaları reuse etti; satın alma talebi ve fatura için
+  `TabSatinAlmaTalepListesi.jsx`/`FaturaListesi.jsx`'e ticket'takiyle aynı
+  desende yeni `openRequestId`/`openInvoiceId` prop'ları eklendi; malzeme
+  miktarı değişikliği taleplerinin tek kayıt modalı olmadığından bu tip için
+  `ProjeDetay.jsx`'e yeni `initialTab` prop'uyla projenin Malzeme Listesi
+  sekmesine götürülüyor). `NotificationBell.jsx` kullanıcı kararıyla kasıtlı
+  dokunulmadı. RLS/migration gerekmedi. `npx eslint src`/`npx vite build` her
+  commit sonrası temiz.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Orphan Kalite Kontrol RPC'leri (2026-07-20'de kaldırılan modülden kalıntı):**
@@ -1368,44 +1421,31 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**20.07.2026 — Uzun oturum: repo hijyeni, master plan Bölüm A (A3-A7) tamamlandı,
-rol bazlı proje/sayfa erişimi (proje yöneticisi + muhasebe) yeniden tasarlandı.**
+**20.07.2026 — Uzun oturum: repo hijyeni + master plan Bölüm A (A3-A7) tamamlandı
++ proje yöneticisi/muhasebe sayfa erişimi + Bildirimler sayfası zenginleştirmesi
+(ikisi de Plan mode ile tasarlandı). Henüz push edilmedi (8 commit).**
 
-Özet akış (detaylar Tamamlanan büyük görevler'de): (1) kirli working tree
-temizlendi (A7 işleri + bir bugfix mantıksal commit'lere bölündü, kullanıcı
-eşzamanlı Kalite Kontrol modülünü kaldırdı + Finans'ı sadeleştirdi); (2) master
-plan Bölüm A'nın kalan maddeleri (A3 rol/menü konsolidasyonu → yeni
-`src/config/navigation.js`, A4/A5/A6/A7 gözden geçirmeleri) sırayla kapatıldı —
-bu sırada **3 RLS güvenlik açığı** bulunup migration'la kapatıldı
-(`purchase_requests_insert`'in rol-bağımsız no-op `WITH CHECK`'i, `muhasebe`'nin
-`purchase_request_items`'a gereksiz yazma izni, ve bugünkü sayfa-erişimi
-işinde bulunan `OnayKuyrugu.jsx`'in yanlış `readonly` türetimi); (3) kullanıcı
-admin/proje_yoneticisi/muhasebe/santiye_sefi'nin proje erişim kuralını
-doğrulattı — kod/RLS tarafı doğruydu ama gerçek test verisinde 2 şantiye şefi
-hesabına yanlışlıkla verilmiş, belgesiz 3. bir test projesine
-(`test-bursa-mudanya-ges`) erişim bulundu ve projeyle birlikte tamamen
-temizlendi (artık yalnızca 2 test projesi var); (4) **Plan mode** ile proje
-yöneticisi ve muhasebe'nin ProjeDetay/Finans sayfa erişimi yeniden tasarlanıp
-uygulandı — bkz. aşağıdaki ayrı madde.
+Özet (detaylar Tamamlanan büyük görevler'de): (1) kirli working tree temizlendi,
+master plan Bölüm A'nın kalan maddeleri (A3 rol/menü konsolidasyonu →
+`src/config/navigation.js`, A4-A7 gözden geçirmeleri) kapatıldı — 3 RLS açığı
+bulunup migration'la düzeltildi; (2) admin/proje_yoneticisi/muhasebe/santiye_sefi
+proje erişim kuralı doğrulandı, test verisinde bulunan bir ihlal (belgesiz 3.
+test projesi) temizlendi; (3) **Plan mode** ile proje yöneticisi (ProjeDetay
+içinde Finans salt-okunur + Tickets tam yetki) ve muhasebe (üst seviye Finans'a
+proje filtresi) sayfa erişimi yeniden tasarlanıp uygulandı — bu sırada
+`FaturaListesi.jsx`/`OnayKuyrugu.jsx`/`TicketListesi.jsx`'te 3 gerçek erişim
+bug'ı bulunup düzeltildi (bkz. Tamamlanan büyük görevler); (4) **Plan mode** ile
+`TabBildirimler.jsx` zenginleştirildi — bkz. Sistem mimarisi → "Bildirim"
+bölümündeki ayrıntılı not. Bölüm A (A0-A7) CC tarafı tamamen kapandı, Bölüm B
+"canlı ≥ 2 hafta" kriterini karşılamadığından beklemede.
 
-Bölüm A (A0-A7) CC tarafı tamamen kapandı — A8 (go-live günü)/A9 (Pro'ya geçiş)
-tamamen SEN işi. Bölüm B (F1-F4/D1/FD2/D3/D4) "canlı ≥ 2 hafta" kriterini
-karşılamadığından (gerçek go-live henüz olmadı) beklemede, master plan sırası
-burada duruyor.
-
-**Proje yöneticisi + muhasebe sayfa erişimi (Plan mode ile tasarlandı, aynı
-oturumda uygulandı — bkz. Tamamlanan büyük görevler için tam bulgu listesi):**
-`ProjeDetay.jsx`'in `canViewFinanceAndTickets` guard'ı kaldırıldı — proje
-yöneticisi artık bir projenin içinde Finans'ı **salt-okunur**, Tickets'ı
-**santiye_sefi ile aynı tam yetkide** görüyor. Bunu güvenli yapmak için
-`FaturaListesi.jsx` ("+ Fatura Ekle" hiç gizli değildi), `OnayKuyrugu.jsx`
-(Onayla/Reddet proje yöneticisi için de render ediliyordu) ve
-`TicketListesi.jsx` (proje yöneticisi yalnızca kendi açtığı ticket'ları
-görüyordu) düzeltildi. Muhasebe için ayrı bir "Projeler" sekmesi açmak yerine
-üst seviye `TabFinans.jsx`'e bir proje filtresi eklendi (boşken bugünküyle
-birebir aynı "tüm projeler", seçilince `get_finans_overview`+`projectId`'ye
-geçiyor). Muhasebe'ye Satın Alma görünürlüğü bilinçli olarak eklenmedi.
-2 commit, `npx eslint src`/`npx vite build` temiz (21 pre-existing warning,
-0 yeni). **SEN kabul testi bekleniyor:** proje yöneticisi ile bir projeye
-girip Finans/Tickets'ı, muhasebe ile üst seviye Finans'ta proje filtresini
-test et — henüz push edilmedi.
+`npx eslint src`/`npx vite build` her adımda temiz (25 warning, hepsi
+pre-existing desenle aynı — 0 yeni hata). **SEN kabul testi bekleniyor** (iki
+ayrı özellik için, henüz push edilmedi):
+- Proje yöneticisi bir projeye girip Finans (salt-okunur)/Tickets (tam yetki)
+  doğru mu; muhasebe üst seviye Finans'ta proje filtresi çalışıyor mu.
+- Bildirimler sayfasında: fatura/malzeme değişikliği bildirimlerinde durum
+  rozeti doğru mu, yönetici rolüyle fatura "Adım X/2" özeti görünüyor mu, her
+  bildirim tipine tıklamak doğru kaydı/sekmeyi açıyor mu (özellikle satın alma
+  talebi ve fatura derin bağlantıları yeni — proje yöneticisi'nin projenin TÜM
+  ticket'larını görmesi de yeni, dikkatli test edilmeli).
