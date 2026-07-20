@@ -7,9 +7,15 @@ export const TONE = {
   muted:   { bg: 'var(--color-border)',     text: 'var(--color-muted)' },
 }
 
+// purchase_requests_status_check (DB) tam 10 değere izin verir — bu harita önceden yalnızca
+// 7'sini tanıyordu (fiyat_girildi/onay_bekliyor/fatura_bekliyor eksikti), bu 3 durumdaki bir
+// talep Badge'in fallback'ine düşüp ham enum metnini gösteriyordu. Artık tam 10/10.
 export const PR_STATUS = {
   talep_olusturuldu:    { label: 'Talep Oluşturuldu',    tone: 'primary' },
+  fiyat_girildi:        { label: 'Fiyat Girildi',        tone: 'primary' },
+  onay_bekliyor:        { label: 'Onay Bekliyor',        tone: 'warning' },
   onaylandi:            { label: 'Onaylandı',            tone: 'success' },
+  fatura_bekliyor:      { label: 'Fatura Bekleniyor',    tone: 'warning' },
   fatura_onay_bekliyor: { label: 'Fatura Onayı Bekliyor', tone: 'warning' },
   faturasi_kesildi:     { label: 'Faturası Kesildi',      tone: 'primary' },
   satin_alindi:         { label: 'Satın Alındı',          tone: 'success' },
