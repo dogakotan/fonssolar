@@ -1386,7 +1386,21 @@ kullanıcı onayıyla migration'la kapatıldı:
 dosyası değişmedi (yalnızca 2 DB migration). A5 bu haliyle kapandı — muhasebe için
 ayrı bir ekran/bileşen yazmaya gerek kalmadı.
 
-Sıradaki madde: A6 (Proje yöneticisi rol ekranı — not: `satin_alma_uzmani` →
-`proje_yoneticisi` geçişi ve Tedarik Kuyruğu 2026-07-16/17'de zaten tamamlanmıştı,
-A6'ya başlarken bunun üzerine ne eklenmesi gerektiği netleştirilmeli, A4/A5'teki
-gibi muhtemelen küçük bir gözden geçirme olacak).
+**A6 (Proje yöneticisi rol ekranı) gözden geçirmesi (aynı oturum, kapandı —
+ek bir düzeltme gerekmedi):** `grep -rn "satin_alma_uzmani" src/` sıfır sonuç
+verdi (2026-07-16/17'deki geçiş tamamen temiz). `navigation.js`'teki
+`proje_yoneticisi` girdisi (`['genel','projeler','is-plani','satin-alma',
+'bildirimler']`) A6'nın orijinal planından geniş — çünkü rol sonradan
+(2026-07-17, `cross_project=true`) admin gibi Projeler sekmesinden tam
+`ProjeDetay`'a girebilecek şekilde genişletildi, bu kasıtlı bir evrim, eksik
+değil. `ProjeTabSatinAlma.jsx`'in `procurementManagerView`'ı doğrulandı:
+"Talepler" sekmesi ortak `TabSatinAlmaTalepListesi`'ni, "Tedarik" sekmesi
+`TedarikKuyrugu`'nu kullanıyor — ayrı bir liste bileşeni yok. RLS guard'ı
+(`fn_purchase_request_procurement_fields_only`, tutar/başlık değiştirilemez)
+`purchase_requests_update` policy'sinde hâlâ sağlam. Kod/DB değişikliği yok.
+
+Sıradaki madde: A7 (production hazırlık — not: bu oturumun başındaki repo
+hijyeninde vercel.json güvenlik header'ları, DB yedekleme scripti, foto
+sıkıştırma zaten yapılmıştı; A7'nin kalan maddeleri — hardcoded localhost/
+service_role taraması, advisor son turu, import kuru-çalışması, SEN'in
+Dashboard/Vercel/domain işleri — henüz yapılmadı).
