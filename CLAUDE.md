@@ -1211,7 +1211,7 @@ Alma/Finans Test Verisi notu).
   projesi geçici `iptal edildi` yapılıp) Playwright ile doğrulandı, sonra geri alındı.
 
   **"A1-devam" — bulunan ama bilinçli kapsam dışı bırakılan, ayrı bir oturum
-  gerektiren 4 madde (bkz. Bilinen açık noktalar):** risk severity (3 farklı
+  gerektiren 4 madde (2026-07-20'de kapatıldı, bkz. aşağıdaki ilgili girdi):** risk severity (3 farklı
   yerde, birbirinden ve `ticketSeverity.js`'den bağımsız), satın alma statüsü
   çakışması (`StatusBadge.jsx`'in `PR_STATUS`'ü ile `TalepDetayModal.jsx`'in
   yerel `STATUS_META`'sı farklı renk/etiket veriyor), ticket statüsü çakışması
@@ -1360,6 +1360,42 @@ Alma/Finans Test Verisi notu).
   kapsamlı, tek koşullu bir düzeltme (yalnızca `is-plani`); diğer sekmelerin
   (`finans`/`tickets` gibi permissive render koşullu ama sidebar'da görünmeyen
   kombinasyonların) davranışına dokunulmadı — kasıtlı, ayrı bir konu.
+- **"A1-devam" kapatıldı (2026-07-20, Plan Mode ile tasarlandı, 4 commit):** 3
+  paralel Explore ajanı + doğrudan DB sorgularıyla (constraint tanımları + gerçek
+  veri dağılımı) 4 alt-madde tam doğrulanıp boyutuna göre ayrı ayrı düzeltildi.
+  (1) **Ticket statüsü**: `StatusBadge.jsx`'in `TK_STATUS`'ü 5 değerden yalnızca
+  4'ünü tanıyordu (`iptal_edildi` eksikti, yalnızca `SantiyeSefiDashboard.jsx`
+  etkileniyordu) — tek satır eklendi. Ayrıca `TicketDetayModal.jsx`/`TicketListesi.jsx`'in
+  birebir aynı yerel `STATUS`/`CATEGORY` hex haritaları (zaten 5/5 doğruydu, saf DRY
+  ihlaliydi) yeni `src/utils/ticketStatus.js`'e (`ticketSeverity.js` deseniyle)
+  taşındı. (2) **Risk severity**: gerçek bug tek satırdı —
+  `ProjectOverviewDashboard.jsx`'teki `RISK_BADGE.orta` `yüksek` ile aynı `amber`
+  rengi kullanıyordu, aynı dosyadaki `SEV_BORDER.orta` ise ayrı gri — `RISK_BADGE.orta`
+  `'gray'` yapıldı, ikisi artık tutarlı. `Adim4Riskler.jsx`'in dropdown'ı zaten
+  renksiz (diğer severity dropdown'larıyla aynı desen), dokunulmadı. (3) **Günlük
+  rapor genel durumu**: SQL ile doğrulandı — DB'de yalnızca `normal`/`dikkat`/`kritik`
+  var, `DailyReportList.jsx`'in 9 anahtarlı `STATUS_COLORS`'undaki 6 tanesi
+  (`İyi`/`Normal`/`Gecikme Var`/`Durduruldu`/`iyi`/`sorunlu`) tamamen ölü kod —
+  silindi. `ProjectOverviewDashboard.jsx`'in `periodSpecific` bloğu metin ve renk
+  için birbirinden bağımsız iki ayrı ternary kullanıyordu (bugün 3 değerle
+  tesadüfen tutarlı, kırılgan) — yeni `StatusBadge.jsx` export'u `DAILY_REPORT_STATUS`
+  (normal/dikkat/kritik) artık her ikisinin de tek kaynağı. (4) **Satın alma
+  statüsü** (en büyük parça — 6 farklı temsil bulundu): `StatusBadge.jsx`'in
+  `PR_STATUS`'ü (bu oturumda zaten 10/10'a tamamlanmıştı) tek kayıpsız kaynak
+  olarak seçildi; `TalepDetayModal.jsx` (yerel `STATUS_META`+`Badge`),
+  `TabSatinAlmaTalepListesi.jsx`'in `FlowBadge`'i (`satin_alindi`/`fatura_bekliyor`
+  ayrımını kaybediyordu), `TedarikKuyrugu.jsx`'in ikili ternary'si (`satin_alindi`
+  sonrası 4 durumun tümünü tek etikete topluyordu), `ProjeTabFaturaKesilecekler.jsx`'in
+  renksiz ham enum metni — hepsi `PR_STATUS`'a geçirildi. `satinAlma.js`'in
+  `normalizeStatus`/`statusLabel`'ı (iş mantığı katmanı — `isAwaitingInvoice`,
+  `buildApprovalSteps` vb. buna bağımlı) kasıtlı olarak DOKUNULMADI, kapsam dışı
+  tutuldu. **Bilinçli görünür etki:** `TedarikKuyrugu.jsx`'in "Muhasebeye
+  yönlendirildi" gibi ekrana özel bağlamsal ifadeleri kanonik etikete (ör. "Satın
+  Alındı") döndü — anlam kaybı yok, yalnızca ekrana özel vurgu azaldı. `npx eslint
+  src`/`npx vite build` her commit sonrası temiz (26 warning — StatusBadge.jsx'e
+  her yeni export eklendiğinde beklenen +1 `react-refresh/only-export-components`
+  uyarısı dışında yeni hata yok). Migration/RLS gerekmedi (tamamen salt-okunur
+  render katmanı).
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Orphan Kalite Kontrol RPC'leri (2026-07-20'de kaldırılan modülden kalıntı):**
@@ -1370,21 +1406,6 @@ Alma/Finans Test Verisi notu).
   tabloları ve ilgili trigger'lar (`fn_create_ticket_from_quality_finding` vb.) da
   aynı şekilde kullanımda değil. Silinmedi — kullanıcı modülü yeniden isterse veri/
   şema hazır kalsın diye bilinçli olarak korundu.
-- **"A1-devam" — status/severity map çakışmaları (2026-07-19'da bulundu, ayrı
-  oturum gerektiriyor, bkz. Tamamlanan büyük görevler → Master plan A1):**
-  (1) Risk severity (`project_risks.severity`) 3 bağımsız yerde temsil ediliyor
-  (`Adim4Riskler.jsx` dropdown, `ProjectOverviewDashboard.jsx`'in `RISK_BADGE`/
-  `SEV_BORDER`'ı) — hiçbiri `ticketSeverity.js`'in `SEVERITY_META`'sıyla senkron
-  değil, `RISK_BADGE`'in S-eğrisi grafiğinde nasıl tüketildiği henüz incelenmedi.
-  (2) Satın alma statüsü: `StatusBadge.jsx`'in `PR_STATUS`'ü (tone-bazlı) ile
-  `TalepDetayModal.jsx`'in yerel `STATUS_META`'sı (hex-bazlı) farklı renk/etiket
-  veriyor — hangisinin kazanacağı görsel/iş kararı gerektiriyor. (3) Ticket
-  statüsü: aynı şekilde `StatusBadge.jsx`'in `TK_STATUS`'ü ile
-  `TicketDetayModal.jsx`'in yerel `STATUS`'ü arasında `iptal_edildi` tutarsızlığı
-  var. (4) Günlük rapor genel durumu (`DailyReportForm.jsx`/`DailyReportList.jsx`/
-  `ProjectOverviewDashboard.jsx` arasında 3 farklı tanım, `DailyReportList.jsx`'te
-  büyük/küçük harf duplicate key bug'ı) — `daily_reports.general_status`'un DB
-  constraint'i henüz doğrulanmadı.
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
   kod tekrarı büyük ölçüde giderildi (2026-07-18):** `FaturaListesi`↔
   `ProjeTabFaturaListesi`, `OnayKuyrugu`↔`ProjeTabOnayKuyrugu`, `TalepListesi`
@@ -1453,40 +1474,50 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**20.07.2026 — Uzun oturum: repo hijyeni + master plan Bölüm A (A3-A7) +
-proje yöneticisi/muhasebe sayfa erişimi + Bildirimler sayfası zenginleştirmesi
-ve görsel yeniden tasarımı + PR_STATUS düzeltmesi. Push edildi (13 commit).**
+**20.07.2026 — Çok uzun oturum: repo hijyeni + master plan Bölüm A (A3-A7) +
+proje yöneticisi/muhasebe sayfa erişimi + Bildirimler sayfası zenginleştirmesi/
+görsel yeniden tasarımı + PR_STATUS düzeltmesi + "is-plani" boş ekran riski +
+"A1-devam" tekilleştirmesinin tamamı kapatıldı. 13 commit push edildi, 7 yeni
+commit daha var (is-plani fix + A1-devam'ın 4 parçası + CLAUDE.md güncellemeleri) —
+henüz push edilmedi, onay bekliyor.**
 
 Özet (detaylar Tamamlanan büyük görevler'de): (1) kirli working tree temizlendi,
-master plan Bölüm A'nın kalan maddeleri (A3 rol/menü konsolidasyonu →
-`src/config/navigation.js`, A4-A7 gözden geçirmeleri) kapatıldı — 3 RLS açığı
-bulunup migration'la düzeltildi; (2) admin/proje_yoneticisi/muhasebe/santiye_sefi
-proje erişim kuralı doğrulandı, test verisinde bulunan bir ihlal (belgesiz 3.
-test projesi) temizlendi; (3) **Plan mode** ile proje yöneticisi (ProjeDetay
-içinde Finans salt-okunur + Tickets tam yetki) ve muhasebe (üst seviye Finans'a
-proje filtresi) sayfa erişimi yeniden tasarlanıp uygulandı — bu sırada
-`FaturaListesi.jsx`/`OnayKuyrugu.jsx`/`TicketListesi.jsx`'te 3 gerçek erişim
-bug'ı bulunup düzeltildi; (4) **Plan mode** ile `TabBildirimler.jsx`
-zenginleştirildi (rozet+derin bağlantı); (5) ayrı bir turda sayfanın **görünümü**
-yeniden tasarlandı (filtre çipleri, tarih grubu başlıkları, ikonlu satırlar) ve
-kullanıcının istediği üzere `TalepDetayModal.jsx`'in dikey "Onay Süreci"
-stepper'ının **yatay** bir versiyonu (`ApprovalStepsHorizontal.jsx`) hem satın
-alma hem ticket bildirimlerine eklendi; (6) yol boyunca gerçek bir bulgu
-kapatıldı: `PR_STATUS` haritası DB'nin 10 durumundan yalnızca 7'sini
-tanıyordu, eksik 3'ü eklendi — bkz. Sistem mimarisi → "Bildirim" bölümündeki
-ayrıntılı notlar. Bölüm A (A0-A7) CC tarafı tamamen kapandı, Bölüm B
-"canlı ≥ 2 hafta" kriterini karşılamadığından beklemede.
+master plan Bölüm A'nın kalan maddeleri kapatıldı — 3 RLS açığı bulunup
+düzeltildi; (2) proje erişim kuralı doğrulandı, belgesiz bir test projesi
+temizlendi; (3) **Plan mode** ile proje yöneticisi/muhasebe sayfa erişimi
+yeniden tasarlandı, 3 gerçek erişim bug'ı bulundu/düzeltildi; (4) **Plan mode**
+ile Bildirimler zenginleştirildi (rozet+derin bağlantı), sonra ayrı bir turda
+görünümü yeniden tasarlandı (filtre çipleri, tarih grupları, ikonlu satırlar) +
+satın alma/ticket bildirimlerine `ApprovalStepsHorizontal.jsx` ile yatay onay
+süreci göstergesi eklendi + `PR_STATUS`'un eksik 3 durumu tamamlandı; (5)
+**Plan mode** ile `index.jsx`'teki latent "is-plani" boş ekran riski kapatıldı
+(kısıtsız rollerde stale localStorage sekmesi artık 'genel'e düşüyor); (6)
+**Plan mode** ile "A1-devam" tam kapatıldı — ticket statüsü (`TK_STATUS` eksik
+değer + `ticketStatus.js` dedup), risk severity (`RISK_BADGE.orta` tek satır),
+günlük rapor durumu (`DAILY_REPORT_STATUS` + 6 ölü legacy anahtar temizliği),
+satın alma statüsü (6 farklı temsil → kanonik `PR_STATUS`, 4 dosya) — bkz.
+Sistem mimarisi ilgili bölümler + Bilinen açık noktalar altındaki ayrıntılı not.
+Bölüm A (A0-A7) CC tarafı tamamen kapandı, Bölüm B "canlı ≥ 2 hafta" kriterini
+karşılamadığından beklemede.
 
-`npx eslint src`/`npx vite build` her adımda temiz (25 warning, hepsi
-pre-existing desenle aynı — 0 yeni hata). **SEN kabul testi bekleniyor**
-(push edildi, henüz kullanıcı tarafında elle test edilmedi):
+`npx eslint src`/`npx vite build` her adımda temiz (26 warning — StatusBadge.jsx'e
+her yeni export'ta beklenen +1 uyarı dışında hepsi pre-existing, 0 yeni hata).
+Migration/RLS gerekmedi (A1-devam tamamen salt-okunur render katmanı).
+**SEN kabul testi bekleniyor** (henüz push edilmedi):
 - Proje yöneticisi bir projeye girip Finans (salt-okunur)/Tickets (tam yetki)
   doğru mu; muhasebe üst seviye Finans'ta proje filtresi çalışıyor mu.
-- Bildirimler sayfasında: filtre çipleri/tarih grupları doğru mu, satın
-  alma/ticket bildirimlerindeki yatay onay süreci göstergesi her durumda
-  (özellikle reddedildi/iptal_edildi) doğru adımı işaretliyor mu, fatura/malzeme
-  değişikliği bildirimlerinde durum rozeti doğru mu, yönetici rolüyle fatura
-  "Adım X/2" özeti görünüyor mu, her bildirim tipine tıklamak doğru kaydı/sekmeyi
-  açıyor mu (satın alma talebi ve fatura derin bağlantıları + proje
-  yöneticisi'nin projenin TÜM ticket'larını görmesi hâlâ en yeni/en riskli
-  değişiklikler, dikkatli test edilmeli).
+- Bildirimler sayfasında: filtre çipleri/tarih grupları, satın alma/ticket
+  bildirimlerindeki yatay onay süreci göstergesi, fatura/malzeme değişikliği
+  rozetleri, her bildirim tipine tıklamanın doğru kaydı açması (özellikle proje
+  yöneticisi'nin projenin TÜM ticket'larını görmesi).
+- **Yeni:** paylaşımlı bir cihazda admin/koordinator gibi bir rolle girip
+  "is-plani" sekmesinde takılı kalınmadığını doğrula (localStorage'ı elle
+  `is-plani`'ye ayarlayıp rol değiştirerek test edilebilir).
+- **Yeni:** Satın Alma listesi/Tedarik Kuyruğu/Malzeme Listesi geçmişi/Talep
+  Detayı'ndaki durum rozetlerinin hepsinin artık aynı (10 değerli) etiket
+  setini kullandığını, `TedarikKuyrugu.jsx`'in artık "Muhasebeye yönlendirildi"
+  yerine kanonik "Satın Alındı" gösterdiğini kontrol et. Ticket listesinde
+  iptal edilmiş bir ticket varsa (ya da oluşturup) doğru rozeti gösterdiğini,
+  günlük rapor listesindeki durum rozetinin (Normal/Dikkat/Kritik) ve Genel
+  Proje'deki risk rozetlerinin (kritik/yüksek/orta/düşük 4 ayrı renk) doğru
+  göründüğünü doğrula.
