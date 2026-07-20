@@ -365,7 +365,7 @@ function FaturaIptalModal({ invoice, onClose, onSaved }) {
 // projectId/filterDate yoksa (menü modu): tüm projelerin faturaları, serbest proje seçici,
 // Satıra tıklama → tüm fatura bilgileri ve onay zinciri modalı. projectId doluysa
 // (proje modu): yalnız o projenin faturaları (filterDate'e kadar), kilitli proje seçici.
-export default function FaturaListesi({ projectId = null, filterDate = null }) {
+export default function FaturaListesi({ projectId = null, filterDate = null, openInvoiceId, onOpenedInvoice }) {
   const { isAdmin, isMuhasebe } = useAuth()
   const [invoices,     setInvoices]     = useState([])
   const [loading,      setLoading]      = useState(true)
@@ -387,6 +387,25 @@ export default function FaturaListesi({ projectId = null, filterDate = null }) {
   }
 
   useEffect(() => { fetchInvoices() }, [projectId, filterDate])
+
+  // Dışarıdan (Bildirimler sayfasından) belirli bir faturaya doğrudan gitme —
+  // mevcut filtrelerden/sayfalamadan bağımsız, tek faturayı id ile çekip açar
+  // (TicketListesi'nin openTicketId deseniyle aynı).
+  useEffect(() => {
+    if (!openInvoiceId) return
+    let alive = true
+    supabase
+      .from('invoices')
+      .select('*, suppliers(name)')
+      .eq('id', openInvoiceId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!alive) return
+        if (data) setDetayFatura(data)
+        onOpenedInvoice?.()
+      })
+    return () => { alive = false }
+  }, [openInvoiceId])
 
   const filtered   = filterStatus === 'hepsi' ? invoices : invoices.filter(i => i.status === filterStatus)
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)

@@ -93,6 +93,8 @@ export default function Dashboard() {
   const [selectedDate,        setSelectedDate]        = useState(null)
   const [openTicketId,        setOpenTicketId]        = useState(null)
   const [openRequestId,       setOpenRequestId]        = useState(null)
+  const [openInvoiceId,       setOpenInvoiceId]        = useState(null)
+  const [invoiceProjectId,    setInvoiceProjectId]     = useState(null)
   const navigate = useNavigate()
 
   // Kısıtlı roller → başlangıç sekmesi
@@ -154,6 +156,14 @@ export default function Dashboard() {
   function goToRequest(requestId) {
     setOpenRequestId(requestId)
     handleTabChange('satin-alma')
+  }
+
+  // Bildirimler sayfasından bir fatura bildirimine tıklanınca: Finans sekmesine
+  // geç, o faturayı doğrudan aç (biliniyorsa proje filtresini de ayarla).
+  function goToInvoice(invoiceId, invoiceProjectId = null) {
+    setOpenInvoiceId(invoiceId)
+    setInvoiceProjectId(invoiceProjectId)
+    handleTabChange('finans')
   }
 
   if (!authLoading && role === null) {
@@ -300,7 +310,13 @@ export default function Dashboard() {
         {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && (
           <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
         )}
-        {activeTab === 'finans'       && role !== 'proje_yoneticisi' && <TabFinans />}
+        {activeTab === 'finans'       && role !== 'proje_yoneticisi' && (
+          <TabFinans
+            openInvoiceId={openInvoiceId}
+            onOpenedInvoice={() => setOpenInvoiceId(null)}
+            invoiceProjectId={invoiceProjectId}
+          />
+        )}
         {activeTab === 'tickets'      && role !== 'proje_yoneticisi' && (
           <TabTickets
             selectedDate={selectedDate}

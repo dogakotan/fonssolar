@@ -26,7 +26,7 @@ const EMPTY_ACTION_ITEMS = {
   muhasebeOnayi: { count: 0, amount: 0 }, yoneticiOnayi: { count: 0, amount: 0 },
 }
 
-export default function TabFinans() {
+export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProjectId } = {}) {
   const { isAdmin } = useAuth()
   const [tab, setTab] = useState('genel')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
@@ -38,6 +38,14 @@ export default function TabFinans() {
     getProjects().then(({ data }) => { if (alive) setProjects(data || []) })
     return () => { alive = false }
   }, [])
+
+  // Bildirimler'den belirli bir faturaya gidilince: "Faturalar" sekmesine zorla geç,
+  // biliniyorsa proje filtresini de faturanın projesine ayarla.
+  useEffect(() => {
+    if (!openInvoiceId) return
+    setTab('faturalar')
+    if (invoiceProjectId) setSelectedProjectId(invoiceProjectId)
+  }, [openInvoiceId, invoiceProjectId])
 
   // Proje filtresi boşken (varsayılan) tüm projeler; bir proje seçilince tek-proje RPC'sine
   // geçilir — ikisi de aynı şekli döndürür (bkz. get_finans_overview_all). Muhasebe'nin ayrı
@@ -138,7 +146,13 @@ export default function TabFinans() {
           </div>
         </>
       )}
-      {tab === 'faturalar' && <FaturaListesi projectId={selectedProjectId || null} />}
+      {tab === 'faturalar' && (
+        <FaturaListesi
+          projectId={selectedProjectId || null}
+          openInvoiceId={openInvoiceId}
+          onOpenedInvoice={onOpenedInvoice}
+        />
+      )}
       {tab === 'onay'      && <OnayKuyrugu projectId={selectedProjectId || null} />}
       {tab === 'maliyet'   && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
     </div>
