@@ -362,12 +362,10 @@ Kullanıcıyla birlikte 3 gruba ayrıldı:
   olmasına rağmen) bilinçli olarak diğer saha rolleriyle aynı tek-proje
   (`profiles.project_id`) demetine dahil edildi — kullanıcı "hepsine aynı
   demet" dedi, `proje_yoneticisi`'nin çoklu-proje deseni burada kullanılmadı.
-  **İstisna (2026-07-18):** `kalite_kontrol_sefi` artık bu jenerik 11'lik
-  demetin PARÇASI DEĞİL — kendi Kalite Kontrol modülü var (bkz. Tamamlanan
-  büyük görevler), bu yüzden `FIELD_SPECIALIST_ROLES` dizisinde (Sidebar'ın
-  `SAHA_ROLES`/`is-plani` görünürlüğü için) kalmaya devam ediyor ama
-  `index.jsx`'in `ROLE_TABS`'ında kendi özel kaydı var (`FIELD_SPECIALIST_TABS`
-  yerine `[..., 'kalite-kontrol', ...]`).
+  **Güncel karar (2026-07-20):** Kullanıcı ayrı Kalite Kontrol modülünü istemedi;
+  modül frontend'den kaldırıldı. `kalite_kontrol_sefi` yeniden bu jenerik uzman
+  demetini kullanıyor ve `FIELD_SPECIALIST_ROLES` içinde kalıyor. Rolün kendisini,
+  kullanıcı kayıtlarını veya geçmiş veritabanı verilerini silme.
 
 Bu değişiklik yalnızca sidebar görünürlüğü/üst-seviye sekme yönlendirmesi —
 `ProjeDetay.jsx`'in iç sekmeleri zaten `role !== 'proje_yoneticisi'` gibi
@@ -1260,6 +1258,16 @@ Alma/Finans Test Verisi notu).
 ---
 
 ## Son değişiklik
+
+**20.07.2026 — Kullanıcı tercihi: ayrı Kalite Kontrol modülü istenmiyor.**
+
+Kullanıcı, uygulamadaki ayrı “Kalite Kontrol” bölümünü istemediğini belirtti. Bu
+nedenle modülün menü/proje detayı girişleri ve yalnız bu modüle ait frontend kodu
+kaldırıldı. Yeni bir Kalite Kontrol ekranı veya menü girişi kullanıcı açıkça
+yeniden istemedikçe eklenmemeli. Mevcut `kalite_kontrol_sefi` rolü ve geçmiş
+veritabanı yapıları/verileri bu karardan ayrı tutuldu ve korunuyor.
+
+---
 
 **19.07.2026 (20) — Master plan A1 (proje statüsü map konsolidasyonu) kapatıldı, sıralı devam kararı alındı.**
 

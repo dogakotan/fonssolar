@@ -4,7 +4,6 @@ import { exportGunlukRaporPdf, exportGunlukRaporExcel } from '../../../utils/exp
 import TicketListesi from '../../../components/tickets/TicketListesi'
 import ProjeTabSatinAlma from './ProjeTabSatinAlma'
 import ProjeTabMalzemeListesi from './ProjeTabMalzemeListesi'
-import KaliteKontrolListesi from '../../../components/kalite-kontrol/KaliteKontrolListesi'
 import ProjeTabFinans from './ProjeTabFinans'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
@@ -619,15 +618,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const { role } = useAuth()
   const canViewFinanceAndTickets = role !== 'proje_yoneticisi'
   const [tab, setTab]                = useState('genel')
-  const [ktOpenTicketId, setKtOpenTicketId] = useState(null)
-
-  // Kalite Kontrol'deki "Ticket açıldı" rozetine tıklayınca: Tickets sekmesine
-  // geç, o ticket'ı doğrudan aç (index.jsx'teki goToTicket ile aynı desen).
-  function goToTicketLocal(ticketId) {
-    setTab('tickets')
-    setKtOpenTicketId(ticketId)
-  }
-
   const [project, setProject]        = useState(null)
   const [wps, setWPs]                = useState([])
   const [progressSummary, setProgressSummary] = useState(null)
@@ -1145,9 +1135,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           <button onClick={() => setTab('malzeme-listesi')} style={tab === 'malzeme-listesi' ? tabBtnActive : tabBtn}>
             Malzeme Listesi
           </button>
-          <button onClick={() => setTab('kalite-kontrol')} style={tab === 'kalite-kontrol' ? tabBtnActive : tabBtn}>
-            Kalite Kontrol
-          </button>
           {canViewFinanceAndTickets && (
             <button onClick={() => setTab('finans')} style={tab === 'finans' ? tabBtnActive : tabBtn}>
               Finans
@@ -1312,15 +1299,11 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         <TicketListesi
           projectId={projectId}
           filterDate={filterDate}
-          openTicketId={ktOpenTicketId}
-          onOpenedTicket={() => setKtOpenTicketId(null)}
         />
       ) : tab === 'satin-alma' ? (
         <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
       ) : tab === 'malzeme-listesi' ? (
         <ProjeTabMalzemeListesi projectId={projectId} filterDate={filterDate} />
-      ) : tab === 'kalite-kontrol' ? (
-        <KaliteKontrolListesi projectId={projectId} filterDate={filterDate} onGoToTicket={goToTicketLocal} />
       ) : tab === 'finans' && canViewFinanceAndTickets ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'raporlar' ? (
