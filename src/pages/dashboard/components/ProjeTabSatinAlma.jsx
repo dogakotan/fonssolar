@@ -11,11 +11,17 @@ import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
 import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 import TedarikKuyrugu from './TedarikKuyrugu'
 
-export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false }) {
+export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false, openRequestId, onOpenedRequest }) {
   const { isAdmin, role } = useAuth()
   const canManageProcurement = isAdmin || role === 'proje_yoneticisi'
   const [tab, setTab] = useState(procurementManagerView ? 'tedarik' : 'talepler')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
+
+  // Bildirimler'den belirli bir talebe gidilince (proje yöneticisi görünümü varsayılan olarak
+  // "tedarik" sekmesinde açılıyor) talep detayının render edildiği sekmeye zorla geç.
+  useEffect(() => {
+    if (openRequestId) setTab('talepler')
+  }, [openRequestId])
 
   const { data: overview, loading, refreshing, error, refetch } = useDashboardData(
     'get_satin_alma_overview',
@@ -97,7 +103,16 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
         ))}
       </div>
       {tab === 'talepler' && (
-        <TabSatinAlmaTalepListesi projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} siteChiefView={siteChiefView} />
+        <TabSatinAlmaTalepListesi
+          projectId={projectId}
+          filterDate={filterDate}
+          onChanged={refresh}
+          procurement={procurement}
+          refreshKey={refreshKey}
+          siteChiefView={siteChiefView}
+          openRequestId={openRequestId}
+          onOpenedRequest={onOpenedRequest}
+        />
       )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
       {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} />}

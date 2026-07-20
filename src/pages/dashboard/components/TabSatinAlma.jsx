@@ -15,9 +15,15 @@ import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
 
-export default function TabSatinAlma() {
+export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
   const { isAdmin } = useAuth()
   const [tab, setTab] = useState('talepler')
+
+  // Bildirimler'den belirli bir talebe gidilince "Onay Bekleyenler" sekmesinde
+  // kalınmış olabilir — talep detayının render edildiği "Talepler" sekmesine zorla geç.
+  useEffect(() => {
+    if (openRequestId) setTab('talepler')
+  }, [openRequestId])
   const [projectFilter, setProjectFilter] = useState('all')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
@@ -106,7 +112,14 @@ export default function TabSatinAlma() {
         </select>
       </div>
       {tab === 'talepler' && (
-        <TabSatinAlmaTalepListesi onChanged={refresh} procurement={scopedProcurement} projectId={activeProjectId} refreshKey={refreshKey} />
+        <TabSatinAlmaTalepListesi
+          onChanged={refresh}
+          procurement={scopedProcurement}
+          projectId={activeProjectId}
+          refreshKey={refreshKey}
+          openRequestId={openRequestId}
+          onOpenedRequest={onOpenedRequest}
+        />
       )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu onChanged={refresh} procurement={scopedProcurement} projectId={activeProjectId} refreshKey={refreshKey} />}
     </div>

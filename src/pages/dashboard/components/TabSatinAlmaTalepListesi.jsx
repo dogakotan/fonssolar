@@ -71,7 +71,7 @@ function RiskBadge({ state }) {
 // projectId yoksa (menü modu): tüm projelerin talepleri, PROJE kolonu, malzeme planı proje
 // bazlı gruplanır (groupByProjectId). projectId doluysa (proje modu): yalnız o proje
 // (filterDate'e kadar), siteChiefView ile kendi taleplerine süzme, malzeme planı tek Map state.
-export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = false, procurement, projectId, filterDate, refreshKey, siteChiefView = false }) {
+export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = false, procurement, projectId, filterDate, refreshKey, siteChiefView = false, openRequestId, onOpenedRequest }) {
   const { user, role, isAdmin, isMuhasebe } = useAuth()
   const [requests, setRequests] = useState([])
   const [materialPlan, setMaterialPlan] = useState(new Map())
@@ -91,6 +91,20 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
 
   useEffect(() => { fetchData() }, [projectId, filterDate, onlyPending, refreshKey])
   useEffect(() => { setPage(0) }, [statusFilter, onlyPending, projectId, refreshKey])
+
+  // Dışarıdan (Bildirimler sayfasından) belirli bir talebe doğrudan gitme —
+  // mevcut filtrelerden bağımsız, tek talebi id ile çekip açar (TicketListesi'nin
+  // openTicketId deseniyle aynı).
+  useEffect(() => {
+    if (!openRequestId) return
+    let alive = true
+    supabase.rpc('get_purchase_request_detail', { p_id: openRequestId }).then(({ data }) => {
+      if (!alive) return
+      if (data?.authorized && data?.request) setSelected(data.request)
+      onOpenedRequest?.()
+    })
+    return () => { alive = false }
+  }, [openRequestId])
 
   // Üst bileşen (ProjeTabSatinAlma) procurement_items'i zaten tek bir RPC ile getirdiyse
   // burada aynı tabloyu ikinci kez sorgulamak yerine o veriden malzeme planını hesaplıyoruz.

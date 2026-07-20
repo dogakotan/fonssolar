@@ -92,6 +92,7 @@ export default function Dashboard() {
   const [showProjectDetail,   setShowProjectDetail]   = useState(false)
   const [selectedDate,        setSelectedDate]        = useState(null)
   const [openTicketId,        setOpenTicketId]        = useState(null)
+  const [openRequestId,       setOpenRequestId]        = useState(null)
   const navigate = useNavigate()
 
   // Kısıtlı roller → başlangıç sekmesi
@@ -146,6 +147,13 @@ export default function Dashboard() {
     closeReportModal()
     setOpenTicketId(ticketId)
     handleTabChange('tickets')
+  }
+
+  // Bildirimler sayfasından bir satın alma talebi bildirimine tıklanınca:
+  // Satın Alma sekmesine geç, o talebi doğrudan aç.
+  function goToRequest(requestId) {
+    setOpenRequestId(requestId)
+    handleTabChange('satin-alma')
   }
 
   if (!authLoading && role === null) {
@@ -282,14 +290,16 @@ export default function Dashboard() {
           />
         )}
         {activeTab === 'satin-alma'   && role === 'santiye_sefi' && (
-          <ProjeTabSatinAlma projectId={projectId} siteChiefView />
+          <ProjeTabSatinAlma projectId={projectId} siteChiefView openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
         )}
         {activeTab === 'satin-alma'   && role === 'proje_yoneticisi' && (
           !scopeProjectId && scopeProjects.length > 1
             ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />
-            : <ProjeTabSatinAlma projectId={scopeProjectId} procurementManagerView />
+            : <ProjeTabSatinAlma projectId={scopeProjectId} procurementManagerView openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
         )}
-        {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && <TabSatinAlma />}
+        {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && (
+          <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
+        )}
         {activeTab === 'finans'       && role !== 'proje_yoneticisi' && <TabFinans />}
         {activeTab === 'tickets'      && role !== 'proje_yoneticisi' && (
           <TabTickets
