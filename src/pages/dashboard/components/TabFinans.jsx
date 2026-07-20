@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
+import { getProjects } from '../../../api'
 import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
@@ -29,12 +30,23 @@ export default function TabFinans() {
   const { isAdmin } = useAuth()
   const [tab, setTab] = useState('genel')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
+  const [projects, setProjects] = useState([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
 
-  // Tüm KPI/kova/sapma/CPI hesapları get_finans_overview_all RPC'sinde (Postgres) yapılır —
-  // get_finans_overview ile aynı şekli döndürür, tek fark tüm projeleri kapsaması.
+  useEffect(() => {
+    let alive = true
+    getProjects().then(({ data }) => { if (alive) setProjects(data || []) })
+    return () => { alive = false }
+  }, [])
+
+  // Proje filtresi boşken (varsayılan) tüm projeler; bir proje seçilince tek-proje RPC'sine
+  // geçilir — ikisi de aynı şekli döndürür (bkz. get_finans_overview_all). Muhasebe'nin ayrı
+  // bir "Projeler" sekmesi yok, bu filtre tek proje detayına inebilmesinin tek yolu.
   const { data: overview, loading, refreshing, error, refetch } = useDashboardData(
-    'get_finans_overview_all',
-    { p_as_of_date: new Date().toISOString().split('T')[0] }
+    selectedProjectId ? 'get_finans_overview' : 'get_finans_overview_all',
+    selectedProjectId
+      ? { p_project_id: selectedProjectId, p_as_of_date: new Date().toISOString().split('T')[0] }
+      : { p_as_of_date: new Date().toISOString().split('T')[0] }
   )
   useRealtimeRefresh(['invoices'], refetch)
 
@@ -68,23 +80,33 @@ export default function TabFinans() {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid #E5E7EB' }}>
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              background: 'none', border: 'none', padding: '10px 22px',
-              fontSize: 14, fontWeight: tab === t.key ? 600 : 400,
-              color: tab === t.key ? '#185FA5' : '#6B7280',
-              cursor: 'pointer', fontFamily: 'inherit',
-              borderBottom: tab === t.key ? '2px solid #185FA5' : '2px solid transparent',
-              marginBottom: -2, transition: 'all 0.15s',
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 20, borderBottom: '2px solid #E5E7EB' }}>
+        <div style={{ display: 'flex', gap: 0 }}>
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              style={{
+                background: 'none', border: 'none', padding: '10px 22px',
+                fontSize: 14, fontWeight: tab === t.key ? 600 : 400,
+                color: tab === t.key ? '#185FA5' : '#6B7280',
+                cursor: 'pointer', fontFamily: 'inherit',
+                borderBottom: tab === t.key ? '2px solid #185FA5' : '2px solid transparent',
+                marginBottom: -2, transition: 'all 0.15s',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={selectedProjectId}
+          onChange={e => setSelectedProjectId(e.target.value)}
+          style={{ background: 'transparent', color: '#374151', border: '1px solid #E5E7EB', borderRadius: 8, padding: '7px 12px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', marginBottom: 8 }}
+        >
+          <option value="">Tüm Projeler</option>
+          {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
       </div>
 
       {tab === 'genel' && (
@@ -116,8 +138,8 @@ export default function TabFinans() {
           </div>
         </>
       )}
-      {tab === 'faturalar' && <FaturaListesi />}
-      {tab === 'onay'      && <OnayKuyrugu />}
+      {tab === 'faturalar' && <FaturaListesi projectId={selectedProjectId || null} />}
+      {tab === 'onay'      && <OnayKuyrugu projectId={selectedProjectId || null} />}
       {tab === 'maliyet'   && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
     </div>
   )
