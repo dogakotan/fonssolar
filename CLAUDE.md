@@ -183,7 +183,40 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
 ### Satın alma akışı — proje yöneticisi tedarik adımı
 Durum zinciri: `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
 → satin_alindi → fatura_bekliyor/fatura_onay_bekliyor → faturasi_kesildi`
-(+ `reddedildi`/`iptal`). `onaylandi` ile fatura arasına **zorunlu** bir
+(+ `reddedildi`/`iptal`). **`fatura_bekliyor` pratikte hiçbir zaman üretilmiyor**
+(2026-07-20'de tam akış canlı test edilirken doğrulandı — `sync_purchase_request_from_invoice`
+fatura INSERT'inde durumu doğrudan `fatura_onay_bekliyor`'a geçiriyor, `fatura_bekliyor`
+yalnızca DB constraint'inin izin verdiği ama hiçbir fonksiyon/RPC'nin hiç yazmadığı bir
+değer — CHECK constraint'te durduğu için frontend'in tüm gruplama listelerinde
+(`normalizeStatus`, `INVOICE_FLOW_STATUSES`, `buildApprovalSteps` vb.) savunma amaçlı
+yer alıyor). Gerçek akışta fatura oluşturulunca (`onaylandi`'den `satin_alindi`'ye geçmiş
+bir talepte) durum tek hamlede `fatura_onay_bekliyor`'a düşüyor ve muhasebenin (adım 1)
+VE yöneticinin (adım 2) onay adımlarının İKİSİNDE de aynen kalıyor — invoice kendi
+`invoice_approvals` zincirinde ilerlerken `purchase_requests.status` değişmiyor, yalnızca
+adım 2 (yönetici) onaylanıp `invoices.status='onaylandı'` olunca `faturasi_kesildi`'ye
+geçiyor. Bu yüzden `PR_STATUS.fatura_bekliyor` ve `PR_STATUS.fatura_onay_bekliyor`
+(`StatusBadge.jsx`) + `satinAlma.js`'in `statusLabel()`'ı **aynı metni** ("Fatura
+Bekleniyor") gösterecek şekilde bilinçli olarak eşitlendi (2026-07-20) — Satın Alma
+ekranında muhasebenin mi yöneticinin mi sırada olduğu görünmüyor/önemli değil, tek
+mesaj "fatura süreci bekleniyor".
+
+**Tam akış 2026-07-20'de gerçek RPC/write'larla uçtan uca doğrulandı** (talep oluşturma
+→ yönetici onayı → BOM aşım otomatik `planned_qty` güncellemesi → proje yöneticisi
+tedarik girişi → muhasebe fatura oluşturma → muhasebe onayı (adım 1) → yönetici onayı
+(adım 2) → `cost_allocations`) — hepsi trigger zincirinin tasarlandığı gibi çalıştı,
+DB tarafında **hiçbir bug bulunmadı**. Ama bu doğrulama sırasında **kritik bir frontend
+erişim açığı** ortaya çıktı ve düzeltildi: **muhasebe rolünün `navigation.js`'te
+`satin-alma` sekmesi hiç yoktu** — muhasebenin ulaşabildiği TEK fatura oluşturma ekranı
+Finans'taki "+ Fatura Ekle" (`FaturaEkleModal`, `FaturaListesi.jsx` içinde) hiçbir
+`purchase_request_id` set etmiyor (bağımsız/`source='manual'` bir fatura oluşturuyor) —
+muhasebe bir satın alma talebine BAĞLI fatura hiç kesemiyordu, akış `satin_alindi`'de
+sonsuza kadar takılı kalırdı. `TabSatinAlmaTalepListesi.jsx`'in `canInvoice = isMuhasebe`
+kontrolü (talebe bağlı "Fatura Oluştur" butonu, doğru `purchase_request_id`'yi set eden
+`FaturaOlusturModal`'ı açıyor) zaten doğru kurulmuştu, yalnızca hiç ulaşılamıyordu.
+Düzeltme: `navigation.js`'te `muhasebe.tabs`/`sidebarItems`'a `'satin-alma'` eklendi —
+`TabSatinAlma.jsx` zaten `canApprove`/`canCreate`'i admin'e/diğer rollere kilitlediğinden
+muhasebe bu sekmede yalnızca "Fatura Oluştur" butonunu görür, onay/oluşturma yetkisi
+sızmaz. `onaylandi` ile fatura arasına **zorunlu** bir
 tedarik adımı girdi (2026-07-16): `proje_yoneticisi` rolü (tek proje kapsamlı,
 `santiye_sefi` ile aynı `profiles.project_id` mekanizması) kendi projesindeki
 `onaylandi` durumundaki talepleri yeni **"Tedarik"** alt-sekmesinden işler —
@@ -570,7 +603,49 @@ kapsamında açık, bkz. Bilinen açık noktalar.)
   satır varsa (`category` → `weight_pct`) `Σ(weight_pct/100 × kategori_ortalama(progress_pct))`
   kullanılır (kategori içi basit AVG), satır yoksa süre-ağırlıklı (planned_start/
   planned_end) eski formüle düşer.
-- `invoices` INSERT → `create_invoice_approval_chain()` → status'u `muhasebe_onayında` yapar + `invoice_approvals` step1 açar; `fn_invoice_approval_cascade` **tek yazan kaynak** olarak ilerletir: step1 onayı → step2 açar + `yönetici_onayında`; step2 onayı → `onaylandı` (frontend artık `invoices.status`'a ikinci bir yazma yapmıyor, bkz. DB-WF-001); herhangi bir adımda ret → `reddedildi`. `ödendi` durumu constraint'te geçerli ama onu üretecek bir akış yok (backlog). INSERT/UPDATE ayrıca `sync_purchase_request_from_invoice()` ile bağlı `purchase_requests.status`/`invoice_id`'sini senkronlar (reddedilince `invoice_id=NULL`, yeniden fatura kesilebilir) ve (onaylandı/ödendi → upsert, reddedildi → sil) `trg_invoice_cost_allocation` ile `cost_allocations`'ı günceller. `purchase_requests.invoice_id`'ye yapılan HER yazma `trg_guard_purchase_request_invoice_id` ile gerçek `invoices` durumundan yeniden hesaplanır (drift/manuel bozulma imkansız) ve `invoices.purchase_request_id` üzerinde `WHERE status <> 'reddedildi'` kısmi UNIQUE index'i bir talebin aynı anda yalnızca bir aktif faturası olmasını DB seviyesinde garanti eder.
+- `invoices` INSERT → `create_invoice_approval_chain()` → **2026-07-20'de tek adıma indirildi**:
+  artık `invoice_approvals`'a doğrudan `step=1, step_label='Yönetici Onayı', status='bekliyor'`
+  açar ve `invoices.status`'u doğrudan `yönetici_onayında` yapar — eski "Muhasebe Onayı"
+  (adım 1) self-onay adımı kaldırıldı (kullanıcı: muhasebenin kendi girdiği faturayı
+  kendine onaylatması gereksizdi, doğrudan yöneticiye düşmeli). `fn_invoice_approval_cascade`
+  **tek yazan kaynak** olarak ilerletir — artık adım NUMARASINA değil `step_label`'a bakıyor:
+  `step_label='Muhasebe Onayı'` olan (yalnızca 2026-07-20'den ÖNCE oluşturulmuş, hâlâ eski
+  2 adımlı zincirde olan) bir onay `onaylandı` olursa step 2 `'Yönetici Onayı'` açılıp
+  `yönetici_onayında`'ya geçilir; başka her `step_label` (yeni tek adımlı akışın kendisi VEYA
+  eski akışın step 2'si) onaylanınca doğrudan `onaylandı`. Herhangi bir adımda ret →
+  `reddedildi`. `fn_validate_invoice_status_transition` da `bekliyor → yönetici_onayında`
+  doğrudan geçişine izin verecek şekilde güncellendi (eskiden yalnızca `bekliyor →
+  muhasebe_onayında → yönetici_onayında` sırası vardı). Frontend tarafında `OnayKuyrugu.jsx`'in
+  "Muhasebe Onay Kuyruğu" bölümü kaldırıldı (artık hiçbir yeni fatura orada durmuyor);
+  onay/red aksiyonu artık sabit bir `step` numarasına değil `status='bekliyor'` olan satıra
+  yazıyor (adım numarası faturaya göre 1 ya da 2 olabildiğinden). `FaturaListesi.jsx`'in
+  "onaylandıktan sonra iptal edildi" ayrımı da (`cancelledAfterApproval`) artık sabit
+  `step===2` yerine "TÜM onay adımları onaylandı" kontrolüne geçirildi — adım sayısından
+  bağımsız çalışıyor. **`ödendi` durumu constraint'te geçerli ama onu üretecek bir akış yok**
+  (backlog). INSERT/UPDATE ayrıca `sync_purchase_request_from_invoice()` ile bağlı
+  `purchase_requests.status`/`invoice_id`'sini senkronlar (reddedilince `invoice_id=NULL`,
+  yeniden fatura kesilebilir) ve (onaylandı/ödendi → upsert, reddedildi → sil)
+  `trg_invoice_cost_allocation` ile `cost_allocations`'ı günceller. `purchase_requests.invoice_id`'ye
+  yapılan HER yazma `trg_guard_purchase_request_invoice_id` ile gerçek `invoices` durumundan
+  yeniden hesaplanır (drift/manuel bozulma imkansız) ve `invoices.purchase_request_id`
+  üzerinde `WHERE status <> 'reddedildi'` kısmi UNIQUE index'i bir talebin aynı anda
+  yalnızca bir aktif faturası olmasını DB seviyesinde garanti eder.
+
+  **Ayrı bulgu — `FaturaListesi.jsx`'in "+ Fatura Ekle" (`FaturaEkleModal`) butonu şimdiye
+  kadar hiç çalışmamış olmalıydı:** `source: 'manual'` (İngilizce) yazıyordu ama
+  `invoices_source_check` constraint'i yalnızca `'manuel'` (Türkçe) kabul ediyor — her
+  denemede ham Postgres constraint hatası alınırdı (DB'de tek bir `source='manual'` satırı
+  yok, doğrulandı). Tek kelime düzeltildi.
+
+  **Ayrı, düzeltilmeyen bulgu — 3 eski/seed test faturasında (`INV-2026-004`, `INV-2026-014`,
+  `INV-2026-015`) tutarsız veri:** `invoices.status='muhasebe_onayında'` olmasına rağmen
+  `invoice_approvals`'da HEM step1 (bekliyor) HEM step2 (bekliyor) satırı zaten var — normal
+  akışta bu imkansız bir kombinasyon (step2 yalnızca step1 onaylanınca açılır). Muhtemelen
+  ilk seed/demo verisi yüklenirken tetikleyiciler bypass edilip elle INSERT edilmiş. Bu 3
+  fatura artık ne eski ne yeni akışta düzgün ilerleyemez (adım 1'i onaylamaya çalışmak step2
+  UNIQUE constraint'ine çarpar) — canlı müşteri verisi olmadığından acil değil ama bir gün
+  ele alınmalı (ya elle `invoice_approvals` temizlenip yeniden başlatılmalı ya da bu 3 test
+  satırı tamamen silinmeli).
 - `purchase_requests` UPDATE → `handle_purchase_request_approval()`.
 - `tickets` UPDATE → `fn_ticket_history()` → `ticket_history`'ye otomatik log.
 - `daily_report_issues` INSERT (yalnızca `ticket_id` henüz NULL olan gerçek yeni
@@ -1413,8 +1488,87 @@ Alma/Finans Test Verisi notu).
   daha basit sorgusuyla yapıyordu, view'a hiç bağlı değildi; motor DEĞİŞMEDİ,
   yalnızca kullanılmayan view kaldırıldı. `get_advisors` (security+performance)
   migration sonrası yeni uyarı göstermedi.
+- **Kullanıcının kendi testinde bulduğu 3 gerçek bug kapatıldı — proje yöneticisi
+  tedarik akışı (2026-07-20 akşamı, feature freeze sonrası bug-fix turu):**
+  Bugün oluşturulan test verisiyle kullanıcı canlı test ederken bulundu. (1)
+  `TedarikKuyrugu.jsx`'in durum filtresi dropdown'ı eski bağlamsal etiketler
+  kullanıyordu ("İşlem Bekliyor"/"Muhasebeye Yönlendirildi") — aynı ekrandaki
+  satır rozeti ise bu oturumdaki PR_STATUS tekilleştirmesinden beri kanonik
+  etiketleri ("Onaylandı"/"Satın Alındı") gösteriyordu, aynı durum için iki
+  farklı metin ("iki tane durum" şikayeti). Dropdown artık `PR_STATUS`'un aynı
+  etiketlerini kullanıyor. (2) `purchase_requests_select` RLS policy'si
+  (`purchase_requests_update`'in aksine) `has_project_access()`/`cross_project`
+  modelini hiç kullanmıyordu — yalnızca admin/muhasebe, talebi açan kişi, veya
+  `profiles.project_id` birebir eşleşmesiyle izin veriyordu; `proje_yoneticisi`
+  (cross_project=true) bu yüzden yalnızca kendi ev projesindeki talepleri
+  görebiliyordu, cross_project ile kazandığı diğer projelere erişim SELECT'te
+  hiç uygulanmıyordu (1 migration, onaylı — policy `has_project_access(project_id)
+  OR requested_by = auth.uid()` olarak yeniden yazıldı). (3) Asıl kullanıcı
+  şikayeti: proje yöneticisinin üst-seviye "Satın Alma" sekmesi (`index.jsx`)
+  `cross_project=true` olmasına rağmen `ScopeContext`'in çok-projeli
+  kullanıcılarda boş döndürdüğü `scopeProjectId` yüzünden `ProjeSecimGerekli`
+  ekranına düşüp TEK bir projeye kilitleniyordu (bir kez seçilince session
+  boyunca değiştirilemiyordu) — "admin gibi tüm projeleri görme" beklentisiyle
+  çelişiyordu. Düzeltme: `TedarikKuyrugu.jsx` artık `projectId` opsiyonel —
+  boşken (proje yöneticisi çok projeli modu) filtresiz sorgu çalışıyor (RLS
+  zaten erişilebilir projelerle sınırlıyor), yeni bir PROJE kolonu proje adını
+  gösteriyor (isimler `ScopeContext`'in zaten `get_my_projects()` RPC'siyle
+  yüklediği listeden prop olarak geçiliyor — `projects` tablosuna RAW sorgu
+  YAPILMIYOR, çünkü `projects_select` policy'si de aynı eski has_project_access-siz
+  modeli kullanıyor, bkz. Bilinen açık noktalar). `index.jsx`'teki
+  `ProjeSecimGerekli` zorunluluğu yalnızca `satin-alma` sekmesi için kaldırıldı
+  (genel/is-plani sekmelerindeki tekli proje seçimine kasıtlı olarak
+  dokunulmadı, ayrı kapsam). Realtime de aggregate moda uyarlandı:
+  `ProjeTabSatinAlma`'nın `useRealtimeRefresh`'i artık `projectId` boşken
+  filtresiz (RLS zaten sınırlıyor) dinliyor ve `refreshKey`'i `TedarikKuyrugu`'ya
+  da iletiyor (önceden yalnızca `TabSatinAlmaTalepListesi`/`TabSatinAlmaOnayKuyrugu`
+  alıyordu) — iki kullanıcı aynı anda çalışırken proje yöneticisinin ekranı artık
+  diğer kullanıcıların onay/tedarik işlemlerini otomatik yansıtıyor.
+
+  **Ek tur — kullanıcının "akış tam uygulanmıyor" uyarısı üzerine tam uçtan uca
+  doğrulama (2026-07-20, aynı akşam):** Gerçek bir test talebi (`create_purchase_request_with_items`
+  RPC, BOM'a bağlı Malzeme kalemi, planlanandan fazla miktar) oluşturulup 6 adımın
+  (talep→yönetici onayı→BOM aşım otomatik `planned_qty` güncellemesi→proje yöneticisi
+  tedarik girişi→muhasebe fatura oluşturma→2 adımlı fatura onayı→`cost_allocations`)
+  HER birinde gerçek write yapılıp SQL ile doğrulandı — trigger zincirinde hiçbir bug
+  yok. Ama bu turda **kritik bir erişim açığı** bulundu: muhasebe `navigation.js`'te
+  hiç `satin-alma` sekmesine sahip değildi, Finans'taki tek fatura ekleme yolu
+  (`FaturaEkleModal`) `purchase_request_id` set etmiyordu — muhasebe bir talebe BAĞLI
+  fatura hiç kesemiyordu (bkz. Sistem mimarisi → "Satın alma akışı" için tam detay).
+  Düzeltildi: `navigation.js`'e `muhasebe.tabs`/`sidebarItems`'a `satin-alma` eklendi.
+  Ayrıca kullanıcının "fatura bekliyor/fatura onay bekliyor farklı yazılıyor, kafa
+  karıştırıyor" uyarısı üzerine `fatura_bekliyor`'un pratikte hiç üretilmediği
+  doğrulandı, iki durumun (`fatura_bekliyor`/`fatura_onay_bekliyor`) etiketi
+  `StatusBadge.jsx` + `satinAlma.js`'te "Fatura Bekleniyor" olarak eşitlendi. Ayrı
+  olarak `onaylandi` durumunun etiketi de "Onaylandı"dan "Proje Yöneticisinde"ye
+  çevrildi (aynı gün, daha önceki bir alt-turda) — kullanıcı talebin şu an kimin
+  elinde olduğunu görmek istedi, "geçmiş" değil "şu anki adım" anlatan bir etiket
+  istendi; tone `success`'ten `warning`'e çekildi. Hizmet/Diğer tipi taleplerde BOM
+  kontrolünün hiç uygulanmadığı da kod okumasıyla doğrulandı (`YeniTalepModal.jsx`
+  yalnızca Malzeme kategorisinde `bom_item_id` set ediyor, `fn_apply_approved_material_excess`
+  yalnızca dolu `bom_item_id`'li kalemler üzerinde döngüye giriyor — yapısal garanti,
+  ayrı bir kod yolu gerekmiyor). Tüm test verisi (11 purchase_request, 3 invoice +
+  approvals + cost_allocations, 4 ticket, 4 risk, 2 procurement_item_change_request —
+  biri 2026-07-18'den kalma temizlenmemiş bir Playwright kalıntısıymış, o da bu turda
+  temizlendi) silindi, `procurement_items.planned_qty` test öncesi değerine
+  (10400.25) geri alındı. `PROCUREMENT_CHANGE_STATUS.onaylandi` (farklı domain —
+  BOM miktar değişikliği onayı, gerçekten bitmiş bir durum) ve `INVOICE_STATUS.onaylandı`
+  (fatura onayı, farklı tablo) kasıtlı olarak "Onaylandı" kaldı, dokunulmadı.
+  `get_advisors` yeni uyarı göstermedi, `npx eslint src`/`npx vite build` temiz.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
+- **`projects` tablosunun SELECT RLS policy'si (`projects_select`) `has_project_access()`
+  kullanmıyor** — yalnızca admin/muhasebe, `user_project_access` eşleşmesi, veya
+  `profiles.project_id` birebir eşleşmesiyle izin veriyor; `purchase_requests_select`'te
+  2026-07-20'de düzeltilen aynı gap burada hâlâ duruyor. `cross_project=true` bir
+  rolün (`proje_yoneticisi`, `lojistik_tedarik`) `projects` tablosuna RAW `.from()`
+  sorgusu (RPC değil — `get_my_projects()` bu gap'i SECURITY DEFINER ile bypass
+  ediyor zaten) diğer erişilebilir projeleri döndürmez. Şu an bilinen hiçbir ekran
+  bundan etkilenmiyor (`TedarikKuyrugu.jsx`'in tüm-projeler modu proje adları için
+  `ScopeContext`'in zaten yüklediği `get_my_projects()` listesini prop olarak
+  kullanıyor, raw sorgu atmıyor) — ama `projects` tablosuna doğrudan sorgu atan
+  yeni bir ekran yazılırsa bu gap'e dikkat, ya da `purchase_requests_select`'teki
+  gibi `has_project_access(id) OR ...` policy'sine geçirilmesi düşünülebilir.
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
   kod tekrarı büyük ölçüde giderildi (2026-07-18):** `FaturaListesi`↔
   `ProjeTabFaturaListesi`, `OnayKuyrugu`↔`ProjeTabOnayKuyrugu`, `TalepListesi`
@@ -1480,50 +1634,58 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**20.07.2026 — Çok uzun oturum, go-live'dan bir gün önce (özellik dondurması
-günü): repo hijyeni + master plan Bölüm A (A3-A7) + proje yöneticisi/muhasebe
-sayfa erişimi + Bildirimler zenginleştirmesi/görsel yeniden tasarımı +
-"is-plani" boş ekran riski + "A1-devam" tekilleştirmesi + orphan DB temizliği.
-6 commit push edildi. DB tarafında 1 migration (onaylı) uygulandı.**
+**20.07.2026 (akşam, üçüncü tur) — Muhasebe test hesabında ("invalid" login
+hatası) şifre sıfırlandı; ardından muhasebe gerçek tarayıcıdan fatura ekleyip
+"yöneticiye değil kendine düştüğünü" bildirdi. İncelemede bunun bug değil,
+mevcut TASARIM (2 adımlı fatura onayı: muhasebe kendi girdiğini önce kendi
+kuyruğundan onaylıyor, sonra yöneticiye düşüyor) olduğu ortaya çıktı — kullanıcı
+bunu tek adıma indirmeyi tercih etti (AskUserQuestion). 2 migration daha
+(onaylı) uygulandı, süreçte 1 ayrı kritik bug (hiç çalışmamış "+ Fatura Ekle"
+butonu) daha bulundu. Frontend değişiklikleri henüz commit edilmedi.**
 
-Özet (detaylar Tamamlanan büyük görevler'de): (1) kirli working tree temizlendi,
-master plan Bölüm A'nın kalan maddeleri kapatıldı — 3 RLS açığı bulunup
-düzeltildi; (2) proje erişim kuralı doğrulandı, belgesiz bir test projesi
-temizlendi; (3) **Plan mode** ile proje yöneticisi/muhasebe sayfa erişimi
-yeniden tasarlandı, 3 gerçek erişim bug'ı bulundu/düzeltildi; (4) **Plan mode**
-ile Bildirimler zenginleştirildi (rozet+derin bağlantı), sonra görünümü yeniden
-tasarlandı (filtre çipleri, tarih grupları, ikonlu satırlar) + satın alma/ticket
-bildirimlerine `ApprovalStepsHorizontal.jsx` ile yatay onay süreci göstergesi
-eklendi + `PR_STATUS`'un eksik 3 durumu tamamlandı; (5) **Plan mode** ile
-`index.jsx`'teki latent "is-plani" boş ekran riski kapatıldı; (6) **Plan mode**
-ile "A1-devam" tam kapatıldı (ticket statüsü, risk severity, günlük rapor
-durumu, satın alma statüsü — 4 domain); (7) go-live'a 1 gün kala **kapsam
-bilinçli daraltıldı** — kalan backlog'un 3 büyük maddesi (rol izin matrisi,
-proje sihirbazı kategori ağırlığı editörü, Adım5Tedarik yeniden tasarımı)
-kullanıcı kararıyla Bölüm B'ye (canlı sonrası) ertelendi, yalnızca 2 düşük
-riskli DB temizliği bugün yapıldı: orphan Kalite Kontrol RPC/tablo/trigger'ları
-+ kullanılmayan `vw_bom_tracking` view'ı tek migration'la silindi (`get_advisors`
-temiz). Bölüm A (A0-A7) CC tarafı tamamen kapandı, A8 (go-live) yarın —
-Bölüm B "canlı ≥ 2 hafta" kriterini karşılamadığından beklemede.
+Yapılanlar: (1) Muhasebe test hesabının şifresi `auth.users`'da doğrudan
+sıfırlandı (pgcrypto `crypt()`), yeni şifre yalnızca `.env.test`'e yazıldı
+(chat'e yazılmadı, kural gereği). (2) Fatura onay akışı **tek adıma indirildi**
+(bkz. Sistem mimarisi → Trigger zincirleri → `invoices` maddesi tam detay için):
+`create_invoice_approval_chain()` artık doğrudan `step=1 'Yönetici Onayı'`
+açıyor ve `invoices.status`'u `yönetici_onayında` yapıyor (eski "Muhasebe
+Onayı" self-onay adımı kalktı); `fn_invoice_approval_cascade` artık adım
+NUMARASINA değil `step_label`'a bakıyor (geriye dönük uyumluluk için — eski
+2 adımlı zincirde olan faturalar hâlâ doğru ilerliyor); `fn_validate_invoice_status_transition`
+`bekliyor→yönetici_onayında` doğrudan geçişine izin verecek şekilde güncellendi.
+Frontend: `OnayKuyrugu.jsx`'in "Muhasebe Onay Kuyruğu" bölümü kaldırıldı, onay
+aksiyonu artık sabit `step` numarası yerine `status='bekliyor'` olan satırı
+hedefliyor (adım numarası faturaya göre 1 ya da 2 olabiliyor artık);
+`FaturaListesi.jsx`'in "onaylandıktan sonra iptal edildi" ayrımı da sabit
+`step===2` yerine "tüm adımlar onaylandı" kontrolüne geçirildi. Halihazırda
+"Muhasebe Onayı" adımında bekleyen 3 temiz (çakışmasız) test faturası da
+migration'la doğrudan "Yönetici Onayı"na geçirildi. (3) **Ayrı, kritik bulgu:**
+`FaturaListesi.jsx`'in "+ Fatura Ekle" butonu (`source: 'manual'` yazıyordu)
+`invoices_source_check` constraint'i yalnızca `'manuel'` (TR) kabul ettiğinden
+muhtemelen HİÇ ÇALIŞMAMIŞ — DB'de tek bir `source='manual'` satırı olmadığı
+doğrulandı. Tek kelime düzeltildi. (4) İncelerken 3 eski/seed test faturasında
+(`INV-2026-004/014/015`) tutarsız bir veri deseni bulundu (hem step1 hem step2
+satırı aynı anda 'bekliyor' — normal akışta imkansız bir kombinasyon,
+muhtemelen seed script trigger'ları bypass ederek yazmış) — canlı veri
+olmadığından acil değil, düzeltilmedi, CLAUDE.md'ye not edildi.
 
-`npx eslint src`/`npx vite build` her adımda temiz (26 warning, hepsi
-pre-existing desenle aynı — 0 yeni hata). **SEN kabul testi bekleniyor**
-(push edildi):
-- Proje yöneticisi bir projeye girip Finans (salt-okunur)/Tickets (tam yetki)
-  doğru mu; muhasebe üst seviye Finans'ta proje filtresi çalışıyor mu.
-- Bildirimler: filtre çipleri/tarih grupları, satın alma/ticket bildirimlerindeki
-  yatay onay süreci göstergesi, fatura/malzeme değişikliği rozetleri, her
-  bildirim tipine tıklamanın doğru kaydı açması (özellikle proje yöneticisi'nin
-  projenin TÜM ticket'larını görmesi).
-- Paylaşımlı bir cihazda admin/koordinator gibi bir rolle "is-plani"de takılı
-  kalınmadığını doğrula.
-- Satın Alma/Tedarik Kuyruğu/Malzeme Listesi/Talep Detayı rozetlerinin aynı
-  (10 değerli) etiketi kullandığını, ticket/günlük rapor/risk rozetlerinin
-  doğru göründüğünü kontrol et.
-- Kalite Kontrol'e dair hiçbir ekranın/işlevin artık görünmediğini (zaten
-  frontend'i 2 gün önce kaldırılmıştı, bugün yalnızca DB kalıntısı temizlendi
-  — davranış değişikliği beklenmiyor) teyit et.
+Tüm yeni test faturaları (standalone + satın alma talebine bağlı, ikisi de
+gerçek write'larla uçtan uca doğrulandı: `bekliyor→yönetici_onayında→onaylandı`,
+`cost_allocations` doğru oluştu) silindi. `npx eslint src`/`npx vite build`
+temiz.
 
-**Sıradaki adım (kullanıcıyla konuşuldu):** Bugün kullanıcı kendi frontend
-düzenlemelerini yapacak, CC bunları kontrol edecek; yarın (Çarşamba) go-live
-işlemlerine (A8 — bkz. `cc-master-uygulama-plani.md`) geçilecek.
+Bu akşamki önceki iki turun özeti (detaylar yukarıdaki ilgili maddelerde):
+tam satın alma→tedarik→fatura→maliyet akışı gerçek write'larla test edildi
+(trigger zincirinde bug bulunmadı); muhasebenin `navigation.js`'te hiç
+`satin-alma` sekmesi olmadığı (talebe bağlı fatura hiç kesemiyordu) bulunup
+düzeltildi; `fatura_bekliyor`/`fatura_onay_bekliyor` ve `onaylandi` etiketleri
+tekilleştirildi; `TedarikKuyrugu.jsx` proje yöneticisi için aggregate (tüm
+projeler) moda geçti; `purchase_requests_select` RLS'i `has_project_access()`'e
+taşındı.
+
+**Sıradaki adım:** Kullanıcı gerçek tarayıcıdan (özellikle muhasebe ile) tam
+akışı yeniden test edecek — fatura eklenince artık doğrudan yönetici onayına
+düştüğünü doğrulayacak. Onay gelince bugünkü ÜÇ turun + dünden kalan "SEN kabul
+testi" listesinin (bkz. git log'daki önceki "Son değişiklik" kaydı) birlikte
+commit/push'u yapılacak, sonra yarın (Çarşamba) go-live işlemlerine (A8 — bkz.
+`cc-master-uygulama-plani.md`) geçilecek.
