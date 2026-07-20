@@ -138,8 +138,12 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
 - Satın Alma/Malzeme Listesi tabloları (`TabSatinAlmaTalepListesi.jsx`,
   `ProjeTabFaturaKesilecekler.jsx`) sabit iç-scroll kutusu yerine `PAGE_SIZE=10`
   + ortak `Pager` bileşeni (`‹ 1/2 ›`) kullanıyor.
-- `ProjeDetay.jsx`'in sekmeleri: Genel Proje, İş Planı, Satın Alma, Finans,
-  Ticket, Raporlar, Ekip (ayrı bir "Proje Paneli" sekmesi YOK — 2026-07-16'da
+- `ProjeDetay.jsx`'in sekmeleri (8 — bu not önceden 7 diyordu, Malzeme Listesi'ni
+  atlıyordu): Genel Proje, İş Planı, Satın Alma, Malzeme Listesi, Finans,
+  Ticket, Raporlar, Ekip. 2026-07-20'ye kadar Finans/Ticket yalnızca
+  `proje_yoneticisi` için gizliydi (bkz. Roller bölümü) — artık hiçbir rol
+  için sekme bazlı bir gizleme yok, hepsi ProjeDetay'a girebilen her role
+  görünüyor (ayrı bir "Proje Paneli" sekmesi YOK — 2026-07-16'da
   kısaca eklenip aynı oturumda kullanıcı kararıyla geri alındı, bkz. Tamamlanan
   büyük görevler). `ProjeDetay.jsx` kendi seviyesinde artık bir
   `DataStatusBanner`/`RealtimeStatusIndicator` RENDER ETMİYOR (2026-07-17'de
@@ -302,10 +306,17 @@ genişletmesi): `ROLE_TABS.proje_yoneticisi` artık `['genel', 'projeler',
 'is-plani', 'satin-alma', 'bildirimler']` (eskiden yalnızca
 `['satin-alma','bildirimler']`) — bu rol artık admin gibi **Projeler**
 sekmesinden proje listesini gezip bir projeye tıklayınca o projenin tam
-`ProjeDetay` görünümüne (kendi iç sekmeleri: Genel/İş Planı/Satın Alma/
-Finans/Ticket/Raporlar/Ekip) girebiliyor. Üst seviyede `finans`/`tickets`
-sekmeleri bu rol için hâlâ kapalı (`role !== 'proje_yoneticisi'` guard'ı) —
-yalnızca `ProjeDetay` içinden, tek bir proje bağlamında erişilebiliyorlar.
+`ProjeDetay` görünümüne (8 iç sekme: Genel Proje/İş Planı/Satın Alma/Malzeme
+Listesi/Finans/Ticket/Raporlar/Ekip) girebiliyor. **Üst seviyede** `finans`/
+`tickets` sekmeleri bu rol için hâlâ kapalı (`navigation.js`'te yok) — ama
+**2026-07-20'de** `ProjeDetay.jsx`'in eski `canViewFinanceAndTickets = role
+!== 'proje_yoneticisi'` guard'ı kaldırıldı: artık bir projenin içine girince
+Finans'ı **salt-okunur** (fatura ekleyemez/onaylayamaz/iptal edemez —
+`FaturaListesi`/`OnayKuyrugu`'da `isAdmin || isMuhasebe`'den türetilen
+`canAct`/`readonly` ile), Tickets'ı ise **santiye_sefi ile aynı tam yetki**
+seviyesinde görüyor (`TicketListesi.jsx`'in `fetchTickets`'ına ayrı bir
+`proje_yoneticisi` dalı eklendi — `propProjectId`'ye göre süzülür, çünkü bu
+rol çoklu projeye erişebiliyor).
 `genel`/`is-plani`/`satin-alma` üst-seviye sekmeleri `scopeProjectId`
 (`ScopeContext`) kullanıyor; header'daki global proje seçici `<select>`
 (`showAllOption`/`scopeProjects`/`setScopeProjectId`) kullanıcı tarafından
@@ -1221,6 +1232,38 @@ Alma/Finans Test Verisi notu).
   `muhasebe` policy'den çıkarıldı. `get_advisors`(security) migration'lar
   sonrası yeni uyarı göstermedi, `pg_policy` ile her ikisi de doğrulandı.
   Frontend dosyası değişmedi.
+- **Proje yöneticisi + muhasebe sayfa erişimi genişletmesi (2026-07-20, Plan mode
+  ile tasarlandı):** Kullanıcıyla birlikte "hangi rol neyi görmeli" netleştirildi.
+  (1) `ProjeDetay.jsx`'in `canViewFinanceAndTickets = role !== 'proje_yoneticisi'`
+  guard'ı kaldırıldı — proje_yoneticisi artık bir projenin içinde Finans'ı
+  **salt-okunur** (fatura ekleyemez/onaylayamaz/iptal edemez), Tickets'ı ise
+  **santiye_sefi ile aynı tam yetkide** görüyor (bkz. Roller bölümü). Bu
+  değişikliği güvenli yapabilmek için keşifte 3 gerçek bug bulunup aynı
+  commit'te düzeltildi: `FaturaListesi.jsx`'in "+ Fatura Ekle" butonu hiç rol
+  kontrolü olmadan render ediliyordu (`canAct = isAdmin || isMuhasebe`'ye
+  bağlandı); `OnayKuyrugu.jsx`'in Yönetici Onay Kuyruğu'ndaki `readonly={isMuhasebe}`
+  proje_yoneticisi için `false`'a eşitleniyordu yani çalışmayacak Onayla/Reddet
+  butonları render ediliyordu (`readonly={!isAdmin}` yapıldı); `TicketListesi.jsx`'in
+  `fetchTickets`'ı proje_yoneticisi'ni genel `else` dalına (yalnız kendi açtığı
+  ticket) düşürüyordu, projenin diğer ticket'larını hiç göstermiyordu (`propProjectId`'ye
+  göre süzen ayrı bir dal eklendi). Bu düzeltmeler yan etki olarak
+  `maliyet_kontrolcu`/`koordinator`/`muhendis`/`proje_koordinatoru` gibi "kısıtsız"
+  rollerin de daha önce yanlışlıkla görebildiği (ama RLS'in zaten reddettiği)
+  fatura/onay butonlarını doğru şekilde gizledi. (2) Muhasebe'ye ayrı bir
+  "Projeler" sekmesi açmak yerine mevcut üst seviye `TabFinans.jsx`'e bir proje
+  filtresi (`<select>`, `getProjects()` ile doldurulur) eklendi — boşken
+  (varsayılan) `get_finans_overview_all` ile bugünküyle birebir aynı "tüm
+  projeler" davranışı, bir proje seçilince `get_finans_overview(p_project_id,...)`'a
+  geçip `FaturaListesi`/`OnayKuyrugu`'ya `projectId` iletiliyor (ikisi de zaten
+  bu prop'u destekliyordu). Bu filtre admin için de görünür (bileşen paylaşılı,
+  saf katkı). Muhasebe'ye Satın Alma görünürlüğü **eklenmedi** (bilinçli karar —
+  fatura ekleme formundaki tedarikçi/talep seçici yeterli). RLS/migration
+  gerekmedi — tamamen UI değişikliği, arka planda zaten var olan yetki sınırlarına
+  (invoices/invoice_approvals yalnızca admin/muhasebe, tickets created_by/admin)
+  dayanıyor. `npx eslint src`/`npx vite build` temiz (21 pre-existing warning,
+  0 yeni). **SEN kabul testi bekleniyor** (headless ortamda yapılamadı): proje
+  yöneticisi ile bir projeye girip Finans/Tickets'ın doğru göründüğünü, muhasebe
+  ile üst seviye Finans'ta proje filtresinin çalıştığını doğrula.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 - **Orphan Kalite Kontrol RPC'leri (2026-07-20'de kaldırılan modülden kalıntı):**
@@ -1325,129 +1368,44 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**20.07.2026 — Repo hijyeni + Kalite Kontrol modülü kaldırma + Finans sadeleştirme + Master plan A3 tamamlandı.**
+**20.07.2026 — Uzun oturum: repo hijyeni, master plan Bölüm A (A3-A7) tamamlandı,
+rol bazlı proje/sayfa erişimi (proje yöneticisi + muhasebe) yeniden tasarlandı.**
 
-Kullanıcı "sırayla git" akışına devam etti. Oturum önce kirli working tree'yi
-temizledi (bkz. Tamamlanan büyük görevler için tam detay): önceki oturumdan kalan
-commit'lenmemiş A7 işleri (vercel.json güvenlik header'ları, DB yedekleme
-scripti, foto sıkıştırma) + bir `AuthContext`/`getProjects` bugfix'i mantıksal
-commit'lere bölündü; kullanıcı eşzamanlı olarak editörde Kalite Kontrol
-modülünü tamamen kaldırdı (kendi kararı) ve Finans ekranlarını sadeleştirdi
-(fatura satırına tıklama, onay kuyruğu filtresi) — ikisi de ayrı commit oldu.
+Özet akış (detaylar Tamamlanan büyük görevler'de): (1) kirli working tree
+temizlendi (A7 işleri + bir bugfix mantıksal commit'lere bölündü, kullanıcı
+eşzamanlı Kalite Kontrol modülünü kaldırdı + Finans'ı sadeleştirdi); (2) master
+plan Bölüm A'nın kalan maddeleri (A3 rol/menü konsolidasyonu → yeni
+`src/config/navigation.js`, A4/A5/A6/A7 gözden geçirmeleri) sırayla kapatıldı —
+bu sırada **3 RLS güvenlik açığı** bulunup migration'la kapatıldı
+(`purchase_requests_insert`'in rol-bağımsız no-op `WITH CHECK`'i, `muhasebe`'nin
+`purchase_request_items`'a gereksiz yazma izni, ve bugünkü sayfa-erişimi
+işinde bulunan `OnayKuyrugu.jsx`'in yanlış `readonly` türetimi); (3) kullanıcı
+admin/proje_yoneticisi/muhasebe/santiye_sefi'nin proje erişim kuralını
+doğrulattı — kod/RLS tarafı doğruydu ama gerçek test verisinde 2 şantiye şefi
+hesabına yanlışlıkla verilmiş, belgesiz 3. bir test projesine
+(`test-bursa-mudanya-ges`) erişim bulundu ve projeyle birlikte tamamen
+temizlendi (artık yalnızca 2 test projesi var); (4) **Plan mode** ile proje
+yöneticisi ve muhasebe'nin ProjeDetay/Finans sayfa erişimi yeniden tasarlanıp
+uygulandı — bkz. aşağıdaki ayrı madde.
 
-Ardından **Master plan A3** (rol/menü tek kaynak) yapıldı: `index.jsx`
-(`ROLE_TABS`/`ROLE_DEFAULT`) ile `Sidebar.jsx` (per-item `roles` dizileri)
-karşılaştırıldı, 19 rolde tutarsızlık bulunmadı (tek latent bulgu: `is-plani`
-render boşluğu 6 rol için — davranış değiştirmeden olduğu gibi taşındı, bkz.
-Bilinen açık noktalar). Yeni `src/config/navigation.js`
-(`NAVIGATION[role] = {tabs, defaultTab, sidebarItems}`) — `index.jsx`/
-`Sidebar.jsx` artık yalnızca buradan besleniyor, `FIELD_SPECIALIST_ROLES`/
-`ROLE_LABEL` de tekilleştirildi. `npx vite build`/`npx eslint src` her adımda
-temiz. Kullanıcı 3 rolle (admin/şantiye şefi/proje yöneticisi) elle test etti,
-bozukluk yok — 8 commit push edildi.
+Bölüm A (A0-A7) CC tarafı tamamen kapandı — A8 (go-live günü)/A9 (Pro'ya geçiş)
+tamamen SEN işi. Bölüm B (F1-F4/D1/FD2/D3/D4) "canlı ≥ 2 hafta" kriterini
+karşılamadığından (gerçek go-live henüz olmadı) beklemede, master plan sırası
+burada duruyor.
 
-**A4 gözden geçirmesi (aynı oturum, kapandı):** A4'ün asıl hedefi (Finans liste
-bileşeni birleştirmesi) 2026-07-18'de zaten yapılmıştı — doğrulandı, ölü
-`ProjeTabFaturaListesi.jsx`/`ProjeTabOnayKuyrugu.jsx` kalmamış,
-`TabFinans.jsx`/`ProjeTabFinans.jsx` doğru şekilde ortak `FaturaListesi`/
-`OnayKuyrugu`'yu kullanıyor, `trg_invoice_cost_allocation` DB'de hâlâ etkin.
-Gözden geçirmede küçük bir bulgu çıktı: `OnayKuyrugu.jsx`'in yerel
-`statusMeta()`'sı `onaylandı`/`reddedildi` için `FaturaListesi.jsx`'in
-`STATUS_BADGE`'inden farklı etiketler taşıyordu ("Tamamlandı"/"İptal ve
-Reddedildi" vs "Onaylandı"/"Reddedildi") — bugünkü onay kuyruğu filtresi
-(yalnızca fiilen bekleyen faturalar) bu iki girdiyi zaten ulaşılamaz kılmıştı,
-ölü kod olarak silindi (gerçek bir status birleştirmesi değil, bkz. "A1-devam"
-hâlâ ayrı bir görev). A4 kapandı, ek DB/frontend işi gerekmiyor.
-
-**A5 (Muhasebe/Finans rol ekranı) gözden geçirmesi (aynı oturum, kapandı):**
-Keşifte UI tarafının zaten büyük ölçüde hazır olduğu görüldü — `navigation.js`
-muhasebe'yi `['finans','bildirimler']`e kısıtlıyor, `TabFinans.jsx` zaten ortak/
-paylaşılan bileşen (yeni bileşen yazılmadı, yalnızca `Maliyet Tablosu` alt-sekmesi
-`isAdmin` ile gizli). A5'in DB-doğrulama adımı (`muhasebe`'nin RLS yazma
-yetkilerini SQL ile listele) sırasında **iki gerçek RLS bulgusu** çıktı, ikisi de
-kullanıcı onayıyla migration'la kapatıldı:
-
-1. **Kritik, rol-bağımsız:** `purchase_requests_insert` policy'sinin
-   `WITH CHECK`'i `(auth.uid() IS NOT NULL) OR (...)` şeklindeydi — ilk dal her
-   authenticated istekte true olduğundan **herhangi bir rol herhangi bir proje
-   için, herhangi bir `requested_by` değeriyle** doğrudan `.insert()` çağrısıyla
-   sahte satın alma talebi oluşturabiliyordu (`create_purchase_request_with_items`
-   RPC'si SECURITY DEFINER olduğundan bu policy'yi hiç görmüyor, frontend de bu
-   tabloya hiç doğrudan `.insert()` yapmıyor — yani gerçek akışa hiçbir etkisi
-   yoktu, salt bir RLS backstop deliği). Düzeltme: `requested_by = (select
-   auth.uid()) AND has_project_access(project_id)`.
-2. **Muhasebe'ye özel:** `pr_items_insert` policy'si `admin` ile birlikte
-   `muhasebe`'ye de **herhangi bir projenin** `purchase_request_items`'ına yazma
-   izni veriyordu — UI'da muhasebe bu tabloya hiç dokunmuyor (yalnızca fatura
-   akışıyla ilgileniyor). `muhasebe` array'den çıkarıldı, `admin`/
-   `proje_yoneticisi`/kendi talebini açan kullanıcı dalları aynen kaldı.
-
-`get_advisors`(security) migration'lar sonrası yeni bir uyarı göstermedi. Frontend
-dosyası değişmedi (yalnızca 2 DB migration). A5 bu haliyle kapandı — muhasebe için
-ayrı bir ekran/bileşen yazmaya gerek kalmadı.
-
-**A6 (Proje yöneticisi rol ekranı) gözden geçirmesi (aynı oturum, kapandı —
-ek bir düzeltme gerekmedi):** `grep -rn "satin_alma_uzmani" src/` sıfır sonuç
-verdi (2026-07-16/17'deki geçiş tamamen temiz). `navigation.js`'teki
-`proje_yoneticisi` girdisi (`['genel','projeler','is-plani','satin-alma',
-'bildirimler']`) A6'nın orijinal planından geniş — çünkü rol sonradan
-(2026-07-17, `cross_project=true`) admin gibi Projeler sekmesinden tam
-`ProjeDetay`'a girebilecek şekilde genişletildi, bu kasıtlı bir evrim, eksik
-değil. `ProjeTabSatinAlma.jsx`'in `procurementManagerView`'ı doğrulandı:
-"Talepler" sekmesi ortak `TabSatinAlmaTalepListesi`'ni, "Tedarik" sekmesi
-`TedarikKuyrugu`'nu kullanıyor — ayrı bir liste bileşeni yok. RLS guard'ı
-(`fn_purchase_request_procurement_fields_only`, tutar/başlık değiştirilemez)
-`purchase_requests_update` policy'sinde hâlâ sağlam. Kod/DB değişikliği yok.
-
-**A7 (production hazırlık) CC tarafı gözden geçirildi (aynı oturum, kapandı):**
-vercel.json header'ları/DB yedekleme scripti/foto sıkıştırma zaten bu oturumun
-başında yapılmıştı. Kalan CC maddeleri tarandı: `service_role` sızıntısı yok,
-gerçek gizli bilgi içeren `.env` git'e girmemiş (yalnızca `.env.example`
-şablonları), hiç `console.log` çağrısı yok. Tek bulgu: `DailyReportList.jsx`/
-`ProjeDetay.jsx`'teki PDF servis endpoint'i `VITE_PDF_SERVICE_URL` set değilse
-`http://127.0.0.1:8002`'ye düşüyor — üretimde bu env var Vercel'de tanımlanmazsa
-PDF export'u sessizce tarayıcıdan localhost'a gitmeye çalışıp başarısız olur
-(veri sızdırmıyor, yalnızca fonksiyon çalışmaz). Kullanıcı kararıyla dokunulmadı
-— go-live öncesi `VITE_PDF_SERVICE_URL`'in Vercel env'e eklendiğinden emin
-olunmalı. `get_advisors` son turu: security'de yalnızca bilinen/ertelenen
-`leaked_password_protection` (Pro plan, A9) ve beklenen SECURITY DEFINER RPC
-uyarıları; performance'ta yalnızca INFO seviyeli unindexed-FK/unused-index
-(bu veri ölçeğinde aksiyon gerektirmiyor). `archive._backup_20260709_*`
-tabloları kullanıcı kararıyla silinmedi (BOM doğrulaması bitince ayrıca
-silinecek, A7'nin SEN listesinde zaten var). Kalan A7 maddeleri (Supabase
-Dashboard ayarları, Vercel Pro/domain, gerçek Excel import kuru-çalışması) SEN
-işi, CC'nin yapacağı bir şey yok.
-
-Bölüm A'nın (A0-A7) CC tarafı bu oturumla tamamen gözden geçirildi/kapandı — A8
-(go-live günü) ve A9 (Pro'ya geçiş) tamamen SEN işi, CC promptu içermiyor.
-
-Sıradaki madde: Bölüm B (canlı sonrası refactor — F1-F4/D1/FD2/D3/D4) henüz
-başlama kriterlerini karşılamıyor ("canlı ≥ 2 hafta" şartı var, go-live henüz
-olmadı) — bu yüzden şimdilik bekliyor, master plan sırası burada duruyor.
-
-**Aynı gün, ek görev — rol bazlı proje erişimi doğrulaması + test verisi
-temizliği (2026-07-20):** Kullanıcı 4 rolün proje erişim kuralını (admin/
-proje_yoneticisi/muhasebe → tüm projeler kendi sayfalarıyla, santiye_sefi →
-yalnızca kendi projesi) doğrulamamı istedi. Kod/RLS tarafı tamamen doğru
-çıktı: `has_project_access()` (`roles.is_manager OR roles.cross_project OR
-profiles.project_id eşleşmesi OR user_project_access`) + `navigation.js`'in
-rol bazlı `tabs`/`sidebarItems`'ı + `ProjeDetay.jsx`'in
-`canViewFinanceAndTickets = role !== 'proje_yoneticisi'` guard'ı hep tutarlı.
-
-Ama **gerçek test verisinde bir ihlal bulundu:** `user_project_access`
-tablosunda 2026-07-17 07:36'da (tek seferlik, aynı saniyede) oluşturulmuş 4
-satır vardı — admin/muhasebe için etkisizdi (zaten `is_manager=true`) ama
-**iki şantiye şefi test hesabına** (İzmir'e ve Kayseri'ye bağlı olanlar)
-CLAUDE.md'nin hiç bahsetmediği **3. bir test projesine** ("Bursa Mudanya GES",
-`test-bursa-mudanya-ges`) erişim veriyordu — "başka hiçbir projeye
-erişemeyecek" kuralını ihlal ediyordu. Bu proje boş bir kalıntı değil, tam
-seçilmiş bir test senaryosuydu (15 görev, 30 günlük rapor, 60 bildirim, 10
-satın alma talebi, 8 ticket, 7 bütçe kalemi, 5 risk, 10 kategori ağırlığı).
-Kullanıcı onayıyla: (1) 4 `user_project_access` satırı silindi, (2) projenin
-kendisi + tüm bağlı verisi tamamen temizlendi (`purchase_requests` `projects`e
-`SET NULL` ile bağlı olduğundan önce ayrıca silindi, geri kalanı `projects`
-satırının `CASCADE` zincirinden gitti — `information_schema`'dan tüm FK'ler
-tek tek doğrulanarak güvenli sıra kuruldu). Doğrulama: tüm ilgili tablolarda
-`count(*) = 0`. Artık yalnızca 2 proje var (İzmir + Kayseri Develi), Test
-ortamı bölümüyle tam tutarlı. Bu, DB migration değil tek seferlik veri
-temizliğiydi (şema değişikliği yok).
+**Proje yöneticisi + muhasebe sayfa erişimi (Plan mode ile tasarlandı, aynı
+oturumda uygulandı — bkz. Tamamlanan büyük görevler için tam bulgu listesi):**
+`ProjeDetay.jsx`'in `canViewFinanceAndTickets` guard'ı kaldırıldı — proje
+yöneticisi artık bir projenin içinde Finans'ı **salt-okunur**, Tickets'ı
+**santiye_sefi ile aynı tam yetkide** görüyor. Bunu güvenli yapmak için
+`FaturaListesi.jsx` ("+ Fatura Ekle" hiç gizli değildi), `OnayKuyrugu.jsx`
+(Onayla/Reddet proje yöneticisi için de render ediliyordu) ve
+`TicketListesi.jsx` (proje yöneticisi yalnızca kendi açtığı ticket'ları
+görüyordu) düzeltildi. Muhasebe için ayrı bir "Projeler" sekmesi açmak yerine
+üst seviye `TabFinans.jsx`'e bir proje filtresi eklendi (boşken bugünküyle
+birebir aynı "tüm projeler", seçilince `get_finans_overview`+`projectId`'ye
+geçiyor). Muhasebe'ye Satın Alma görünürlüğü bilinçli olarak eklenmedi.
+2 commit, `npx eslint src`/`npx vite build` temiz (21 pre-existing warning,
+0 yeni). **SEN kabul testi bekleniyor:** proje yöneticisi ile bir projeye
+girip Finans/Tickets'ı, muhasebe ile üst seviye Finans'ta proje filtresini
+test et — henüz push edilmedi.
