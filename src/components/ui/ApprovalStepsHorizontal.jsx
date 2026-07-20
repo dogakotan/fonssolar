@@ -10,7 +10,7 @@ export default function ApprovalStepsHorizontal({ steps }) {
     return 'pending'
   }
   return (
-    <div className="approval-steps-h">
+    <div className="approval-steps-h" style={{ '--approval-steps-count': steps.length }}>
       <div className="approval-steps-h-track">
         {steps.map((step, i) => (
           <div

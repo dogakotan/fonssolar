@@ -1,16 +1,28 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
-import Badge, { TK_STATUS, INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS } from '../../../components/ui/StatusBadge'
+import Badge, { INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS } from '../../../components/ui/StatusBadge'
 import Pager from '../../../components/ui/Pager'
 import ApprovalStepsHorizontal from '../../../components/ui/ApprovalStepsHorizontal'
 import { buildApprovalSteps } from '../../../utils/satinAlma'
 import { MANAGER_ROLES } from '../../../config/navigation'
 
 const BADGE_MAP = {
-  ticket: TK_STATUS,
   invoice: INVOICE_STATUS,
   procurement_item_change_request: PROCUREMENT_CHANGE_STATUS,
+}
+
+// Ticket'ın basit 3 adımlı süreci — iptal_edildi ayrı bir "reddedildi" dalı olarak gösterilir.
+// TicketDetayModal.jsx'e dokunulmuyor, bu yalnızca bildirim satırına özel kompakt bir özet.
+function buildTicketSteps(status) {
+  const isCancelled = status === 'iptal_edildi'
+  const isProcessing = status === 'işlemde'
+  const isClosed = status === 'kapatıldı'
+  return [
+    { key: 'gonderildi', label: 'Gönderildi', done: true },
+    { key: 'islemde', label: isCancelled ? 'İptal Edildi' : 'İşlemde', done: !isCancelled && (isProcessing || isClosed), active: isProcessing, rejected: isCancelled },
+    { key: 'kapatildi', label: 'Kapatıldı', done: isClosed },
+  ]
 }
 
 // Bildirim tipine göre ikon/etiket — filtre çipleri ve satır ikonu için ortak kaynak.
@@ -260,7 +272,10 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                         {live && live.kind === 'purchase_request' && (
                           <ApprovalStepsHorizontal steps={buildApprovalSteps(live.status)} />
                         )}
-                        {live && live.kind !== 'purchase_request' && (
+                        {live && live.kind === 'ticket' && (
+                          <ApprovalStepsHorizontal steps={buildTicketSteps(live.status)} />
+                        )}
+                        {live && live.kind !== 'purchase_request' && live.kind !== 'ticket' && (
                           <p className="bildirim-live">
                             Şu an: <Badge map={BADGE_MAP[live.kind]} value={live.status} />
                           </p>
