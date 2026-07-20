@@ -119,9 +119,9 @@ function InvoiceTable({ invoices, onAction, actionLoading, readonly }) {
 
   const toggle = (id) => setExpanded(e => e === id ? null : id)
 
+  // Bu tablo yalnızca yönetici_onayında faturaları gösterir (bkz. fetchData filtresi) -
+  // readonly modda tek olası durum bu, fallback aynı meta'yı verir.
   const statusMeta = (status) => ({
-    onaylandı: { bg: '#D1FAE5', color: '#065F46', label: 'Tamamlandı' },
-    reddedildi: { bg: '#FEE2E2', color: '#991B1B', label: 'İptal / Reddedildi' },
     yönetici_onayında: { bg: '#EFF6FF', color: '#185FA5', label: 'Yönetici Onayında' },
   })[status] || { bg: '#EFF6FF', color: '#185FA5', label: 'Yönetici Onayında' }
 
