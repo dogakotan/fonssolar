@@ -43,10 +43,17 @@ export const NAVIGATION = {
     ...UNRESTRICTED,
     sidebarItems: ['genel', 'projeler', 'finans', 'bildirimler'],
   },
+  // "satin-alma" 2026-07-20'de eklendi: muhasebenin bir talebe bağlı ("Fatura Oluştur",
+  // purchase_request_id set edilerek) fatura kesebileceği TEK ekran burası — Finans'taki
+  // "+ Fatura Ekle" (FaturaEkleModal) talebe hiç bağlanmayan, source='manual' bağımsız bir
+  // fatura oluşturuyor; muhasebe bu sekmeye erişemeden invoice↔purchase_request akışını
+  // tamamlayamıyordu (canInvoice=isMuhasebe zaten doğru kuruluydu, yalnızca hiç ulaşılamıyordu).
+  // TabSatinAlma.jsx zaten canApprove/canCreate'i admin'e/diğer rollere kilitliyor, muhasebe
+  // yalnızca "Fatura Oluştur" butonunu görür.
   muhasebe: {
-    tabs: ['finans', 'bildirimler'],
+    tabs: ['finans', 'satin-alma', 'bildirimler'],
     defaultTab: 'finans',
-    sidebarItems: ['finans', 'bildirimler'],
+    sidebarItems: ['finans', 'satin-alma', 'bildirimler'],
   },
   proje_yoneticisi: {
     tabs: ['genel', 'projeler', 'is-plani', 'satin-alma', 'bildirimler'],
