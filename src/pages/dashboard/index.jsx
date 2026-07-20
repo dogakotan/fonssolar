@@ -20,6 +20,7 @@ import FloatingAgent from '../../components/agent/FloatingAgent'
 import NotificationBell from '../../components/ui/NotificationBell'
 import DailyReportForm from '../../components/daily-report/DailyReportForm'
 import DailyReportList from '../DailyReportList'
+import { NAVIGATION, ROLE_LABEL, FIELD_SPECIALIST_ROLES } from '../../config/navigation'
 import './Dashboard.css'
 
 const TABS = {
@@ -34,53 +35,6 @@ const TABS = {
   'rapor-listesi':   { title: 'Raporlarım',         subtitle: 'Geçmiş günlük raporlar' },
   'is-plani':        { title: 'İş Planı',           subtitle: 'Proje iş programı ve görev takibi' },
   bildirimler:       { title: 'Bildirimler',        subtitle: 'Tüm bildirimleriniz' },
-}
-
-// Tek projeye kilitli saha/teknik uzman rolleri — henüz kendi özel modülleri yok
-// (bkz. CLAUDE.md "Hiç yapılmamış modüller"), bu yüzden hepsi santiye_sefi'nin
-// genel demetini (Genel Bakış/İş Planı/Satın Alma/Tickets) paylaşıyor, ama
-// santiye_sefi'ye özel Günlük Rapor formu/listesi olmadan.
-const FIELD_SPECIALIST_ROLES = [
-  'elektrik_sefi', 'mekanik_sef', 'isg_sorumlusu', 'kalite_kontrol_sefi',
-  'enh_sorumlusu', 'proje_kurulum_sefi', 'proje_tasarim_sorumlusu',
-  'evrak_takip', 'operasyon_sorumlusu', 'is_makinesi_operator', 'lojistik_tedarik',
-]
-const FIELD_SPECIALIST_TABS = ['genel', 'is-plani', 'satin-alma', 'tickets', 'bildirimler']
-
-const ROLE_TABS = {
-  muhasebe:          ['finans', 'bildirimler'],
-  proje_yoneticisi:  ['genel', 'projeler', 'is-plani', 'satin-alma', 'bildirimler'],
-  santiye_sefi:      ['genel', 'is-plani', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets', 'bildirimler'],
-  ...Object.fromEntries(FIELD_SPECIALIST_ROLES.map(role => [role, FIELD_SPECIALIST_TABS])),
-}
-
-const ROLE_DEFAULT = {
-  muhasebe:          'finans',
-  proje_yoneticisi:  'genel',
-  santiye_sefi:      'genel',
-  ...Object.fromEntries(FIELD_SPECIALIST_ROLES.map(role => [role, 'genel'])),
-}
-
-const ROLE_LABEL = {
-  admin:                     'Yönetici',
-  muhasebe:                  'Muhasebe',
-  santiye_sefi:              'Şantiye Şefi',
-  muhendis:                  'Mühendis',
-  koordinator:               'Koordinatör',
-  proje_yoneticisi:          'Proje Yöneticisi',
-  proje_koordinatoru:        'Proje Koordinatörü',
-  maliyet_kontrolcu:         'Maliyet Kontrolcü',
-  elektrik_sefi:             'Elektrik Şefi',
-  mekanik_sef:               'Mekanik Şef',
-  isg_sorumlusu:             'İSG Sorumlusu',
-  kalite_kontrol_sefi:       'Kalite Kontrol Şefi',
-  enh_sorumlusu:             'ENH Sorumlusu',
-  proje_kurulum_sefi:        'Proje Kurulum Şefi',
-  proje_tasarim_sorumlusu:   'Proje Tasarım Sorumlusu',
-  evrak_takip:               'Evrak Takip',
-  operasyon_sorumlusu:       'Operasyon Sorumlusu',
-  is_makinesi_operator:      'İş Makinesi Operatörü',
-  lojistik_tedarik:          'Lojistik ve Tedarik',
 }
 
 function getHeaderInitials(name) {
@@ -142,7 +96,8 @@ export default function Dashboard() {
 
   // Kısıtlı roller → başlangıç sekmesi
   useEffect(() => {
-    if (role && ROLE_DEFAULT[role]) setActiveTab(ROLE_DEFAULT[role])
+    const defaultTab = role && NAVIGATION[role]?.defaultTab
+    if (defaultTab) setActiveTab(defaultTab)
   }, [role])
 
   useEffect(() => {
@@ -158,7 +113,7 @@ export default function Dashboard() {
   }
 
   function handleTabChange(tab) {
-    const allowed = ROLE_TABS[role]
+    const allowed = NAVIGATION[role]?.tabs
     if (allowed && !allowed.includes(tab)) return
     if (role === 'santiye_sefi' && tab === 'daily-report') {
       setEditReportId(null)

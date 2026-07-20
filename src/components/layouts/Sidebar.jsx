@@ -1,16 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
-
-// Henüz kendi özel modülü olmayan, tek projeye kilitli saha/teknik uzman rolleri —
-// santiye_sefi ile aynı Genel Bakış/İş Planı/Satın Alma/Tickets demetini paylaşıyor
-// (bkz. index.jsx FIELD_SPECIALIST_ROLES, CLAUDE.md Roller bölümü).
-const FIELD_SPECIALIST_ROLES = [
-  'elektrik_sefi', 'mekanik_sef', 'isg_sorumlusu', 'kalite_kontrol_sefi',
-  'enh_sorumlusu', 'proje_kurulum_sefi', 'proje_tasarim_sorumlusu',
-  'evrak_takip', 'operasyon_sorumlusu', 'is_makinesi_operator', 'lojistik_tedarik',
-]
-const SAHA_ROLES = ['admin', 'santiye_sefi', 'muhendis', 'koordinator', 'proje_koordinatoru', ...FIELD_SPECIALIST_ROLES]
-const OPERATION_ROLES = [...SAHA_ROLES, 'proje_yoneticisi']
+import { NAVIGATION } from '../../config/navigation'
 
 export default function Sidebar({ active, onTab, onLogout, isOpen }) {
   const { role } = useAuth()
@@ -27,7 +17,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
   const items = [
     {
       key: 'genel', label: 'Genel Bakış',
-      roles: [...OPERATION_ROLES, 'maliyet_kontrolcu'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
@@ -37,7 +26,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'is-plani', label: 'İş Planı',
-      roles: ['santiye_sefi', 'proje_yoneticisi', ...FIELD_SPECIALIST_ROLES],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="3" y="4" width="18" height="18" rx="2"/>
@@ -49,7 +37,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'rapor-listesi', label: 'Raporlarım',
-      roles: ['santiye_sefi'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M9 11l3 3L22 4"/>
@@ -59,7 +46,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'projeler', label: 'Projeler',
-      roles: ['admin', 'muhendis', 'koordinator', 'proje_koordinatoru', 'maliyet_kontrolcu', 'proje_yoneticisi'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M2 20h20"/><path d="M5 20V8l7-6 7 6v12"/><path d="M9 20v-6h6v6"/>
@@ -68,7 +54,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'satin-alma', label: 'Satın Alma',
-      roles: [...SAHA_ROLES, 'proje_yoneticisi'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
@@ -79,7 +64,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'finans', label: 'Finans',
-      roles: ['admin', 'muhasebe', 'maliyet_kontrolcu'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -92,7 +76,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'tickets', label: 'Tickets',
-      roles: SAHA_ROLES,
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/>
@@ -103,7 +86,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'bildirimler', label: 'Bildirimler',
-      roles: null, // tüm roller — herkes kendi bildirimini görür (RLS: recipient_id=auth.uid())
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/>
@@ -113,7 +95,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'proje-ekle', label: 'Proje Yönetimi',
-      roles: ['admin'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -123,7 +104,6 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
     {
       key: 'kullanicilar', label: 'Kullanıcılar',
-      roles: ['admin'],
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -135,7 +115,11 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
     },
   ]
 
-  const visibleItems = role ? items.filter(item => item.roles === null || item.roles.includes(role)) : []
+  // 'bildirimler' rol tanımından bağımsız her zaman görünür (RLS: recipient_id=auth.uid())
+  // — henüz NAVIGATION'a eklenmemiş olası bir rolde bile bildirim erişimi kaybolmasın diye.
+  const visibleItems = role
+    ? items.filter(item => item.key === 'bildirimler' || (NAVIGATION[role]?.sidebarItems || []).includes(item.key))
+    : []
 
   return (
     <aside className={`sidebar${collapsed ? ' collapsed' : ''}${isOpen ? ' open' : ''}`}>
