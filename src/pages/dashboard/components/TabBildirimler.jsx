@@ -12,6 +12,17 @@ const BADGE_MAP = {
   procurement_item_change_request: PROCUREMENT_CHANGE_STATUS,
 }
 
+// Bildirim tipine göre ikon/etiket — filtre çipleri ve satır ikonu için ortak kaynak.
+const ENTITY_META = {
+  ticket:                          { icon: '🎫', label: 'Ticket' },
+  purchase_request:                { icon: '🛒', label: 'Satın Alma' },
+  invoice:                         { icon: '🧾', label: 'Fatura' },
+  daily_report:                    { icon: '📋', label: 'Günlük Rapor' },
+  daily_report_reminder:           { icon: '⏰', label: 'Hatırlatma' },
+  procurement_item_change_request: { icon: '📦', label: 'Malzeme Değişikliği' },
+}
+const DEFAULT_META = { icon: '🔔', label: 'Bildirim' }
+
 const PAGE_SIZE = 10
 
 function timeAgo(iso) {
@@ -23,6 +34,16 @@ function timeAgo(iso) {
   if (hr < 24) return `${hr} sa önce`
   const day = Math.floor(hr / 24)
   return `${day} gün önce`
+}
+
+// Kronolojik listeyi okunabilir bölümlere ayırmak için gün farkı bazlı kova.
+function dateBucket(iso) {
+  const startOfDay = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const diffDays = Math.round((startOfDay(new Date()) - startOfDay(new Date(iso))) / 86400000)
+  if (diffDays <= 0) return 'Bugün'
+  if (diffDays === 1) return 'Dün'
+  if (diffDays < 7) return 'Bu Hafta'
+  return 'Daha Eski'
 }
 
 // Günlük rapor hatırlatması: ilk gelişte (okunmamış + pending) sarı, okunup rapor hâlâ
@@ -42,6 +63,7 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
   const [invoiceStepSummary, setInvoiceStepSummary] = useState({})
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
+  const [filter, setFilter] = useState('all')
 
   async function load() {
     if (!user?.id) return
@@ -151,10 +173,23 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
     load()
   }
 
+  function changeFilter(f) {
+    setFilter(f)
+    setPage(0)
+  }
+
   const unreadCount = items.filter(n => !n.is_read).length
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
+  const presentTypes = [...new Set(items.map(n => n.entity_type))].filter(t => ENTITY_META[t])
+  const filteredItems = items.filter(n => {
+    if (filter === 'all') return true
+    if (filter === 'unread') return !n.is_read
+    return n.entity_type === filter
+  })
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages - 1)
-  const pageItems = items.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+  const pageItems = filteredItems.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
+
+  let lastBucket = null
 
   return (
     <div style={CARD}>
@@ -170,49 +205,72 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
         )}
       </div>
 
-      <div style={{ padding: 16 }}>
+      <div className="bildirim-filters">
+        <button className={`bildirim-chip${filter === 'all' ? ' active' : ''}`} onClick={() => changeFilter('all')}>
+          Tümü <span className="bildirim-chip-count">{items.length}</span>
+        </button>
+        <button className={`bildirim-chip${filter === 'unread' ? ' active' : ''}`} onClick={() => changeFilter('unread')}>
+          Okunmamış <span className="bildirim-chip-count">{unreadCount}</span>
+        </button>
+        {presentTypes.map(t => {
+          const meta = ENTITY_META[t]
+          const count = items.filter(n => n.entity_type === t).length
+          return (
+            <button key={t} className={`bildirim-chip${filter === t ? ' active' : ''}`} onClick={() => changeFilter(t)}>
+              <span aria-hidden="true">{meta.icon}</span> {meta.label} <span className="bildirim-chip-count">{count}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div style={{ padding: '4px 16px 16px' }}>
         {loading ? (
-          <p style={{ textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 13, padding: '24px 0' }}>Yükleniyor…</p>
-        ) : items.length === 0 ? (
-          <p style={{ textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 13, padding: '24px 0' }}>Henüz bildirim yok.</p>
+          <div className="bildirim-empty">
+            <span className="bildirim-empty-icon" aria-hidden="true">⏳</span>
+            <p>Yükleniyor…</p>
+          </div>
+        ) : filteredItems.length === 0 ? (
+          <div className="bildirim-empty">
+            <span className="bildirim-empty-icon" aria-hidden="true">🔕</span>
+            <p>{filter === 'all' ? 'Henüz bildirim yok.' : 'Bu filtrede bildirim yok.'}</p>
+          </div>
         ) : (
           <>
-            <div style={{ minHeight: PAGE_SIZE * 62 }}>
+            <div style={{ minHeight: PAGE_SIZE * 66 }}>
               {pageItems.map(n => {
                 const tone = reminderTone(n)
                 const live = liveStatus[n.entity_id]
+                const meta = ENTITY_META[n.entity_type] || DEFAULT_META
+                const bucket = dateBucket(n.created_at)
+                const showBucket = bucket !== lastBucket
+                lastBucket = bucket
                 return (
-                  <button
-                    key={n.id}
-                    onClick={() => handleClick(n)}
-                    style={{
-                      display: 'block', width: '100%', textAlign: 'left', border: 'none',
-                      borderBottom: '1px solid var(--color-border)', cursor: 'pointer', fontFamily: 'inherit',
-                      background: tone ? tone.bg : (n.is_read ? 'var(--color-surface)' : 'var(--color-primary-bg)'),
-                      padding: '12px 14px',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                      {!n.is_read && (
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone ? tone.dot : 'var(--color-primary)', marginTop: 5, flexShrink: 0 }} />
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'var(--color-text)' }}>{n.title}</p>
-                        {n.body && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{n.body}</p>}
+                  <div key={n.id}>
+                    {showBucket && <div className="bildirim-bucket">{bucket}</div>}
+                    <button
+                      onClick={() => handleClick(n)}
+                      className={`bildirim-row${!n.is_read ? ' unread' : ''}`}
+                      style={tone ? { background: tone.bg } : undefined}
+                    >
+                      <span className="bildirim-icon" aria-hidden="true">{meta.icon}</span>
+                      <div className="bildirim-body">
+                        <p className="bildirim-title">{n.title}</p>
+                        {n.body && <p className="bildirim-desc">{n.body}</p>}
                         {live && (
-                          <p style={{ margin: '4px 0 0', fontSize: 12 }}>
+                          <p className="bildirim-live">
                             Şu an: <Badge map={BADGE_MAP[live.kind]} value={live.status} />
                           </p>
                         )}
                         {isManager && n.entity_type === 'invoice' && invoiceStepSummary[n.entity_id] && (
-                          <p style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--color-muted)' }}>
-                            {invoiceStepSummary[n.entity_id]}
-                          </p>
+                          <p className="bildirim-step">{invoiceStepSummary[n.entity_id]}</p>
                         )}
-                        <p style={{ margin: '4px 0 0', fontSize: 10.5, color: 'var(--color-muted-light)' }}>{timeAgo(n.created_at)}</p>
                       </div>
-                    </div>
-                  </button>
+                      <div className="bildirim-meta">
+                        {!n.is_read && <span className="bildirim-dot" style={tone ? { background: tone.dot } : undefined} />}
+                        <span className="bildirim-time">{timeAgo(n.created_at)}</span>
+                      </div>
+                    </button>
+                  </div>
                 )
               })}
             </div>
