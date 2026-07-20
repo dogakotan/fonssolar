@@ -50,12 +50,19 @@ export function AuthProvider({ children }) {
   async function fetchProfile(authUser) {
     try {
       setAuthError('')
-      const [{ data: roleData, error: roleError }, { data: projectData }] = await Promise.all([
+      const [
+        { data: roleData, error: roleError },
+        { data: projectData, error: projectsError },
+        { data: profileData, error: profileError },
+      ] = await Promise.all([
         supabase.rpc('get_my_role'),
         supabase.rpc('get_my_projects'),
+        supabase.from('profiles').select('full_name, project_id').eq('id', authUser.id).maybeSingle(),
       ])
 
       if (roleError) throw roleError
+      if (projectsError) throw projectsError
+      if (profileError) throw profileError
 
       const roleKey = normalizeRole(roleData)
       if (!roleKey) {
@@ -65,12 +72,21 @@ export function AuthProvider({ children }) {
       }
 
       const projects = Array.isArray(projectData) ? projectData : []
-      const assignedProjectId = projects.length === 1 ? projects[0]?.id ?? null : null
+      const homeProjectId = profileData?.project_id ?? null
+      // Tek projeli kullanıcı doğrudan o projeyi kullanır. Birden fazla proje
+      // erişimi varsa profiles.project_id kullanıcının ana/varsayılan projesidir;
+      // eski kod bunu yok sayıp null döndürdüğü için günlük rapor formu
+      // "PROJE —" durumunda kalıyor ve kaydedilemiyordu.
+      const assignedProjectId = projects.length === 1
+        ? projects[0]?.id ?? null
+        : projects.some(project => project.id === homeProjectId)
+          ? homeProjectId
+          : null
 
       setProfile({
         id: authUser.id,
         email: authUser.email,
-        full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email,
+        full_name: profileData?.full_name || authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email,
         role_key: roleKey,
         project_id: assignedProjectId,
       })
