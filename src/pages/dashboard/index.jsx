@@ -300,7 +300,15 @@ export default function Dashboard() {
         {activeTab === 'is-plani'     && FIELD_SPECIALIST_ROLES.includes(role) && (
           <TabIsPlan projectId={projectId} />
         )}
-        {activeTab === 'bildirimler'  && <TabBildirimler onNavigate={handleTabChange} />}
+        {activeTab === 'bildirimler'  && (
+          <TabBildirimler
+            onGoToTicket={goToTicket}
+            onOpenReport={openReportModal}
+            onGoToRequest={goToRequest}
+            onGoToInvoice={goToInvoice}
+            onGoToMalzemeListesi={(projectId) => goToProjectTab(projectId, 'malzeme-listesi')}
+          />
+        )}
         {activeTab === 'genel'        && role === 'proje_yoneticisi' && (
           !scopeProjectId && scopeProjects.length > 1
             ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />

@@ -12,14 +12,6 @@ const BADGE_MAP = {
   procurement_item_change_request: PROCUREMENT_CHANGE_STATUS,
 }
 
-const ENTITY_TAB = {
-  purchase_request: 'satin-alma',
-  invoice: 'finans',
-  ticket: 'tickets',
-  daily_report: 'rapor-listesi',
-  daily_report_reminder: 'daily-report',
-}
-
 const PAGE_SIZE = 10
 
 function timeAgo(iso) {
@@ -42,7 +34,7 @@ function reminderTone(n) {
   return null
 }
 
-export default function TabBildirimler({ onNavigate }) {
+export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToRequest, onGoToInvoice, onGoToMalzemeListesi }) {
   const { user, role } = useAuth()
   const isManager = MANAGER_ROLES.includes(role)
   const [items, setItems] = useState([])
@@ -136,8 +128,26 @@ export default function TabBildirimler({ onNavigate }) {
 
   async function handleClick(n) {
     if (!n.is_read) await markRead(n.id)
-    const tab = ENTITY_TAB[n.entity_type]
-    if (tab && onNavigate) onNavigate(tab)
+    switch (n.entity_type) {
+      case 'ticket':
+        onGoToTicket?.(n.entity_id)
+        break
+      case 'daily_report':
+      case 'daily_report_reminder':
+        onOpenReport?.(n.entity_id)
+        break
+      case 'purchase_request':
+        onGoToRequest?.(n.entity_id)
+        break
+      case 'invoice':
+        onGoToInvoice?.(n.entity_id, n.project_id)
+        break
+      case 'procurement_item_change_request':
+        onGoToMalzemeListesi?.(n.project_id)
+        break
+      default:
+        break
+    }
     load()
   }
 
