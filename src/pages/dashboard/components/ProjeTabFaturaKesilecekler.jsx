@@ -101,14 +101,14 @@ function BekleyenDegisikliklerPanel({ items, onReviewed }) {
     onReviewed()
   }
 
-  if (items.length === 0) return null
-
   return (
     <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
       <h4 style={{ margin: '0 0 10px', fontSize: 12.5, fontWeight: 700, color: '#92400E' }}>
         Bekleyen Miktar Değişiklikleri ({items.length})
       </h4>
-      <div style={{ display: 'grid', gap: 10 }}>
+      {items.length === 0 ? (
+        <p style={{ margin: 0, fontSize: 12.5, color: '#78716C' }}>Bekleyen miktar değişikliği bulunmuyor.</p>
+      ) : <div style={{ display: 'grid', gap: 10 }}>
         {items.map(item => (
           <div key={item.id} style={{ background: '#fff', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 12px', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ minWidth: 0 }}>
@@ -137,15 +137,107 @@ function BekleyenDegisikliklerPanel({ items, onReviewed }) {
             </div>
           </div>
         ))}
+      </div>}
+    </div>
+  )
+}
+
+function MalzemeGecmisiModal({ row, requests, onClose }) {
+  const [changes, setChanges] = useState([])
+  const [adjustments, setAdjustments] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [historyError, setHistoryError] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    Promise.all([
+      supabase.from('procurement_item_change_requests').select('*').eq('procurement_item_id', row.id).order('requested_at', { ascending: false }),
+      supabase.from('procurement_item_adjustments').select('*').eq('procurement_item_id', row.id).order('created_at', { ascending: false }),
+    ]).then(([changeRes, adjustmentRes]) => {
+      if (!alive) return
+      if (changeRes.error) console.error('material change history error:', changeRes.error)
+      if (adjustmentRes.error) console.error('material adjustment history error:', adjustmentRes.error)
+      if (changeRes.error || adjustmentRes.error) setHistoryError('Geçmişin bir bölümü yüklenemedi. Lütfen tekrar deneyin.')
+      setChanges(changeRes.data || [])
+      setAdjustments(adjustmentRes.data || [])
+      setLoading(false)
+    })
+    return () => { alive = false }
+  }, [row.id])
+
+  const requestById = new Map((requests || []).map(request => [request.id, request]))
+  const statusMeta = status => ({
+    bekliyor: ['Bekliyor', '#92400E', '#FEF3C7'],
+    onaylandı: ['Onaylandı', '#065F46', '#D1FAE5'],
+    onaylandi: ['Onaylandı', '#065F46', '#D1FAE5'],
+    reddedildi: ['Reddedildi', '#991B1B', '#FEE2E2'],
+  })[status] || [String(status || '—').replace(/_/g, ' '), '#475569', '#F1F5F9']
+
+  return (
+    <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1100, padding: 18, background: 'rgba(15, 23, 42, .42)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div onMouseDown={e => e.stopPropagation()} style={{ width: 680, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: 16, padding: 26, boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 18 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 18, color: '#111827' }}>{row.material}</h3>
+            <p style={{ margin: '5px 0 0', fontSize: 12.5, color: '#64748B' }}>Malzeme miktarı ve değişim geçmişi</p>
+          </div>
+          <button onClick={onClose} style={{ border: 0, background: 'none', color: '#64748B', fontSize: 22, cursor: 'pointer' }}>×</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginBottom: 20 }}>
+          {[
+            ['Planlanan', `${formatQty(row.planned)} ${row.unit}`],
+            ['Gönderilen', `${formatQty(row.sent)} ${row.unit}`],
+            ['Kalan', `${formatQty(row.required)} ${row.unit}`],
+          ].map(([label, value]) => (
+            <div key={label} style={{ padding: '11px 13px', borderRadius: 9, background: '#F8FAFC' }}>
+              <p style={{ margin: '0 0 3px', fontSize: 10.5, color: '#64748B', textTransform: 'uppercase' }}>{label}</p>
+              <strong style={{ fontSize: 14, color: '#0F172A' }}>{value}</strong>
+            </div>
+          ))}
+        </div>
+
+        {loading ? <p style={{ color: '#64748B', fontSize: 13 }}>Geçmiş yükleniyor…</p> : (
+          <>
+            {historyError && <p style={{ margin: '0 0 12px', padding: '8px 10px', borderRadius: 8, background: '#FEF2F2', color: '#991B1B', fontSize: 12 }}>{historyError}</p>}
+            <h4 style={{ margin: '0 0 9px', fontSize: 13, color: '#334155' }}>Miktar Değişiklikleri</h4>
+            {changes.length === 0 ? <p style={{ margin: '0 0 18px', color: '#94A3B8', fontSize: 12.5 }}>Manuel değişiklik kaydı yok.</p> : changes.map(change => {
+              const [label, color, bg] = statusMeta(change.status)
+              return <div key={change.id} style={{ border: '1px solid #E2E8F0', borderRadius: 9, padding: '10px 12px', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                  <strong style={{ fontSize: 13 }}>{formatQty(change.old_planned_qty)} → {formatQty(change.new_planned_qty)} {row.unit}</strong>
+                  <span style={{ color, background: bg, borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{label}</span>
+                </div>
+                <p style={{ margin: '5px 0 0', color: '#64748B', fontSize: 12 }}>{change.note || 'Gerekçe girilmedi'} · {change.requested_at ? new Date(change.requested_at).toLocaleString('tr-TR') : '—'}</p>
+                {change.review_note && <p style={{ margin: '3px 0 0', color: '#475569', fontSize: 12 }}>Onay notu: {change.review_note}</p>}
+              </div>
+            })}
+
+            <h4 style={{ margin: '18px 0 9px', fontSize: 13, color: '#334155' }}>Fazla Satın Alma / Stok Eklemeleri</h4>
+            {adjustments.length === 0 ? <p style={{ margin: 0, color: '#94A3B8', fontSize: 12.5 }}>Onaylı fazla satın alma kaydı yok.</p> : adjustments.map(adjustment => {
+              const request = requestById.get(adjustment.purchase_request_id)
+              const reversed = !!adjustment.reversed_at
+              return <div key={adjustment.id} style={{ border: `1px solid ${reversed ? '#FECACA' : '#86EFAC'}`, background: reversed ? '#FFF7F7' : '#F0FDF4', borderRadius: 9, padding: '10px 12px', marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                  <strong style={{ color: reversed ? '#991B1B' : '#166534', fontSize: 13 }}>+{formatQty(adjustment.delta_qty)} {row.unit}</strong>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: reversed ? '#991B1B' : '#166534' }}>{reversed ? 'Geri alındı' : 'Onaylandı ve listeye eklendi'}</span>
+                </div>
+                <p style={{ margin: '5px 0 0', color: '#475569', fontSize: 12 }}>{request?.title || request?.material_name || 'Bağlı satın alma talebi'}{request?.status ? ` · ${String(request.status).replace(/_/g, ' ')}` : ''}</p>
+                <p style={{ margin: '3px 0 0', color: '#64748B', fontSize: 11.5 }}>{adjustment.created_at ? new Date(adjustment.created_at).toLocaleString('tr-TR') : '—'}</p>
+              </div>
+            })}
+          </>
+        )}
       </div>
     </div>
   )
 }
 
-export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pendingChanges = [], onPendingChanged }) {
+export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], loading, pendingChanges = [], onPendingChanged }) {
   const { isAdmin, role } = useAuth()
   const [page, setPage] = useState(0)
   const [editingRow, setEditingRow] = useState(null)
+  const [detailRow, setDetailRow] = useState(null)
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages - 1)
   const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
@@ -191,7 +283,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
                 {pageRows.map(row => {
                   const pendingChange = pendingByItemId.get(row.id)
                   return (
-                  <tr key={row.id || row.material} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                  <tr key={row.id || row.material} onClick={() => setDetailRow(row)} style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}>
                     <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text)' }}>{row.material}</td>
                     <td style={TD}>
                       {formatQty(row.planned)} {row.unit}
@@ -220,7 +312,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
                     {canRequest && (
                       <td style={{ ...TD, whiteSpace: 'nowrap' }}>
                         <button
-                          onClick={() => setEditingRow(row)}
+                          onClick={e => { e.stopPropagation(); setEditingRow(row) }}
                           disabled={!!pendingChange}
                           title={pendingChange ? 'Bu kalem için zaten bekleyen bir talep var' : ''}
                           style={{
@@ -254,6 +346,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
           onSaved={onPendingChanged}
         />
       )}
+      {detailRow && <MalzemeGecmisiModal row={detailRow} requests={requests} onClose={() => setDetailRow(null)} />}
     </div>
   )
 }

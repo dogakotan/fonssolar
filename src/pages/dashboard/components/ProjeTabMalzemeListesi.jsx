@@ -23,7 +23,13 @@ export default function ProjeTabMalzemeListesi({ projectId, filterDate }) {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <ProjeTabFaturaKesilecekler rows={rows} loading={loading} pendingChanges={pendingChanges} onPendingChanged={refetch} />
+      <ProjeTabFaturaKesilecekler
+        rows={rows}
+        requests={requestsUntilDate}
+        loading={loading}
+        pendingChanges={pendingChanges}
+        onPendingChanged={refetch}
+      />
     </div>
   )
 }
