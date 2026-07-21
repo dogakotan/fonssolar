@@ -260,10 +260,11 @@ function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
   const st = cancelledAfterApproval
     ? { bg: '#FEF3C7', color: '#92400E', label: 'İptal Edildi (Onay Sonrası)' }
     : STATUS_BADGE[invoice.status] || { bg: '#F3F4F6', color: '#111827', label: invoice.status }
-  // Onaylanmış fatura bu ekrandan geri alınmaz; red kararı yalnızca yönetici onay
-  // aşamasında verilir. Böylece kesinleşmiş maliyet kaydı istemeden silinmez.
-  const canCancel = false
-  const canRecoverRejected = (isAdmin || isMuhasebe) && invoice.status === 'reddedildi'
+  // Onaylanmış faturayı yalnız yönetici iptal eder. İptal edilen faturayı yalnız
+  // muhasebe düzenleyip yeniden gönderir veya silerek talebi tekrar fatura bekleyen
+  // aşamaya döndürür.
+  const canCancel = isAdmin && invoice.status === 'onaylandı'
+  const canRecoverRejected = isMuhasebe && invoice.status === 'reddedildi'
   // Onay Kuyruğu'ndaki mantıkla birebir aynı: yalnızca yönetici_onayında + isAdmin.
   // Adım numarası sabit değil (bkz. yukarıdaki not) — hedef her zaman o an bekleyen satır.
   const canApproveHere = isAdmin && invoice.status === 'yönetici_onayında'
@@ -329,7 +330,7 @@ function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
   }
 
   async function handleDeleteRejected() {
-    if (!window.confirm('Reddedilen fatura kalıcı olarak silinsin mi? Satın alma talebi tekrar fatura bekleyen aşamaya döner.')) return
+    if (!window.confirm('İptal/reddedilen fatura kalıcı olarak silinsin mi? Bağlı satın alma talebi tekrar fatura bekleyen aşamaya döner ve yeni fatura eklenmesi gerekir.')) return
     setRejectedBusy(true)
     setRejectedErr('')
     const { error } = await supabase.rpc('delete_rejected_invoice', { p_invoice_id: invoice.id })
@@ -432,6 +433,11 @@ function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
 
         {canRecoverRejected && (
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #E5E7EB' }}>
+            <p style={{ margin: '0 0 12px', fontSize: 12.5, color: '#475569', background: '#F8FAFC', borderRadius: 8, padding: '9px 12px' }}>
+              {cancelledAfterApproval
+                ? 'Yönetici bu onaylı faturayı iptal etti. Faturayı düzenleyip yeniden onaya gönderebilir veya silebilirsiniz. Silerseniz bağlı satın alma yeni fatura bekler.'
+                : 'Yönetici faturayı reddetti. Faturayı düzenleyip yeniden onaya gönderebilir veya silebilirsiniz. Silerseniz bağlı satın alma yeni fatura bekler.'}
+            </p>
             {rejectedErr && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{rejectedErr}</p>}
             {!editingRejected ? (
               <div style={{ display: 'flex', gap: 10 }}>
@@ -478,7 +484,7 @@ function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
             ) : (
               <div>
                 <p style={{ margin: '0 0 10px', fontSize: 12.5, color: '#92400E', background: '#FEF3C7', borderRadius: 8, padding: '8px 12px' }}>
-                  ⚠ Bu fatura zaten onaylanmış. İptal edilirse ilgili maliyet kaydı silinir ve bağlı satın alma talebi tekrar "Onaylandı" durumuna döner, yeniden fatura kesilebilir.
+                  ⚠ Bu fatura onaylanmış. İptal edilirse maliyet kaydı geri alınır ve fatura muhasebeye düzenleme veya silme için gönderilir. Muhasebe silerse bağlı satın alma tekrar fatura bekler.
                 </p>
                 {cancelErr && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{cancelErr}</p>}
                 <div style={{ display: 'flex', gap: 10 }}>
@@ -528,7 +534,7 @@ function FaturaIptalModal({ invoice, onClose, onSaved }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
         </div>
         <p style={{ margin: '0 0 16px', fontSize: 12.5, color: '#92400E', background: '#FEF3C7', borderRadius: 8, padding: '8px 12px' }}>
-          ⚠ {invoice.invoice_no || 'Bu fatura'} zaten onaylanmış. İptal edilirse ilgili maliyet kaydı silinir ve bağlı satın alma talebi tekrar "Onaylandı" durumuna döner, yeniden fatura kesilebilir.
+          ⚠ {invoice.invoice_no || 'Bu fatura'} onaylanmış. İptal edilirse maliyet kaydı geri alınır ve fatura muhasebeye düzenleme veya silme için gönderilir. Muhasebe silerse bağlı satın alma tekrar fatura bekler.
         </p>
         {err && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{err}</p>}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
@@ -696,7 +702,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
                       {projectId ? (
                         canAct && (
                           <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
-                            {inv.status === 'onaylandı' ? (
+                            {isAdmin && inv.status === 'onaylandı' ? (
                               <button
                                 onClick={() => setCancelling(inv)}
                                 style={{ background: '#FEF2F2', color: '#DC2626', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}

@@ -1740,18 +1740,14 @@ Alma/Finans Test Verisi notu).
   `get_advisors` yeni uyarı göstermedi, `npx eslint src`/`npx vite build` temiz.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
-- **Onaylanmış fatura iptali iki yerde tutarsız (2026-07-21'de bulundu, bilinçli
-  olarak düzeltilmedi — kullanıcı kararı bekliyor):** Reddedilen fatura düzenle/
-  yeniden gönder/sil akışı eklenirken `FaturaDetayModal`'daki (menü modu, bkz.
-  Satın alma akışı) eski "onaylandı → reddedildi" iptal butonu `canCancel = false`
-  ile kalıcı olarak kapatıldı (kod — `handleCancel`/`showCancelConfirm`/JSX bloğu
-  — hâlâ dosyada duruyor ama asla render edilmiyor, ölü kod). Ama AYNI yeteneğin
-  proje-özel Finans listesindeki satır aksiyonu (`FaturaIptalModal`, `onaylandı`
-  durumundaki faturalarda "İptal Et" butonu) hiç dokunulmadan aktif kaldı — aynı
-  işlem menü modunda kapalı, proje modunda açık. Üç seçenek var: (1) proje
-  modundaki butonu da kapat + iki taraftaki ölü kodu (canCancel bloğu +
-  FaturaIptalModal) temizle, (2) menü modundaki eski davranışı geri getir, (3)
-  olduğu gibi bırak. Kod değiştirilmedi, yalnızca not edildi.
+- **Onaylanmış fatura iptali tutarsızlığı kapatıldı (2026-07-21):** Menü ve
+  proje modunda onaylı faturayı yalnız admin iptal eder. İptalde fatura
+  `reddedildi` olur, maliyet kaydı geri alınır ve muhasebeye düşer. Yalnız
+  muhasebe düzenleyip yeniden gönderir veya siler; silmede bağlı satın alma
+  `satin_alindi` (fatura bekleyen) durumuna ve `invoice_id=null` haline döner,
+  yeni fatura olmadan tamamlanamaz. Migration:
+  `unify_admin_invoice_cancel_accounting_recovery`; DB/iş akışı + gerçek
+  yönetici/muhasebe ekran kabulü dahil tam regresyon 43/43 PASS.
 - **`export-project-excel` edge fonksiyonu statik indirilebilir şablonla (`public/excel/`)
   görsel olarak tutarsız — 2026-07-21'de denetlendi, düşük öncelikli, düzeltilmedi:**
   export tamamen kod-tabanlı (ExcelJS ile ayrı bir workbook üretiyor, statik dosyayı hiç
@@ -1991,12 +1987,11 @@ değil) dışında sorunsuz. Bulunanlar 4 ayrı commit'e bölündü:
    gönderilebiliyor** — yeni RPC'ler `resubmit_rejected_invoice`/
    `delete_rejected_invoice` (DB'de zaten vardı, REVOKE'lı), `FaturaDetayModal`'a
    "Düzenle ve Yeniden Gönder"/"Faturayı Sil" eklendi (bkz. Sistem mimarisi →
-   "Satın alma akışı"). **Bu değişiklik sırasında bir tutarsızlık bulundu ve
-   BİLİNÇLİ OLARAK DÜZELTİLMEDİ** (kullanıcıya soruldu, "şimdi karar veremem,
-   olduğu gibi bırak" dendi): aynı ekrandaki eski "onaylandı faturayı iptal et"
-   yeteneği menü modunda (`FaturaDetayModal`, `canCancel=false`) kapatılmış ama
-   proje modunda (`FaturaIptalModal`, satır aksiyonu) hâlâ aktif — bkz. Bilinen
-   açık noktalar.
+   "Satın alma akışı"). Son karar: onaylı faturayı yalnız yönetici iptal eder;
+   iptal edilen faturayı yalnız muhasebe düzenleyip yeniden gönderir veya siler.
+   Menü/proje modu aynı kurala bağlandı. Yönetici global Finans ekranından
+   iptal, muhasebe iptal edilen faturada düzenle/yeniden gönder/sil seçenekleri
+   gerçek tarayıcıda doğrulandı; toplam 43/43 test geçti.
 4. **Proje-özel Finans sekmesi sadeleştirildi** — `ProjeTabFinans.jsx` artık
    Faturalar/Onay Kuyruğu/Maliyet Tablosu alt-sekmelerini barındırmıyor, yalnızca
    "Genel" görünüm kalıyor; bu ekranlara artık yalnızca üst-seviye Finans
