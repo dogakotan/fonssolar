@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import { getAuthRedirectUrl } from '../../../lib/authRedirect'
+import { getProjects } from '../../../api'
 
 const SIRKET_GENELI = ['admin', 'muhasebe']
 
@@ -356,7 +357,7 @@ function SilModal({ user: targetUser, onClose, onDeleted }) {
 }
 
 export default function TabKullanicilar() {
-  const { user: me } = useAuth()
+  const { user: me, isAdmin } = useAuth()
   const [users,       setUsers]       = useState([])
   const [projects,    setProjects]    = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -370,12 +371,15 @@ export default function TabKullanicilar() {
 
   async function fetchData() {
     setLoading(true)
+    // getProjects() cross_project rollerde (proje_yoneticisi gibi) projects
+    // tablosunun eksik RLS kapsamını get_my_projects() ile tamamlıyor — raw
+    // .from('projects') burada admin dışı roller için eksik liste dönerdi.
     const [{ data: u }, { data: p }] = await Promise.all([
       supabase.from('profiles').select('id, full_name, email, role_key, project_id, created_at').order('full_name'),
-      supabase.from('projects').select('id, name').order('name'),
+      getProjects(),
     ])
     setUsers(u || [])
-    setProjects(p || [])
+    setProjects((p || []).slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))))
     setLoading(false)
   }
 
@@ -452,12 +456,14 @@ export default function TabKullanicilar() {
             <option value="hepsi">Tüm Projeler</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <button
-            onClick={() => { setEditUser(null); setModal('kullanici') }}
-            style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
-          >
-            + Kullanıcı Ekle
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => { setEditUser(null); setModal('kullanici') }}
+              style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+            >
+              + Kullanıcı Ekle
+            </button>
+          )}
         </div>
 
         {/* Liste */}
@@ -513,20 +519,22 @@ export default function TabKullanicilar() {
                 )}
               </div>
 
-              {/* İşlem Butonları */}
-              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                <button onClick={() => { setEditUser(u); setModal('kullanici') }} style={BTN('#EFF6FF', '#185FA5')}>
-                  Düzenle
-                </button>
-                <button onClick={() => setResetUser(u)} style={BTN('#FEF3C7', '#92400E')}>
-                  Şifre
-                </button>
-                {!isMe && (
-                  <button onClick={() => setSilUser(u)} style={BTN('#FEE2E2', '#991B1B')}>
-                    Sil
+              {/* İşlem Butonları — yalnızca admin; diğer roller (proje_yoneticisi dahil) salt-okunur görür */}
+              {isAdmin && (
+                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                  <button onClick={() => { setEditUser(u); setModal('kullanici') }} style={BTN('#EFF6FF', '#185FA5')}>
+                    Düzenle
                   </button>
-                )}
-              </div>
+                  <button onClick={() => setResetUser(u)} style={BTN('#FEF3C7', '#92400E')}>
+                    Şifre
+                  </button>
+                  {!isMe && (
+                    <button onClick={() => setSilUser(u)} style={BTN('#FEE2E2', '#991B1B')}>
+                      Sil
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}
