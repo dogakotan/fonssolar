@@ -350,22 +350,22 @@ export default function Dashboard() {
         {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && (
           <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
         )}
-        {activeTab === 'finans'       && role !== 'proje_yoneticisi' && (
+        {activeTab === 'finans'       && (
           <TabFinans
             openInvoiceId={openInvoiceId}
             onOpenedInvoice={() => setOpenInvoiceId(null)}
             invoiceProjectId={invoiceProjectId}
           />
         )}
-        {activeTab === 'tickets'      && role !== 'proje_yoneticisi' && (
+        {activeTab === 'tickets'      && (
           <TabTickets
             selectedDate={selectedDate}
             openTicketId={openTicketId}
             onOpenedTicket={() => setOpenTicketId(null)}
           />
         )}
-        {activeTab === 'kullanicilar' && isAdmin && <TabKullanicilar />}
-        {activeTab === 'proje-ekle'  && isAdmin && (
+        {activeTab === 'kullanicilar' && (isAdmin || role === 'proje_yoneticisi') && <TabKullanicilar />}
+        {activeTab === 'proje-ekle'  && (isAdmin || role === 'proje_yoneticisi') && (
           <TabProjeYonetimi
             onViewProject={(id, name) => {
               setSelectedProjectId(id)

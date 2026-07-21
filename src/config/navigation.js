@@ -55,10 +55,17 @@ export const NAVIGATION = {
     defaultTab: 'finans',
     sidebarItems: ['finans', 'satin-alma', 'bildirimler'],
   },
+  // 2026-07-21: admin'in tüm operasyonel sekmeleri (finans/tickets/kullanicilar/
+  // proje-ekle) eklendi — kullanıcı proje_yoneticisi'nin admin gibi her sayfayı
+  // görebilmesini istedi. Aksiyon/yazma yetkisi ayrı: Finans/Tickets zaten
+  // isAdmin||isMuhasebe / isAdmin bazlı iç kısıtlamaya sahip (bkz. FaturaListesi,
+  // OnayKuyrugu, TicketListesi), Kullanıcılar/Proje Yönetimi'ne ise bu turda
+  // isAdmin-only iç aksiyon guard'ı eklendi (bkz. TabKullanicilar.jsx,
+  // TabProjeYonetimi.jsx) — bu ikisinde önceden hiç iç kısıtlama yoktu.
   proje_yoneticisi: {
-    tabs: ['genel', 'projeler', 'is-plani', 'satin-alma', 'bildirimler'],
+    tabs: ['genel', 'projeler', 'is-plani', 'satin-alma', 'finans', 'tickets', 'kullanicilar', 'proje-ekle', 'bildirimler'],
     defaultTab: 'genel',
-    sidebarItems: ['genel', 'is-plani', 'projeler', 'satin-alma', 'bildirimler'],
+    sidebarItems: ['genel', 'is-plani', 'projeler', 'satin-alma', 'finans', 'tickets', 'bildirimler', 'proje-ekle', 'kullanicilar'],
   },
   santiye_sefi: {
     tabs: ['genel', 'is-plani', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets', 'bildirimler'],
