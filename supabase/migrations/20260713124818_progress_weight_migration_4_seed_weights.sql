@@ -1,0 +1,22 @@
+INSERT INTO project_category_weights (project_id, category, weight_pct) VALUES
+  ('test-izmir-ges-2026', 'kolon_montaji', 10),
+  ('test-izmir-ges-2026', 'kiris_montaji', 10),
+  ('test-izmir-ges-2026', 'asik_montaji', 10),
+  ('test-izmir-ges-2026', 'panel_montaji', 20),
+  ('test-izmir-ges-2026', 'elektrik_dc', 10),
+  ('test-izmir-ges-2026', 'elektrik_ac', 10),
+  ('test-izmir-ges-2026', 'elektrik_og', 10),
+  ('test-izmir-ges-2026', 'kosk_trafo', 5),
+  ('test-izmir-ges-2026', 'topraklama', 5),
+  ('test-izmir-ges-2026', 'devreye_alma', 10),
+  ('test-kayseri-develi-ges', 'kolon_montaji', 10),
+  ('test-kayseri-develi-ges', 'kiris_montaji', 10),
+  ('test-kayseri-develi-ges', 'asik_montaji', 10),
+  ('test-kayseri-develi-ges', 'panel_montaji', 20),
+  ('test-kayseri-develi-ges', 'elektrik_dc', 10),
+  ('test-kayseri-develi-ges', 'elektrik_ac', 10),
+  ('test-kayseri-develi-ges', 'elektrik_og', 10),
+  ('test-kayseri-develi-ges', 'kosk_trafo', 5),
+  ('test-kayseri-develi-ges', 'topraklama', 5),
+  ('test-kayseri-develi-ges', 'devreye_alma', 10);
+

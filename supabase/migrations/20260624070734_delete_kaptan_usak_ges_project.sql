@@ -1,0 +1,20 @@
+DELETE FROM work_packages WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM schedule_activities WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM procurement_items WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM progress_items WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM budget_lines WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM project_risks WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM critical_path_items WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM mechanical_checklist WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM electrical_checklist WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM quality_inspections WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM tickets WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM purchase_requests WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM project_tasks WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM daily_reports WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM agent_reports WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM invoices WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM cost_allocations WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM profiles WHERE project_id = 'kaptan-usak-ges';
+DELETE FROM projects WHERE id = 'kaptan-usak-ges';
+
