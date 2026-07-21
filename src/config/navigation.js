@@ -63,9 +63,9 @@ export const NAVIGATION = {
   // isAdmin-only iç aksiyon guard'ı eklendi (bkz. TabKullanicilar.jsx,
   // TabProjeYonetimi.jsx) — bu ikisinde önceden hiç iç kısıtlama yoktu.
   proje_yoneticisi: {
-    tabs: ['genel', 'projeler', 'is-plani', 'satin-alma', 'finans', 'tickets', 'kullanicilar', 'proje-ekle', 'bildirimler'],
+    tabs: ['genel', 'projeler', 'satin-alma', 'tickets', 'kullanicilar', 'proje-ekle', 'bildirimler'],
     defaultTab: 'genel',
-    sidebarItems: ['genel', 'is-plani', 'projeler', 'satin-alma', 'finans', 'tickets', 'bildirimler', 'proje-ekle', 'kullanicilar'],
+    sidebarItems: ['genel', 'projeler', 'satin-alma', 'tickets', 'bildirimler', 'proje-ekle', 'kullanicilar'],
   },
   santiye_sefi: {
     tabs: ['genel', 'is-plani', 'daily-report', 'rapor-listesi', 'satin-alma', 'tickets', 'bildirimler'],
