@@ -102,21 +102,22 @@ export function classifyMaterials(materials, requests) {
 
   return requests.reduce((acc, request) => {
     const items = request.items || request.purchase_request_items || []
-    const isMaterial = requestType(request) === 'malzeme'
+    const type = requestType(request)
+    const isMaterial = type === 'malzeme'
+    const missing = type === 'diger' || (isMaterial && items.some(item => {
+      const key = materialKey(item.name)
+      return (plannedByMaterial.get(key) || 0) <= 0
+    }))
     const risky = isMaterial && items.some(item => {
       const key = materialKey(item.name)
       const planned = plannedByMaterial.get(key) || 0
       const requested = requestedByMaterial.get(key) || 0
       return planned > 0 && requested > planned
     })
-    const missing = isMaterial && items.length > 0 && items.every(item => {
-      const key = materialKey(item.name)
-      return (plannedByMaterial.get(key) || 0) <= 0
-    })
 
     acc.total += 1
-    if (risky) acc.excess += 1
-    else if (missing) acc.missing += 1
+    if (missing) acc.missing += 1
+    else if (risky) acc.excess += 1
     else acc.ok += 1
     return acc
   }, { total: 0, ok: 0, excess: 0, missing: 0 })
@@ -176,8 +177,8 @@ export function riskState(items, materialPlan, requestedTotals, category) {
   if (category === 'diger' || category === 'diğer') return 'listede_yok'
   if (category !== 'malzeme') return 'uygun'
   const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
+  if (breakdown.some(row => row.planned <= 0)) return 'listede_yok'
   if (breakdown.some(row => row.risky)) return 'riskli'
-  if (category === 'malzeme' && breakdown.length > 0 && breakdown.every(row => row.planned <= 0)) return 'listede_yok'
   return 'uygun'
 }
 
@@ -190,9 +191,10 @@ export function requestType(request) {
 
 export function classifyRequestTypes(requests) {
   return requests.reduce((acc, request) => {
-    acc[requestType(request)] += 1
+    const type = requestType(request)
+    acc[type] = (acc[type] || 0) + 1
     return acc
-  }, { malzeme: 0, hizmet: 0 })
+  }, { malzeme: 0, hizmet: 0, diger: 0 })
 }
 
 // Talepleri/malzemeleri project_id'ye göre gruplar. Farklı projelerin BOM'ları

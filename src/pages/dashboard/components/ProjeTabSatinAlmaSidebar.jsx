@@ -36,15 +36,17 @@ function ColumnChart({ total, totalLabel, items }) {
 }
 
 function RequestTypeChart({ dagilim }) {
-  const total = dagilim.malzeme + dagilim.hizmet
+  const total = dagilim.malzeme + dagilim.hizmet + dagilim.diger
   const materialPct = percent(dagilim.malzeme, total)
-  const servicePct = total > 0 ? 100 - materialPct : 0
+  const servicePct = percent(dagilim.hizmet, total)
+  const otherPct = total > 0 ? 100 - materialPct - servicePct : 0
+  const serviceEnd = materialPct + servicePct
 
   return (
     <div className="sa-donut-wrap">
       <div
         className="sa-donut"
-        style={{ background: total > 0 ? `conic-gradient(var(--color-primary) 0 ${materialPct}%, var(--color-success) ${materialPct}% 100%)` : 'var(--color-bg)' }}
+        style={{ background: total > 0 ? `conic-gradient(var(--color-primary) 0 ${materialPct}%, var(--color-success) ${materialPct}% ${serviceEnd}%, var(--color-warning) ${serviceEnd}% 100%)` : 'var(--color-bg)' }}
       >
         <div>
           <strong>{total}</strong>
@@ -54,6 +56,7 @@ function RequestTypeChart({ dagilim }) {
       <div className="sa-donut-legend">
         <span><i style={{ background: 'var(--color-primary)' }} /> Malzeme <strong>{dagilim.malzeme}</strong><small>%{materialPct}</small></span>
         <span><i style={{ background: 'var(--color-success)' }} /> Hizmet <strong>{dagilim.hizmet}</strong><small>%{servicePct}</small></span>
+        <span><i style={{ background: 'var(--color-warning)' }} /> Diğer <strong>{dagilim.diger}</strong><small>%{otherPct}</small></span>
       </div>
     </div>
   )
