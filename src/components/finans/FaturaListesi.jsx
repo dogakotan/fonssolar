@@ -163,14 +163,70 @@ function FaturaEkleModal({ onClose, onSaved, defaultProjectId }) {
   )
 }
 
+// Onay Kuyruğu'ndaki ActionButtons ile aynı desen (Onayla düz, Reddet önce not alanı açar) —
+// burada tablo satırı/detay modalı içinde kompakt kullanım için ayrı tutuldu.
+function OnaylaReddetButtons({ onAction, busy }) {
+  const [showReject, setShowReject] = useState(false)
+  const [note, setNote] = useState('')
+
+  if (showReject) {
+    return (
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="Red gerekçesi (opsiyonel)"
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          onClick={e => e.stopPropagation()}
+          style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontFamily: 'inherit', outline: 'none', width: 160 }}
+        />
+        <button
+          onClick={e => { e.stopPropagation(); onAction('reddedildi', note); setShowReject(false); setNote('') }}
+          disabled={busy}
+          style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          {busy ? '…' : 'Reddi Onayla'}
+        </button>
+        <button
+          onClick={e => { e.stopPropagation(); setShowReject(false); setNote('') }}
+          style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+        >
+          İptal
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      <button
+        onClick={e => { e.stopPropagation(); onAction('onaylandı') }}
+        disabled={busy}
+        style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+      >
+        {busy ? '…' : '✓ Onayla'}
+      </button>
+      <button
+        onClick={e => { e.stopPropagation(); setShowReject(true) }}
+        disabled={busy}
+        style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+      >
+        ✗ Reddet
+      </button>
+    </div>
+  )
+}
+
 // ── Fatura Detay Modal (menü modu: onay zinciri + içinden iptal) ─────────────
-function FaturaDetayModal({ invoice, onClose, onCancelled }) {
-  const { isAdmin, isMuhasebe } = useAuth()
+function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
+  const { isAdmin, isMuhasebe, user } = useAuth()
   const [approvals, setApprovals] = useState([])
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
   const [cancelNote, setCancelNote] = useState('')
   const [cancelSaving, setCancelSaving] = useState(false)
   const [cancelErr, setCancelErr] = useState('')
+  const [approveSaving, setApproveSaving] = useState(false)
+  const [approveErr, setApproveErr] = useState('')
 
   useEffect(() => {
     if (!invoice) return
@@ -195,6 +251,9 @@ function FaturaDetayModal({ invoice, onClose, onCancelled }) {
     ? { bg: '#FEF3C7', color: '#92400E', label: 'İptal Edildi (Onay Sonrası)' }
     : STATUS_BADGE[invoice.status] || { bg: '#F3F4F6', color: '#111827', label: invoice.status }
   const canCancel = (isAdmin || isMuhasebe) && invoice.status === 'onaylandı'
+  // Onay Kuyruğu'ndaki mantıkla birebir aynı: yalnızca yönetici_onayında + isAdmin.
+  // Adım numarası sabit değil (bkz. yukarıdaki not) — hedef her zaman o an bekleyen satır.
+  const canApproveHere = isAdmin && invoice.status === 'yönetici_onayında'
 
   async function handleCancel() {
     setCancelSaving(true)
@@ -203,6 +262,22 @@ function FaturaDetayModal({ invoice, onClose, onCancelled }) {
     setCancelSaving(false)
     if (error) { setCancelErr(error.message || 'İptal edilemedi.'); return }
     onCancelled?.()
+    onClose()
+  }
+
+  // invoices.status güncellemesi tamamen fn_invoice_approval_cascade trigger'ına bırakılır —
+  // OnayKuyrugu.jsx'teki handleAction ile birebir aynı desen.
+  async function handleApprove(action, note) {
+    setApproveSaving(true)
+    setApproveErr('')
+    const { error } = await supabase
+      .from('invoice_approvals')
+      .update({ status: action, note: note || null, reviewed_at: new Date().toISOString(), reviewer_id: user.id })
+      .eq('invoice_id', invoice.id)
+      .eq('status', 'bekliyor')
+    setApproveSaving(false)
+    if (error) { setApproveErr(error.message || 'İşlem başarısız.'); return }
+    onApproved?.()
     onClose()
   }
 
@@ -287,6 +362,13 @@ function FaturaDetayModal({ invoice, onClose, onCancelled }) {
           )}
         </div>
 
+        {canApproveHere && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #E5E7EB' }}>
+            {approveErr && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{approveErr}</p>}
+            <OnaylaReddetButtons onAction={handleApprove} busy={approveSaving} />
+          </div>
+        )}
+
         {canCancel && (
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #E5E7EB' }}>
             {!showCancelConfirm ? (
@@ -370,7 +452,7 @@ function FaturaIptalModal({ invoice, onClose, onSaved }) {
 // Satıra tıklama → tüm fatura bilgileri ve onay zinciri modalı. projectId doluysa
 // (proje modu): yalnız o projenin faturaları (filterDate'e kadar), kilitli proje seçici.
 export default function FaturaListesi({ projectId = null, filterDate = null, openInvoiceId, onOpenedInvoice }) {
-  const { isAdmin, isMuhasebe } = useAuth()
+  const { isAdmin, isMuhasebe, user } = useAuth()
   const [invoices,     setInvoices]     = useState([])
   const [loading,      setLoading]      = useState(true)
   const [page,         setPage]         = useState(0)
@@ -378,6 +460,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
   const [showAdd,      setShowAdd]      = useState(false)
   const [detayFatura,  setDetayFatura]  = useState(null)
   const [cancelling,   setCancelling]   = useState(null)
+  const [approvingId,  setApprovingId]  = useState(null)
 
   async function fetchInvoices() {
     setLoading(true)
@@ -388,6 +471,20 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
     if (error || !data?.authorized) console.error('invoices fetch error:', error)
     setInvoices(data?.invoices || [])
     setLoading(false)
+  }
+
+  // Onay Kuyruğu'ndaki handleAction ile birebir aynı desen — kullanıcı Onayla/Reddet
+  // aksiyonunu doğrudan Faturalar listesinden de yapabilsin istedi (ayrı Onay Kuyruğu
+  // sekmesine gitmeye gerek kalmadan, "sırası bana gelmiş" satırı gördüğü yerden).
+  async function handleApprove(invoiceId, action, note) {
+    setApprovingId(invoiceId)
+    await supabase
+      .from('invoice_approvals')
+      .update({ status: action, note: note || null, reviewed_at: new Date().toISOString(), reviewer_id: user.id })
+      .eq('invoice_id', invoiceId)
+      .eq('status', 'bekliyor')
+    setApprovingId(null)
+    fetchInvoices()
   }
 
   useEffect(() => { fetchInvoices() }, [projectId, filterDate])
@@ -501,14 +598,19 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
                       </td>
                       {projectId ? (
                         canAct && (
-                          <td style={{ padding: '14px 16px' }}>
+                          <td style={{ padding: '14px 16px' }} onClick={e => e.stopPropagation()}>
                             {inv.status === 'onaylandı' ? (
                               <button
-                                onClick={e => { e.stopPropagation(); setCancelling(inv) }}
+                                onClick={() => setCancelling(inv)}
                                 style={{ background: '#FEF2F2', color: '#DC2626', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
                               >
                                 İptal Et
                               </button>
+                            ) : isAdmin && inv.status === 'yönetici_onayında' ? (
+                              <OnaylaReddetButtons
+                                onAction={(action, note) => handleApprove(inv.id, action, note)}
+                                busy={approvingId === inv.id}
+                              />
                             ) : '—'}
                           </td>
                         )
@@ -558,6 +660,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
           invoice={detayFatura}
           onClose={() => setDetayFatura(null)}
           onCancelled={fetchInvoices}
+          onApproved={fetchInvoices}
         />
       )}
       {cancelling && (
