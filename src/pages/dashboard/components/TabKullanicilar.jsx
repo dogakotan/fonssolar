@@ -104,9 +104,13 @@ const INP = {
 }
 const LBL = { fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }
 
-function KullaniciModal({ user: editUser, projects, onClose, onSaved }) {
+function KullaniciModal({ user: editUser, projects, onClose, onSaved, isAdmin }) {
   const isNew   = !editUser
   const isPBazli = (rk) => PROJE_BAZLI.includes(rk)
+  // proje_yoneticisi yeni kullanıcı oluşturabilir ama 'admin' rolünde biri
+  // oluşturamaz (yetki yükseltme koruması — create-user edge function'ı da
+  // aynı kontrolü sunucu tarafında yapıyor, bu yalnızca UI seviyesi).
+  const creatorRoles = isAdmin ? SIRKET_GENELI : SIRKET_GENELI.filter(r => r !== 'admin')
 
   const [form, setForm] = useState({
     full_name:  editUser?.full_name  || '',
@@ -200,7 +204,7 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved }) {
             <label style={LBL}>Rol</label>
             <select style={INP} value={form.role_key} onChange={e => handleRolChange(e.target.value)}>
               <optgroup label="Şirket Geneli">
-                {SIRKET_GENELI.map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
+                {creatorRoles.map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
               </optgroup>
               <optgroup label="Proje Bazlı">
                 {PROJE_BAZLI_SECENEK.map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
@@ -357,7 +361,11 @@ function SilModal({ user: targetUser, onClose, onDeleted }) {
 }
 
 export default function TabKullanicilar() {
-  const { user: me, isAdmin } = useAuth()
+  const { user: me, isAdmin, role } = useAuth()
+  // proje_yoneticisi yalnızca yeni kullanıcı OLUŞTURABİLİR (create-user edge
+  // function'ı da bunu izin veriyor, admin rolü atamasını hâlâ admin'e
+  // kilitliyor) — Düzenle/Şifre/Sil hâlâ isAdmin-only (blast radius yüksek).
+  const canCreate = isAdmin || role === 'proje_yoneticisi'
   const [users,       setUsers]       = useState([])
   const [projects,    setProjects]    = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -456,7 +464,7 @@ export default function TabKullanicilar() {
             <option value="hepsi">Tüm Projeler</option>
             {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          {isAdmin && (
+          {canCreate && (
             <button
               onClick={() => { setEditUser(null); setModal('kullanici') }}
               style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
@@ -548,6 +556,7 @@ export default function TabKullanicilar() {
         <KullaniciModal
           user={editUser}
           projects={projects}
+          isAdmin={isAdmin}
           onClose={() => { setModal(null); setEditUser(null) }}
           onSaved={fetchData}
         />

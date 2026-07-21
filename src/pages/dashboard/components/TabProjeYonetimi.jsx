@@ -33,7 +33,11 @@ const PROJECT_DELETE_TABLES = [
 const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu.xlsx'
 
 export default function TabProjeYonetimi({ onViewProject }) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, role } = useAuth()
+  // proje_yoneticisi Excel şablonuyla proje ekleyebilir (import-project-excel
+  // edge function'ı da bunu sunucu tarafında izin veriyor) — Düzenle/Excel
+  // export/Sil hâlâ isAdmin-only (kademeli proje silme dahil, blast radius yüksek).
+  const canCreateProject = isAdmin || role === 'proje_yoneticisi'
   const [view,            setView]            = useState('list')
   const [editProject,     setEditProject]     = useState(null)
   const [projects,        setProjects]        = useState([])
@@ -206,9 +210,10 @@ export default function TabProjeYonetimi({ onViewProject }) {
       />
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      {/* Proje oluşturma/import araçları yalnızca admin — proje_yoneticisi bu ekranı
-          salt-okunur (liste/durum) görür, hiçbir yazma girişi görmez. */}
-      {isAdmin && (
+      {/* Proje oluşturma/import (Şablon İndir/Yeni Proje/Manuel doldur) admin +
+          proje_yoneticisi'ye açık — Düzenle/Excel export/Sil (satır aksiyonları,
+          aşağıda) hâlâ isAdmin-only, kademeli proje silme dahil blast radius yüksek. */}
+      {canCreateProject && (
         <div className="card-header">
           <div style={{ flex: 1 }} />
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -255,7 +260,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
         ) : projects.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
             <p style={{ fontSize: 14, color: 'var(--color-muted)', marginBottom: '1rem' }}>Henüz proje eklenmemiş.</p>
-            {isAdmin && (
+            {canCreateProject && (
               <>
                 <button
                   onClick={handleImportClick}
