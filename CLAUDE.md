@@ -2120,3 +2120,20 @@ tüm commit'lerinin push'u birlikte yapılacak, sonra go-live hazırlıklarına
   eklendi: şantiye şefinde bağlı proje seçili/kilitli, proje yöneticisinde tüm
   projeler arasından zorunlu seçim, yöneticide satın alma ve finans onayları,
   muhasebede yalnız Faturalar görünümü ve belge alanının yokluğu. **4/4 geçti**.
+
+### 21 Temmuz 2026 — Güvenlik testi bildirim temizliği
+
+- Canlı veritabanında önceki güvenlik testlerinden kalan toplam 21 yetim
+  `E2E_SECURITY_` bildirimi ve başarısız doğrulamanın bıraktığı tek test talebi
+  kontrollü SQL ile temizlendi; son kontrolde bildirim ve talep sayıları **0/0**.
+- Kök neden, `notifications` tablosunda DELETE RLS politikasının bulunmamasıydı;
+  istemci silme çağrıları hata vermeden sıfır satır etkiliyordu.
+- `allow_users_to_delete_own_notifications` migration'ı ile authenticated
+  kullanıcıların yalnızca `recipient_id = auth.uid()` olan kendi bildirimlerini
+  silebilmesi sağlandı. Başka kullanıcıların bildirimleri erişilebilir değildir.
+- `procurement-security.spec.js` temizliği admin, muhasebe, şantiye şefi ve proje
+  yöneticisi istemcilerinin kendi test bildirimlerini, bağlı test kayıtları
+  silinmeden önce kaldıracağı şekilde güncellendi. Tam güvenlik paketi **4/4 geçti**;
+  ardından canlı artık kontrolü tekrar **0 bildirim / 0 talep / 0 fatura** verdi.
+- Migration sonrası Supabase security/performance advisor taramasında bu değişiklikten
+  kaynaklanan yeni bir uyarı bulunmadı; önceden bilinen genel uyarılar devam ediyor.
