@@ -102,6 +102,22 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     const { data: initial } = await santiye.from('purchase_requests').select('status,project_id').eq('id', requestId).single()
     expect(initial).toMatchObject({ status: 'talep_olusturuldu', project_id: projectId })
 
+    const muhasebeId = (await muhasebe.auth.getUser()).data.user.id
+    const { error: earlyInvoiceError } = await muhasebe.from('invoices').insert({
+      project_id: projectId,
+      purchase_request_id: requestId,
+      supplier_id: supplierId,
+      invoice_no: `${marker}_EARLY`,
+      invoice_date: new Date().toISOString().slice(0, 10),
+      amount: 100,
+      vat_rate: 20,
+      category: 'malzeme',
+      source: 'satin_alma',
+      status: 'bekliyor',
+      created_by: muhasebeId,
+    })
+    expect(earlyInvoiceError?.message).toContain('fatura eklemeye uygun değil')
+
     const adminId = (await admin.auth.getUser()).data.user.id
     const { error: approveRequestError } = await admin.from('purchase_requests').update({
       status: 'onaylandi', approved_by: adminId, approved_at: new Date().toISOString(),
@@ -119,7 +135,28 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     const { data: procured } = await projeYoneticisi.from('purchase_requests').select('status').eq('id', requestId).single()
     expect(procured.status).toBe('satin_alindi')
 
-    const muhasebeId = (await muhasebe.auth.getUser()).data.user.id
+    const asOfDate = new Date().toISOString().slice(0, 10)
+    const { data: financeBefore, error: financeBeforeError } = await admin.rpc('get_finans_overview', {
+      p_project_id: projectId, p_as_of_date: asOfDate,
+    })
+    expect(financeBeforeError).toBeNull()
+
+    const { data: otherProject } = await admin.from('projects').select('id').neq('id', projectId).limit(1).single()
+    const { error: wrongProjectInvoiceError } = await muhasebe.from('invoices').insert({
+      project_id: otherProject.id,
+      purchase_request_id: requestId,
+      supplier_id: supplierId,
+      invoice_no: `${marker}_WRONG_PROJECT`,
+      invoice_date: new Date().toISOString().slice(0, 10),
+      amount: 100,
+      vat_rate: 20,
+      category: 'malzeme',
+      source: 'satin_alma',
+      status: 'bekliyor',
+      created_by: muhasebeId,
+    })
+    expect(wrongProjectInvoiceError?.message).toContain('aynı olmalıdır')
+
     const { data: invoice, error: invoiceError } = await muhasebe.from('invoices').insert({
       project_id: projectId,
       purchase_request_id: requestId,
@@ -138,12 +175,21 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     invoiceId = invoice.id
     invoiceIds.push(invoiceId)
 
-    const [{ data: persistedInvoice }, { data: awaitingInvoice }] = await Promise.all([
-      admin.from('invoices').select('status').eq('id', invoiceId).single(),
+    const [{ data: persistedInvoice }, { data: awaitingInvoice }, { data: financePending }] = await Promise.all([
+      admin.from('invoices').select('status,amount,vat_rate,vat_amount,total_amount,project_id,category').eq('id', invoiceId).single(),
       admin.from('purchase_requests').select('status,invoice_id').eq('id', requestId).single(),
+      admin.rpc('get_finans_overview', { p_project_id: projectId, p_as_of_date: asOfDate }),
     ])
     expect(persistedInvoice.status).toBe('yönetici_onayında')
+    expect(Number(persistedInvoice.amount)).toBe(100)
+    expect(Number(persistedInvoice.vat_rate)).toBe(20)
+    expect(Number(persistedInvoice.vat_amount)).toBe(20)
+    expect(Number(persistedInvoice.total_amount)).toBe(120)
+    expect(persistedInvoice.project_id).toBe(projectId)
+    expect(persistedInvoice.category).toBe('malzeme')
     expect(awaitingInvoice).toMatchObject({ status: 'fatura_onay_bekliyor', invoice_id: invoiceId })
+    expect(Number(financePending.kpi.totalActual)).toBe(Number(financeBefore.kpi.totalActual))
+    expect(Number(financePending.kpi.pendingAmount)).toBe(Number(financeBefore.kpi.pendingAmount) + 120)
 
     const { data: forbiddenRows, error: forbiddenApproval } = await muhasebe.from('invoice_approvals').update({
       status: 'onaylandı', reviewer_id: muhasebeId,
@@ -156,12 +202,29 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     }).eq('invoice_id', invoiceId).eq('status', 'bekliyor')
     expect(rejectError).toBeNull()
 
-    const [{ data: rejectedInvoice }, { data: requestAfterReject }] = await Promise.all([
+    const [{ data: rejectedInvoice }, { data: requestAfterReject }, { data: hiddenFromAccounting }] = await Promise.all([
       muhasebe.from('invoices').select('status').eq('id', invoiceId).single(),
-      muhasebe.from('purchase_requests').select('status,invoice_id').eq('id', requestId).single(),
+      admin.from('purchase_requests').select('status,invoice_id').eq('id', requestId).single(),
+      muhasebe.from('purchase_requests').select('id').eq('id', requestId),
     ])
     expect(rejectedInvoice.status).toBe('reddedildi')
     expect(requestAfterReject).toMatchObject({ status: 'fatura_onay_bekliyor', invoice_id: invoiceId })
+    expect(hiddenFromAccounting).toHaveLength(0)
+
+    const { error: secondInvoiceError } = await muhasebe.from('invoices').insert({
+      project_id: projectId,
+      purchase_request_id: requestId,
+      supplier_id: supplierId,
+      invoice_no: `${marker}_SECOND`,
+      invoice_date: new Date().toISOString().slice(0, 10),
+      amount: 100,
+      vat_rate: 20,
+      category: 'malzeme',
+      source: 'satin_alma',
+      status: 'bekliyor',
+      created_by: muhasebeId,
+    })
+    expect(secondInvoiceError).toBeTruthy()
 
     const { error: editError } = await muhasebe.from('invoices').update({ invoice_no: `${marker}_REV`, amount: 110 }).eq('id', invoiceId)
     expect(editError).toBeNull()
@@ -176,12 +239,34 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     }).eq('invoice_id', invoiceId).eq('status', 'bekliyor')
     expect(finalApprovalError).toBeNull()
 
-    const [{ data: completed }, { data: allocation }] = await Promise.all([
+    const [{ data: completed }, { data: allocation }, { data: financeApproved }] = await Promise.all([
       admin.from('purchase_requests').select('status').eq('id', requestId).single(),
-      admin.from('cost_allocations').select('invoice_id,amount').eq('invoice_id', invoiceId).single(),
+      admin.from('cost_allocations').select('invoice_id,project_id,amount,category').eq('invoice_id', invoiceId).single(),
+      admin.rpc('get_finans_overview', { p_project_id: projectId, p_as_of_date: asOfDate }),
     ])
     expect(completed.status).toBe('faturasi_kesildi')
-    expect(Number(allocation.amount)).toBeGreaterThan(0)
+    expect(allocation.project_id).toBe(projectId)
+    expect(allocation.category).toBe('malzeme')
+    expect(Number(allocation.amount)).toBe(132)
+    expect(Number(financeApproved.kpi.pendingAmount)).toBe(Number(financeBefore.kpi.pendingAmount))
+    expect(Number(financeApproved.kpi.totalActual)).toBe(Number(financeBefore.kpi.totalActual) + 132)
+    expect(Number(financeApproved.kpi.remainingBudget)).toBe(Number(financeBefore.kpi.remainingBudget) - 132)
+    expect(Number(financeApproved.costBuckets.totalActual)).toBe(Number(financeBefore.costBuckets.totalActual) + 132)
+
+    const { count: notificationsBeforeRepeat } = await admin.from('notifications')
+      .select('id', { count: 'exact', head: true }).eq('entity_id', invoiceId)
+    const { data: repeatedApprovalRows, error: repeatedApprovalError } = await admin.from('invoice_approvals').update({
+      status: 'onaylandı', reviewer_id: adminId, reviewed_at: new Date().toISOString(),
+    }).eq('invoice_id', invoiceId).eq('status', 'bekliyor').select('id')
+    expect(repeatedApprovalError).toBeNull()
+    expect(repeatedApprovalRows).toHaveLength(0)
+
+    const [{ count: allocationCount }, { count: notificationsAfterRepeat }] = await Promise.all([
+      admin.from('cost_allocations').select('id', { count: 'exact', head: true }).eq('invoice_id', invoiceId),
+      admin.from('notifications').select('id', { count: 'exact', head: true }).eq('entity_id', invoiceId),
+    ])
+    expect(allocationCount).toBe(1)
+    expect(notificationsAfterRepeat).toBe(notificationsBeforeRepeat)
   })
 
   test('red sonrası muhasebe faturayı siler ve talep fatura bekleyene döner', async () => {
@@ -202,6 +287,11 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     expect((await admin.from('purchase_requests').update({ status: 'onaylandi', approved_by: adminId, approved_at: new Date().toISOString() }).eq('id', deleteRequestId)).error).toBeNull()
     expect((await projeYoneticisi.from('purchase_requests').update({ supplier_id: supplierId, purchase_date: new Date().toISOString().slice(0, 10), purchased_by: pmId }).eq('id', deleteRequestId)).error).toBeNull()
 
+    const financeDate = new Date().toISOString().slice(0, 10)
+    const { data: financeBeforeRejected } = await admin.rpc('get_finans_overview', {
+      p_project_id: projectId, p_as_of_date: financeDate,
+    })
+
     const { data: deleteInvoice, error: invoiceError } = await muhasebe.from('invoices').insert({
       project_id: projectId, purchase_request_id: deleteRequestId, supplier_id: supplierId,
       invoice_no: deleteMarker, invoice_date: new Date().toISOString().slice(0, 10), amount: 50,
@@ -212,13 +302,22 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     invoiceIds.push(deleteInvoice.id)
 
     expect((await admin.from('invoice_approvals').update({ status: 'reddedildi', reviewer_id: adminId, reviewed_at: new Date().toISOString() }).eq('invoice_id', deleteInvoice.id).eq('status', 'bekliyor')).error).toBeNull()
+    const { data: financeAfterReject } = await admin.rpc('get_finans_overview', {
+      p_project_id: projectId, p_as_of_date: financeDate,
+    })
+    expect(Number(financeAfterReject.kpi.totalActual)).toBe(Number(financeBeforeRejected.kpi.totalActual))
+    expect(Number(financeAfterReject.kpi.pendingAmount)).toBe(Number(financeBeforeRejected.kpi.pendingAmount))
+
     expect((await muhasebe.rpc('delete_rejected_invoice', { p_invoice_id: deleteInvoice.id })).error).toBeNull()
 
-    const [{ data: removedInvoice }, { data: resetRequest }] = await Promise.all([
+    const [{ data: removedInvoice }, { data: resetRequest }, { data: financeAfterDelete }] = await Promise.all([
       admin.from('invoices').select('id').eq('id', deleteInvoice.id).maybeSingle(),
       admin.from('purchase_requests').select('status,invoice_id').eq('id', deleteRequestId).single(),
+      admin.rpc('get_finans_overview', { p_project_id: projectId, p_as_of_date: financeDate }),
     ])
     expect(removedInvoice).toBeNull()
     expect(resetRequest).toMatchObject({ status: 'satin_alindi', invoice_id: null })
+    expect(Number(financeAfterDelete.kpi.totalActual)).toBe(Number(financeBeforeRejected.kpi.totalActual))
+    expect(Number(financeAfterDelete.kpi.pendingAmount)).toBe(Number(financeBeforeRejected.kpi.pendingAmount))
   })
 })
