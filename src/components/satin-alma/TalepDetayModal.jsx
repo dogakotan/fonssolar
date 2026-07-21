@@ -26,6 +26,7 @@ function requestNo(req) {
 function requestType(req, items) {
   if (req.category === 'malzeme') return 'Malzeme'
   if (req.category === 'hizmet') return 'Hizmet'
+  if (req.category === 'diger') return 'Diğer'
   const text = `${req.title || ''} ${(items || []).map(item => item.name).join(' ')}`.toLocaleLowerCase('tr-TR')
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'Hizmet' : 'Malzeme'
 }

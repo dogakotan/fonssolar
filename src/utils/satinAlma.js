@@ -173,6 +173,7 @@ export function riskBreakdownForItems(items, materialPlan, requestedTotals) {
 // Malzeme tipi bir talebin hiçbir kalemi proje malzeme listesinde (BOM) bulunamadıysa
 // risk hesaplanamadığı için "Uygun" değil "Listede Yok" gösterilmeli.
 export function riskState(items, materialPlan, requestedTotals, category) {
+  if (category === 'diger' || category === 'diğer') return 'listede_yok'
   if (category !== 'malzeme') return 'uygun'
   const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
   if (breakdown.some(row => row.risky)) return 'riskli'
@@ -181,7 +182,7 @@ export function riskState(items, materialPlan, requestedTotals, category) {
 }
 
 export function requestType(request) {
-  if (request.category === 'malzeme' || request.category === 'hizmet') return request.category
+  if (['malzeme', 'hizmet', 'diger'].includes(request.category)) return request.category
   // Eski kayıtlarda kategori girilmemiş olabilir; başlık/kalem adlarından tahmin ediyoruz.
   const text = `${request.title || ''} ${(request.items || []).map(i => i.name).join(' ')}`.toLocaleLowerCase('tr-TR')
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'hizmet' : 'malzeme'

@@ -12,7 +12,7 @@ const inp = {
 const lbl = { fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }
 
 function requestCategoryToInvoiceCategory(category) {
-  if (category === 'hizmet') return 'iscilik'
+  if (category === 'hizmet') return 'hizmet'
   if (category === 'malzeme') return 'malzeme'
   return 'diger'
 }
@@ -93,7 +93,7 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
               <label style={lbl}>Kategori</label>
               <select style={inp} value={form.category} onChange={e => set('category', e.target.value)}>
                 <option value="malzeme">Malzeme</option>
-                <option value="iscilik">Hizmet</option>
+                <option value="hizmet">Hizmet</option>
                 <option value="diger">Diğer</option>
               </select>
             </div>

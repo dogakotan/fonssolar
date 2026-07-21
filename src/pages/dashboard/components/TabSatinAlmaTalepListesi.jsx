@@ -49,6 +49,7 @@ function requestNo(request) {
 function requestType(request) {
   if (request.category === 'malzeme') return 'Malzeme'
   if (request.category === 'hizmet') return 'Hizmet'
+  if (request.category === 'diger') return 'Diğer'
   const text = `${request.title || ''} ${(request.items || []).map(item => item.name).join(' ')}`.toLocaleLowerCase('tr-TR')
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'Hizmet' : 'Malzeme'
 }
@@ -301,7 +302,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                 const isPending = normalizeStatus(request.status) === 'bekliyor'
                 const rowMaterialPlan = projectId ? materialPlan : (materialPlanByProject.get(request.project_id) || EMPTY_MAP)
                 const rowRequestedTotals = projectId ? requestedTotals : (requestedTotalsByProject.get(request.project_id) || EMPTY_MAP)
-                const risk = riskState(request.items || [], rowMaterialPlan, rowRequestedTotals, requestType(request).toLocaleLowerCase('tr-TR'))
+                const risk = riskState(request.items || [], rowMaterialPlan, rowRequestedTotals, request.category || requestType(request).toLocaleLowerCase('tr-TR'))
                 return (
                   <tr
                     key={request.id}
@@ -327,7 +328,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                     </td>
                     <td style={{ ...TD, whiteSpace: 'nowrap' }}><RiskBadge state={risk} /></td>
                     <td style={TD}>
-                      <span style={{ color: requestType(request) === 'Malzeme' ? 'var(--color-primary)' : 'var(--color-success)', fontSize: 12, fontWeight: 800 }}>
+                      <span style={{ color: requestType(request) === 'Malzeme' ? 'var(--color-primary)' : requestType(request) === 'Diğer' ? 'var(--color-warning)' : 'var(--color-success)', fontSize: 12, fontWeight: 800 }}>
                         {requestType(request)}
                       </span>
                     </td>
