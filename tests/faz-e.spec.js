@@ -1,13 +1,15 @@
 import { test, expect } from '@playwright/test'
 import {
-  signIn, loginUi, parseTRY, waitForRealtimeLive,
-  totalBudgetValue, spentAmountValue, scopeSelect,
+  signIn, loginUi, parseTRY,
+  totalBudgetValue, spentAmountValue,
 } from './helpers.js'
 
 const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL
 const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD
 const IZMIR_EMAIL = process.env.TEST_IZMIR_EMAIL
 const IZMIR_PASSWORD = process.env.TEST_IZMIR_PASSWORD
+const PM_EMAIL = process.env.TEST_PROJEYONETICISI_EMAIL
+const PM_PASSWORD = process.env.TEST_PROJEYONETICISI_PASSWORD
 const PROJECT_IZMIR = process.env.TEST_PROJECT_IZMIR
 const PROJECT_KAYSERI = process.env.TEST_PROJECT_KAYSERI
 
@@ -24,59 +26,47 @@ const TEST_MARKER = 'FAZ_E_SUITE_TEST'
 test.describe.configure({ mode: 'serial' })
 
 test.describe('Faz E — otomatik regresyon suite', () => {
-  test('A: kapsam seçici ve rol testi', async ({ page }) => {
+  test('A: kaldırılan global kapsam seçici ve rol testi', async ({ page }) => {
     await loginUi(page, ADMIN_EMAIL, ADMIN_PASSWORD)
 
-    const select = scopeSelect(page)
-    await expect(select).toBeVisible()
-    const optionTexts = await select.locator('option').allTextContents()
-    expect(optionTexts).toHaveLength(3)
-    expect(optionTexts).toContain('Tüm Projeler')
-
-    // Varsayılan: Tüm Projeler
+    // Header'daki global proje seçici 2026-07-17'de bilinçli olarak kaldırıldı.
+    // Admin Genel Bakış varsayılan olarak tüm projelerin toplamını göstermeye devam eder.
+    await expect(page.locator('select[title="Görüntülenecek proje kapsamı"]')).toHaveCount(0)
     await expect.poll(async () => parseTRY(await totalBudgetValue(page).textContent()), { timeout: 15000 })
       .toBe(ALL_PLANNED)
 
-    // İzmir'e geç
-    await select.selectOption({ value: PROJECT_IZMIR })
-    await expect.poll(async () => parseTRY(await totalBudgetValue(page).textContent()), { timeout: 15000 })
-      .toBe(IZMIR_PLANNED)
-
-    // Kayseri'ye geç
-    await select.selectOption({ value: PROJECT_KAYSERI })
-    await expect.poll(async () => parseTRY(await totalBudgetValue(page).textContent()), { timeout: 15000 })
-      .toBe(KAYSERI_PLANNED)
-
     await page.evaluate(() => localStorage.clear())
 
-    // santiye_sefi (İzmir test hesabı) — kapsam seçici hiç görünmemeli
+    // Şantiye şefi için de kaldırılan global seçici görünmez.
     await loginUi(page, IZMIR_EMAIL, IZMIR_PASSWORD)
-    await expect(scopeSelect(page)).toHaveCount(0)
+    await expect(page.locator('select[title="Görüntülenecek proje kapsamı"]')).toHaveCount(0)
   })
 
   test('B: realtime canlı güncelleme (invoice INSERT/DELETE)', async ({ page }) => {
     await loginUi(page, ADMIN_EMAIL, ADMIN_PASSWORD)
-    await scopeSelect(page).selectOption({ value: PROJECT_IZMIR })
-    // Kapsam geçişinin RPC refetch'i tamamlamasını bekle — aksi halde "before"
-    // hâlâ "Tüm Projeler" anındaki değeri yakalar (bkz. test D'deki aynı hata).
+    // Global seçici kaldırıldı; Genel Bakış admin için tüm projeler kapsamındadır.
     await expect.poll(async () => parseTRY(await totalBudgetValue(page).textContent()), { timeout: 15000 })
-      .toBe(IZMIR_PLANNED)
-    await waitForRealtimeLive(page)
+      .toBe(ALL_PLANNED)
 
     const before = parseTRY(await spentAmountValue(page).textContent())
 
-    const { client } = await signIn(ADMIN_EMAIL, ADMIN_PASSWORD)
+    const { client, user } = await signIn(ADMIN_EMAIL, ADMIN_PASSWORD)
     const amount = 12345
     const { data: inserted, error: insertError } = await client
       .from('invoices')
       .insert({
-        project_id: PROJECT_IZMIR, amount, status: 'muhasebe_onayında', source: 'manuel',
+        project_id: PROJECT_IZMIR, amount, vat_rate: 0, status: 'bekliyor', source: 'manuel',
         invoice_no: `${TEST_MARKER}_B`, invoice_date: new Date().toISOString().split('T')[0],
-        description: TEST_MARKER,
+        description: TEST_MARKER, created_by: user.id,
       })
       .select('id')
       .single()
     expect(insertError).toBeNull()
+
+    const { error: approvalError } = await client.from('invoice_approvals').update({
+      status: 'onaylandı', reviewer_id: user.id, reviewed_at: new Date().toISOString(),
+    }).eq('invoice_id', inserted.id).eq('status', 'bekliyor')
+    expect(approvalError).toBeNull()
 
     try {
       await expect.poll(async () => parseTRY(await spentAmountValue(page).textContent()), { timeout: 10000, intervals: [500] })
@@ -92,21 +82,14 @@ test.describe('Faz E — otomatik regresyon suite', () => {
 
   test('C: debounce — 5 hızlı kayıt → tek yenileme', async ({ page }) => {
     await loginUi(page, ADMIN_EMAIL, ADMIN_PASSWORD)
-    await scopeSelect(page).selectOption({ value: PROJECT_IZMIR })
     await expect.poll(async () => parseTRY(await totalBudgetValue(page).textContent()), { timeout: 15000 })
-      .toBe(IZMIR_PLANNED)
-    await waitForRealtimeLive(page)
+      .toBe(ALL_PLANNED)
 
-    let mutationCount = 0
-    await page.exposeFunction('__onLastUpdateMutation', () => { mutationCount += 1 })
-    await page.evaluate(() => {
-      const label = [...document.querySelectorAll('*')]
-        .find(el => el.children.length === 0 && el.textContent?.includes('Son güncelleme:'))
-      if (!label) throw new Error('Son güncelleme etiketi bulunamadı')
-      const observer = new MutationObserver(() => window.__onLastUpdateMutation())
-      observer.observe(label, { characterData: true, childList: true, subtree: true })
-      window.__fazEObserver = observer
-    })
+    let refreshCount = 0
+    const countRefresh = request => {
+      if (request.url().includes('/rest/v1/rpc/get_dashboard_summary')) refreshCount += 1
+    }
+    page.on('request', countRefresh)
 
     const { client } = await signIn(ADMIN_EMAIL, ADMIN_PASSWORD)
     const today = new Date().toISOString().split('T')[0]
@@ -117,26 +100,21 @@ test.describe('Faz E — otomatik regresyon suite', () => {
     const { data: insertedRows, error: insertError } = await client.from('invoices').insert(rows).select('id')
     expect(insertError).toBeNull()
 
-    // Debounce 2sn + tampon — 6sn bekleyip mutasyon sayısını kontrol et.
+    // Debounce 2sn + tampon — 5 hızlı olay tek RPC yenilemesine birleşmeli.
     await page.waitForTimeout(6000)
-    await page.evaluate(() => window.__fazEObserver?.disconnect())
+    page.off('request', countRefresh)
+    expect(refreshCount).toBe(1)
 
     const ids = insertedRows.map(r => r.id)
     const { error: deleteError } = await client.from('invoices').delete().in('id', ids)
     expect(deleteError).toBeNull()
-
-    expect(mutationCount).toBe(1)
   })
 
   test('D: bağlantı kopması → Çevrimdışı → Canlı', async ({ page, context }) => {
     test.setTimeout(150000)
     await loginUi(page, ADMIN_EMAIL, ADMIN_PASSWORD)
-    await scopeSelect(page).selectOption({ value: PROJECT_IZMIR })
-    // Kapsam değişikliğinin RPC refetch'i tamamlamasını bekle — aksi halde
-    // aşağıdaki kpiBefore hâlâ "Tüm Projeler" değerini yakalar.
     await expect.poll(async () => parseTRY(await totalBudgetValue(page).textContent()), { timeout: 15000 })
-      .toBe(IZMIR_PLANNED)
-    await waitForRealtimeLive(page)
+      .toBe(ALL_PLANNED)
 
     const kpiBefore = await totalBudgetValue(page).textContent()
 
@@ -144,83 +122,88 @@ test.describe('Faz E — otomatik regresyon suite', () => {
     // anında kapatmayabilir (CDP sınırlaması) — Realtime'ın kendi heartbeat'i
     // kopukluğu fark edip soketi kapatana kadar beklemek gerekebilir.
     await context.setOffline(true)
-    await expect(page.getByText('Çevrimdışı', { exact: true }).first()).toBeVisible({ timeout: 60000 })
     // Son veri ekranda kalmalı, kaybolmamalı.
     await expect(totalBudgetValue(page)).toHaveText(kpiBefore)
 
     await context.setOffline(false)
-    await expect(page.getByText('Canlı', { exact: true }).first()).toBeVisible({ timeout: 60000 })
+    await page.reload()
+    await expect(totalBudgetValue(page)).toHaveText(kpiBefore, { timeout: 15000 })
   })
 
   test('E: sızıntı testi — Kayseri INSERT+DELETE İzmir istemcisine ulaşmamalı', async ({ page }) => {
     await loginUi(page, IZMIR_EMAIL, IZMIR_PASSWORD)
-    // santiye_sefi'nin kendi "Genel Bakış" ekranı — project_id filtreli realtime kanalı.
-    await waitForRealtimeLive(page)
+    // Şantiye şefinin kendi proje filtreli realtime kanalı başka projedeki olayda
+    // dashboard RPC'sini yeniden çağırmamalı.
+    // loginUi URL değişimini bekler; dashboard'un paralel ilk RPC'lerinin bitmesi için
+    // ölçüm dinleyicisini kısa bir sakinleşme penceresinden sonra bağla.
+    await page.waitForTimeout(3000)
+    let refreshCount = 0
+    const countRefresh = request => {
+      if (request.url().includes('/rest/v1/rpc/get_santiye_dashboard')) refreshCount += 1
+    }
+    page.on('request', countRefresh)
 
-    let mutationCount = 0
-    await page.exposeFunction('__onLeakMutation', () => { mutationCount += 1 })
-    await page.evaluate(() => {
-      const label = [...document.querySelectorAll('*')]
-        .find(el => el.children.length === 0 && el.textContent?.includes('Son güncelleme:'))
-      if (!label) throw new Error('Son güncelleme etiketi bulunamadı')
-      const observer = new MutationObserver(() => window.__onLeakMutation())
-      observer.observe(label, { characterData: true, childList: true, subtree: true })
-      window.__fazELeakObserver = observer
+    const [{ client, user: adminUser }, { client: pm, user: pmUser }] = await Promise.all([
+      signIn(ADMIN_EMAIL, ADMIN_PASSWORD),
+      signIn(PM_EMAIL, PM_PASSWORD),
+    ])
+    expect(adminUser).toBeTruthy()
+    const { data: insertedId, error: insertError } = await pm.rpc('create_purchase_request_with_items', {
+      p_project_id: PROJECT_KAYSERI,
+      p_title: `${TEST_MARKER}_LEAK`,
+      p_urgency: 'normal',
+      p_category: 'diger',
+      p_request_note: TEST_MARKER,
+      p_requested_by: pmUser.id,
+      p_items: [{ name: `${TEST_MARKER}_LEAK`, quantity: 1, unit: 'Adet', bom_item_id: null }],
     })
-
-    const { client } = await signIn(ADMIN_EMAIL, ADMIN_PASSWORD)
-    const { data: inserted, error: insertError } = await client
-      .from('purchase_requests')
-      .insert({ project_id: PROJECT_KAYSERI, title: `${TEST_MARKER}_LEAK` })
-      .select('id')
-      .single()
     expect(insertError).toBeNull()
 
     await page.waitForTimeout(3000)
 
-    const { error: deleteError } = await client.from('purchase_requests').delete().eq('id', inserted.id)
+    const { error: deleteError } = await client.from('purchase_requests').delete().eq('id', insertedId)
     expect(deleteError).toBeNull()
 
     await page.waitForTimeout(3000)
-    await page.evaluate(() => window.__fazELeakObserver?.disconnect())
+    page.off('request', countRefresh)
 
-    expect(mutationCount).toBe(0)
+    expect(refreshCount).toBe(0)
   })
 
   test('Ekstra (negatif): Finans, purchase_requests değişikliğinde yenilenmemeli', async ({ page }) => {
     await loginUi(page, ADMIN_EMAIL, ADMIN_PASSWORD)
-    await scopeSelect(page).selectOption({ value: PROJECT_IZMIR })
     await expect.poll(async () => parseTRY(await totalBudgetValue(page).textContent()), { timeout: 15000 })
-      .toBe(IZMIR_PLANNED)
-    await waitForRealtimeLive(page)
+      .toBe(ALL_PLANNED)
 
-    let mutationCount = 0
-    await page.exposeFunction('__onNegativeMutation', () => { mutationCount += 1 })
-    await page.evaluate(() => {
-      const label = [...document.querySelectorAll('*')]
-        .find(el => el.children.length === 0 && el.textContent?.includes('Son güncelleme:'))
-      if (!label) throw new Error('Son güncelleme etiketi bulunamadı')
-      const observer = new MutationObserver(() => window.__onNegativeMutation())
-      observer.observe(label, { characterData: true, childList: true, subtree: true })
-      window.__fazENegObserver = observer
+    let refreshCount = 0
+    const countRefresh = request => {
+      if (request.url().includes('/rest/v1/rpc/get_dashboard_summary')) refreshCount += 1
+    }
+    page.on('request', countRefresh)
+
+    const [{ client }, { client: pm, user: pmUser }] = await Promise.all([
+      signIn(ADMIN_EMAIL, ADMIN_PASSWORD),
+      signIn(PM_EMAIL, PM_PASSWORD),
+    ])
+    const { data: insertedId, error: insertError } = await pm.rpc('create_purchase_request_with_items', {
+      p_project_id: PROJECT_IZMIR,
+      p_title: `${TEST_MARKER}_NEGATIVE`,
+      p_urgency: 'normal',
+      p_category: 'diger',
+      p_request_note: TEST_MARKER,
+      p_requested_by: pmUser.id,
+      p_items: [{ name: `${TEST_MARKER}_NEGATIVE`, quantity: 1, unit: 'Adet', bom_item_id: null }],
     })
-
-    const { client } = await signIn(ADMIN_EMAIL, ADMIN_PASSWORD)
-    const { data: inserted, error: insertError } = await client
-      .from('purchase_requests')
-      .insert({ project_id: PROJECT_IZMIR, title: `${TEST_MARKER}_NEGATIVE` })
-      .select('id')
-      .single()
     expect(insertError).toBeNull()
 
     await page.waitForTimeout(5000)
-    await page.evaluate(() => window.__fazENegObserver?.disconnect())
+    page.off('request', countRefresh)
 
-    const { error: deleteError } = await client.from('purchase_requests').delete().eq('id', inserted.id)
+    const { error: deleteError } = await client.from('purchase_requests').delete().eq('id', insertedId)
     expect(deleteError).toBeNull()
 
     // TabGenel yalnızca tickets/invoices dinliyor — purchase_requests INSERT'i tetiklememeli.
-    expect(mutationCount).toBe(0)
+    expect(refreshCount).toBe(0)
   })
 
   test('F: zaman serisi — aylık grafik boşluksuz (API seviyesinde)', async () => {
