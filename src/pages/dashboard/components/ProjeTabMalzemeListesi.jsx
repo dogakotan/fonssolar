@@ -29,6 +29,7 @@ export default function ProjeTabMalzemeListesi({ projectId, filterDate }) {
         loading={loading}
         pendingChanges={pendingChanges}
         onPendingChanged={refetch}
+        projectId={projectId}
       />
     </div>
   )

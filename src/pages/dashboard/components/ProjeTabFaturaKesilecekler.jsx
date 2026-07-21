@@ -86,6 +86,92 @@ function MiktarDuzenleModal({ row, onClose, onSaved }) {
   )
 }
 
+function YeniMalzemeEkleModal({ projectId, onClose, onSaved }) {
+  const [equipment, setEquipment] = useState('')
+  const [unit, setUnit] = useState('')
+  const [category, setCategory] = useState('')
+  const [plannedQty, setPlannedQty] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSaving(true)
+    setErr('')
+    const { error } = await supabase.rpc('create_procurement_item_add_request', {
+      p_project_id: projectId,
+      p_equipment: equipment.trim(),
+      p_unit: unit.trim() || null,
+      p_category: category.trim() || null,
+      p_planned_qty: Number(plannedQty || 0),
+      p_note: note.trim() || null,
+    })
+    setSaving(false)
+    if (error) { setErr(toUserMessage(error)); return }
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: 440 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Yeni Malzeme Ekle</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748B' }}>
+          Malzeme listesine yeni bir kalem eklemek istiyorsunuz. Bu talep yönetici onayına düşer, onaylanınca kalem listeye eklenir.
+        </p>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Malzeme Adı *</label>
+            <input required autoFocus value={equipment} onChange={e => setEquipment(e.target.value)} placeholder="Örn: DC Solar Kablo"
+              style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Birim</label>
+              <input value={unit} onChange={e => setUnit(e.target.value)} placeholder="Örn: Metre, Adet"
+                style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Planlanan Miktar *</label>
+              <input required type="number" min="0" step="0.01" value={plannedQty} onChange={e => setPlannedQty(e.target.value)}
+                style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Kategori</label>
+            <input value={category} onChange={e => setCategory(e.target.value)} placeholder="Örn: Mekanik, Elektrik"
+              style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Gerekçe</label>
+            <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Neden ekleniyor..."
+              style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none', resize: 'vertical', minHeight: 60 }} />
+          </div>
+
+          {err && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{err}</p>}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button type="button" onClick={onClose} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Vazgeç
+            </button>
+            <button type="submit" disabled={saving} style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'Gönderiliyor…' : 'Onaya Gönder'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 function BekleyenDegisikliklerPanel({ items, onReviewed }) {
   const [busyId, setBusyId] = useState(null)
   const [noteById, setNoteById] = useState({})
@@ -114,7 +200,13 @@ function BekleyenDegisikliklerPanel({ items, onReviewed }) {
           <div key={item.id} style={{ background: '#fff', border: '1px solid #FDE68A', borderRadius: 8, padding: '10px 12px', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ minWidth: 0 }}>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#111827' }}>
-                {item.procurement_items?.equipment || 'Malzeme'}: {formatQty(item.old_planned_qty)} → {formatQty(item.new_planned_qty)} {item.procurement_items?.unit || ''}
+                {item.is_new ? (
+                  <>
+                    <span style={{ color: '#065F46', fontWeight: 800 }}>Yeni Malzeme:</span> {item.equipment || 'Malzeme'} — {formatQty(item.new_planned_qty)} {item.unit || ''}
+                  </>
+                ) : (
+                  <>{item.equipment || 'Malzeme'}: {formatQty(item.old_planned_qty)} → {formatQty(item.new_planned_qty)} {item.unit || ''}</>
+                )}
               </p>
               <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#6B7280' }}>
                 {item.requester_name || 'Proje yöneticisi'} · {item.note || 'Gerekçe girilmedi'}
@@ -237,11 +329,12 @@ function MalzemeGecmisiModal({ row, requests, onClose }) {
   )
 }
 
-export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], loading, pendingChanges = [], onPendingChanged }) {
+export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], loading, pendingChanges = [], onPendingChanged, projectId }) {
   const { isAdmin, role } = useAuth()
   const [page, setPage] = useState(0)
   const [editingRow, setEditingRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
+  const [showNewMaterial, setShowNewMaterial] = useState(false)
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages - 1)
   const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
@@ -264,6 +357,11 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
           <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20 }}>
             {rows.length} kalem
           </span>
+          {canRequest && (
+            <button onClick={() => setShowNewMaterial(true)} style={{ marginLeft: 'auto', background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              + Yeni Malzeme
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -290,24 +388,26 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
                   <tr key={row.id || row.material} onClick={() => setDetailRow(row)} style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}>
                     <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text)' }}>{row.material}</td>
                     <td style={TD}>
-                      {formatQty(row.planned)} {row.unit}
-                      {row.addedQty > 0 && (
-                        <span
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                        <span>{formatQty(row.planned)} {row.unit}</span>
+                        {row.addedQty > 0 && (
+                          <span
                           title={`+${formatQty(row.addedQty)} ${row.unit} eklendi (${row.addedViaCount} onaylı satın alma ile)`}
                           style={{
                             marginLeft: 8, display: 'inline-block', fontSize: 10.5, fontWeight: 700,
                             color: 'var(--color-success)', background: '#f0fdf4', border: '1px solid #86efac',
                             borderRadius: 20, padding: '1px 7px', cursor: 'help', verticalAlign: 'middle',
                           }}
-                        >
-                          +{formatQty(row.addedQty)} onaylı
-                        </span>
-                      )}
-                      {pendingChange && (
-                        <div style={{ marginTop: 4, fontSize: 10.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-block' }}>
-                          Onay bekliyor: {formatQty(pendingChange.old_planned_qty)} → {formatQty(pendingChange.new_planned_qty)}
-                        </div>
-                      )}
+                          >
+                            +{formatQty(row.addedQty)} onaylı
+                          </span>
+                        )}
+                        {pendingChange && (
+                          <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                            Onay bekliyor: {formatQty(pendingChange.old_planned_qty)} → {formatQty(pendingChange.new_planned_qty)}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ ...TD, fontWeight: 600, color: 'var(--color-success)' }}>{formatQty(row.sent)} {row.unit}</td>
                     <td style={{ ...TD, fontWeight: 700, color: row.required > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
@@ -351,6 +451,13 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
         />
       )}
       {detailRow && <MalzemeGecmisiModal row={detailRow} requests={requests} onClose={() => setDetailRow(null)} />}
+      {showNewMaterial && (
+        <YeniMalzemeEkleModal
+          projectId={projectId}
+          onClose={() => setShowNewMaterial(false)}
+          onSaved={() => onPendingChanged?.()}
+        />
+      )}
     </div>
   )
 }
