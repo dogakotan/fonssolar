@@ -40,6 +40,7 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
   const hasFixedProject = !!(defaultProject || projectId)
   const [projectOptions, setProjectOptions] = useState([])
   const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [openAsGeneral, setOpenAsGeneral] = useState(false)
 
   useEffect(() => {
     if (hasFixedProject) return
@@ -91,7 +92,9 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
     setSaving(true)
     setError(null)
 
-    const effectiveProjectId = hasFixedProject ? (projectId || null) : (selectedProjectId || null)
+    const effectiveProjectId = hasFixedProject
+      ? (openAsGeneral ? null : (projectId || null))
+      : (selectedProjectId || null)
     const ticketLocation = project?.location || null
 
     const { data: inserted, error: err } = await supabase.from('tickets').insert({
@@ -146,11 +149,19 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
               <>
                 <div style={ROW}>
                   <span style={ROW_LABEL}>Proje</span>
-                  <span style={ROW_VALUE}>{projeAdi}</span>
+                  <span style={ROW_VALUE}>{openAsGeneral ? 'Genel (projeye bağlı değil)' : projeAdi}</span>
                 </div>
-                <div style={ROW}>
-                  <span style={ROW_LABEL}>Lokasyon</span>
-                  <span style={ROW_VALUE}>{lokasyon}</span>
+                {!openAsGeneral && (
+                  <div style={ROW}>
+                    <span style={ROW_LABEL}>Lokasyon</span>
+                    <span style={ROW_VALUE}>{lokasyon}</span>
+                  </div>
+                )}
+                <div style={{ ...ROW, borderBottom: 'none' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#6B7280', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={openAsGeneral} onChange={e => setOpenAsGeneral(e.target.checked)} />
+                    Genel ticket olarak aç (belirli bir projeye bağlı olmasın)
+                  </label>
                 </div>
               </>
             ) : needsProjectPick && (
