@@ -319,12 +319,11 @@ export default function Dashboard() {
             onGoToMalzemeListesi={(projectId) => goToProjectTab(projectId, 'malzeme-listesi')}
           />
         )}
-        {activeTab === 'genel'        && role === 'proje_yoneticisi' && (
-          !scopeProjectId && scopeProjects.length > 1
-            ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />
-            : <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />
-        )}
-        {activeTab === 'genel'        && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
+        {/* proje_yoneticisi 2026-07-21'de admin gibi aggregate (scopeProjectId=null → "Tüm
+            Projeler") moda geçti — TabGenel/ProjectListView zaten null'ı destekliyor (diğer
+            kısıtsız roller de böyle kullanıyor), bu yüzden girişte artık proje seçim ekranı
+            YOK. İş Planı (aşağıda) yapısal olarak tek-proje kaldığından proje seçimi orada. */}
+        {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
         {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'     && showProjectDetail  && (
           <ProjeDetay
