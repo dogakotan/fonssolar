@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { useAuth } from '../../../context/AuthContext'
+import { getProjects } from '../../../api'
 import YeniProjeWizard from '../wizard/YeniProjeWizard'
 import ProjeEditWizard from '../wizard/ProjeEditWizard'
 import { importProjectExcel, exportProjectExcelBlob, downloadBlob, formatImportSummary } from '../../../utils/projectExcelBridge'
@@ -31,6 +33,7 @@ const PROJECT_DELETE_TABLES = [
 const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu.xlsx'
 
 export default function TabProjeYonetimi({ onViewProject }) {
+  const { isAdmin } = useAuth()
   const [view,            setView]            = useState('list')
   const [editProject,     setEditProject]     = useState(null)
   const [projects,        setProjects]        = useState([])
@@ -50,13 +53,14 @@ export default function TabProjeYonetimi({ onViewProject }) {
   }
 
   // ── Fetch ───────────────────────────────────────────────────────────────────
+  // getProjects() cross_project rollerde (proje_yoneticisi gibi) projects tablosunun
+  // eksik RLS kapsamını get_my_projects() ile tamamlıyor — raw .from('projects') burada
+  // admin dışı roller için eksik proje listesi dönerdi. storage_kwh bu ekranda hiç
+  // render edilmiyor, getProjects()'in kolon setinde olmaması veri kaybı değil.
   const fetchProjects = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const { data, error: err } = await supabase
-      .from('projects')
-      .select('id, name, location, status, progress, capacity_kwp, capacity_kwe, storage_kwh, start_date, target_date, total_days')
-      .order('created_at', { ascending: false })
+    const { data, error: err } = await getProjects()
     setLoading(false)
     if (err) { setError(err.message); return }
     setProjects(data || [])
@@ -202,37 +206,41 @@ export default function TabProjeYonetimi({ onViewProject }) {
       />
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="card-header">
-        <div style={{ flex: 1 }} />
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <button
-            onClick={handleDownloadTemplate}
-            style={{ padding: '0.5rem 1.1rem', background: 'transparent', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            Şablon İndir
-          </button>
-          <button
-            onClick={handleImportClick}
-            disabled={importState === 'importing'}
-            style={{ padding: '0.5rem 1.25rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: importState === 'importing' ? 0.7 : 1 }}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            {importState === 'importing' ? 'Aktarılıyor…' : 'Yeni Proje'}
-          </button>
-          <button
-            onClick={() => setView('new')}
-            style={{ padding: '0.5rem 0.75rem', background: 'none', border: 'none', color: 'var(--color-muted)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2 }}
-          >
-            Manuel doldur
-          </button>
+      {/* Proje oluşturma/import araçları yalnızca admin — proje_yoneticisi bu ekranı
+          salt-okunur (liste/durum) görür, hiçbir yazma girişi görmez. */}
+      {isAdmin && (
+        <div className="card-header">
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              onClick={handleDownloadTemplate}
+              style={{ padding: '0.5rem 1.1rem', background: 'transparent', color: '#64748b', border: '1px solid #cbd5e1', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Şablon İndir
+            </button>
+            <button
+              onClick={handleImportClick}
+              disabled={importState === 'importing'}
+              style={{ padding: '0.5rem 1.25rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: importState === 'importing' ? 0.7 : 1 }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              {importState === 'importing' ? 'Aktarılıyor…' : 'Yeni Proje'}
+            </button>
+            <button
+              onClick={() => setView('new')}
+              style={{ padding: '0.5rem 0.75rem', background: 'none', border: 'none', color: 'var(--color-muted)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2 }}
+            >
+              Manuel doldur
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Body ───────────────────────────────────────────────────────────── */}
       <div style={{ padding: '1rem 1.5rem' }}>
@@ -247,21 +255,25 @@ export default function TabProjeYonetimi({ onViewProject }) {
         ) : projects.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
             <p style={{ fontSize: 14, color: 'var(--color-muted)', marginBottom: '1rem' }}>Henüz proje eklenmemiş.</p>
-            <button
-              onClick={handleImportClick}
-              disabled={importState === 'importing'}
-              style={{ padding: '0.5rem 1.5rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: importState === 'importing' ? 0.7 : 1 }}
-            >
-              {importState === 'importing' ? 'Aktarılıyor…' : '+ İlk Projeyi Ekle'}
-            </button>
-            <div style={{ marginTop: '0.6rem' }}>
-              <button
-                onClick={() => setView('new')}
-                style={{ padding: '0.4rem 0.6rem', background: 'none', border: 'none', color: 'var(--color-muted)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2 }}
-              >
-                Manuel doldur
-              </button>
-            </div>
+            {isAdmin && (
+              <>
+                <button
+                  onClick={handleImportClick}
+                  disabled={importState === 'importing'}
+                  style={{ padding: '0.5rem 1.5rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: importState === 'importing' ? 0.7 : 1 }}
+                >
+                  {importState === 'importing' ? 'Aktarılıyor…' : '+ İlk Projeyi Ekle'}
+                </button>
+                <div style={{ marginTop: '0.6rem' }}>
+                  <button
+                    onClick={() => setView('new')}
+                    style={{ padding: '0.4rem 0.6rem', background: 'none', border: 'none', color: 'var(--color-muted)', fontSize: 12.5, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline', textUnderlineOffset: 2 }}
+                  >
+                    Manuel doldur
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -304,29 +316,31 @@ export default function TabProjeYonetimi({ onViewProject }) {
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{p.start_date || '—'}</td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{p.target_date || '—'}</td>
                       <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                        <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                          <button
-                            onClick={() => { setEditProject(p); setView('edit') }}
-                            disabled={isDel || isExp}
-                            style={{ padding: '4px 10px', background: 'transparent', color: 'var(--color-primary)', border: '1px solid var(--color-primary)', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-                          >
-                            Düzenle
-                          </button>
-                          <button
-                            onClick={() => handleExport(p)}
-                            disabled={isDel || isExp}
-                            style={{ padding: '4px 10px', background: 'transparent', color: '#15803d', border: '1px solid #16a34a', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isExp ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isExp ? 0.6 : 1 }}
-                          >
-                            {isExp ? '…' : 'Excel'}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(p)}
-                            disabled={isDel || isExp}
-                            style={{ padding: '4px 10px', background: 'transparent', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isDel ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isDel ? 0.6 : 1 }}
-                          >
-                            {isDel ? '…' : 'Sil'}
-                          </button>
-                        </div>
+                        {isAdmin && (
+                          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                            <button
+                              onClick={() => { setEditProject(p); setView('edit') }}
+                              disabled={isDel || isExp}
+                              style={{ padding: '4px 10px', background: 'transparent', color: 'var(--color-primary)', border: '1px solid var(--color-primary)', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >
+                              Düzenle
+                            </button>
+                            <button
+                              onClick={() => handleExport(p)}
+                              disabled={isDel || isExp}
+                              style={{ padding: '4px 10px', background: 'transparent', color: '#15803d', border: '1px solid #16a34a', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isExp ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isExp ? 0.6 : 1 }}
+                            >
+                              {isExp ? '…' : 'Excel'}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(p)}
+                              disabled={isDel || isExp}
+                              style={{ padding: '4px 10px', background: 'transparent', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isDel ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isDel ? 0.6 : 1 }}
+                            >
+                              {isDel ? '…' : 'Sil'}
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   )
