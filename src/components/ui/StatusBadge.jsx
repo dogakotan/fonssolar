@@ -26,7 +26,12 @@ export const PR_STATUS = {
   fatura_bekliyor:      { label: 'Fatura Bekleniyor',    tone: 'warning' },
   fatura_onay_bekliyor: { label: 'Fatura Bekleniyor',    tone: 'warning' },
   faturasi_kesildi:     { label: 'Faturası Kesildi',      tone: 'primary' },
-  satin_alindi:         { label: 'Satın Alındı',          tone: 'success' },
+  // satin_alindi = proje yöneticisi tedarikçi/teslimatı girdi, fatura HENÜZ oluşturulmadı —
+  // bu durumun TEK anlamı "muhasebe fatura kesmeli" (invoice oluşunca durum hemen
+  // fatura_onay_bekliyor'a atlıyor, satin_alindi asla "bitti" anlamına gelmiyor). Önceden
+  // "Satın Alındı"/success gösteriyordu — geçmişi anlatıyordu, sıradaki adımı değil (2026-07-20'de
+  // onaylandi'de düzeltilen bug'ın aynısı) ve muhasebeye görünürlük açılınca kafa karıştırdı.
+  satin_alindi:         { label: 'Fatura Bekleniyor',    tone: 'warning' },
   reddedildi:           { label: 'Reddedildi',            tone: 'danger' },
   iptal:                { label: 'İptal',                 tone: 'muted' },
 }

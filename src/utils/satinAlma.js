@@ -28,7 +28,9 @@ export const statusLabel = (status) => ({
   // anlatıyordu, kullanıcı talebin şu an kimin elinde olduğunu görmek istiyor.
   onaylandi: 'Proje Yöneticisinde',
   red_edildi: 'Red Edildi',
-  satin_alindi: 'Satın Alındı',
+  // StatusBadge.jsx'teki PR_STATUS'la aynı sebep: satin_alindi'nin TEK anlamı "fatura henüz
+  // kesilmedi, muhasebe kesmeli" — eskiden "Satın Alındı" gösteriyordu, geçmişi anlatıyordu.
+  satin_alindi: 'Fatura Bekleniyor',
   // StatusBadge.jsx'teki PR_STATUS'la aynı sebep: fatura_onay_bekliyor pratikte hiç
   // üretilmiyor bile olsa, aynı akışın iki farklı görünen ismi olmasın diye eşitlendi.
   fatura_bekliyor: 'Fatura Bekleniyor',
