@@ -42,8 +42,20 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
   })
 
   test.afterAll(async () => {
-    if (invoiceId) await admin.from('invoices').delete().eq('id', invoiceId)
-    if (requestId) await admin.from('purchase_requests').delete().eq('id', requestId)
+    const entityIds = [requestId, invoiceId].filter(Boolean)
+    if (entityIds.length) {
+      await Promise.all([admin, muhasebe, santiye, pm].map(client =>
+        client.from('notifications').delete().in('entity_id', entityIds)
+      ))
+    }
+    if (invoiceId) {
+      const { error } = await admin.from('invoices').delete().eq('id', invoiceId)
+      expect(error).toBeNull()
+    }
+    if (requestId) {
+      const { error } = await admin.from('purchase_requests').delete().eq('id', requestId)
+      expect(error).toBeNull()
+    }
   })
 
   test('şantiye şefi başka projeyi listeleyemez, okuyamaz, yazamaz ve export edemez', async () => {
