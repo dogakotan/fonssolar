@@ -171,25 +171,25 @@ function OnaylaReddetButtons({ onAction, busy }) {
 
   if (showReject) {
     return (
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }}>
         <input
           type="text"
           placeholder="Red gerekçesi (opsiyonel)"
           value={note}
           onChange={e => setNote(e.target.value)}
           onClick={e => e.stopPropagation()}
-          style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontFamily: 'inherit', outline: 'none', width: 160 }}
+          style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontFamily: 'inherit', outline: 'none', width: 140, flexShrink: 0 }}
         />
         <button
           onClick={e => { e.stopPropagation(); onAction('reddedildi', note); setShowReject(false); setNote('') }}
           disabled={busy}
-          style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+          style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}
         >
           {busy ? '…' : 'Reddi Onayla'}
         </button>
         <button
           onClick={e => { e.stopPropagation(); setShowReject(false); setNote('') }}
-          style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+          style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}
         >
           İptal
         </button>
@@ -198,20 +198,20 @@ function OnaylaReddetButtons({ onAction, busy }) {
   }
 
   return (
-    <div style={{ display: 'flex', gap: 6 }}>
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
       <button
         onClick={e => { e.stopPropagation(); onAction('onaylandı') }}
         disabled={busy}
-        style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+        style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}
       >
-        {busy ? '…' : '✓ Onayla'}
+        {busy ? '…' : 'Onayla'}
       </button>
       <button
         onClick={e => { e.stopPropagation(); setShowReject(true) }}
         disabled={busy}
-        style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
+        style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0 }}
       >
-        ✗ Reddet
+        Reddet
       </button>
     </div>
   )
