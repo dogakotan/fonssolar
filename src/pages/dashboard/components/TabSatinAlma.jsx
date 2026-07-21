@@ -16,7 +16,7 @@ import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
 
 export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, isMuhasebe } = useAuth()
   const [tab, setTab] = useState('talepler')
 
   // Bildirimler'den belirli bir talebe gidilince "Onay Bekleyenler" sekmesinde
@@ -83,10 +83,12 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div className="sa-overview-grid">
-        <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
-        <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} doviz={doviz} />
-      </div>
+      {!isMuhasebe && (
+        <div className="sa-overview-grid">
+          <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
+          <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} doviz={doviz} />
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)', flexWrap: 'wrap' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{

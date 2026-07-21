@@ -27,8 +27,8 @@ const EMPTY_ACTION_ITEMS = {
 }
 
 export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProjectId } = {}) {
-  const { isAdmin } = useAuth()
-  const [tab, setTab] = useState('genel')
+  const { role, isAdmin, isMuhasebe } = useAuth()
+  const [tab, setTab] = useState(role === 'muhasebe' ? 'faturalar' : 'genel')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
   const [projects, setProjects] = useState([])
   const [selectedProjectId, setSelectedProjectId] = useState('')
@@ -47,6 +47,10 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
     if (invoiceProjectId) setSelectedProjectId(invoiceProjectId)
   }, [openInvoiceId, invoiceProjectId])
 
+  useEffect(() => {
+    if (isMuhasebe) setTab('faturalar')
+  }, [isMuhasebe])
+
   // Proje filtresi boşken (varsayılan) tüm projeler; bir proje seçilince tek-proje RPC'sine
   // geçilir — ikisi de aynı şekli döndürür (bkz. get_finans_overview_all). Muhasebe'nin ayrı
   // bir "Projeler" sekmesi yok, bu filtre tek proje detayına inebilmesinin tek yolu.
@@ -54,9 +58,10 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
     selectedProjectId ? 'get_finans_overview' : 'get_finans_overview_all',
     selectedProjectId
       ? { p_project_id: selectedProjectId, p_as_of_date: new Date().toISOString().split('T')[0] }
-      : { p_as_of_date: new Date().toISOString().split('T')[0] }
+      : { p_as_of_date: new Date().toISOString().split('T')[0] },
+    { enabled: !isMuhasebe }
   )
-  useRealtimeRefresh(['invoices'], refetch)
+  useRealtimeRefresh(['invoices'], refetch, { enabled: !isMuhasebe })
 
   useEffect(() => {
     let alive = true
@@ -78,12 +83,14 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
   const dagilim = buildDagilimItems(overview?.dagilim)
   const recentActivity = formatRecentActivity(overview?.recentActivity)
 
-  const TABS = [
-    { key: 'genel',     label: 'Genel' },
-    { key: 'faturalar', label: 'Faturalar' },
-    { key: 'onay',      label: 'Onay Kuyruğu' },
-    ...(isAdmin ? [{ key: 'maliyet', label: 'Maliyet Tablosu' }] : []),
-  ]
+  const TABS = isMuhasebe
+    ? [{ key: 'faturalar', label: 'Faturalar' }]
+    : [
+        { key: 'genel',     label: 'Genel' },
+        { key: 'faturalar', label: 'Faturalar' },
+        { key: 'onay',      label: 'Onay Kuyruğu' },
+        ...(isAdmin ? [{ key: 'maliyet', label: 'Maliyet Tablosu' }] : []),
+      ]
 
   return (
     <div>
