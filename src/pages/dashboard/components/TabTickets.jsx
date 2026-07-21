@@ -1,24 +1,30 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
+import { getProjects } from '../../../api'
 import TicketStats  from '../../../components/tickets/TicketStats'
 import TicketListesi from '../../../components/tickets/TicketListesi'
 
 export default function TabTickets({ openTicketId, onOpenedTicket } = {}) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, role } = useAuth()
+  // proje_yoneticisi de cross_project (admin gibi tüm erişilebilir projeleri görebiliyor) —
+  // 2026-07-21'de proje filtresi bu role da açıldı.
+  const canFilterByProject = isAdmin || role === 'proje_yoneticisi'
   const [refreshKey, setRefreshKey] = useState(0)
   const refresh = () => setRefreshKey(k => k + 1)
   const [projectFilter, setProjectFilter] = useState('')
   const [projects, setProjects] = useState([])
 
   useEffect(() => {
-    if (!isAdmin) return
-    supabase.from('projects').select('id, name').then(({ data }) => setProjects(data || []))
-  }, [])
+    if (!canFilterByProject) return
+    // getProjects() cross_project rollerde projects tablosunun eksik RLS kapsamını
+    // get_my_projects() ile tamamlıyor — raw .from('projects') proje_yoneticisi için
+    // eksik liste dönerdi.
+    getProjects().then(({ data }) => setProjects(data || []))
+  }, [canFilterByProject])
 
   return (
     <div>
-      {isAdmin && (
+      {canFilterByProject && (
         <select
           value={projectFilter}
           onChange={e => setProjectFilter(e.target.value)}
