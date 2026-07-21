@@ -30,7 +30,7 @@ function projectIdLabel(projectId) {
     .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
 }
 
-export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
+export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, availableProjects }) {
   const { user } = useAuth()
   const [projects, setProjects] = useState([])
   const [materialOptions, setMaterialOptions] = useState([])
@@ -131,9 +131,14 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
       return
     }
 
+    if (availableProjects?.length) {
+      setProjects(availableProjects)
+      return
+    }
+
     supabase.from('projects').select('id, name').order('name')
       .then(({ data }) => setProjects(data || []))
-  }, [defaultProjectId])
+  }, [defaultProjectId, availableProjects])
 
   const setF = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }))
   const updateItem = (field, value) => setItem(it => ({ ...it, [field]: value }))
@@ -157,7 +162,11 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
   }
 
   async function handleSubmit() {
-    if (!form.title.trim() || !form.project_id || !item.name.trim()) return
+    if (!form.project_id) {
+      setErrorMessage('Satın alma talebi oluşturmak için proje seçimi zorunludur.')
+      return
+    }
+    if (!form.title.trim() || !item.name.trim()) return
     setSaving(true)
     setErrorMessage(null)
 
@@ -196,8 +205,8 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
         <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           <div>
-            <label style={LABEL}>Proje</label>
-            <select value={form.project_id} onChange={setF('project_id')} style={INPUT} disabled={!!defaultProjectId}>
+            <label style={LABEL}>Proje *</label>
+            <select required value={form.project_id} onChange={setF('project_id')} style={INPUT} disabled={!!defaultProjectId}>
               <option value="">— Proje seçin —</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
@@ -224,6 +233,7 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
               <select value={form.category} onChange={handleCategoryChange} style={INPUT}>
                 <option value="malzeme">Malzeme</option>
                 <option value="hizmet">Hizmet</option>
+                <option value="diger">Diğer</option>
               </select>
             </div>
             <div>
@@ -246,13 +256,13 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
           </div>
 
           <div>
-            <label style={LABEL}>{form.category === 'hizmet' ? 'Hizmet' : 'Malzeme'}</label>
+            <label style={LABEL}>{form.category === 'hizmet' ? 'Hizmet' : form.category === 'diger' ? 'Diğer Talep' : 'Malzeme'}</label>
             <div className="talep-item-row">
               {form.category === 'malzeme' ? (
                 useOther ? (
                   <input
                     autoFocus
-                    placeholder="Malzeme adını yazın"
+                    placeholder="Eklenecek malzemenin adını yazın"
                     value={item.name}
                     onChange={e => setItem(it => ({ ...it, name: e.target.value, bom_item_id: null }))}
                     style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit' }}
@@ -305,7 +315,7 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId }) {
                 )
               ) : (
                 <input
-                  placeholder="Hizmet adı"
+                  placeholder={form.category === 'diger' ? 'Talep açıklaması' : 'Hizmet adı'}
                   value={item.name}
                   onChange={e => updateItem('name', e.target.value)}
                   style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit' }}

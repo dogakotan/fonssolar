@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
+import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import Pager from '../../../components/ui/Pager'
 import Badge, { PR_STATUS } from '../../../components/ui/StatusBadge'
 import { normalizeStatus } from '../../../utils/satinAlma'
@@ -259,16 +260,17 @@ function TedarikIptalModal({ request, onClose, onSaved }) {
   )
 }
 
-export default function TedarikKuyrugu({ projectId, refreshKey, projects = [] }) {
+export default function TedarikKuyrugu({ projectId, refreshKey, projects = [], onChanged }) {
   const { role } = useAuth()
   const canAct = role === 'proje_yoneticisi'
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('onaylandi')
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [selected, setSelected] = useState(null)
   const [cancelling, setCancelling] = useState(null)
   const [page, setPage] = useState(0)
+  const [showNewRequest, setShowNewRequest] = useState(false)
 
   // projectId yoksa (proje yöneticisi tüm projeler modu — cross_project=true) filtre
   // uygulanmadan çekilir, RLS (has_project_access) erişebildiği projelerle sınırlar.
@@ -328,20 +330,25 @@ export default function TedarikKuyrugu({ projectId, refreshKey, projects = [] })
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
-            Proje Yöneticisindeki Talepler
+            Onay Kuyruğu
           </h3>
           <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 7 }}>
             {filtered.length} talep
           </span>
-          <select
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
             value={statusFilter}
             onChange={event => setStatusFilter(event.target.value)}
-            style={{ marginLeft: 'auto', border: '1px solid var(--color-border-md)', borderRadius: 7, padding: '5px 28px 5px 10px', fontSize: 12, color: 'var(--color-text-sub)', background: 'var(--color-surface)', cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
-          >
-            {STATUS_FILTERS.map(({ key, label, count }) => (
-              <option key={key} value={key}>{label} ({count})</option>
-            ))}
-          </select>
+            style={{ border: '1px solid var(--color-border-md)', borderRadius: 7, padding: '5px 28px 5px 10px', fontSize: 12, color: 'var(--color-text-sub)', background: 'var(--color-surface)', cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
+            >
+              {STATUS_FILTERS.map(({ key, label, count }) => (
+                <option key={key} value={key}>{label} ({count})</option>
+              ))}
+            </select>
+            <button onClick={() => setShowNewRequest(true)} style={{ background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              + Yeni Satın Alma Talebi
+            </button>
+          </div>
         </div>
 
         {errorMessage && (
@@ -415,6 +422,13 @@ export default function TedarikKuyrugu({ projectId, refreshKey, projects = [] })
           </>
         )}
       </div>
+      {showNewRequest && (
+        <YeniTalepModal
+          availableProjects={projects}
+          onClose={() => setShowNewRequest(false)}
+          onSaved={() => { setShowNewRequest(false); fetchData(); onChanged?.() }}
+        />
+      )}
 
       {selected && (
         <TedarikBilgisiModal

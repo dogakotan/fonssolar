@@ -70,7 +70,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
 
   const TABS = procurementManagerView
     ? [
-        { key: 'tedarik', label: 'Proje Yöneticisinde' },
+        { key: 'tedarik', label: 'Onay Kuyruğu' },
       ]
     : [
         { key: 'talepler', label: 'Talepler' },
@@ -91,7 +91,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
           <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} doviz={doviz} />
         </div>
       )}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
+      {!procurementManagerView && <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             background: 'none', border: 'none', padding: '10px 22px',
@@ -104,7 +104,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
             {t.label}
           </button>
         ))}
-      </div>
+      </div>}
       {tab === 'talepler' && (
         <TabSatinAlmaTalepListesi
           projectId={projectId}
@@ -118,7 +118,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
         />
       )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
-      {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} refreshKey={refreshKey} projects={projects} />}
+      {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} refreshKey={refreshKey} projects={projects} onChanged={refresh} />}
     </div>
   )
 }

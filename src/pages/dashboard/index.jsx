@@ -344,7 +344,7 @@ export default function Dashboard() {
           // projelerin tedarik kuyruğunu aggregate gösterir (RLS has_project_access
           // ile sınırlar). genel/is-plani sekmelerindeki tekli proje seçimi ayrı,
           // buna dokunulmadı.
-          <ProjeTabSatinAlma projectId={scopeProjectId} procurementManagerView projects={scopeProjects} openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
+          <ProjeTabSatinAlma projectId={null} procurementManagerView projects={scopeProjects} openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
         )}
         {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && (
           <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
