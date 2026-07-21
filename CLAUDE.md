@@ -329,7 +329,12 @@ muhasebe (tüm yönetici bildirimlerini alır, `has_project_access` her projeye
 izin verir). `cross_project=true`: lojistik_tedarik, **proje_yoneticisi**
 (2026-07-17'de `false`'tan `true`'ya çevrildi — kullanıcı proje yöneticisinin
 admin gibi tüm projeleri görebilmesini istedi; `lojistik_tedarik` ile aynı
-mekanizma: manager değil ama tek projeye kilitli değil). `proje_yoneticisi`
+mekanizma: manager değil ama tek projeye kilitli değil). **Bu bayrak
+2026-07-21'e kadar fiilen çalışmıyordu** — `get_project_scope()` yalnızca
+`is_manager`'a bakıyordu, `cross_project`'ı hiç kontrol etmiyordu (bkz. RPC
+katmanı → "Yetki/kapsam çekirdeği" için tam detay); düzeltilene kadar
+proje_yoneticisi yalnızca `profiles.project_id`'deki tek ev projesini
+görebiliyordu. `proje_yoneticisi`
 (2026-07-16'da `satin_alma_uzmani` rolünün yerine geçti) hâlâ bir "ev projesi"ne
 (`profiles.project_id`) atanabilir ama bu artık yalnızca kozmetik/varsayılan —
 `has_project_access` zaten `cross_project=true` ile her projeye izin veriyor.
@@ -348,23 +353,40 @@ ekleyemez/onaylayamaz/iptal edemez — `FaturaListesi`/`OnayKuyrugu`'da
 **santiye_sefi ile aynı tam yetki** seviyesinde görüyor (`TicketListesi.jsx`'in
 `fetchTickets`'ına ayrı bir `proje_yoneticisi` dalı eklendi — `propProjectId`'ye
 göre süzülür, çünkü bu rol çoklu projeye erişebiliyor).
-**2026-07-21'de bu rol admin'in TÜM üst-seviye sekmelerini de kazandı**
+**2026-07-21'de bu role admin'in üst-seviye sekmelerinin çoğu eklendi**
 (kullanıcı isteği: "her sayfayı görsün, yetkili olduğu alanlarda tuşlasın") —
-`navigation.js`'e `finans, tickets, kullanicilar, proje-ekle` eklendi (toplam
-9 sekme, admin'in 8'inin üstüne `is-plani` bonus olarak kalıyor). Finans/Tickets
-zaten `isAdmin||isMuhasebe`/`isAdmin` bazlı iç aksiyon kısıtlamasına sahip
-olduğundan (yukarıdaki paragraf) üst-seviye Finans/Tickets sekmeleri de aynı
-salt-okunur/tam-yetki davranışını otomatik miras alıyor, ekstra guard
-gerekmedi. **Kullanıcılar** ve **Proje Yönetimi** (`proje-ekle`) ekranlarında
-ise önceden **hiç iç aksiyon kısıtlaması yoktu** (yalnızca dıştan `isAdmin`
-kapısı) — bu ikisine `isAdmin &&` ile sarmalanmış yeni bir iç gate eklendi
-(`TabKullanicilar.jsx`: + Kullanıcı Ekle/Düzenle/Şifre/Sil; `TabProjeYonetimi.jsx`:
-Yeni Proje/Excel import/Düzenle/Excel export/Sil — bu sonuncusu kademeli proje
-silme dahil en yüksek blast-radius'lu ekran) — proje_yoneticisi bu ikisini tam
-listeyle ama tamamen salt-okunur görüyor. Aynı turda `TabProjeYonetimi.jsx` ve
-`TabTickets.jsx`'in proje filtre dropdown'larındaki raw `.from('projects')`
-sorguları da `getProjects()`'e geçirildi — aşağıdaki bilinen `projects_select`
-RLS gap'i yüzünden bu sorgu proje_yoneticisi için eksik proje listesi dönerdi.
+`navigation.js`'e ilk turda `finans, tickets, kullanicilar, proje-ekle`
+eklenmişti; kullanıcı bunun ardından **kendi elle düzenlemesiyle** `finans`
+ve `is-plani`'yı proje_yoneticisi'nin listesinden çıkardı (güncel tabs:
+`genel, projeler, satin-alma, tickets, kullanicilar, proje-ekle, bildirimler`
+— 7 sekme). Tickets zaten `isAdmin` bazlı iç aksiyon kısıtlamasına sahip
+olduğundan (yukarıdaki paragraf) üst-seviye Tickets sekmesi de aynı tam-yetki
+davranışını otomatik miras aldı, ekstra guard gerekmedi. **Kullanıcılar** ve
+**Proje Yönetimi** (`proje-ekle`) ekranlarında ise önceden **hiç iç aksiyon
+kısıtlaması yoktu** (yalnızca dıştan `isAdmin` kapısı) — bu ikisine `isAdmin &&`
+ile sarmalanmış yeni bir iç gate eklendi (`TabKullanicilar.jsx`: + Kullanıcı
+Ekle/Düzenle/Şifre/Sil; `TabProjeYonetimi.jsx`: Yeni Proje/Excel import/
+Düzenle/Excel export/Sil — bu sonuncusu kademeli proje silme dahil en yüksek
+blast-radius'lu ekran) — proje_yoneticisi bu ikisini tam listeyle ama tamamen
+salt-okunur görüyor. Aynı turda `TabProjeYonetimi.jsx` ve `TabTickets.jsx`'in
+proje filtre dropdown'larındaki raw `.from('projects')` sorguları da
+`getProjects()`'e geçirildi. `index.jsx`'teki `genel` sekmesi de proje_yoneticisi'ne
+özel `ProjeSecimGerekli` (proje seçim ekranı) dalından çıkarılıp diğer kısıtsız
+rollerle aynı şartsız `TabGenel` render'ına alındı — girişte artık admin gibi
+doğrudan "Tüm Projeler" agregatı açılıyor, proje seçmesi gerekmiyor (`is-plani`
+zaten kaldırıldığı için oradaki proje-seçim ekranı artık konu dışı).
+
+**Ayrı, daha köklü bir bug (2026-07-21, aynı gün):** kullanıcı proje_yoneticisi
+hesabıyla test ederken her iki test projesinin (İzmir + Kayseri) verisini de
+görmesi gerekirken yalnızca birini (İzmir, `profiles.project_id`'deki ev
+projesi) gördüğünü fark etti. Kök neden `get_project_scope()`'un
+`roles.cross_project`'ı HİÇ kontrol etmemesiydi (yalnızca `is_manager`'a
+bakıyordu) — bu, aşağıdaki "Yetki/kapsam çekirdeği" notunda detaylandırılan,
+`get_my_projects()` dahil neredeyse tüm dual-scope RPC'leri etkileyen ciddi bir
+gap'ti; `has_project_access(p_project_id)` (tek-proje kontrolü) bunu zaten doğru
+yapıyordu, yalnızca aggregate tarafı eksikti. 1 migration (onaylı) ile
+düzeltildi, `get_my_projects()` artık cross_project rollerde gerçekten TÜM
+erişilebilir projeleri (yeni eklenenler dahil, dinamik) dönüyor.
 `genel`/`is-plani`/`satin-alma` üst-seviye sekmeleri `scopeProjectId`
 (`ScopeContext`) kullanıyor; header'daki global proje seçici `<select>`
 (`showAllOption`/`scopeProjects`/`setScopeProjectId`) kullanıcı tarafından
@@ -525,8 +547,26 @@ hızlı durum değiştirme (kural #6 kapsamı dışı).
 
 **Yetki/kapsam çekirdeği:** `get_project_scope(p_project_id)` — tüm dual-scope
 (tek proje/Tüm Projeler) RPC'lerin ortak yetki katmanı (`roles.is_manager` OR
-`has_project_access` OR `profiles.project_id` fallback); `anon`/`authenticated`'a
-EXECUTE kapalı, yalnızca başka SECURITY DEFINER fonksiyonlardan çağrılır.
+`roles.cross_project` OR `user_has_project_access` OR `profiles.project_id`
+fallback); `anon`/`authenticated`'a EXECUTE kapalı, yalnızca başka SECURITY
+DEFINER fonksiyonlardan çağrılır. **2026-07-21'e kadar `cross_project`'ı hiç
+kontrol etmiyordu** — yalnızca `is_manager` (scope_all için) ve tek-proje
+sorgularında `user_has_project_access`/`profiles.project_id` bakıyordu; bu yüzden
+`proje_yoneticisi`/`lojistik_tedarik` gibi cross_project=true ama is_manager=false
+rollerde `get_my_projects()` ve bu fonksiyona delege eden TÜM RPC'ler
+(`get_dashboard_summary`, `get_finans_overview*`, `get_satin_alma_overview*`,
+`get_purchase_requests_list`, `get_invoices_list`, `get_invoice_approval_queue`
+vb.) yalnızca kullanıcının `profiles.project_id`'deki tek "ev projesi"ni +
+`user_project_access`'te elle tanımlı satırları görüyordu — cross_project'in
+vaat ettiği "tüm projelere eriş" hiç gerçekleşmiyordu (proje_yoneticisi test
+hesabı yalnızca İzmir'i görüyor, Kayseri hiç görünmüyordu; yeni bir proje
+eklense o da görünmeyecekti). `has_project_access(p_project_id)` (tek-proje
+kontrolü) bu kontrolü zaten doğru yapıyordu, yalnızca aggregate/`get_project_scope`
+tarafı eksikti. Düzeltildi: fonksiyona `v_cross_project` eklendi, hem
+`p_project_id IS NOT NULL` dalında hem `ELSIF v_is_manager` (→ artık
+`v_is_manager OR v_cross_project`) dalında `is_manager`'la aynı şekilde
+kullanılıyor — cross_project roller artık is_manager rolleriyle birebir aynı
+"tüm projelere eriş" davranışını alıyor.
 `has_project_access(p_project_id)` — kanonik proje-erişim kontrolü (is_manager
 OR cross_project OR profiles.project_id OR user_project_access).
 `user_has_project_access(p_project_id)`/`user_can_access_report(p_report_id)` —
@@ -1649,42 +1689,56 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**21.07.2026 — Proje yöneticisi rolüne admin gibi tam sayfa görünürlüğü verildi
-(Plan Mode ile tasarlandı, 4 commit, henüz push edilmedi).** Kullanıcı bu rolün
-tüm üst-seviye sekmeleri görebilmesini ama yalnızca yetkili olduğu alanlarda
-aksiyon alabilmesini istedi. Netleştirme sorusunda (Kullanıcılar/Proje Yönetimi
-dahil mi) kullanıcı "evet, tamamen admin gibi görsün" seçti — bu ikisi CLAUDE.md
-→ Roller bölümünde detaylandırıldığı gibi önceden hiç iç aksiyon kısıtlaması
-taşımadığından ayrıca `isAdmin &&` gate'i eklenerek güvenli hale getirildi (bkz.
-Roller bölümü tam detay için). Özet: `navigation.js`'e proje_yoneticisi için
-`finans, tickets, kullanicilar, proje-ekle` eklendi; `index.jsx`'teki finans/
-tickets'ı bu rolden açıkça dışlayan şartlar kaldırıldı; `TabKullanicilar.jsx`
-ve `TabProjeYonetimi.jsx`'e (ikisi de önceden sıfır iç kısıtlamalıydı) `isAdmin`
-bazlı aksiyon gate'i eklendi — proje_yoneticisi bu ikisini tam listeyle ama
-tamamen salt-okunur görüyor; `TabProjeYonetimi.jsx`/`TabTickets.jsx`'in proje
-filtre dropdown'larındaki raw `.from('projects')` sorguları da `getProjects()`'e
-geçirildi (cross_project rollerde `projects` RLS'inin eksik kapsamını
-`get_my_projects()` ile tamamlayan, `TabFinans.jsx`'te zaten kullanılan mevcut
-yardımcı — migration yazılmadan bilinen `projects_select` RLS gap'i bu üç
-ekranda pratikte etkisizleştirildi). Muhasebe tarafındaki paralel istek
-("Finans'ı görsün, proje filtrelemesi + yetkili özelleştirme yapabilsin") kod
-incelemesinde zaten tam olarak mevcut çıktı (`TabFinans.jsx`'in proje filtresi +
-`FaturaListesi`/`OnayKuyrugu`'daki `canAct=isAdmin||isMuhasebe` mevcut yapısı) —
-muhasebe için hiçbir kod değişikliği yapılmadı.
+**21.07.2026 — Proje yöneticisi rolüne admin gibi geniş sayfa görünürlüğü +
+kritik bir cross_project scope bug'ı düzeltildi (birkaç ayrı tur, henüz
+push edilmedi).** Kullanıcının canlı testleri üzerinden ilerleyen bir gün oldu:
 
-`npx eslint src` (0 hata, 25 pre-existing warning — yeni dosyalarda sıfır yeni
-uyarı) ve `npx vite build` her adım sonrası temiz. Migration/RLS gerekmedi —
-tamamen frontend, mevcut RPC/RLS/helper'lar kullanıldı.
+1. **Sayfa görünürlüğü** (Plan Mode ile tasarlandı): proje_yoneticisi admin gibi
+   Finans/Tickets/Kullanıcılar/Proje Yönetimi sekmelerini kazandı; kullanıcı
+   ardından kendi elle düzenlemesiyle `navigation.js`'te `finans`/`is-plani`'yı
+   bu rolden çıkardı (güncel: genel/projeler/satin-alma/tickets/kullanicilar/
+   proje-ekle/bildirimler — 7 sekme). Kullanıcılar/Proje Yönetimi'nin önceden
+   hiç iç aksiyon kısıtlaması olmadığı fark edilip `isAdmin &&` gate'i eklendi
+   (bkz. Roller bölümü tam detay). Genel Bakış'taki (girişte ilk açılan sekme)
+   proje_yoneticisi'ye özel `ProjeSecimGerekli` zorunluluğu kaldırıldı — artık
+   admin gibi doğrudan "Tüm Projeler" agregatıyla açılıyor.
+2. **`satin_alindi` durum etiketi düzeltildi:** "Satın Alındı"/success yerine
+   "Fatura Bekleniyor"/warning — bu durumun TEK anlamı muhasebenin fatura
+   kesmesi gerektiği, "bitti" değil (bkz. Satın alma akışı).
+3. **Faturalar listesine doğrudan Onayla/Reddet eklendi:** önceden yalnızca
+   ayrı "Onay Kuyruğu" sekmesinde vardı, admin kendi sırası gelmiş faturayı
+   Faturalar'da pasif bir rozet olarak görüyordu. `OnaylaReddetButtons`
+   (Onay Kuyruğu'ndaki mantıkla birebir aynı, `invoice_approvals` satırını
+   `status='bekliyor'`den hedefe günceller) hem satır içi hem Detay modalına
+   eklendi. İlk denemede butonlar `whiteSpace:nowrap` eksikliğinden iki satıra
+   sarılıp satırı bozuyordu — düzeltildi.
+4. **Kritik bug (ayrı, en köklü bulgu):** `get_project_scope()` `roles.cross_project`'ı
+   HİÇ kontrol etmiyordu (yalnızca `is_manager`), bu yüzden proje_yoneticisi
+   (ve `lojistik_tedarik`) yalnızca `profiles.project_id`'deki tek ev projesini
+   görebiliyordu — İzmir+Kayseri testinde yalnızca İzmir görünüyordu, yeni bir
+   proje eklense o da görünmeyecekti. `has_project_access(p_project_id)`
+   (tek-proje kontrolü) zaten doğruydu, yalnızca aggregate tarafı eksikti.
+   1 migration (onaylı, tam SQL diff CLAUDE.md → RPC katmanı → "Yetki/kapsam
+   çekirdeği"nde) ile düzeltildi — `get_my_projects()` gerçek hesapla test
+   edilip artık her iki projeyi de döndürdüğü doğrulandı. Bu fonksiyon
+   `get_dashboard_summary`, `get_finans_overview*`, `get_satin_alma_overview*`,
+   `get_purchase_requests_list`, `get_invoices_list`, `get_invoice_approval_queue`
+   dahil neredeyse tüm dual-scope RPC'lerin temeli olduğundan etkisi geniş.
+
+`npx eslint src`/`npx vite build` her kod adımı sonrası temiz (25 pre-existing
+warning, sıfır yeni). `get_advisors`(security) migration sonrası yeni uyarı
+göstermedi. Muhasebe tarafındaki paralel istek ("Finans'ı görsün, proje
+filtrelemesi + özelleştirme yapabilsin") kod incelemesinde zaten mevcut çıktı,
+kod değişikliği yapılmadı.
 
 **SEN kabul testi bekleniyor** (headless ortamda yapılamadı): proje_yoneticisi
-test hesabıyla login → Finans/Tickets/Kullanıcılar/Proje Yönetimi sekmeleri
-görünüyor mu, her birinde veri (özellikle proje filtre dropdown'larında TÜM
-erişilebilir projeler) doğru geliyor mu, Kullanıcılar/Proje Yönetimi'nde HİÇBİR
-aksiyon butonu görünmüyor mu, Finans'ta fatura ekleyemiyor/onaylayamıyor mu,
-Tickets'ta yalnızca kendi açtığı ticket'ı iptal edebiliyor mu. Admin/muhasebe
+test hesabıyla login → artık İKİ projenin de (İzmir+Kayseri) verisi görünüyor
+mu (Genel Bakış, Satın Alma/Tedarik Kuyruğu, Tickets), Kullanıcılar/Proje
+Yönetimi'nde hiçbir aksiyon butonu yok mu, Faturalar listesinden Onayla/Reddet
+düzgün çalışıyor mu (satır artık tek satırda, bozuk görünmüyor). Admin/muhasebe
 hesaplarıyla regresyon: önceki davranış birebir aynı kalmalı.
 
-**Sıradaki adım:** Kabul testi geçerse bu 4 commit + dünden kalan onay bekleyen
-"tek adımlı fatura onayı" turunun (bkz. git log'daki önceki "Son değişiklik"
-kaydı) push'u birlikte yapılacak, sonra go-live hazırlıklarına (A8 — bkz.
-`cc-master-uygulama-plani.md`) devam edilecek.
+**Sıradaki adım:** Kabul testi geçerse bugünkü tüm commit'ler + dünden kalan
+onay bekleyen "tek adımlı fatura onayı" turunun (bkz. git log'daki önceki "Son
+değişiklik" kaydı) push'u birlikte yapılacak, sonra go-live hazırlıklarına
+(A8 — bkz. `cc-master-uygulama-plani.md`) devam edilecek.
