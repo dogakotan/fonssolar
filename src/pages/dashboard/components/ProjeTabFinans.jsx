@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react'
-import { useAuth } from '../../../context/AuthContext'
+import { useEffect, useState } from 'react'
 import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
@@ -9,9 +8,6 @@ import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
 import ProjeTabFinansYanPanel, { KurCard } from './ProjeTabFinansYanPanel'
 import MaliyetOzetTable from './MaliyetOzetTable'
-import FaturaListesi from '../../../components/finans/FaturaListesi'
-import OnayKuyrugu from '../../../components/finans/OnayKuyrugu'
-import ProjeTabMaliyetTablosu from './ProjeTabMaliyetTablosu'
 
 const EMPTY_KPI = {
   pendingCount: 0, pendingAmount: 0, totalPlanned: 0, totalActual: 0,
@@ -26,8 +22,6 @@ const EMPTY_ACTION_ITEMS = {
 }
 
 export default function ProjeTabFinans({ projectId, filterDate }) {
-  const { isAdmin } = useAuth()
-  const [tab, setTab] = useState('genel')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
   const asOfDate = filterDate || new Date().toISOString().split('T')[0]
@@ -67,13 +61,6 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   const dagilim = buildDagilimItems(overview?.dagilim)
   const recentActivity = formatRecentActivity(overview?.recentActivity)
 
-  const TABS = [
-    { key: 'genel',      label: 'Genel' },
-    { key: 'faturalar',  label: 'Faturalar' },
-    { key: 'onay',       label: 'Onay Kuyruğu' },
-    ...(isAdmin ? [{ key: 'maliyet', label: 'Maliyet Tablosu' }] : []),
-  ]
-
   if (!loading && !authorized) {
     return <UnauthorizedScopeNotice />
   }
@@ -81,22 +68,7 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <div
-        className="finans-tabs"
-        style={{ '--finans-tab-count': TABS.length }}
-      >
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            className={tab === t.key ? 'finans-tab active' : 'finans-tab'}
-            onClick={() => setTab(t.key)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {tab === 'genel' && (
-        <>
+      <>
           <div className="finans-panel-grid">
             <ProjeTabFinansOzet kpi={kpi} quickFacts={quickFacts} loading={loading} />
             <BudgetUsageCard kpi={kpi} />
@@ -104,29 +76,17 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
           </div>
           <div className="finans-row2-grid">
             <ProjeTabFinansSidebar curve={curve} dagilim={dagilim} sapma={sapma} cpi={cpi} loading={loading} />
-            <ProjeTabFinansYanPanel actionItems={actionItems} recentActivity={recentActivity} onNavigate={setTab} loading={loading} />
+            <ProjeTabFinansYanPanel actionItems={actionItems} recentActivity={recentActivity} loading={loading} />
           </div>
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', margin: 0, flex: 1 }}>Maliyet Kalemi Özeti</h3>
-              {isAdmin && (
-                <button onClick={() => setTab('maliyet')} style={{
-                  background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 13, fontWeight: 600,
-                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                }}>
-                  Tüm maliyet tablosunu görüntüle →
-                </button>
-              )}
             </div>
             <div style={{ overflowX: 'auto' }}>
               <MaliyetOzetTable costBuckets={costBuckets} loading={loading} />
             </div>
           </div>
-        </>
-      )}
-      {tab === 'faturalar' && <FaturaListesi projectId={projectId} filterDate={filterDate} />}
-      {tab === 'onay'      && <OnayKuyrugu projectId={projectId} />}
-      {tab === 'maliyet'   && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
+      </>
     </div>
   )
 }

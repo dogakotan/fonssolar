@@ -136,9 +136,7 @@ function FaturaEkleModal({ onClose, onSaved, defaultProjectId }) {
             <select style={inp} value={form.category} onChange={e => set('category', e.target.value)}>
               <option value="malzeme">Malzeme</option>
               <option value="hizmet">Hizmet</option>
-              <option value="nakliye">Nakliye</option>
-              <option value="ekipman">Ekipman</option>
-              <option value="diğer">Diğer</option>
+              <option value="diger">Diğer</option>
             </select>
           </div>
 
@@ -227,6 +225,18 @@ function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
   const [cancelErr, setCancelErr] = useState('')
   const [approveSaving, setApproveSaving] = useState(false)
   const [approveErr, setApproveErr] = useState('')
+  const [editingRejected, setEditingRejected] = useState(false)
+  const [rejectedBusy, setRejectedBusy] = useState(false)
+  const [rejectedErr, setRejectedErr] = useState('')
+  const [editForm, setEditForm] = useState({
+    invoice_no: invoice?.invoice_no || '',
+    invoice_date: invoice?.invoice_date || '',
+    due_date: invoice?.due_date || '',
+    amount: invoice?.amount ?? '',
+    vat_rate: String(invoice?.vat_rate ?? 20),
+    category: invoice?.category || 'malzeme',
+    description: invoice?.description || '',
+  })
 
   useEffect(() => {
     if (!invoice) return
@@ -250,7 +260,10 @@ function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
   const st = cancelledAfterApproval
     ? { bg: '#FEF3C7', color: '#92400E', label: 'İptal Edildi (Onay Sonrası)' }
     : STATUS_BADGE[invoice.status] || { bg: '#F3F4F6', color: '#111827', label: invoice.status }
-  const canCancel = (isAdmin || isMuhasebe) && invoice.status === 'onaylandı'
+  // Onaylanmış fatura bu ekrandan geri alınmaz; red kararı yalnızca yönetici onay
+  // aşamasında verilir. Böylece kesinleşmiş maliyet kaydı istemeden silinmez.
+  const canCancel = false
+  const canRecoverRejected = (isAdmin || isMuhasebe) && invoice.status === 'reddedildi'
   // Onay Kuyruğu'ndaki mantıkla birebir aynı: yalnızca yönetici_onayında + isAdmin.
   // Adım numarası sabit değil (bkz. yukarıdaki not) — hedef her zaman o an bekleyen satır.
   const canApproveHere = isAdmin && invoice.status === 'yönetici_onayında'
@@ -278,6 +291,54 @@ function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
     setApproveSaving(false)
     if (error) { setApproveErr(error.message || 'İşlem başarısız.'); return }
     onApproved?.()
+    onClose()
+  }
+
+  async function handleResubmitRejected(event) {
+    event.preventDefault()
+    setRejectedBusy(true)
+    setRejectedErr('')
+    const { error: updateError } = await supabase
+      .from('invoices')
+      .update({
+        invoice_no: editForm.invoice_no.trim(),
+        invoice_date: editForm.invoice_date,
+        due_date: editForm.due_date || null,
+        amount: Number(editForm.amount) || 0,
+        vat_rate: Number(editForm.vat_rate) || 0,
+        category: editForm.category,
+        description: editForm.description.trim() || null,
+      })
+      .eq('id', invoice.id)
+      .eq('status', 'reddedildi')
+
+    if (updateError) {
+      setRejectedBusy(false)
+      setRejectedErr(updateError.message || 'Fatura güncellenemedi.')
+      return
+    }
+
+    const { error: submitError } = await supabase.rpc('resubmit_rejected_invoice', { p_invoice_id: invoice.id })
+    setRejectedBusy(false)
+    if (submitError) {
+      setRejectedErr(submitError.message || 'Fatura yeniden gönderilemedi.')
+      return
+    }
+    onApproved?.()
+    onClose()
+  }
+
+  async function handleDeleteRejected() {
+    if (!window.confirm('Reddedilen fatura kalıcı olarak silinsin mi? Satın alma talebi tekrar fatura bekleyen aşamaya döner.')) return
+    setRejectedBusy(true)
+    setRejectedErr('')
+    const { error } = await supabase.rpc('delete_rejected_invoice', { p_invoice_id: invoice.id })
+    setRejectedBusy(false)
+    if (error) {
+      setRejectedErr(error.message || 'Fatura silinemedi.')
+      return
+    }
+    onCancelled?.()
     onClose()
   }
 
@@ -366,6 +427,42 @@ function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #E5E7EB' }}>
             {approveErr && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{approveErr}</p>}
             <OnaylaReddetButtons onAction={handleApprove} busy={approveSaving} />
+          </div>
+        )}
+
+        {canRecoverRejected && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid #E5E7EB' }}>
+            {rejectedErr && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 10 }}>{rejectedErr}</p>}
+            {!editingRejected ? (
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => setEditingRejected(true)} style={{ background: '#185FA5', color: '#fff', border: 0, borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Düzenle ve Yeniden Gönder
+                </button>
+                <button onClick={handleDeleteRejected} disabled={rejectedBusy} style={{ background: '#FEF2F2', color: '#DC2626', border: 0, borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Faturayı Sil
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleResubmitRejected} style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <input required value={editForm.invoice_no} onChange={e => setEditForm(f => ({ ...f, invoice_no: e.target.value }))} placeholder="Fatura no" style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit' }} />
+                  <input required type="date" value={editForm.invoice_date} onChange={e => setEditForm(f => ({ ...f, invoice_date: e.target.value }))} style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit' }} />
+                  <input type="date" value={editForm.due_date} onChange={e => setEditForm(f => ({ ...f, due_date: e.target.value }))} style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit' }} />
+                  <input required type="number" min="0" step="0.01" value={editForm.amount} onChange={e => setEditForm(f => ({ ...f, amount: e.target.value }))} placeholder="KDV hariç tutar" style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit' }} />
+                  <select value={editForm.vat_rate} onChange={e => setEditForm(f => ({ ...f, vat_rate: e.target.value }))} style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit' }}>
+                    <option value="8">%8 KDV</option><option value="10">%10 KDV</option><option value="18">%18 KDV</option><option value="20">%20 KDV</option>
+                  </select>
+                  <select value={editForm.category} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))} style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit' }}>
+                    <option value="malzeme">Malzeme</option><option value="hizmet">Hizmet</option><option value="diger">Diğer</option>
+                  </select>
+                </div>
+                <textarea value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} placeholder="Açıklama" style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 10px', minHeight: 64, resize: 'vertical', fontFamily: 'inherit' }} />
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button type="button" onClick={() => setEditingRejected(false)} style={{ background: '#fff', color: '#64748B', border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 14px', cursor: 'pointer', fontFamily: 'inherit' }}>Vazgeç</button>
+                  <button type="submit" disabled={rejectedBusy} style={{ background: '#185FA5', color: '#fff', border: 0, borderRadius: 8, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: rejectedBusy ? .7 : 1 }}>{rejectedBusy ? 'Gönderiliyor…' : 'Kaydet ve Onaya Gönder'}</button>
+                </div>
+              </form>
+            )}
           </div>
         )}
 
