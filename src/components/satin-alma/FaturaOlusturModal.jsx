@@ -51,6 +51,7 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
     e.preventDefault()
     setSaving(true)
     setErr(null)
+
     const { error } = await supabase.from('invoices').insert({
       supplier_id: form.supplier_id || null,
       project_id: request.project_id,

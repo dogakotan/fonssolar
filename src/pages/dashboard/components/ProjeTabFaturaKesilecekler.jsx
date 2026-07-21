@@ -59,7 +59,7 @@ function MiktarDuzenleModal({ row, onClose, onSaved }) {
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Yeni Miktar *</label>
-              <input required type="number" min="0" step="0.01" value={newQty} onChange={e => setNewQty(e.target.value)}
+              <input required type="number" min="0.01" step="0.01" value={newQty} onChange={e => setNewQty(e.target.value)}
                 style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
             </div>
           </div>
@@ -139,7 +139,7 @@ function YeniMalzemeEkleModal({ projectId, onClose, onSaved }) {
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Planlanan Miktar *</label>
-              <input required type="number" min="0" step="0.01" value={plannedQty} onChange={e => setPlannedQty(e.target.value)}
+              <input required type="number" min="0.01" step="0.01" value={plannedQty} onChange={e => setPlannedQty(e.target.value)}
                 style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
             </div>
           </div>

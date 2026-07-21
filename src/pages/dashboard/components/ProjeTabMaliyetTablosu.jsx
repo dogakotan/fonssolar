@@ -25,7 +25,7 @@ export default function ProjeTabMaliyetTablosu({ costBuckets, loading }) {
   const totalDurum = durumMeta(totalSapma)
 
   function getExportData() {
-    const columns = ['Kalem', 'Kategori', 'Planlanan Tutar', 'Gerçekleşen Tutar', 'Sapma (₺)', 'Sapma (%)', 'Durum']
+    const columns = ['Kalem', 'Kategori', 'Planlanan Tutar', 'Gerçekleşen Tutar (KDV Dahil)', 'Sapma (₺)', 'Sapma (%)', 'Durum']
     const rows = []
     visibleBuckets.forEach(b => {
       const d = durumMeta(b.sapma)
@@ -68,7 +68,7 @@ export default function ProjeTabMaliyetTablosu({ costBuckets, loading }) {
         />
       </div>
       <p style={{ margin: 0, padding: '10px 20px', fontSize: 11, color: 'var(--color-muted-light)', borderTop: '1px solid var(--color-border-md)' }}>
-        Tutarlar KDV hariçtir. Faturalar bütçe kalemine değil kategoriye kaydedildiği için gerçekleşen tutar Malzeme/Hizmet/Diğer düzeyinde hesaplanır; alt kalemler yalnızca planlanan tutarı gösterir.
+        Gerçekleşen fatura tutarları KDV dahildir. Faturalar bütçe kalemine değil kategoriye kaydedildiği için gerçekleşen tutar Malzeme/Hizmet/Diğer düzeyinde hesaplanır; alt kalemler yalnızca planlanan tutarı gösterir.
       </p>
     </div>
   )
