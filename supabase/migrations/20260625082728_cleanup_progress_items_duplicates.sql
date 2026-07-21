@@ -1,0 +1,26 @@
+
+-- Korunacak ID'ler (progress_daily verisi olanlar + dashboard_visible olanlar)
+DELETE FROM progress_items
+WHERE project_id = 'test-izmir-ges-2026'
+AND id NOT IN (
+  -- progress_daily verisi olanlar
+  'c0000001-0000-0000-0000-000000000001',
+  'c0000001-0000-0000-0000-000000000002',
+  'c0000001-0000-0000-0000-000000000003',
+  'c0000001-0000-0000-0000-000000000004',
+  'c0000001-0000-0000-0000-000000000005',
+  'c0000001-0000-0000-0000-000000000006',
+  'c0000001-0000-0000-0000-000000000007',
+  'c0000001-0000-0000-0000-000000000008',
+  'c0000001-0000-0000-0000-000000000009',
+  'c0000001-0000-0000-0000-000000000010',
+  -- dashboard_visible + daily verisi olan
+  'dad53fb2-839c-46cd-9e35-3cb14673e21e',
+  -- dashboard_visible olanlar
+  'a6733b07-c43b-480c-bd5d-1a5eca1b18a7',
+  '495b86a9-3754-400a-9adf-1ae7167fdabb',
+  '87a184b8-ef0e-4b9d-a9d6-9ebe362c82b0',
+  '342a1735-499e-43e0-9b3f-c8080c9decb9',
+  'd7f9e572-c001-4a8f-835d-0ecc99b93156'
+);
+

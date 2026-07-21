@@ -1,0 +1,2 @@
+DROP INDEX public.invoices_purchase_request_id_active_key;
+

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '../../../context/AuthContext'
 import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
@@ -8,6 +9,9 @@ import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
 import ProjeTabFinansYanPanel, { KurCard } from './ProjeTabFinansYanPanel'
 import MaliyetOzetTable from './MaliyetOzetTable'
+import ProjeTabMaliyetTablosu from './ProjeTabMaliyetTablosu'
+import FaturaListesi from '../../../components/finans/FaturaListesi'
+import OnayKuyrugu from '../../../components/finans/OnayKuyrugu'
 
 const EMPTY_KPI = {
   pendingCount: 0, pendingAmount: 0, totalPlanned: 0, totalActual: 0,
@@ -22,6 +26,8 @@ const EMPTY_ACTION_ITEMS = {
 }
 
 export default function ProjeTabFinans({ projectId, filterDate }) {
+  const { isAdmin } = useAuth()
+  const [tab, setTab] = useState('genel')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
   const asOfDate = filterDate || new Date().toISOString().split('T')[0]
@@ -65,10 +71,39 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
     return <UnauthorizedScopeNotice />
   }
 
+  const tabs = [
+    { key: 'genel', label: 'Genel' },
+    ...(isAdmin ? [
+      { key: 'faturalar', label: 'Faturalar' },
+      { key: 'onay', label: 'Onay Kuyruğu' },
+      { key: 'maliyet', label: 'Maliyet Tablosu' },
+    ] : []),
+  ]
+
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      <>
+      {isAdmin && (
+        <div style={{ display: 'flex', borderBottom: '2px solid #E5E7EB', marginBottom: 20 }}>
+          {tabs.map(item => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setTab(item.key)}
+              style={{
+                background: 'none', border: 'none', padding: '10px 22px',
+                fontSize: 14, fontWeight: tab === item.key ? 600 : 400,
+                color: tab === item.key ? '#185FA5' : '#6B7280', cursor: 'pointer',
+                fontFamily: 'inherit', borderBottom: tab === item.key ? '2px solid #185FA5' : '2px solid transparent',
+                marginBottom: -2,
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === 'genel' && <>
           <div className="finans-panel-grid">
             <ProjeTabFinansOzet kpi={kpi} quickFacts={quickFacts} loading={loading} />
             <BudgetUsageCard kpi={kpi} />
@@ -76,7 +111,7 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
           </div>
           <div className="finans-row2-grid">
             <ProjeTabFinansSidebar curve={curve} dagilim={dagilim} sapma={sapma} cpi={cpi} loading={loading} />
-            <ProjeTabFinansYanPanel actionItems={actionItems} recentActivity={recentActivity} loading={loading} />
+            <ProjeTabFinansYanPanel actionItems={actionItems} recentActivity={recentActivity} onNavigate={isAdmin ? setTab : undefined} loading={loading} />
           </div>
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -86,7 +121,10 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
               <MaliyetOzetTable costBuckets={costBuckets} loading={loading} />
             </div>
           </div>
-      </>
+      </>}
+      {tab === 'faturalar' && <FaturaListesi projectId={projectId} />}
+      {tab === 'onay' && <OnayKuyrugu projectId={projectId} />}
+      {tab === 'maliyet' && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
     </div>
   )
 }

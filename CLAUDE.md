@@ -179,16 +179,13 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   İş Planı (`TabIsPlan.jsx`) kritik yol (`is_critical`) görselleştirmesi kullanmaz:
   plan bitiş tarihi geçmiş ve görev tamamlanmamış/iptal değilse görev `Riskli`, aksi
   halde `Normal` kabul edilir. KPI şeridi 3 karttır: Toplam Görev, Devam Eden,
-  Riskli/Geciken. Kritik yol CSS/JS kalıntıları temizlendi. Finans sekmesi
-  (`ProjeTabFinans.jsx`, 2026-07-21'de sadeleştirildi) artık alt-sekme
-  çubuğu (Genel/Faturalar/Onay Kuyruğu/Maliyet Tablosu) BARINDIRMIYOR — yalnızca
-  tek bir "Genel" görünüm render ediyor (özet kartları + Maliyet Kalemi Özeti);
-  `FaturaListesi`/`OnayKuyrugu`/`ProjeTabMaliyetTablosu` importları ve `isAdmin`'e
-  bağlı "Tüm maliyet tablosunu görüntüle" linki kaldırıldı. Fatura listesi/onay
-  kuyruğu artık yalnızca üst-seviye **Finans** sekmesinden (proje filtresiyle,
-  bkz. Roller bölümündeki muhasebe notu) erişiliyor — bir projenin içinden fatura
-  görmek isteyen (admin/muhasebe/koordinator vb.) üst-seviye Finans'a projeyi
-  filtreden seçerek gidiyor.
+  Riskli/Geciken. Kritik yol CSS/JS kalıntıları temizlendi. Proje Finans sekmesi
+  (`ProjeTabFinans.jsx`) rol bazlıdır: `admin` proje içinde Genel/Faturalar/Onay
+  Kuyruğu/Maliyet Tablosu alt-sekmelerini görür; proje yöneticisi ve diğer roller
+  yalnızca Genel finans özetini görür. Üst-seviye Finans ekranındaki proje filtresi
+  ve aynı admin/muhasebe akışları ayrıca korunur. Proje detayının sağ üst eylem
+  grubundaki **Proje Excelini İndir** butonu tüm proje-erişimli rollerde görünür ve
+  canlı `export-project-excel` fonksiyonundan güncel proje XLSX'ini indirir.
 ### Satın alma akışı — proje yöneticisi tedarik adımı
 Durum zinciri: `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
 → satin_alindi → fatura_bekliyor/fatura_onay_bekliyor → faturasi_kesildi`
@@ -1740,30 +1737,21 @@ Alma/Finans Test Verisi notu).
   `get_advisors` yeni uyarı göstermedi, `npx eslint src`/`npx vite build` temiz.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
-- **Onaylanmış fatura iptali iki yerde tutarsız (2026-07-21'de bulundu, bilinçli
-  olarak düzeltilmedi — kullanıcı kararı bekliyor):** Reddedilen fatura düzenle/
-  yeniden gönder/sil akışı eklenirken `FaturaDetayModal`'daki (menü modu, bkz.
-  Satın alma akışı) eski "onaylandı → reddedildi" iptal butonu `canCancel = false`
-  ile kalıcı olarak kapatıldı (kod — `handleCancel`/`showCancelConfirm`/JSX bloğu
-  — hâlâ dosyada duruyor ama asla render edilmiyor, ölü kod). Ama AYNI yeteneğin
-  proje-özel Finans listesindeki satır aksiyonu (`FaturaIptalModal`, `onaylandı`
-  durumundaki faturalarda "İptal Et" butonu) hiç dokunulmadan aktif kaldı — aynı
-  işlem menü modunda kapalı, proje modunda açık. Üç seçenek var: (1) proje
-  modundaki butonu da kapat + iki taraftaki ölü kodu (canCancel bloğu +
-  FaturaIptalModal) temizle, (2) menü modundaki eski davranışı geri getir, (3)
-  olduğu gibi bırak. Kod değiştirilmedi, yalnızca not edildi.
-- **`export-project-excel` edge fonksiyonu statik indirilebilir şablonla (`public/excel/`)
-  görsel olarak tutarsız — 2026-07-21'de denetlendi, düşük öncelikli, düzeltilmedi:**
-  export tamamen kod-tabanlı (ExcelJS ile ayrı bir workbook üretiyor, statik dosyayı hiç
-  baz almıyor); gerçekten var olan formüller (Proje Bilgileri "Toplam Gün", İş Kalemleri
-  "Süre", Riskler "Skor"/"Şiddet") doğru korunuyor, kırık değil. Ama statik şablondaki
-  Bütçe sayfasının G-K "Kategori Rehberi"/"Bütçe Özeti (Otomatik)" panelini export hiç
-  üretmiyor — kullanıcı "Şablon İndir" ile indirdiği dosyada gördüğü paneli, mevcut bir
-  projeyi export ettiğinde görmüyor. Ayrıca Kategori Ağırlıkları sayfasındaki `TOPLAM`
-  formülü sabit bir satır aralığına (`5 + kanonik 10 kategori`) yazılıyor — bir projenin
-  gerçek ağırlık satır sayısı bu kanonik sayıdan sapmışsa (şu an test projelerinde
-  sapmıyor) formül yanlış aralığı toplar. İkisi de veri kaybı değil, yalnızca kırılganlık/
-  tutarsızlık; ele alınmadı.
+- **Onaylanmış fatura iptali tutarsızlığı kapatıldı (2026-07-21):** Menü ve
+  proje modunda onaylı faturayı yalnız admin iptal eder. İptalde fatura
+  `reddedildi` olur, maliyet kaydı geri alınır ve muhasebeye düşer. Yalnız
+  muhasebe düzenleyip yeniden gönderir veya siler; silmede bağlı satın alma
+  `satin_alindi` (fatura bekleyen) durumuna ve `invoice_id=null` haline döner,
+  yeni fatura olmadan tamamlanamaz. Migration:
+  `unify_admin_invoice_cancel_accounting_recovery`; DB/iş akışı + gerçek
+  yönetici/muhasebe ekran kabulü dahil tam regresyon 50/50 PASS.
+- **Proje Excel export şablon tutarsızlığı kapatıldı (2026-07-21):**
+  `export-project-excel` v12, statik şablondaki Bütçe G:K "Kategori Rehberi" ve
+  "Bütçe Özeti (Otomatik)" panelini kategori `SUMIF`, genel toplam ve kalem sayısı
+  formülleriyle üretiyor. Kategori Ağırlıkları `TOPLAM` satırı/formülü artık
+  projenin gerçek ağırlık satırı sayısına göre dinamik. Formüllere cached sonuç
+  eklendiği için Excel dışındaki XLSX okuyucuları da hücreleri görüyor. Canlı
+  indirilen XLSX düzen testi + mevcut malzeme onay/export regresyonu 4/4 PASS.
 - **`projects` tablosunun SELECT RLS policy'si (`projects_select`) `has_project_access()`
   kullanmıyor** — yalnızca admin/muhasebe, `user_project_access` eşleşmesi, veya
   `profiles.project_id` birebir eşleşmesiyle izin veriyor; `purchase_requests_select`'te
@@ -1991,17 +1979,15 @@ değil) dışında sorunsuz. Bulunanlar 4 ayrı commit'e bölündü:
    gönderilebiliyor** — yeni RPC'ler `resubmit_rejected_invoice`/
    `delete_rejected_invoice` (DB'de zaten vardı, REVOKE'lı), `FaturaDetayModal`'a
    "Düzenle ve Yeniden Gönder"/"Faturayı Sil" eklendi (bkz. Sistem mimarisi →
-   "Satın alma akışı"). **Bu değişiklik sırasında bir tutarsızlık bulundu ve
-   BİLİNÇLİ OLARAK DÜZELTİLMEDİ** (kullanıcıya soruldu, "şimdi karar veremem,
-   olduğu gibi bırak" dendi): aynı ekrandaki eski "onaylandı faturayı iptal et"
-   yeteneği menü modunda (`FaturaDetayModal`, `canCancel=false`) kapatılmış ama
-   proje modunda (`FaturaIptalModal`, satır aksiyonu) hâlâ aktif — bkz. Bilinen
-   açık noktalar.
-4. **Proje-özel Finans sekmesi sadeleştirildi** — `ProjeTabFinans.jsx` artık
-   Faturalar/Onay Kuyruğu/Maliyet Tablosu alt-sekmelerini barındırmıyor, yalnızca
-   "Genel" görünüm kalıyor; bu ekranlara artık yalnızca üst-seviye Finans
-   sekmesinden (proje filtresiyle) ulaşılıyor (bkz. Sistem mimarisi →
-   `ProjeDetay.jsx` sekmeleri paragrafı).
+   "Satın alma akışı"). Son karar: onaylı faturayı yalnız yönetici iptal eder;
+   iptal edilen faturayı yalnız muhasebe düzenleyip yeniden gönderir veya siler.
+   Menü/proje modu aynı kurala bağlandı. Yönetici global Finans ekranından
+   iptal, muhasebe iptal edilen faturada düzenle/yeniden gönder/sil seçenekleri
+   gerçek tarayıcıda doğrulandı; tam regresyon 50/50 test geçti.
+4. **Proje-özel Finans rol bazlı sadeleştirildi** — proje yöneticisi ve diğer
+   roller için yalnızca "Genel" görünüm kalır; admin için proje bağlamındaki
+   Faturalar/Onay Kuyruğu/Maliyet Tablosu geri getirildi. Admin ve proje yöneticisi
+   ayrımı gerçek tarayıcıda 2/2 PASS.
 
 Ayrıca working tree'de duran, CLAUDE.md'nin zaten "yapıldı" dediği ama hiç
 commit edilmemiş 3 parça da bu turda commit'lendi (kod değişikliği yok, yalnızca

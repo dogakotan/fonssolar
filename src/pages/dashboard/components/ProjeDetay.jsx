@@ -20,6 +20,7 @@ import {
   xlsxZipBlob,
   formatExcelDate,
 } from '../../../utils/excelUtils'
+import { exportProjectExcelBlob, downloadBlob } from '../../../utils/projectExcelBridge'
 
 const PDF_SERVICE_ENDPOINT = import.meta.env.VITE_PDF_SERVICE_URL || 'http://127.0.0.1:8002/generate-pdf'
 
@@ -622,6 +623,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const [filterMode, setFilterMode]  = useState('gunluk')   // 'gunluk' | 'haftalik' | 'aylik'
   const [loading, setLoading]        = useState(true)
   const [showExportMenu, setShowExportMenu] = useState(false)
+  const [projectExcelLoading, setProjectExcelLoading] = useState(false)
   const [filterDate, setFilterDate]  = useState(todayStr())
   const [showCalendar, setShowCalendar] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -678,6 +680,18 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     setFilterDate(toDateStr(today))
     setCalendarMonth(new Date(today.getFullYear(), today.getMonth(), 1))
     setShowCalendar(false)
+  }
+
+  async function handleProjectExcelExport() {
+    setProjectExcelLoading(true)
+    try {
+      const blob = await exportProjectExcelBlob(projectId)
+      downloadBlob(blob, `${projectId}_detayli_proje_takip.xlsx`)
+    } catch (error) {
+      window.alert(`Proje Excel'i oluşturulamadı: ${error.message}`)
+    } finally {
+      setProjectExcelLoading(false)
+    }
   }
 
   async function getProgressTotalsUntil(endDate, excludeReportId = null) {
@@ -1146,6 +1160,20 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
         {/* ── Sağ grup: Tarih Navigasyon + Dışa Aktar ── */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            type="button"
+            onClick={handleProjectExcelExport}
+            disabled={projectExcelLoading}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '7px 14px', background: '#fff', color: '#15803d',
+              border: '1px solid #16a34a', borderRadius: 8, fontSize: 13,
+              fontWeight: 600, cursor: projectExcelLoading ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: projectExcelLoading ? 0.65 : 1,
+            }}
+          >
+            {projectExcelLoading ? 'Excel hazırlanıyor…' : 'Proje Excelini İndir'}
+          </button>
           <div ref={calendarRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={() => setShowCalendar(v => !v)} style={calendarBtn} title="Takvim">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -320,4 +320,66 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     expect(Number(financeAfterDelete.kpi.totalActual)).toBe(Number(financeBeforeRejected.kpi.totalActual))
     expect(Number(financeAfterDelete.kpi.pendingAmount)).toBe(Number(financeBeforeRejected.kpi.pendingAmount))
   })
+
+  test('onaylı faturayı yönetici iptal eder; muhasebe düzeltir veya silip yenisini ekler', async () => {
+    const siteUserId = (await santiye.auth.getUser()).data.user.id
+    const adminId = (await admin.auth.getUser()).data.user.id
+    const pmId = (await projeYoneticisi.auth.getUser()).data.user.id
+    const muhasebeId = (await muhasebe.auth.getUser()).data.user.id
+    const cancelMarker = `${marker}_APPROVED_CANCEL`
+
+    const { data: cancelRequestId, error: createError } = await santiye.rpc('create_purchase_request_with_items', {
+      p_project_id: projectId, p_title: cancelMarker, p_urgency: 'normal', p_category: 'diger',
+      p_request_note: cancelMarker, p_requested_by: siteUserId,
+      p_items: [{ name: 'Onaylı fatura iptal testi', quantity: 1, unit: 'Adet', bom_item_id: null }],
+    })
+    expect(createError).toBeNull()
+    requestIds.push(cancelRequestId)
+    expect((await admin.from('purchase_requests').update({ status: 'onaylandi', approved_by: adminId, approved_at: new Date().toISOString() }).eq('id', cancelRequestId)).error).toBeNull()
+    expect((await projeYoneticisi.from('purchase_requests').update({ supplier_id: supplierId, purchase_date: new Date().toISOString().slice(0, 10), purchased_by: pmId }).eq('id', cancelRequestId)).error).toBeNull()
+
+    const makeInvoice = invoiceNo => ({
+      project_id: projectId, purchase_request_id: cancelRequestId, supplier_id: supplierId,
+      invoice_no: invoiceNo, invoice_date: new Date().toISOString().slice(0, 10), amount: 80,
+      vat_rate: 20, category: 'diger', description: cancelMarker, source: 'satin_alma',
+      status: 'bekliyor', created_by: muhasebeId,
+    })
+    const { data: firstInvoice, error: firstInvoiceError } = await muhasebe.from('invoices')
+      .insert(makeInvoice(cancelMarker)).select('id').single()
+    expect(firstInvoiceError).toBeNull()
+    invoiceIds.push(firstInvoice.id)
+    expect((await admin.from('invoice_approvals').update({
+      status: 'onaylandı', reviewer_id: adminId, reviewed_at: new Date().toISOString(),
+    }).eq('invoice_id', firstInvoice.id).eq('status', 'bekliyor')).error).toBeNull()
+    expect((await admin.from('cost_allocations').select('id').eq('invoice_id', firstInvoice.id).single()).data).toBeTruthy()
+
+    expect((await admin.from('invoices').update({ status: 'reddedildi' }).eq('id', firstInvoice.id)).error).toBeNull()
+    const [{ data: cancelled }, { count: allocationAfterCancel }, { data: requestAfterCancel }] = await Promise.all([
+      muhasebe.from('invoices').select('status').eq('id', firstInvoice.id).single(),
+      admin.from('cost_allocations').select('id', { count: 'exact', head: true }).eq('invoice_id', firstInvoice.id),
+      admin.from('purchase_requests').select('status,invoice_id').eq('id', cancelRequestId).single(),
+    ])
+    expect(cancelled.status).toBe('reddedildi')
+    expect(allocationAfterCancel).toBe(0)
+    expect(requestAfterCancel).toMatchObject({ status: 'fatura_onay_bekliyor', invoice_id: firstInvoice.id })
+    expect((await admin.rpc('resubmit_rejected_invoice', { p_invoice_id: firstInvoice.id })).error?.message).toContain('yalnızca muhasebe')
+    expect((await admin.rpc('delete_rejected_invoice', { p_invoice_id: firstInvoice.id })).error?.message).toContain('yalnızca muhasebe')
+
+    expect((await muhasebe.from('invoices').update({ invoice_no: `${cancelMarker}_REV`, amount: 90 }).eq('id', firstInvoice.id)).error).toBeNull()
+    expect((await muhasebe.rpc('resubmit_rejected_invoice', { p_invoice_id: firstInvoice.id })).error).toBeNull()
+    expect((await admin.from('invoice_approvals').update({
+      status: 'onaylandı', reviewer_id: adminId, reviewed_at: new Date().toISOString(),
+    }).eq('invoice_id', firstInvoice.id).eq('status', 'bekliyor')).error).toBeNull()
+    expect((await admin.from('invoices').update({ status: 'reddedildi' }).eq('id', firstInvoice.id)).error).toBeNull()
+    expect((await muhasebe.rpc('delete_rejected_invoice', { p_invoice_id: firstInvoice.id })).error).toBeNull()
+
+    const { data: waitingAgain } = await admin.from('purchase_requests').select('status,invoice_id').eq('id', cancelRequestId).single()
+    expect(waitingAgain).toMatchObject({ status: 'satin_alindi', invoice_id: null })
+    const { data: replacementInvoice, error: replacementError } = await muhasebe.from('invoices')
+      .insert(makeInvoice(`${cancelMarker}_NEW`)).select('id').single()
+    expect(replacementError).toBeNull()
+    invoiceIds.push(replacementInvoice.id)
+    const { data: linkedAgain } = await admin.from('purchase_requests').select('status,invoice_id').eq('id', cancelRequestId).single()
+    expect(linkedAgain).toMatchObject({ status: 'fatura_onay_bekliyor', invoice_id: replacementInvoice.id })
+  })
 })
