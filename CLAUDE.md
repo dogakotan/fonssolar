@@ -340,16 +340,31 @@ genişletmesi): `ROLE_TABS.proje_yoneticisi` artık `['genel', 'projeler',
 `['satin-alma','bildirimler']`) — bu rol artık admin gibi **Projeler**
 sekmesinden proje listesini gezip bir projeye tıklayınca o projenin tam
 `ProjeDetay` görünümüne (8 iç sekme: Genel Proje/İş Planı/Satın Alma/Malzeme
-Listesi/Finans/Ticket/Raporlar/Ekip) girebiliyor. **Üst seviyede** `finans`/
-`tickets` sekmeleri bu rol için hâlâ kapalı (`navigation.js`'te yok) — ama
-**2026-07-20'de** `ProjeDetay.jsx`'in eski `canViewFinanceAndTickets = role
-!== 'proje_yoneticisi'` guard'ı kaldırıldı: artık bir projenin içine girince
-Finans'ı **salt-okunur** (fatura ekleyemez/onaylayamaz/iptal edemez —
-`FaturaListesi`/`OnayKuyrugu`'da `isAdmin || isMuhasebe`'den türetilen
-`canAct`/`readonly` ile), Tickets'ı ise **santiye_sefi ile aynı tam yetki**
-seviyesinde görüyor (`TicketListesi.jsx`'in `fetchTickets`'ına ayrı bir
-`proje_yoneticisi` dalı eklendi — `propProjectId`'ye göre süzülür, çünkü bu
-rol çoklu projeye erişebiliyor).
+Listesi/Finans/Ticket/Raporlar/Ekip) girebiliyor. **2026-07-20'de**
+`ProjeDetay.jsx`'in eski `canViewFinanceAndTickets = role !== 'proje_yoneticisi'`
+guard'ı kaldırıldı: bir projenin içine girince Finans'ı **salt-okunur** (fatura
+ekleyemez/onaylayamaz/iptal edemez — `FaturaListesi`/`OnayKuyrugu`'da
+`isAdmin || isMuhasebe`'den türetilen `canAct`/`readonly` ile), Tickets'ı ise
+**santiye_sefi ile aynı tam yetki** seviyesinde görüyor (`TicketListesi.jsx`'in
+`fetchTickets`'ına ayrı bir `proje_yoneticisi` dalı eklendi — `propProjectId`'ye
+göre süzülür, çünkü bu rol çoklu projeye erişebiliyor).
+**2026-07-21'de bu rol admin'in TÜM üst-seviye sekmelerini de kazandı**
+(kullanıcı isteği: "her sayfayı görsün, yetkili olduğu alanlarda tuşlasın") —
+`navigation.js`'e `finans, tickets, kullanicilar, proje-ekle` eklendi (toplam
+9 sekme, admin'in 8'inin üstüne `is-plani` bonus olarak kalıyor). Finans/Tickets
+zaten `isAdmin||isMuhasebe`/`isAdmin` bazlı iç aksiyon kısıtlamasına sahip
+olduğundan (yukarıdaki paragraf) üst-seviye Finans/Tickets sekmeleri de aynı
+salt-okunur/tam-yetki davranışını otomatik miras alıyor, ekstra guard
+gerekmedi. **Kullanıcılar** ve **Proje Yönetimi** (`proje-ekle`) ekranlarında
+ise önceden **hiç iç aksiyon kısıtlaması yoktu** (yalnızca dıştan `isAdmin`
+kapısı) — bu ikisine `isAdmin &&` ile sarmalanmış yeni bir iç gate eklendi
+(`TabKullanicilar.jsx`: + Kullanıcı Ekle/Düzenle/Şifre/Sil; `TabProjeYonetimi.jsx`:
+Yeni Proje/Excel import/Düzenle/Excel export/Sil — bu sonuncusu kademeli proje
+silme dahil en yüksek blast-radius'lu ekran) — proje_yoneticisi bu ikisini tam
+listeyle ama tamamen salt-okunur görüyor. Aynı turda `TabProjeYonetimi.jsx` ve
+`TabTickets.jsx`'in proje filtre dropdown'larındaki raw `.from('projects')`
+sorguları da `getProjects()`'e geçirildi — aşağıdaki bilinen `projects_select`
+RLS gap'i yüzünden bu sorgu proje_yoneticisi için eksik proje listesi dönerdi.
 `genel`/`is-plani`/`satin-alma` üst-seviye sekmeleri `scopeProjectId`
 (`ScopeContext`) kullanıyor; header'daki global proje seçici `<select>`
 (`showAllOption`/`scopeProjects`/`setScopeProjectId`) kullanıcı tarafından
@@ -1634,58 +1649,42 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**20.07.2026 (akşam, üçüncü tur) — Muhasebe test hesabında ("invalid" login
-hatası) şifre sıfırlandı; ardından muhasebe gerçek tarayıcıdan fatura ekleyip
-"yöneticiye değil kendine düştüğünü" bildirdi. İncelemede bunun bug değil,
-mevcut TASARIM (2 adımlı fatura onayı: muhasebe kendi girdiğini önce kendi
-kuyruğundan onaylıyor, sonra yöneticiye düşüyor) olduğu ortaya çıktı — kullanıcı
-bunu tek adıma indirmeyi tercih etti (AskUserQuestion). 2 migration daha
-(onaylı) uygulandı, süreçte 1 ayrı kritik bug (hiç çalışmamış "+ Fatura Ekle"
-butonu) daha bulundu. Frontend değişiklikleri henüz commit edilmedi.**
+**21.07.2026 — Proje yöneticisi rolüne admin gibi tam sayfa görünürlüğü verildi
+(Plan Mode ile tasarlandı, 4 commit, henüz push edilmedi).** Kullanıcı bu rolün
+tüm üst-seviye sekmeleri görebilmesini ama yalnızca yetkili olduğu alanlarda
+aksiyon alabilmesini istedi. Netleştirme sorusunda (Kullanıcılar/Proje Yönetimi
+dahil mi) kullanıcı "evet, tamamen admin gibi görsün" seçti — bu ikisi CLAUDE.md
+→ Roller bölümünde detaylandırıldığı gibi önceden hiç iç aksiyon kısıtlaması
+taşımadığından ayrıca `isAdmin &&` gate'i eklenerek güvenli hale getirildi (bkz.
+Roller bölümü tam detay için). Özet: `navigation.js`'e proje_yoneticisi için
+`finans, tickets, kullanicilar, proje-ekle` eklendi; `index.jsx`'teki finans/
+tickets'ı bu rolden açıkça dışlayan şartlar kaldırıldı; `TabKullanicilar.jsx`
+ve `TabProjeYonetimi.jsx`'e (ikisi de önceden sıfır iç kısıtlamalıydı) `isAdmin`
+bazlı aksiyon gate'i eklendi — proje_yoneticisi bu ikisini tam listeyle ama
+tamamen salt-okunur görüyor; `TabProjeYonetimi.jsx`/`TabTickets.jsx`'in proje
+filtre dropdown'larındaki raw `.from('projects')` sorguları da `getProjects()`'e
+geçirildi (cross_project rollerde `projects` RLS'inin eksik kapsamını
+`get_my_projects()` ile tamamlayan, `TabFinans.jsx`'te zaten kullanılan mevcut
+yardımcı — migration yazılmadan bilinen `projects_select` RLS gap'i bu üç
+ekranda pratikte etkisizleştirildi). Muhasebe tarafındaki paralel istek
+("Finans'ı görsün, proje filtrelemesi + yetkili özelleştirme yapabilsin") kod
+incelemesinde zaten tam olarak mevcut çıktı (`TabFinans.jsx`'in proje filtresi +
+`FaturaListesi`/`OnayKuyrugu`'daki `canAct=isAdmin||isMuhasebe` mevcut yapısı) —
+muhasebe için hiçbir kod değişikliği yapılmadı.
 
-Yapılanlar: (1) Muhasebe test hesabının şifresi `auth.users`'da doğrudan
-sıfırlandı (pgcrypto `crypt()`), yeni şifre yalnızca `.env.test`'e yazıldı
-(chat'e yazılmadı, kural gereği). (2) Fatura onay akışı **tek adıma indirildi**
-(bkz. Sistem mimarisi → Trigger zincirleri → `invoices` maddesi tam detay için):
-`create_invoice_approval_chain()` artık doğrudan `step=1 'Yönetici Onayı'`
-açıyor ve `invoices.status`'u `yönetici_onayında` yapıyor (eski "Muhasebe
-Onayı" self-onay adımı kalktı); `fn_invoice_approval_cascade` artık adım
-NUMARASINA değil `step_label`'a bakıyor (geriye dönük uyumluluk için — eski
-2 adımlı zincirde olan faturalar hâlâ doğru ilerliyor); `fn_validate_invoice_status_transition`
-`bekliyor→yönetici_onayında` doğrudan geçişine izin verecek şekilde güncellendi.
-Frontend: `OnayKuyrugu.jsx`'in "Muhasebe Onay Kuyruğu" bölümü kaldırıldı, onay
-aksiyonu artık sabit `step` numarası yerine `status='bekliyor'` olan satırı
-hedefliyor (adım numarası faturaya göre 1 ya da 2 olabiliyor artık);
-`FaturaListesi.jsx`'in "onaylandıktan sonra iptal edildi" ayrımı da sabit
-`step===2` yerine "tüm adımlar onaylandı" kontrolüne geçirildi. Halihazırda
-"Muhasebe Onayı" adımında bekleyen 3 temiz (çakışmasız) test faturası da
-migration'la doğrudan "Yönetici Onayı"na geçirildi. (3) **Ayrı, kritik bulgu:**
-`FaturaListesi.jsx`'in "+ Fatura Ekle" butonu (`source: 'manual'` yazıyordu)
-`invoices_source_check` constraint'i yalnızca `'manuel'` (TR) kabul ettiğinden
-muhtemelen HİÇ ÇALIŞMAMIŞ — DB'de tek bir `source='manual'` satırı olmadığı
-doğrulandı. Tek kelime düzeltildi. (4) İncelerken 3 eski/seed test faturasında
-(`INV-2026-004/014/015`) tutarsız bir veri deseni bulundu (hem step1 hem step2
-satırı aynı anda 'bekliyor' — normal akışta imkansız bir kombinasyon,
-muhtemelen seed script trigger'ları bypass ederek yazmış) — canlı veri
-olmadığından acil değil, düzeltilmedi, CLAUDE.md'ye not edildi.
+`npx eslint src` (0 hata, 25 pre-existing warning — yeni dosyalarda sıfır yeni
+uyarı) ve `npx vite build` her adım sonrası temiz. Migration/RLS gerekmedi —
+tamamen frontend, mevcut RPC/RLS/helper'lar kullanıldı.
 
-Tüm yeni test faturaları (standalone + satın alma talebine bağlı, ikisi de
-gerçek write'larla uçtan uca doğrulandı: `bekliyor→yönetici_onayında→onaylandı`,
-`cost_allocations` doğru oluştu) silindi. `npx eslint src`/`npx vite build`
-temiz.
+**SEN kabul testi bekleniyor** (headless ortamda yapılamadı): proje_yoneticisi
+test hesabıyla login → Finans/Tickets/Kullanıcılar/Proje Yönetimi sekmeleri
+görünüyor mu, her birinde veri (özellikle proje filtre dropdown'larında TÜM
+erişilebilir projeler) doğru geliyor mu, Kullanıcılar/Proje Yönetimi'nde HİÇBİR
+aksiyon butonu görünmüyor mu, Finans'ta fatura ekleyemiyor/onaylayamıyor mu,
+Tickets'ta yalnızca kendi açtığı ticket'ı iptal edebiliyor mu. Admin/muhasebe
+hesaplarıyla regresyon: önceki davranış birebir aynı kalmalı.
 
-Bu akşamki önceki iki turun özeti (detaylar yukarıdaki ilgili maddelerde):
-tam satın alma→tedarik→fatura→maliyet akışı gerçek write'larla test edildi
-(trigger zincirinde bug bulunmadı); muhasebenin `navigation.js`'te hiç
-`satin-alma` sekmesi olmadığı (talebe bağlı fatura hiç kesemiyordu) bulunup
-düzeltildi; `fatura_bekliyor`/`fatura_onay_bekliyor` ve `onaylandi` etiketleri
-tekilleştirildi; `TedarikKuyrugu.jsx` proje yöneticisi için aggregate (tüm
-projeler) moda geçti; `purchase_requests_select` RLS'i `has_project_access()`'e
-taşındı.
-
-**Sıradaki adım:** Kullanıcı gerçek tarayıcıdan (özellikle muhasebe ile) tam
-akışı yeniden test edecek — fatura eklenince artık doğrudan yönetici onayına
-düştüğünü doğrulayacak. Onay gelince bugünkü ÜÇ turun + dünden kalan "SEN kabul
-testi" listesinin (bkz. git log'daki önceki "Son değişiklik" kaydı) birlikte
-commit/push'u yapılacak, sonra yarın (Çarşamba) go-live işlemlerine (A8 — bkz.
-`cc-master-uygulama-plani.md`) geçilecek.
+**Sıradaki adım:** Kabul testi geçerse bu 4 commit + dünden kalan onay bekleyen
+"tek adımlı fatura onayı" turunun (bkz. git log'daki önceki "Son değişiklik"
+kaydı) push'u birlikte yapılacak, sonra go-live hazırlıklarına (A8 — bkz.
+`cc-master-uygulama-plani.md`) devam edilecek.
