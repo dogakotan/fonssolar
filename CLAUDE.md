@@ -1854,9 +1854,111 @@ Onaylı `require_project_for_purchase_requests` migration'ı
 `ON DELETE RESTRICT` yaptı. RPC boş veya mevcut olmayan proje kimliğini
 reddediyor; kimlik ve proje erişim kontrolleri korunuyor. Canlı testte proje
 yöneticisinin tüm projeleri gördüğü, farklı projede talep açabildiği, boş
-projenin reddedildiği ve tam fatura akışı doğrulandı: 3/3 Playwright testi
-ve production build geçti. Son veri denetimi: projesiz talep 0, yetim proje
-referansı 0.
+projenin reddedildiği ve tam fatura akışı doğrulandı: ilk 3/3 Playwright
+testi ve production build geçti. Ardından şantiye şefi ile proje yöneticisi
+ayrı ayrı; admin talep onayı/reddi, PM tedarik/iptal, muhasebe faturası,
+admin fatura reddi/onayı ve muhasebenin red sonrası düzenle-yeniden gönder
+veya sil akışlarında 6/6 ek canlı testten geçti. Bildirim alıcıları da
+her aşamada doğrulandı. Son veri denetimi: projesiz talep 0, yetim proje
+referansı 0, test talebi/faturası/bildirimi 0.
+
+Aynı gün Malzeme Listesi → proje Excel export bağlantısı da canlı Edge
+Function ile 3/3 test edildi: yeni malzeme beklerken Excel'e girmedi ve admin
+onayından sonra yeni satır oldu; miktar değişikliği beklerken eski miktar,
+onaydan sonra yeni miktar yazıldı; reddedilen değişiklik hem tabloda hem
+Excel'de etkisiz kaldı. Test gerçekten indirilen XLSX'in `Malzeme Listesi`
+sayfasındaki malzeme adı ve planlanan miktar hücrelerini okudu. Geçici
+malzeme/değişiklik/bildirim kayıtları temizlendi (0/0/0).
+
+Sonraki sıralı denetimin 1. adımı olan yetki/RLS paketi 4/4 canlı testten
+geçti: şantiye şefi başka projeyi listeleyemedi, talebini okuyup yazamadı,
+detay RPC'sini ve Excel export'unu kullanamadı; anon istemci hassas satın
+alma/malzeme/fatura RPC'lerini çağıramadı; muhasebe ve proje yöneticisi fatura
+onayını değiştiremedi, admin değiştirebildi; `requested_by`/`project_id`
+manipülasyonları reddedildi. Test talebi/faturası/bildirimi temizliği 0/0/0.
+
+Sıralı denetimin 2. adımında malzeme sınırlarında 3 gerçek açık bulundu
+ve onaylı `harden_procurement_item_change_boundaries` migration'ıyla kapatıldı:
+aynı kaleme ikinci bekleyen değişiklik, aynı projede normalize edilmiş aynı
+malzeme adı ve sıfır/negatif miktar artık hem RPC hem constraint/unique index
+seviyesinde reddediliyor. Arayüz minimumu `0.01` oldu. Çift admin incelemesi
+zaten doğru biçimde reddediliyordu. Sınır + mevcut onay/Excel regresyonu
+7/7, production build geçti; anon/PUBLIC EXECUTE kapalı, authenticated açık
+ve fonksiyon içi rol/proje kontrolleri aktif. Test temizliği 0/0/0.
+
+Sıralı denetimin 3. adımında risk sınıflandırmasında 3 frontend
+tutarsızlığı düzeltildi: `diger` satır rozeti gibi KPI'da da `listede_yok`;
+karışık malzeme talebinde herhangi bir eksik BOM kalemi varsa `listede_yok`
+riske göre öncelikli; `classifyRequestTypes` artık `diger` sayacını üretiyor
+ve donut grafik Malzeme/Hizmet/Diğer üçlüsünü gösteriyor. Alt/eşit/aşım,
+kümülatif iki bekleyen talep, listede yok, hizmet, diğer, karışık kalem
+ve red/iptal hariç tutma testleri 7/7; production build geçti.
+
+Aynı gün satın alma talepleri tek kalemle sınırlandırıldı. Onaylı
+`enforce_single_item_purchase_requests` migration'ı, oluşturma RPC'sinde
+`p_items` dizisinin tam olarak bir eleman olmasını zorunlu tutuyor; tablo
+trigger'ı ise RPC dışından ve eşzamanlı denemelerde aynı talebe ikinci kalem
+eklenmesini parent satır kilidiyle engelliyor. Çok kalemli oluşturmanın atomik
+reddi, normal tek kalemli oluşturma, doğrudan ikinci kalem ekleme ve yarış
+durumu test edildi. Satın alma, iki başlatıcı rolü, yönetici, proje yöneticisi,
+muhasebe, fatura red/onay/sil, RLS ve risk regresyonları toplam 23/23 geçti.
+Fatura/finans bağlantıları bozulmasın diye canlıdaki üç eski çok kalemli kayıt
+otomatik bölünmedi; kural yeni talepler için eksiksiz uygulanıyor.
+
+Muhasebe fatura sınır denetiminde, reddedilmiş faturası duran talebe ikinci
+aktif fatura eklenebilmesi ve iptal/reddedilmiş satın alma talebinin tekrar
+faturalanabilmesi açıkları bulundu. Onaylı
+`harden_purchase_invoice_singleton_and_stage_guard` migration'ı talep başına
+reddedilmiş dahil tek fatura zorunluluğu getirdi; fatura yalnızca
+`satin_alindi` durumundaki talebe ve talebin kendi projesiyle eklenebilir.
+RLS görünürlüğü için trigger fonksiyonu sabit `search_path` ile
+`SECURITY DEFINER` çalışır, ancak trigger fonksiyonu API RPC'si değildir ve
+fatura INSERT yetkisi mevcut RLS tarafından sınırlandırılmaya devam eder.
+Erken fatura, yanlış proje ve ikinci fatura regresyonları eklendi; satın alma
+paketi 23/23 geçti, geçici kayıt kalmadı.
+
+Yönetici fatura uygunluk aşamasında yalnızca admin onay/red yetkisi, red sonrası
+muhasebenin düzenle-yeniden gönder veya sil akışları, onay sonrası talebin
+`faturasi_kesildi` olması ve `cost_allocations` kaydı doğrulandı. Aynı onayın
+ikinci kez denenmesi yeni maliyet veya bildirim üretmiyor; fatura başına maliyet
+ve onay adımı unique indexlerle korunuyor. Odak paket 5/5 geçti. Ayrıca artık
+hiçbir talep/faturaya bağlı olmayan 442 eski `E2E_` satın alma/fatura bildirimi
+temizlendi; kalıcı altı yönetici kuyruğu talebi korunuyor.
+
+Finans/maliyet yansıması sayısal farklarla test edildi: 100 TRY + %20 KDV
+beklerken `pendingAmount` değerini 120 artırıp `totalActual` değerini
+değiştirmedi; red sonrası 0 etki bıraktı. Fatura 110 TRY olarak düzenlenip
+yeniden gönderildiğinde ve onaylandığında 22 TRY KDV ile 132 TRY tek maliyet
+kaydı oluştu; `totalActual` ve maliyet kovası 132 arttı, `remainingBudget`
+132 azaldı. Red edilen veya silinen fatura finans toplamlarına girmedi ve zaman
+serisi boşluksuz kaldı. Maliyet ekranı/Excel/PDF aynı `costBuckets` verisini
+kullanıyor; eski “KDV hariç” notu gerçek hesapla uyumlu olacak şekilde
+“Gerçekleşen fatura tutarları KDV dahildir” olarak düzeltildi ve export sütunu
+da açıkça KDV dahil şeklinde adlandırıldı. Odak testleri 3/3 ve production
+build geçti; test kaydı kalmadı.
+
+Muhasebe rolü için ekran gizlemenin ötesinde veri-katmanı izolasyonu uygulandı.
+Onaylı `isolate_accounting_role_scope` migration'ı muhasebenin satın alma
+liste/detay/overview erişimini yalnız `satin_alindi` ve `fatura_bekliyor`
+talepleriyle sınırladı; genel/tek-proje finans overview RPC'leri muhasebeye
+`authorized:false` döndürüyor. İç RPC'ler yeniden adlandırılıp PUBLIC/anon/
+authenticated EXECUTE'tan çıkarıldı; yalnız rol kontrolü yapan wrapper'lar API'ye
+açık. Raw RLS'de muhasebe `budget_lines`, `cost_allocations` ve
+`procurement_items` okuyup/yazamıyor; fatura, tedarikçi, fatura bekleyen talep ve
+kendi bildirim erişimi korunuyor. Arayüzde Finans yalnız Faturalar sekmesini,
+Satın Alma yalnız fatura kesilecek listeyi gösteriyor; genel KPI, maliyet ve
+yönetici onay kuyruğu kaldırıldı. API+UI kapsam testleri 2/2, tüm rol/satın alma
+paketi 25/25 ve production build geçti. 181 yetim E2E bildirimi temizlendi;
+kalıcı altı yönetici kuyruğu talebi korunuyor.
+
+Bildirim gerçek zaman/izolasyon E2E testi eklendi. Proje yöneticisinin açtığı
+geçici talep, açık Yönetici → Bildirimler ekranında sayfa yenilenmeden göründü;
+`created` olayı için tam bir bildirim oluştu. Başka kullanıcı bildirimi ne
+okuyabildi ne de `is_read` alanını değiştirebildi; yönetici satıra tıklayınca
+`is_read=true` ve `read_at` yazıldı. Şantiye şefi/PM başlatıcıları, yönetici,
+muhasebe, fatura red-yeniden gönder-onay/sil zincirindeki alıcı regresyonları da
+3/3 geçti. Gerçek zaman/okundu testi 1/1 geçti; 36 yetim test bildirimi
+temizlendi ve E2E talep/fatura/bildirim sayıları 0/0/0 doğrulandı.
 
 ## Önceki değişiklik
 
@@ -2013,3 +2115,22 @@ hesaplarıyla regresyon: önceki davranış birebir aynı kalmalı.
 yöneticisi sayfa görünürlüğü + `get_project_scope` cross_project düzeltmesi)
 tüm commit'lerinin push'u birlikte yapılacak, sonra go-live hazırlıklarına
 (A8 — bkz. `cc-master-uygulama-plani.md`) devam edilecek.
+
+### 21 Temmuz 2026 — Satın alma faturası yarış testleri
+
+- Kullanıcı kararıyla satın alma faturasında PDF/JPG belge yükleme özelliği
+  kaldırıldı; `invoice_document_url` zorunlu değildir. Fatura yalnız form
+  alanlarıyla oluşturulur.
+- `disable_purchase_invoice_document_storage` migration'ı ile belge Storage
+  politikaları ve DB belge zorunluluğu kaldırıldı. Boş `fatura-belgeleri`
+  bucket'ı da Storage'ın korumalı silme ayarı yalnız transaction kapsamında
+  açılarak kaldırıldı; son doğrulamada bucket sayısı 0.
+- E2E fatura fixture'ları yeniden belgesiz akışı kullanıyor. Çift fatura,
+  çakışan admin kararı, çakışan PM kararı ve çakışan fatura kararı kapsandı.
+- Satın alma/rol/RLS/bildirim/malzeme regresyon paketi: **36/36 geçti**.
+  Üretim derlemesi ve Graphify güncellemesi başarılı. Advisor taramasında bu
+  migration kaynaklı yeni uyarı yok; önceden mevcut genel uyarılar devam ediyor.
+- `procurement-role-acceptance.spec.js` ile gerçek tarayıcıda dört rol kabulü
+  eklendi: şantiye şefinde bağlı proje seçili/kilitli, proje yöneticisinde tüm
+  projeler arasından zorunlu seçim, yöneticide satın alma ve finans onayları,
+  muhasebede yalnız Faturalar görünümü ve belge alanının yokluğu. **4/4 geçti**.
