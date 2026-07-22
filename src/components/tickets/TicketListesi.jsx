@@ -5,51 +5,85 @@ import YeniTicketModal from './YeniTicketModal'
 import TicketDetayModal from './TicketDetayModal'
 import DateNavigator from '../ui/DateNavigator'
 import { SEVERITY_META as SEVERITY, SEVERITY_ORDER, SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
-import { STATUS_META as STATUS, CATEGORY_META as CATEGORY, STATUS_TABS } from '../../utils/ticketStatus'
+import { STATUS_META as STATUS, CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
 
 const TH = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
 
+function actionOwnerText(ticket) {
+  const name = ticket.updater?.full_name
+  if (!name) return null
+  if (ticket.status === 'işlemde') return `${name} tarafından işleme alındı`
+  if (ticket.status === 'kapatıldı') return `${name} tarafından kapatıldı`
+  if (ticket.status === 'iptal_edildi') return `${name} tarafından iptal edildi`
+  return null
+}
+
+async function withUpdaterProfiles(tickets = []) {
+  const updaterIds = [...new Set(tickets.map(ticket => ticket.updated_by).filter(Boolean))]
+  if (updaterIds.length === 0) return tickets
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', updaterIds)
+  const profileById = new Map((profiles || []).map(profile => [profile.id, profile]))
+  return tickets.map(ticket => ({ ...ticket, updater: profileById.get(ticket.updated_by) || null }))
+}
+
 /* ── Hızlı aksiyon modalı (satır butonu) ── */
 function QuickActionModal({ ticket, action, onClose, onDone }) {
-  const { user, isAdmin } = useAuth()
+  const { user, role } = useAuth()
   const [saving, setSaving] = useState(false)
+  const [actionError, setActionError] = useState('')
 
   const QUESTIONS = {
     process: 'Ticket işleme alınacak. Onaylıyor musunuz?',
     close:   'İşlemi kapatmak istiyor musunuz?',
     cancel:  'İşlemi iptal etmek istiyor musunuz?',
+    delete:  'Bu ticket tamamen silinecek. Onaylıyor musunuz?',
   }
   const MESSAGES = {
     process: '"Ticketınız işleme alındı." bildirimi ticket sahibine gönderilecek.',
     close:   '"Ticketınız kapatıldı." bildirimi ticket sahibine gönderilecek.',
     cancel:  '"Ticketınız iptal edildi." bildirimi ticket sahibine gönderilecek.',
-  }
-  const DEFAULTS = {
-    process: 'Ticketınız işleme alındı.',
-    close:   'Ticketınız kapatıldı.',
-    cancel:  'Ticketınız iptal edildi.',
+    delete:  'Ticket yönetici ve proje yöneticisi ekranlarından da tamamen kaldırılacak.',
   }
 
   async function handleSave() {
     setSaving(true)
+    setActionError('')
+    if (action === 'delete') {
+      const { error } = await supabase.rpc('delete_own_open_ticket', { p_ticket_id: ticket.id })
+      if (error) {
+        setActionError(error.message || 'Ticket silinemedi. Lütfen tekrar deneyin.')
+        setSaving(false)
+        return
+      }
+      setSaving(false)
+      onDone()
+      return
+    }
+
     const statusMap = { process: 'işlemde', close: 'kapatıldı', cancel: 'iptal_edildi' }
     const newStatus = statusMap[action]
 
-    await supabase.from('tickets').update({
-      status:     newStatus,
-      updated_by: user.id,
-      updated_at: new Date().toISOString(),
-      ...(newStatus === 'kapatıldı' ? { resolved_at: new Date().toISOString() } : {}),
-    }).eq('id', ticket.id)
+    const { error } = role === 'proje_yoneticisi'
+      ? await supabase.rpc('project_manager_update_ticket_status', {
+          p_ticket_id: ticket.id,
+          p_new_status: newStatus,
+        })
+      : await supabase.from('tickets').update({
+          status:     newStatus,
+          updated_by: user.id,
+          updated_at: new Date().toISOString(),
+        }).eq('id', ticket.id)
 
-    await supabase.from('ticket_comments').insert({
-      ticket_id:       ticket.id,
-      user_id:         user.id,
-      content:         DEFAULTS[action],
-      is_notification: true,
-      sent_by_admin:   isAdmin,
-    })
+    if (error) {
+      setActionError(error.message || 'İşlem kaydedilemedi. Lütfen tekrar deneyin.')
+      setSaving(false)
+      return
+    }
 
     setSaving(false)
     onDone()
@@ -72,6 +106,11 @@ function QuickActionModal({ ticket, action, onClose, onDone }) {
         <p style={{ fontSize: 13, color: '#6B7280', margin: '0 0 24px', lineHeight: 1.5 }}>
           {MESSAGES[action]}
         </p>
+        {actionError && (
+          <p style={{ fontSize: 12, color: '#DC2626', margin: '0 0 14px', lineHeight: 1.45 }}>
+            {actionError}
+          </p>
+        )}
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={handleSave}
@@ -109,6 +148,13 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   const [showNew, setShowNew]               = useState(false)
   const [selected, setSelected]             = useState(null)
   const [quickAction, setQuickAction]       = useState(null)
+  const isProjectManager = role === 'proje_yoneticisi'
+  const visibleStatusTabs = [
+    { key: 'all', label: 'Tümü' },
+    { key: 'acik', label: 'Açık' },
+    { key: 'islemde', label: 'İşlemde' },
+    { key: 'sonuclandi', label: 'Sonuçlandı' },
+  ]
 
   useEffect(() => {
     if (filterDateProp) setDateFilter(filterDateProp)
@@ -124,9 +170,12 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
       .select('*, creator:profiles!tickets_created_by_fkey(full_name)')
       .eq('id', openTicketId)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (!alive) return
-        if (data) setSelected(data)
+        if (data) {
+          const [enriched] = await withUpdaterProfiles([data])
+          if (alive) setSelected(enriched)
+        }
         onOpenedTicket?.()
       })
     return () => { alive = false }
@@ -157,17 +206,17 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   async function fetchTickets() {
     setLoading(true)
     const ascending = sortMode === 'date_asc'
+    const dateColumn = statusTab === 'sonuclandi' ? 'resolved_at' : 'created_at'
     let q = supabase
       .from('tickets')
       .select('*, creator:profiles!tickets_created_by_fkey(full_name)')
-      .order('created_at', { ascending })
+      .order(dateColumn, { ascending, nullsFirst: false })
 
     // Status filtresi
     if (filterStatus && filterStatus !== 'all') {
       q = q.eq('status', filterStatus)
-    } else if (statusTab !== 'all') {
-      if (statusTab === 'gönderildi') q = q.in('status', ['gönderildi', 'açık'])
-      else q = q.eq('status', statusTab)
+    } else if (['acik', 'islemde', 'sonuclandi'].includes(statusTab)) {
+      q = q.eq('workflow_stage', statusTab)
     }
 
     // Severity sub-filtre (severity sort aktifken seçilebilir)
@@ -181,7 +230,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     if (dateFilter) {
       const d = new Date(dateFilter); d.setHours(0,0,0,0)
       const dEnd = new Date(dateFilter); dEnd.setHours(23,59,59,999)
-      q = q.gte('created_at', d.toISOString()).lte('created_at', dEnd.toISOString())
+      q = q.gte(dateColumn, d.toISOString()).lte(dateColumn, dEnd.toISOString())
     }
 
     // Rol tabanlı erişim
@@ -204,7 +253,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     const { data, error } = await q
     if (error) console.error('TicketListesi fetch error:', error)
 
-    let result = data || []
+    let result = await withUpdaterProfiles(data || [])
     // Severity sort: client-side
     if (sortMode === 'sev_desc') result = result.sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0))
     if (sortMode === 'sev_asc')  result = result.sort((a, b) => (SEVERITY_ORDER[a.severity] || 0) - (SEVERITY_ORDER[b.severity] || 0))
@@ -227,7 +276,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
 
       {/* Status tabs + toolbar */}
       <div className="tl-tabs-bar">
-        {STATUS_TABS.map(t => (
+        {visibleStatusTabs.map(t => (
           <button key={t.key} style={tabBtn(statusTab === t.key)} onClick={() => setStatusTab(t.key)}>
             {t.label}
           </button>
@@ -405,7 +454,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-                  {['#', 'AÇIKLAMA', 'CİNS', 'ACİLİYET', 'DURUM', 'LOKASYON', 'TARİH', 'İŞLEM'].map(h => (
+                  {['#', 'AÇIKLAMA', 'CİNS', 'ACİLİYET', 'DURUM', 'OLUŞTURAN', 'OLUŞTURULMA TARİHİ', ...(statusTab === 'sonuclandi' ? ['SONUÇLANMA TARİHİ'] : []), 'İŞLEM'].map(h => (
                     <th key={h} style={TH}>{h}</th>
                   ))}
                 </tr>
@@ -417,27 +466,27 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                   const ca = CATEGORY[t.category] || CATEGORY['genel']
 
                   const isActive   = t.status === 'gönderildi' || t.status === 'açık' || t.status === 'işlemde'
-                  const canProcess = isAdmin && (t.status === 'gönderildi' || t.status === 'açık')
-                  const canClose   = isAdmin && isActive
-                  const canCancel  = isAdmin
+                  const canManage  = isAdmin || isProjectManager
+                  const canProcess = canManage && (t.status === 'gönderildi' || t.status === 'açık')
+                  const canClose   = canManage && t.status === 'işlemde'
+                  const canCancel  = canManage
                     ? isActive
-                    : (t.created_by === user?.id && isActive)
+                    : false
+                  const canDelete  = !canManage && t.created_by === user?.id && (t.status === 'gönderildi' || t.status === 'açık')
+                  const ownerText = actionOwnerText(t)
 
                   return (
                     <tr
                       key={t.id}
                       onClick={() => setSelected(t)}
-                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: t.status === 'işlemde' ? '#F3F4F6' : 'transparent' }}
+                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: 'transparent' }}
                       onMouseEnter={e => e.currentTarget.style.background = '#E5E7EB'}
-                      onMouseLeave={e => e.currentTarget.style.background = t.status === 'işlemde' ? '#F3F4F6' : 'transparent'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       <td style={{ padding: '12px 16px', fontSize: 12, color: '#9CA3AF', fontWeight: 500 }}>#{idx + 1}</td>
                       <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#111827' }}>
                         <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.45 }}>
                           {t.description || t.title}
-                        </span>
-                        <span style={{ fontSize: 11, color: '#9CA3AF', display: 'block', marginTop: 2 }}>
-                          {t.creator?.full_name || '—'}
                         </span>
                       </td>
                       <td style={{ padding: '12px 16px' }}>
@@ -456,40 +505,58 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                         </span>
                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>
-                        {t.location || <span style={{ color: '#D1D5DB' }}>—</span>}
+                        {t.creator?.full_name || <span style={{ color: '#D1D5DB' }}>—</span>}
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>{fmtDate(t.created_at)}</td>
+                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>
+                        {fmtDate(t.created_at)}
+                      </td>
+                      {statusTab === 'sonuclandi' && (
+                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>
+                          {fmtDate(t.status === 'iptal_edildi' ? t.cancelled_at : t.closed_at)}
+                        </td>
+                      )}
 
                       <td style={{ padding: '10px 16px' }} onClick={e => e.stopPropagation()}>
-                        {(canProcess || canClose || canCancel) ? (
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
-                            {canProcess && (
+                        {(canProcess || canClose || canCancel || canDelete) ? (
+                          <div>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
+                              {canProcess && (
                               <button
                                 onClick={() => setQuickAction({ ticket: t, type: 'process' })}
                                 style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#185FA5', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
                               >
                                 İşleme Al
                               </button>
-                            )}
-                            {canClose && (
+                              )}
+                              {canClose && (
                               <button
                                 onClick={() => setQuickAction({ ticket: t, type: 'close' })}
                                 style={{ background: '#F9FAFB', border: '1px solid #D1D5DB', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#374151', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
                               >
                                 Kapat
                               </button>
-                            )}
-                            {canCancel && (
+                              )}
+                              {canCancel && (
                               <button
                                 onClick={() => setQuickAction({ ticket: t, type: 'cancel' })}
                                 style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
                               >
                                 İptal
                               </button>
-                            )}
+                              )}
+                              {canDelete && (
+                              <button
+                                onClick={() => setQuickAction({ ticket: t, type: 'delete' })}
+                                style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 500, color: '#DC2626', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                              >
+                                Ticketı Sil
+                              </button>
+                              )}
+                            </div>
+                            {ownerText && <span style={{ display: 'block', marginTop: 5, fontSize: 10, color: '#6B7280', whiteSpace: 'nowrap' }}>{ownerText}</span>}
                           </div>
                         ) : (
-                          <span style={{ fontSize: 11, color: '#D1D5DB' }}>—</span>
+                          <span style={{ fontSize: 11, color: ownerText ? '#6B7280' : '#D1D5DB', whiteSpace: 'nowrap' }}>{ownerText || '—'}</span>
                         )}
                       </td>
                     </tr>
@@ -514,6 +581,9 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                   {t.creator?.full_name && (
                     <div className="tl-card-sub">{t.creator.full_name}</div>
                   )}
+                  {actionOwnerText(t) && (
+                    <div className="tl-card-sub">{actionOwnerText(t)}</div>
+                  )}
                   <div className="tl-card-foot">
                     <span style={{ background: ca.bg, color: ca.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
                       {t.category?.charAt(0).toUpperCase() + t.category?.slice(1)}
@@ -524,7 +594,15 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                     <span style={{ background: st.bg, color: st.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
                       {st.label}
                     </span>
-                    <span className="tl-card-date">{fmtDate(t.created_at)}</span>
+                    <span className="tl-card-date">
+                      Oluşturulma: {fmtDate(t.created_at)}
+                    </span>
+                    {statusTab === 'sonuclandi' && (
+                      <span className="tl-card-date">
+                        {t.status === 'iptal_edildi' ? 'İptal: ' : 'Kapanış: '}
+                        {fmtDate(t.status === 'iptal_edildi' ? t.cancelled_at : t.closed_at)}
+                      </span>
+                    )}
                   </div>
                 </div>
               )

@@ -5,26 +5,11 @@ import { SEVERITY_META as SEVERITY } from '../../utils/ticketSeverity'
 import { STATUS_META as STATUS, CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
 
 const fmtDate     = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
-const fmtDateTime = (d) => d ? new Date(d).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
-
-const ACTION_DEFAULTS = {
-  process: 'Ticketınız işleme alındı.',
-  close:   'Ticketınız kapatıldı.',
-  cancel:  'Ticketınız iptal edildi.',
-}
 const ACTION_QUESTIONS = {
   process: 'Ticket işleme alınacak. Onaylıyor musunuz?',
   close:   'İşlemi kapatmak istiyor musunuz?',
   cancel:  'İşlemi iptal etmek istiyor musunuz?',
-}
-
-function Avatar({ name }) {
-  const initial = name?.charAt(0)?.toUpperCase() || '?'
-  return (
-    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#EFF6FF', color: '#185FA5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, flexShrink: 0 }}>
-      {initial}
-    </div>
-  )
+  delete:  'Bu ticket tamamen silinecek. Onaylıyor musunuz?',
 }
 
 function Badge({ map, value }) {
@@ -37,13 +22,11 @@ function Badge({ map, value }) {
 }
 
 export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }) {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, role } = useAuth()
   const [ticket, setTicket]                 = useState(initial)
   const [loadingTicket, setLoadingTicket]   = useState(false)
-  const [notifications, setNotifications]  = useState([])
   const [history, setHistory]              = useState([])
   const [attachments, setAttachments]      = useState([])
-  const [commentText, setCommentText]      = useState('')
   const [updating, setUpdating]            = useState(false)
   const [error, setError]                  = useState(null)
   const [pendingAction, setPendingAction]  = useState(null)
@@ -52,7 +35,6 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
   useEffect(() => {
     if (!initial?.id) return
     fetchTicket()
-    fetchNotifications()
     fetchHistory()
     fetchAttachments()
   // Dört yükleyici aynı ticket kimliğinin anık görüntüsünü getirir; render-başına
@@ -68,28 +50,21 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
         .select('*, projects(name), creator:profiles!tickets_created_by_fkey(full_name)')
         .eq('id', initial.id)
         .single()
-      if (data) setTicket(data)
+      if (data) {
+        let updater = null
+        if (data.updated_by) {
+          const { data: updaterProfile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', data.updated_by)
+            .maybeSingle()
+          updater = updaterProfile
+        }
+        setTicket({ ...data, updater })
+      }
     } finally {
       setLoadingTicket(false)
     }
-  }
-
-  async function fetchNotifications() {
-    const { data } = await supabase
-      .from('ticket_comments')
-      .select('*, profiles!user_id(full_name)')
-      .eq('ticket_id', ticket.id)
-      .order('created_at', { ascending: true })
-    if (!data) {
-      const fallback = await supabase
-        .from('ticket_comments')
-        .select('*, profiles!created_by(full_name)')
-        .eq('ticket_id', initial.id)
-        .order('created_at', { ascending: true })
-      setNotifications(fallback.data || [])
-      return
-    }
-    setNotifications(data || [])
   }
 
   async function fetchHistory() {
@@ -121,7 +96,6 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
   }
 
   function initiateAction(type) {
-    setCommentText(prev => prev.trim() ? prev : ACTION_DEFAULTS[type])
     setPendingAction(type)
     setConfirmVisible(true)
   }
@@ -129,38 +103,42 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
   function cancelAction() {
     setConfirmVisible(false)
     setPendingAction(null)
-    setCommentText('')
     setError(null)
   }
 
   async function executeAction() {
-    if (pendingAction === 'cancel' && !commentText.trim()) {
-      setError('İptal sebebi boş bırakılamaz.')
-      return
-    }
     setUpdating(true)
     setError(null)
 
+    if (pendingAction === 'delete') {
+      const { error: deleteError } = await supabase.rpc('delete_own_open_ticket', { p_ticket_id: ticket.id })
+      if (deleteError) {
+        setError(deleteError.message || 'Ticket silinemedi.')
+        setUpdating(false)
+        return
+      }
+      setUpdating(false)
+      setConfirmVisible(false)
+      onUpdated?.()
+      onClose()
+      return
+    }
+
     const statusMap = { process: 'işlemde', close: 'kapatıldı', cancel: 'iptal_edildi' }
     const newStatus = statusMap[pendingAction]
-    const noteText  = commentText.trim() || ACTION_DEFAULTS[pendingAction]
 
-    const { error: err } = await supabase.from('tickets').update({
-      status:     newStatus,
-      updated_by: user.id,
-      updated_at: new Date().toISOString(),
-      ...(newStatus === 'kapatıldı' ? { resolved_at: new Date().toISOString() } : {}),
-    }).eq('id', ticket.id)
+    const { error: err } = role === 'proje_yoneticisi'
+      ? await supabase.rpc('project_manager_update_ticket_status', {
+          p_ticket_id: ticket.id,
+          p_new_status: newStatus,
+        })
+      : await supabase.from('tickets').update({
+          status:     newStatus,
+          updated_by: user.id,
+          updated_at: new Date().toISOString(),
+        }).eq('id', ticket.id)
 
     if (err) { setError('İşlem kaydedilemedi.'); setUpdating(false); return }
-
-    await supabase.from('ticket_comments').insert({
-      ticket_id:       ticket.id,
-      user_id:         user.id,
-      content:         noteText,
-      is_notification: true,
-      sent_by_admin:   isAdmin,
-    })
 
     setUpdating(false)
     setConfirmVisible(false)
@@ -173,12 +151,23 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
   const ca       = CATEGORY[ticket.category] || CATEGORY['genel']
   const isActive = ticket.status === 'gönderildi' || ticket.status === 'açık' || ticket.status === 'işlemde'
 
-  const canProcess = isAdmin && (ticket.status === 'gönderildi' || ticket.status === 'açık')
-  const canClose   = isAdmin && isActive
-  const canCancel  = isAdmin
+  const canManage  = isAdmin || role === 'proje_yoneticisi'
+  const canProcess = canManage && (ticket.status === 'gönderildi' || ticket.status === 'açık')
+  const canClose   = canManage && ticket.status === 'işlemde'
+  const canCancel  = canManage
     ? isActive
-    : (user?.id === ticket.created_by && isActive)
-  const hasActions = canProcess || canClose || canCancel
+    : false
+  const canDelete  = !canManage && user?.id === ticket.created_by && (ticket.status === 'gönderildi' || ticket.status === 'açık')
+  const hasActions = canProcess || canClose || canCancel || canDelete
+  const actionOwnerText = ticket.updater?.full_name
+    ? ticket.status === 'işlemde'
+      ? `${ticket.updater.full_name} tarafından işleme alındı`
+      : ticket.status === 'kapatıldı'
+        ? `${ticket.updater.full_name} tarafından kapatıldı`
+        : ticket.status === 'iptal_edildi'
+          ? `${ticket.updater.full_name} tarafından iptal edildi`
+        : null
+    : null
 
   return (
     <div
@@ -259,53 +248,6 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
               </div>
             )}
 
-            {/* Bildirimler */}
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.4px', margin: '0 0 12px' }}>
-                Yorumlar {notifications.length > 0 && `(${notifications.length})`}
-              </p>
-              {notifications.length === 0 ? (
-                <p style={{ fontSize: 13, color: '#9CA3AF', marginBottom: 12 }}>Henüz yorum yok.</p>
-              ) : (
-                <div style={{ marginBottom: 12 }}>
-                  {notifications.map(c => (
-                    <div key={c.id} style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-                      <Avatar name={c.profiles?.full_name} />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ fontSize: 13, fontWeight: 500, color: '#111827' }}>{c.profiles?.full_name || (c.sent_by_admin ? 'Yönetici' : 'Kullanıcı')}</span>
-                          <span style={{ fontSize: 11, color: '#9CA3AF' }}>{fmtDateTime(c.created_at)}</span>
-                        </div>
-                        <p style={{ fontSize: 13, color: '#374151', margin: 0, lineHeight: 1.55, background: '#EFF6FF', borderRadius: 8, padding: '8px 12px', borderLeft: '3px solid #185FA5' }}>
-                          {c.content}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Mesaj textarea — sadece aktif ve izinli */}
-              {hasActions && isActive && (
-                <div>
-                  <textarea
-                    value={commentText}
-                    onChange={e => setCommentText(e.target.value)}
-                    placeholder={pendingAction ? ACTION_DEFAULTS[pendingAction] : 'İşlem yaparken gönderilecek mesajı önceden yazabilirsiniz.'}
-                    rows={2}
-                    style={{ width: '100%', border: `1px solid ${pendingAction ? '#185FA5' : '#E5E7EB'}`, borderRadius: 8, padding: '8px 12px', fontSize: 13, resize: 'none', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s', background: pendingAction ? '#F0F7FF' : '#fff' }}
-                  />
-                  {pendingAction && (
-                    <p style={{ fontSize: 11, color: pendingAction === 'cancel' ? '#DC2626' : '#185FA5', margin: '4px 0 0' }}>
-                      {pendingAction === 'cancel'
-                        ? 'İptal sebebi zorunludur. Bu mesaj ticket sahibine gönderilecek.'
-                        : 'Bu mesaj ticket sahibine bildirim olarak gönderilecek. Düzenleyebilirsiniz.'}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
             {/* Geçmiş */}
             {history.length > 0 && (
               <div>
@@ -337,7 +279,8 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                 { label: 'Oluşturan', value: ticket.creator?.full_name || '—' },
                 { label: 'Lokasyon',  value: ticket.location || '—' },
                 { label: 'Açılma',    value: fmtDate(ticket.created_at) },
-                { label: 'Çözüm',     value: ticket.resolved_at ? fmtDate(ticket.resolved_at) : '—' },
+                ...(ticket.closed_at ? [{ label: 'Kapatılma', value: fmtDate(ticket.closed_at) }] : []),
+                ...(ticket.cancelled_at ? [{ label: 'İptal', value: fmtDate(ticket.cancelled_at) }] : []),
               ].map(({ label, value }) => (
                 <div key={label} style={{ marginBottom: 9 }}>
                   <p style={{ fontSize: 10, color: '#9CA3AF', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>{label}</p>
@@ -347,6 +290,14 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
             </div>
 
             {/* Aksiyon butonları */}
+            {actionOwnerText && (
+              <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '10px 12px' }}>
+                <p style={{ margin: 0, fontSize: 12, color: '#1D4ED8', fontWeight: 500, lineHeight: 1.45 }}>
+                  {actionOwnerText}
+                </p>
+              </div>
+            )}
+
             {hasActions && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {canProcess && (
@@ -379,6 +330,14 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                     İptal Et
                   </button>
                 )}
+                {canDelete && (
+                  <button
+                    onClick={() => initiateAction('delete')}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', border: '1.5px solid #FECACA', background: '#FEF2F2', color: '#DC2626', textAlign: 'center' }}
+                  >
+                    Ticketı Sil
+                  </button>
+                )}
               </div>
             )}
 
@@ -399,9 +358,9 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
               <h3 style={{ margin: '0 0 14px', fontSize: 16, fontWeight: 700, color: '#111827' }}>
                 {ACTION_QUESTIONS[pendingAction]}
               </h3>
-              <div style={{ background: '#F9FAFB', borderRadius: 8, padding: '10px 14px', marginBottom: error ? 12 : 20, fontSize: 13, color: '#374151', fontStyle: 'italic', textAlign: 'left', lineHeight: 1.5 }}>
-                "{commentText || ACTION_DEFAULTS[pendingAction]}"
-              </div>
+              <p style={{ margin: `0 0 ${error ? 12 : 20}px`, fontSize: 13, color: '#6B7280', lineHeight: 1.5 }}>
+                {pendingAction === 'delete' ? 'Bu işlem geri alınamaz.' : 'Ticket durumu güncellenecek.'}
+              </p>
               {error && (
                 <p style={{ color: '#DC2626', fontSize: 12, margin: '0 0 14px' }}>{error}</p>
               )}
@@ -409,7 +368,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                 <button
                   onClick={executeAction}
                   disabled={updating}
-                  style={{ flex: 1, background: pendingAction === 'cancel' ? '#DC2626' : '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '11px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: updating ? 0.7 : 1 }}
+                  style={{ flex: 1, background: pendingAction === 'cancel' || pendingAction === 'delete' ? '#DC2626' : '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '11px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: updating ? 0.7 : 1 }}
                 >
                   {updating ? '…' : 'Onayla'}
                 </button>

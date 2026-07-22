@@ -128,8 +128,8 @@ function newIssueRow() {
 // Ticket durumu için kısa TR etiketleri — src/components/tickets/*'daki STATUS
 // haritasıyla aynı anlam, burada yalnızca rozet metni için (bağımlılık eklemeye gerek yok).
 const TICKET_STATUS_LABEL = {
-  gönderildi:   'Gönderildi',
-  açık:         'Gönderildi',
+  gönderildi:   'Açık',
+  açık:         'Açık',
   işlemde:      'İşlemde',
   kapatıldı:    'Kapatıldı',
   iptal_edildi: 'İptal Edildi',

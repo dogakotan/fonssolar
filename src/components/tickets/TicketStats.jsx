@@ -4,24 +4,24 @@ import { useAuth } from '../../context/AuthContext'
 
 export default function TicketStats({ refreshKey }) {
   const { role, projectId } = useAuth()
-  const [c, setC] = useState({ gonderildi: 0, islemde: 0, bugun: 0, cozuldu: 0 })
+  const [c, setC] = useState({ acik: 0, islemde: 0, bugun: 0, sonuclandi: 0 })
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       const today = new Date().toISOString().split('T')[0]
       const scope = (query) => role === 'santiye_sefi' && projectId ? query.eq('project_id', projectId) : query
-      const [gonderildi, islemde, bugun, cozuldu] = await Promise.all([
-        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).in('status', ['gönderildi', 'açık'])),
-        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('status', 'işlemde')),
+      const [acik, islemde, bugun, sonuclandi] = await Promise.all([
+        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('workflow_stage', 'acik')),
+        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('workflow_stage', 'islemde')),
         scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).gte('created_at', today)),
-        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('status', 'kapatıldı')),
+        scope(supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('workflow_stage', 'sonuclandi')),
       ])
       setC({
-        gonderildi: gonderildi.count ?? 0,
-        islemde:    islemde.count ?? 0,
-        bugun:      bugun.count ?? 0,
-        cozuldu:    cozuldu.count ?? 0,
+        acik:        acik.count ?? 0,
+        islemde:     islemde.count ?? 0,
+        bugun:       bugun.count ?? 0,
+        sonuclandi:  sonuclandi.count ?? 0,
       })
       setLoading(false)
     }
@@ -29,10 +29,10 @@ export default function TicketStats({ refreshKey }) {
   }, [refreshKey, role, projectId])
 
   const cards = [
-    { label: 'Gönderildi',    value: c.gonderildi, accent: '#1D4ED8', note: 'Bekliyor' },
+    { label: 'Açık',          value: c.acik,        accent: '#1D4ED8', note: 'Bekliyor' },
     { label: 'İşlemde',       value: c.islemde,    accent: '#6B7280', note: 'İnceleniyor' },
     { label: 'Bugün Açılan',  value: c.bugun,      accent: '#185FA5', note: 'Son 24 saat' },
-    { label: 'Kapatıldı',     value: c.cozuldu,    accent: '#6B7280', note: 'Tamamlandı' },
+    { label: 'Sonuçlandı',     value: c.sonuclandi, accent: '#6B7280', note: 'Kapatıldı / İptal' },
   ]
 
   return (

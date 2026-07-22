@@ -54,6 +54,9 @@ export function notificationDisplay(notification, live) {
           : notification.body,
       }
     case 'ticket':
+      if (['processed_by_project_manager', 'closed_by_project_manager', 'cancelled_by_project_manager'].includes(notification.event_type)) {
+        return { title: notification.title, body: notification.body }
+      }
       return {
         title: notification.event_type === 'created'
           ? 'Yeni ticket oluşturuldu'
