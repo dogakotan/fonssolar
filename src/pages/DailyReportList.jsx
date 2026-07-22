@@ -6,7 +6,8 @@ import { useDashboardData } from '../hooks/useDashboardData'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import DailyReportDetail from './DailyReportDetail'
-import Badge, { DAILY_REPORT_STATUS } from '../components/ui/StatusBadge'
+import Badge from '../components/ui/Badge'
+import { DAILY_REPORT_STATUS } from '../components/ui/StatusBadge'
 import { exportToExcel, exportToPdf } from '../utils/exportUtils'
 import {
   fetchXlsxTemplate,

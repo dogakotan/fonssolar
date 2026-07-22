@@ -3,7 +3,8 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import Pager from '../../../components/ui/Pager'
-import Badge, { PR_STATUS } from '../../../components/ui/StatusBadge'
+import Badge from '../../../components/ui/Badge'
+import { PR_STATUS } from '../../../components/ui/StatusBadge'
 import { normalizeStatus } from '../../../utils/satinAlma'
 import { toUserMessage as translateError } from '../../../utils/errors'
 import { compressImageFile } from '../../../utils/imageCompression'
@@ -276,6 +277,9 @@ export default function TedarikKuyrugu({ projectId, refreshKey, projects = [], o
   // uygulanmadan çekilir, RLS (has_project_access) erişebildiği projelerle sınırlar.
   const projectNameById = new Map(projects.map(p => [p.id, p.name]))
 
+  // fetchData bu iki kapsam değişkeniyle yeniden çalışmalı; fonksiyonun kendisi
+  // render başına yeniden oluştuğu için dependency yapmak sonsuz döngü yaratır.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [projectId, refreshKey])
   useEffect(() => { setPage(0) }, [statusFilter, projectId])
 
@@ -397,7 +401,7 @@ export default function TedarikKuyrugu({ projectId, refreshKey, projects = [], o
                               background: '#185FA5', color: '#fff',
                               border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                             }}>
-                              Muhasebeye Yönlendir
+                              Tamamlandı
                             </button>
                             <button onClick={() => setCancelling(request)} style={{
                               background: '#FEF2F2', color: '#DC2626',
@@ -429,7 +433,6 @@ export default function TedarikKuyrugu({ projectId, refreshKey, projects = [], o
           onSaved={() => { setShowNewRequest(false); fetchData(); onChanged?.() }}
         />
       )}
-
       {selected && (
         <TedarikBilgisiModal
           request={selected}

@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import { expect } from '@playwright/test'
 
 export function makeClient() {
   return createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY)
@@ -26,10 +25,6 @@ export async function loginUi(page, email, password) {
 export function parseTRY(text) {
   const digits = (text || '').replace(/[^\d]/g, '')
   return digits ? Number(digits) : NaN
-}
-
-export async function waitForRealtimeLive(page, timeout = 15000) {
-  await expect(page.getByText('Canlı', { exact: true }).first()).toBeVisible({ timeout })
 }
 
 export function financeCard(page) {

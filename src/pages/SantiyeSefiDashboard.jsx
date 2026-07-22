@@ -8,7 +8,8 @@ import YeniTicketModal from '../components/tickets/YeniTicketModal'
 import YeniTalepModal from '../components/satin-alma/YeniTalepModal'
 import TicketDetayModal from '../components/tickets/TicketDetayModal'
 import TalepDetayModal from '../components/satin-alma/TalepDetayModal'
-import Badge, { TONE, PR_STATUS, PR_URGENCY, TK_STATUS, TK_SEVERITY } from '../components/ui/StatusBadge'
+import Badge from '../components/ui/Badge'
+import { TONE, PR_STATUS, PR_URGENCY, TK_STATUS, TK_SEVERITY } from '../components/ui/StatusBadge'
 import Pager from '../components/ui/Pager'
 
 function fmtDate(d) {

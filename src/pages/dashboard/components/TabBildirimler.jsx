@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
-import Badge, { INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS } from '../../../components/ui/StatusBadge'
+import Badge from '../../../components/ui/Badge'
+import { INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS, PR_STATUS, TK_STATUS } from '../../../components/ui/StatusBadge'
 import Pager from '../../../components/ui/Pager'
 import ApprovalStepsHorizontal from '../../../components/ui/ApprovalStepsHorizontal'
 import { buildApprovalSteps } from '../../../utils/satinAlma'
 import { MANAGER_ROLES } from '../../../config/navigation'
+import { dedupeNotifications, notificationDisplay } from '../../../utils/notifications'
 
 const BADGE_MAP = {
+  purchase_request: PR_STATUS,
+  ticket: TK_STATUS,
   invoice: INVOICE_STATUS,
   procurement_item_change_request: PROCUREMENT_CHANGE_STATUS,
 }
 
-// Ticket'ın basit 3 adımlı süreci — iptal_edildi ayrı bir "reddedildi" dalı olarak gösterilir.
-// TicketDetayModal.jsx'e dokunulmuyor, bu yalnızca bildirim satırına özel kompakt bir özet.
 function buildTicketSteps(status) {
   const isCancelled = status === 'iptal_edildi'
   const isProcessing = status === 'işlemde'
@@ -86,16 +88,17 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
       .select('id, project_id, entity_type, entity_id, event_type, title, body, is_read, created_at')
       .order('created_at', { ascending: false })
       .limit(200)
-    setItems(data || [])
+    const uniqueItems = dedupeNotifications(data || [])
+    setItems(uniqueItems)
     setLoading(false)
 
     // Satın alma talebi / ticket / fatura / malzeme miktarı değişikliği bildirimleri için canlı
     // durum ayrıca çekilir — bildirim metni oluşturulduğu andaki durumu dondurur, süreç
     // ilerlediğinde güncellenmez.
-    const prIds = [...new Set((data || []).filter(n => n.entity_type === 'purchase_request').map(n => n.entity_id))]
-    const tkIds = [...new Set((data || []).filter(n => n.entity_type === 'ticket').map(n => n.entity_id))]
-    const invIds = [...new Set((data || []).filter(n => n.entity_type === 'invoice').map(n => n.entity_id))]
-    const pcrIds = [...new Set((data || []).filter(n => n.entity_type === 'procurement_item_change_request').map(n => n.entity_id))]
+    const prIds = [...new Set(uniqueItems.filter(n => n.entity_type === 'purchase_request').map(n => n.entity_id))]
+    const tkIds = [...new Set(uniqueItems.filter(n => n.entity_type === 'ticket').map(n => n.entity_id))]
+    const invIds = [...new Set(uniqueItems.filter(n => n.entity_type === 'invoice').map(n => n.entity_id))]
+    const pcrIds = [...new Set(uniqueItems.filter(n => n.entity_type === 'procurement_item_change_request').map(n => n.entity_id))]
     const [prRes, tkRes, invRes, pcrRes] = await Promise.all([
       prIds.length ? supabase.from('purchase_requests').select('id, status').in('id', prIds) : Promise.resolve({ data: [] }),
       tkIds.length ? supabase.from('tickets').select('id, status').in('id', tkIds) : Promise.resolve({ data: [] }),
@@ -253,6 +256,7 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
               {pageItems.map(n => {
                 const tone = reminderTone(n)
                 const live = liveStatus[n.entity_id]
+                const display = notificationDisplay(n, live)
                 const meta = ENTITY_META[n.entity_type] || DEFAULT_META
                 const bucket = dateBucket(n.created_at)
                 const showBucket = bucket !== lastBucket
@@ -267,15 +271,15 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                     >
                       <span className="bildirim-icon" aria-hidden="true">{meta.icon}</span>
                       <div className="bildirim-body">
-                        <p className="bildirim-title">{n.title}</p>
-                        {n.body && <p className="bildirim-desc">{n.body}</p>}
-                        {live && live.kind === 'purchase_request' && (
+                        <p className="bildirim-title">{display.title}</p>
+                        {display.body && <p className="bildirim-desc">{display.body}</p>}
+                        {live?.kind === 'purchase_request' && (
                           <ApprovalStepsHorizontal steps={buildApprovalSteps(live.status)} />
                         )}
-                        {live && live.kind === 'ticket' && (
+                        {live?.kind === 'ticket' && (
                           <ApprovalStepsHorizontal steps={buildTicketSteps(live.status)} />
                         )}
-                        {live && live.kind !== 'purchase_request' && live.kind !== 'ticket' && (
+                        {live && ['invoice', 'procurement_item_change_request'].includes(live.kind) && BADGE_MAP[live.kind] && (
                           <p className="bildirim-live">
                             Şu an: <Badge map={BADGE_MAP[live.kind]} value={live.status} />
                           </p>

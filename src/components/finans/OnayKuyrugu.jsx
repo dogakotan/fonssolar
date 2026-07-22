@@ -219,6 +219,9 @@ export default function OnayKuyrugu({ projectId = null }) {
   const [loading,         setLoading]         = useState(true)
   const [actionLoading,   setActionLoading]   = useState(null)
 
+  // Kuyruk proje ve rol kapsamı değişince yenilenir; render-başına oluşan
+  // fetchData referansı dependency yapılırsa gereksiz istek döngüsü oluşur.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [projectId, isAdmin])
 
   async function fetchData() {

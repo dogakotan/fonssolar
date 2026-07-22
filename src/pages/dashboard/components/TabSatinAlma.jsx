@@ -1,22 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
-import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../../../components/ui/DataStatusBanner'
-import {
-  normalizeStatus,
-  classifyRequestTypes,
-  groupByProjectId,
-  aggregateMaterialsAcrossProjects,
-} from '../../../utils/satinAlma'
-import ProjeTabSatinAlmaStats from './ProjeTabSatinAlmaStats'
-import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
+import TedarikKuyrugu from './TedarikKuyrugu'
 
 export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
-  const { isAdmin, isMuhasebe } = useAuth()
+  const { role, isAdmin } = useAuth()
   const [tab, setTab] = useState('talepler')
 
   // Bildirimler'den belirli bir talebe gidilince "Onay Bekleyenler" sekmesinde
@@ -25,9 +17,7 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
     if (openRequestId) setTab('talepler')
   }, [openRequestId])
   const [projectFilter, setProjectFilter] = useState('all')
-  const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
-
-  const { data: overview, loading, refreshing, error, refetch } = useDashboardData('get_satin_alma_overview_all', {})
+  const { data: overview, refreshing, error, refetch } = useDashboardData('get_satin_alma_overview_all', {})
   const requests = overview?.requests || []
   const procurement = overview?.procurement_items || []
   const refresh = refetch
@@ -38,15 +28,6 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
   const [refreshKey, setRefreshKey] = useState(0)
   useRealtimeRefresh(['purchase_requests'], () => { refetch(); setRefreshKey(k => k + 1) })
 
-  useEffect(() => {
-    let alive = true
-    // TCMB kur servisi yavaş/erişilemez olabilir; ana veriyi bekletmemesi için ayrı yükleniyor.
-    fetchDoviz().then(kurData => {
-      if (alive && kurData) setDoviz({ usd: kurData.usd, eur: kurData.eur, date: kurData.date })
-    })
-    return () => { alive = false }
-  }, [])
-
   const projectOptions = (() => {
     const map = new Map()
     requests.forEach(r => { if (r.project_id && !map.has(r.project_id)) map.set(r.project_id, r.project_name) })
@@ -56,26 +37,12 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
       .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
   })()
 
-  const scopedRequests = projectFilter === 'all' ? requests : requests.filter(r => r.project_id === projectFilter)
   const scopedProcurement = projectFilter === 'all' ? procurement : procurement.filter(p => p.project_id === projectFilter)
 
-  const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const pendingRequests = scopedRequests.filter(r => normalizeStatus(r.status) === 'bekliyor')
-  const procurementByProject = groupByProjectId(scopedProcurement)
-  const pendingByProject = groupByProjectId(pendingRequests)
-  const tedarik = aggregateMaterialsAcrossProjects(procurementByProject, pendingByProject)
-  const dagilim = classifyRequestTypes(scopedRequests)
-  const kpi = {
-    pending: pendingRequests.length,
-    risky: tedarik.excess,
-    invoicePending: scopedRequests.filter(r => ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(normalizeStatus(r.status))).length,
-    monthOpened: scopedRequests.filter(r => r.created_at && new Date(r.created_at) >= monthStart).length,
-  }
-
   const TABS = [
-    { key: 'talepler', label: 'Talepler' },
+    { key: 'talepler', label: 'Tüm Talepler' },
     ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
+    ...(role === 'proje_yoneticisi' ? [{ key: 'tedarik', label: 'İşlem Bekleyenler' }] : []),
   ]
 
   const activeProjectId = projectFilter === 'all' ? undefined : projectFilter
@@ -83,12 +50,6 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      {!isMuhasebe && (
-        <div className="sa-overview-grid">
-          <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
-          <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} doviz={doviz} />
-        </div>
-      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)', flexWrap: 'wrap' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
@@ -124,6 +85,7 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
         />
       )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu onChanged={refresh} procurement={scopedProcurement} projectId={activeProjectId} refreshKey={refreshKey} />}
+      {tab === 'tedarik' && role === 'proje_yoneticisi' && <TedarikKuyrugu onChanged={refresh} projectId={activeProjectId} projects={projectOptions} refreshKey={refreshKey} />}
     </div>
   )
 }

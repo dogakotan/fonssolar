@@ -6,9 +6,10 @@ import { supabase } from '../../../lib/supabase'
 // step-numarasına göre bir `steps` prop'u geçiriyor (bkz. o dosyadaki not).
 const DEFAULT_STEPS = [
   { step: 2, table: 'project_tasks',       label: 'İş Kalemleri' },
-  { step: 3, table: 'project_risks',       label: 'Riskler' },
-  { step: 4, table: 'procurement_items',   label: 'Tedarik' },
-  { step: 5, table: 'budget_lines',        label: 'Bütçe' },
+  { step: 3, rpc: 'save_project_category_weights', label: 'Kategori Ağırlıkları' },
+  { step: 4, table: 'project_risks',       label: 'Riskler' },
+  { step: 5, rpc: 'set_project_procurement_completed', label: 'Tedarik ve Teslimat' },
+  { step: 6, table: 'budget_lines',        label: 'Bütçe' },
 ]
 
 const btnP = { padding: '0.5rem 1.25rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
@@ -83,9 +84,25 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
       }
     }
 
-    for (const { step, table, label } of steps) {
+    for (const { step, table, rpc, label } of steps) {
       const res = stepsResult?.[step]
-      if (!res || res.skipped || !res.rows?.length) continue
+      if (!res || res.skipped) continue
+
+      if (rpc) {
+        const params = rpc === 'set_project_procurement_completed'
+          ? { p_project_id: projectId, p_completed: res.completed === true }
+          : { p_project_id: projectId, p_weights: res.rows }
+        const { error: rpcError } = await supabase.rpc(rpc, params)
+        if (rpcError) {
+          savingRef.current = false
+          setStatus('error')
+          setErrorMsg(`${label} kaydedilirken hata: ${rpcError.message}`)
+          return
+        }
+        continue
+      }
+
+      if (!res.rows?.length) continue
 
       if (isEdit) {
         const { error: delErr } = await supabase.from(table).delete().eq('project_id', projectId)
@@ -148,7 +165,7 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
   return (
     <div className="card">
       <div className="card-header">
-        <h3>Adım 6 — {isEdit ? 'Güncelle & Tamamla' : 'Kaydet & Tamamla'}</h3>
+        <h3>Adım {steps.length + 2} — {isEdit ? 'Güncelle & Tamamla' : 'Kaydet & Tamamla'}</h3>
         <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
           Veriler veritabanına şimdi yazılacak
         </span>
@@ -196,7 +213,7 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
                 <span style={{ fontSize: 15 }}>{done ? (res.skipped ? '⊘' : '✓') : '○'}</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: done ? (res.skipped ? '#94a3b8' : '#166534') : '#64748b' }}>{label}</span>
                 <span style={{ fontSize: 12, marginLeft: 'auto', color: done ? (res.skipped ? '#94a3b8' : '#15803d') : '#94a3b8' }}>
-                  {done ? (res.skipped ? 'atlandı' : `${res.count} kayıt`) : 'ziyaret edilmedi'}
+                  {done ? (res.skipped ? 'yetki proje yöneticisinde' : (res.completed ? 'tamamlandı' : `${res.count} kayıt`)) : 'ziyaret edilmedi'}
                 </span>
               </div>
             )

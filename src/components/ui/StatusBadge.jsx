@@ -24,8 +24,8 @@ export const PR_STATUS = {
   // sırada olduğu önemli değil, ikisi de aynı metni göstermeli — aksi halde aynı durum
   // için iki farklı yazı görünüyormuş gibi kafa karıştırıyor.
   fatura_bekliyor:      { label: 'Fatura Bekleniyor',    tone: 'warning' },
-  fatura_onay_bekliyor: { label: 'Fatura Bekleniyor',    tone: 'warning' },
-  faturasi_kesildi:     { label: 'Faturası Kesildi',      tone: 'primary' },
+  fatura_onay_bekliyor: { label: 'Fatura Onayda',         tone: 'primary' },
+  faturasi_kesildi:     { label: 'Fatura Kesildi',        tone: 'success' },
   // satin_alindi = proje yöneticisi tedarikçi/teslimatı girdi, fatura HENÜZ oluşturulmadı —
   // bu durumun TEK anlamı "muhasebe fatura kesmeli" (invoice oluşunca durum hemen
   // fatura_onay_bekliyor'a atlıyor, satin_alindi asla "bitti" anlamına gelmiyor). Önceden
@@ -71,15 +71,4 @@ export const DAILY_REPORT_STATUS = {
   normal: { label: 'Normal', tone: 'success' },
   dikkat: { label: 'Dikkat', tone: 'warning' },
   kritik: { label: 'Kritik', tone: 'danger' },
-}
-
-export default function Badge({ map, value }) {
-  const entry = map[value] || { label: value || '—', tone: 'muted' }
-  const tone = TONE[entry.tone] || TONE.muted
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-      background: tone.bg, color: tone.text, whiteSpace: 'nowrap', flexShrink: 0,
-    }}>{entry.label}</span>
-  )
 }

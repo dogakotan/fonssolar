@@ -146,10 +146,12 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   görünüyor (ayrı bir "Proje Paneli" sekmesi YOK — 2026-07-16'da
   kısaca eklenip aynı oturumda kullanıcı kararıyla geri alındı, bkz. Tamamlanan
   büyük görevler). `ProjeDetay.jsx` kendi seviyesinde artık bir
-  `DataStatusBanner`/`RealtimeStatusIndicator` RENDER ETMİYOR (2026-07-17'de
-  kaldırıldı — her sekme zaten kendi RPC'sine bağlı kendi banner/indicator'ını
-  gösteriyordu, üstte ikinci bir tane sadece tekrar/kayma yaratıyordu; hook
-  çağrıları — `refetch` tetiklemesi için — kaldı, yalnızca render silindi).
+  `DataStatusBanner` render etmiyor (2026-07-17'de kaldırıldı — her sekme zaten
+  kendi RPC'sine bağlı kendi banner'ını gösteriyordu, üstte ikinci bir tane sadece
+  tekrar/kayma yaratıyordu; hook çağrıları `refetch` tetiklemesi için kaldı).
+  Artık hiçbir ekranda kullanılmayan `RealtimeStatusIndicator` bileşeni ve yalnız
+  bu bileşenin tükettiği realtime durum state'leri 2026-07-22'de tamamen silindi;
+  realtime yenileme, debounce ve polling yedeği aynen korunuyor.
   Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kaynağı
   `get_project_by_date`) proje özeti ekranı güncel düzeni: üstte Proje Detayları /
   Genel İlerleme / Günlük-Haftalık-Aylık Özet / Hava Durumu kartları; orta satırda
@@ -1152,7 +1154,7 @@ Alma/Finans Test Verisi notu).
   verisi (geçici `purchase_request`/`suppliers` satırları) temizlendi.
 - **Genel Proje ekranı ikinci geçiş — kullanıcı geri bildirimlerinden 10 madde +
   yol boyunca bulunan 5 gerçek bug:** `ProjeDetay.jsx` + her sekmenin kendi
-  `DataStatusBanner`/`RealtimeStatusIndicator`'ı render etmesi yüzünden Genel
+  `DataStatusBanner`/realtime göstergesini render etmesi yüzünden Genel
   Proje'ye girince "Canlı"/"Güncelleniyor" ikişer kez görünüyordu — üst
   seviyedeki (`ProjeDetay.jsx`) kaldırıldı, sekmeye özel olan kaldı (kullanıcı
   ayrıca kendi elle düzenlemesiyle `ProjectOverviewDashboard.jsx`'teki
@@ -1752,18 +1754,18 @@ Alma/Finans Test Verisi notu).
   projenin gerçek ağırlık satırı sayısına göre dinamik. Formüllere cached sonuç
   eklendiği için Excel dışındaki XLSX okuyucuları da hücreleri görüyor. Canlı
   indirilen XLSX düzen testi + mevcut malzeme onay/export regresyonu 4/4 PASS.
-- **`projects` tablosunun SELECT RLS policy'si (`projects_select`) `has_project_access()`
-  kullanmıyor** — yalnızca admin/muhasebe, `user_project_access` eşleşmesi, veya
-  `profiles.project_id` birebir eşleşmesiyle izin veriyor; `purchase_requests_select`'te
-  2026-07-20'de düzeltilen aynı gap burada hâlâ duruyor. `cross_project=true` bir
-  rolün (`proje_yoneticisi`, `lojistik_tedarik`) `projects` tablosuna RAW `.from()`
-  sorgusu (RPC değil — `get_my_projects()` bu gap'i SECURITY DEFINER ile bypass
-  ediyor zaten) diğer erişilebilir projeleri döndürmez. Şu an bilinen hiçbir ekran
-  bundan etkilenmiyor (`TedarikKuyrugu.jsx`'in tüm-projeler modu proje adları için
-  `ScopeContext`'in zaten yüklediği `get_my_projects()` listesini prop olarak
-  kullanıyor, raw sorgu atmıyor) — ama `projects` tablosuna doğrudan sorgu atan
-  yeni bir ekran yazılırsa bu gap'e dikkat, ya da `purchase_requests_select`'teki
-  gibi `has_project_access(id) OR ...` policy'sine geçirilmesi düşünülebilir.
+- **`projects` tablosunun SELECT RLS boşluğu kapatıldı (2026-07-22):**
+  `projects_select`, rol kurallarını elle
+  tekrar etmek yerine kanonik `has_project_access(id)` helper'ını kullanacak.
+  Böylece `cross_project=true` roller (`proje_yoneticisi`, `lojistik_tedarik`)
+  raw `.from('projects')` sorgusunda tüm proje kapsamını görebilecek; atanmış
+  proje ve `user_project_access` izolasyonu olan saha rolleri yalnız kendi
+  kapsamını görmeye devam edecek. Migration:
+  `align_projects_select_with_canonical_scope`; regresyon testi
+  `procurement-security.spec.js` içinde hem cross-project görünürlüğünü hem
+  şantiye şefinin yabancı proje izolasyonunu kapsıyor. Migration canlıya
+  uygulandı; satın alma güvenlik paketi kategori ağırlığı testleriyle birlikte
+  toplam 8/8 geçti.
 - **Genel (rol-kilitli) Satın Alma/Finans sayfaları ile `ProjeTab*` arasındaki
   kod tekrarı büyük ölçüde giderildi (2026-07-18):** `FaturaListesi`↔
   `ProjeTabFaturaListesi`, `OnayKuyrugu`↔`ProjeTabOnayKuyrugu`, `TalepListesi`
@@ -1813,21 +1815,59 @@ Alma/Finans Test Verisi notu).
   RLS'i için gerekliydi). Supabase üretim ölçeğinde Broadcast-from-database'e
   geçişi öneriyor — bu projenin ölçeğinde (2 test projesi) şimdilik gerekmiyor,
   ileride gündeme gelirse bu kararı birlikte gözden geçir.
-- **Proje sihirbazında ilerleme kategori ağırlıkları düzenlenemiyor** —
-  `project_category_weights` yalnızca SQL ile yönetiliyor, sihirbaza/ayarlar
-  ekranına bir düzenleme arayüzü eklenmedi.
-- **`Adim5Tedarik.jsx`'in "Durum" akışı yeniden tasarlanacak (kullanıcı kararı,
-  henüz yapılmadı).** Kullanıcı tedarik/teslimat takibiyle şu an ilgilenmiyor;
-  `procurement_items`'ta hiç kullanılmayan `shortage_notes`/`damage_notes`
-  kolonları ve `kısmi_teslim`/`hasarlı` status değerleri kaldırıldı (2026-07-16),
-  ama formdaki mevcut 5 durumlu (`planlandı`/`sipariş_verildi`/`teslim_edildi`/
-  `iptal`/`gecikmiş`) Durum dropdown'ı ve teslimat tarihi alanları (Sipariş
-  Tarihi/Beklenen Teslimat) kasıtlı olarak dokunulmadan bırakıldı — bu akış
-  "o kısma gelince baştan" tasarlanacak, kendiliğinden sadeleştirme yapma.
+- **Proje sihirbazı kategori ağırlıkları arayüzü tamamlandı (2026-07-22):**
+  Yeni proje ve proje düzenleme akışlarında İş Kalemleri'nin
+  hemen ardından “Kategori Ağırlıkları” adımı var. Yeni projede görev
+  kategorilerine eşit ve toplamı tam %100 olan başlangıç dağılımı hazırlanıyor;
+  düzenlemede mevcut `project_category_weights` satırları yükleniyor. Frontend
+  0–100 aralığını ve toplam %100 kuralını doğruluyor. Yetki kontrollü
+  `save_project_category_weights` RPC'si tüm dağılımı tek transaction'da
+  değiştiriyor, DB constraint'i ara durumda bozulmuyor ve proje ilerlemesini
+  yeniden hesaplıyor. RPC yalnız admin/proje_yoneticisi + proje erişimiyle
+  çalışıyor; PUBLIC/anon EXECUTE kapalı. Migration canlıya uygulandı. Geçersiz
+  toplamın atomik reddi, saha rolünün yetkisizliği ve geçerli dağılımın kaydı
+  3/3; projects RLS/satın alma güvenlik paketiyle birlikte toplam 8/8 geçti.
+  Security/performance advisor taramasında bu değişiklikten kaynaklanan yeni
+  tablo/index uyarısı yok; RPC, kasıtlı ve iç rol/proje kontrolleri olan
+  authenticated SECURITY DEFINER uç noktası olduğu için advisor'ın genel
+  SECURITY DEFINER uyarı listesinde görünür.
+- **Proje sihirbazı tedarik/teslimat adımı Faz 1'e sadeleştirildi (2026-07-22):**
+  Bu süreç sistem dışında ve yalnızca `proje_yoneticisi` sorumluluğunda
+  ilerler. `Adim5Tedarik.jsx` artık ayrıntılı kalem formu göstermez; proje
+  yöneticisi sadece **"Tamamladım"** onayı verir. Onay `projects` tablosundaki
+  `procurement_completed`, `procurement_completed_at`, `procurement_completed_by`
+  alanlarına, rol ve proje erişimi kontrol edilen
+  `set_project_procurement_completed` RPC'siyle yazılır. Admin ve diğer roller
+  onay veremez. Tedarikçi, sipariş tarihi, beklenen/gerçek teslimat tarihi,
+  ayrıntılı durum, açıklama/not, eksik ve hasarlı teslimat takibi **Faz 2**
+  kapsamına taşındı. Eski `procurement_items` kolonları geriye dönük
+  uyumluluk için korunur ancak bu sihirbaz adımı artık onları okumaz/yazmaz.
+  Aynı durum `ProjeDetay → Genel Proje` ekranındaki Proje Detayları kartında
+  herkese salt-okunur görünür; henüz tamamlanmadıysa yalnızca
+  `proje_yoneticisi` burada **"Tamamladım"** butonunu görür ve onay verebilir.
 
 ---
 
 ## Son değişiklik
+
+**22.07.2026 — ESLint uyarı temizliği:** Mevcut 25 React uyarısı temizlendi.
+Durum badge sabitleri ile `Badge` bileşeni ayrı modüllere bölündü; gerçek eksik
+Hook callback bağımlılıkları eklendi. Yalnızca bilinçli mount/kapsam tetikleyicilerinde,
+yeniden-sorgu döngüsünü engelleyen gerekçeli ve satır bazlı lint istisnaları kaldı.
+`npm run lint` 0 hata/0 warning, production build başarılı ve tam Playwright paketi
+57/57 geçti. Vite'ın bundle boyutu/statik+dinamik import bildirimleri ESLint uyarısı
+değildir; ayrı performans optimizasyonu kapsamındadır.
+
+**22.07.2026 — Bundle optimizasyonu:** Dashboard route'u `React.lazy` +
+`Suspense` ile login kabuğundan ayrıldı. Başlangıç uygulama chunk'ı yaklaşık
+950 KB'dan 12.9 KB'a indi; dashboard chunk'ı 566.7 KB. Recharts ve fflate ayrı
+vendor chunk'larına alındı. PDF için kullanılan 651 KB Roboto Base64 artık JS
+modülü değil, yalnızca PDF üretiminde `/fonts/roboto-regular.base64.txt`
+adresinden indirilen cache'lenebilir statik asset. `exportUtils` statik/dinamik import
+çakışması kaldırıldı. Production build'de 600 KB üstü chunk ve Vite chunk
+uyarısı kalmadı; lint temiz, font kaynak/build bütünlüğü geçti ve tam test
+paketi 57/57 başarılı. İlk tam test koşusundaki tek realtime timeout izole
+tekrarda ve son tam pakette geçti; kod regresyonu değildi.
 
 **21.07.2026 — Proje yöneticisinin satın alma talebi oluşturması canlı
 Supabase ve E2E testleriyle sertleştirildi.** Proje yöneticisi

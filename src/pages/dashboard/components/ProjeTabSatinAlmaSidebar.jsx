@@ -7,15 +7,17 @@ const formatKur = (value) =>
     ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' ₺'
     : '—'
 
-function ColumnChart({ total, totalLabel, items }) {
+function ColumnChart({ total, totalLabel, items, hideTotal = false }) {
   const maxBarHeight = 76
 
   return (
     <div className="sa-column-chart">
-      <div className="sa-chart-total">
-        <span>Toplam</span>
-        <strong>{total} <small>{totalLabel}</small></strong>
-      </div>
+      {!hideTotal && (
+        <div className="sa-chart-total">
+          <span>Toplam</span>
+          <strong>{total} <small>{totalLabel}</small></strong>
+        </div>
+      )}
       <div className="sa-column-bars">
         {items.map(item => {
           const pct = percent(item.value, total)
@@ -62,7 +64,7 @@ function RequestTypeChart({ dagilim }) {
   )
 }
 
-export default function ProjeTabSatinAlmaSidebar({ tedarik, dagilim, doviz }) {
+export default function ProjeTabSatinAlmaSidebar({ tedarik, dagilim, doviz, hideMaterialTotal = false }) {
   const tedarikItems = [
     { label: 'Uygun', value: tedarik.ok, color: 'var(--color-success)' },
     { label: 'Riskli', value: tedarik.excess, color: 'var(--color-danger)' },
@@ -73,7 +75,7 @@ export default function ProjeTabSatinAlmaSidebar({ tedarik, dagilim, doviz }) {
     <>
       <section className="sa-panel-card">
         <p className="sa-eyebrow">Malzeme Tedarik</p>
-        <ColumnChart total={tedarik.total} totalLabel="talep" items={tedarikItems} />
+        <ColumnChart total={tedarik.total} totalLabel="talep" items={tedarikItems} hideTotal={hideMaterialTotal} />
       </section>
 
       <section className="sa-panel-card">

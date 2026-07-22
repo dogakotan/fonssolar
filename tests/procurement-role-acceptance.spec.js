@@ -32,6 +32,7 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
     await loginUi(page, process.env.TEST_PROJEYONETICISI_EMAIL, process.env.TEST_PROJEYONETICISI_PASSWORD)
     await openMenu(page, 'Projeler')
     await page.getByText('Ege Enerji İzmir GES TEST', { exact: true }).first().click()
+    await page.getByRole('button', { name: /Dışa Aktar/ }).click()
     await expect(page.getByRole('button', { name: 'Proje Excelini İndir', exact: true })).toBeVisible()
     await page.getByRole('main').getByRole('button', { name: 'Finans', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toHaveCount(0)
@@ -50,6 +51,7 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
 
     await openMenu(page, 'Projeler')
     await page.getByText('Ege Enerji İzmir GES TEST', { exact: true }).first().click()
+    await page.getByRole('button', { name: /Dışa Aktar/ }).click()
     await expect(page.getByRole('button', { name: 'Proje Excelini İndir', exact: true })).toBeVisible()
     await page.getByRole('main').getByRole('button', { name: 'Finans', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()

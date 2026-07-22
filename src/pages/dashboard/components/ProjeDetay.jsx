@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { unzipSync, strFromU8, strToU8 } from 'fflate'
-import { exportGunlukRaporPdf, exportGunlukRaporExcel } from '../../../utils/exportUtils'
+import {
+  exportGunlukRaporPdf,
+  exportGunlukRaporExcel,
+  exportPeriodReportPdf,
+  exportPeriodReportExcel,
+} from '../../../utils/exportUtils'
 import TicketListesi from '../../../components/tickets/TicketListesi'
 import ProjeTabSatinAlma from './ProjeTabSatinAlma'
 import ProjeTabMalzemeListesi from './ProjeTabMalzemeListesi'
@@ -82,6 +87,9 @@ function EkipListesi({ projectId }) {
     setLoading(false)
   }
 
+  // Ekip listesi yalnız proje değişince yüklenmelidir; render-başına oluşan load
+  // referansını dependency yapmak tekrar sorgu döngüsü yaratır.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (projectId) load() }, [projectId])
 
   async function openModal() {
@@ -1073,10 +1081,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       const projMeta = { name: project?.name || projectName, capacityKwp: project?.capacity_kwp, progress: project?.progress }
 
       if (type === 'pdf') {
-        const { exportPeriodReportPdf } = await import('../../../utils/exportUtils')
         await exportPeriodReportPdf(projMeta, periodLabel, periodRangeLabel, periodData)
       } else {
-        const { exportPeriodReportExcel } = await import('../../../utils/exportUtils')
         exportPeriodReportExcel(projMeta, periodLabel, periodRangeLabel, periodData)
       }
       return
@@ -1160,20 +1166,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
         {/* ── Sağ grup: Tarih Navigasyon + Dışa Aktar ── */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <button
-            type="button"
-            onClick={handleProjectExcelExport}
-            disabled={projectExcelLoading}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px', background: '#fff', color: '#15803d',
-              border: '1px solid #16a34a', borderRadius: 8, fontSize: 13,
-              fontWeight: 600, cursor: projectExcelLoading ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: projectExcelLoading ? 0.65 : 1,
-            }}
-          >
-            {projectExcelLoading ? 'Excel hazırlanıyor…' : 'Proje Excelini İndir'}
-          </button>
           <div ref={calendarRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={() => setShowCalendar(v => !v)} style={calendarBtn} title="Takvim">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1240,25 +1232,24 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
             )}
           </div>
 
-          {/* Dışa Aktar — İş Planı sade görünümünde gizli */}
-          {!['tickets', 'satin-alma', 'malzeme-listesi', 'finans', 'gantt', 'raporlar'].includes(tab) && (
+          {/* Proje Exceli tüm sekmelerden aynı Dışa Aktar menüsünde erişilebilir. */}
             <div ref={exportRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setShowExportMenu(v => !v)}
-                disabled={!wps.length}
+                disabled={projectExcelLoading}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   padding: '7px 14px',
                   background: '#fff',
-                  color: !wps.length ? '#9ca3af' : 'var(--color-text)',
+                  color: projectExcelLoading ? '#9ca3af' : 'var(--color-text)',
                   border: '1px solid var(--color-border)',
                   borderRadius: 8,
                   fontSize: 13, fontWeight: 500,
-                  cursor: !wps.length ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                  cursor: projectExcelLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                   transition: 'background 0.15s',
                   whiteSpace: 'nowrap',
                 }}
-                onMouseEnter={e => { if (wps.length) e.currentTarget.style.background = '#f8fafc' }}
+                onMouseEnter={e => { if (!projectExcelLoading) e.currentTarget.style.background = '#f8fafc' }}
                 onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1279,6 +1270,15 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
                   borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,.10)',
                   padding: '0.875rem', minWidth: 220,
                 }}>
+                  <button
+                    type="button"
+                    onClick={() => { setShowExportMenu(false); handleProjectExcelExport() }}
+                    disabled={projectExcelLoading}
+                    style={{ width: '100%', textAlign: 'left', padding: '9px 10px', marginBottom: 10, background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    {projectExcelLoading ? 'Excel hazırlanıyor…' : 'Proje Excelini İndir'}
+                  </button>
+                  {!['tickets', 'satin-alma', 'malzeme-listesi', 'finans', 'gantt', 'raporlar'].includes(tab) && <>
                   <div style={{ marginBottom: '0.625rem', padding: '6px 10px', background: '#FEF3C7', borderRadius: 6, fontSize: 11, color: '#92400E', fontWeight: 600 }}>
                     {getPeriodLabel(filterDate, filterMode)} raporu
                   </div>
@@ -1305,10 +1305,10 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
                       </button>
                     ))}
                   </div>
+                  </>}
                 </div>
               )}
             </div>
-          )}
         </div>
       </div>
 

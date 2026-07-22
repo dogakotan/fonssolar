@@ -246,7 +246,7 @@ function FaturaDetayModal({ invoice, onClose, onCancelled, onApproved }) {
       .eq('invoice_id', invoice.id)
       .order('step')
       .then(({ data }) => setApprovals(data || []))
-  }, [invoice?.id])
+  }, [invoice])
 
   if (!invoice) return null
 
@@ -590,6 +590,9 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
     fetchInvoices()
   }
 
+  // fetchInvoices yalnız proje/tarih kapsamı değişince yenilenir; render-başına
+  // oluşan fonksiyon referansı dependency olursa istek döngüsü oluşur.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchInvoices() }, [projectId, filterDate])
 
   // Dışarıdan (Bildirimler sayfasından) belirli bir faturaya doğrudan gitme —
@@ -609,7 +612,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
         onOpenedInvoice?.()
       })
     return () => { alive = false }
-  }, [openInvoiceId])
+  }, [openInvoiceId, onOpenedInvoice])
 
   const filtered   = filterStatus === 'hepsi' ? invoices : invoices.filter(i => i.status === filterStatus)
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)

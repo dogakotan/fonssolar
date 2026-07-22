@@ -130,8 +130,11 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
         onOpenedTicket?.()
       })
     return () => { alive = false }
-  }, [openTicketId])
+  }, [openTicketId, onOpenedTicket])
 
+  // Listeyi belirleyen tüm değerler açıkça dependency'de; fetchTickets'in render-başına
+  // değişen referansını eklemek gereksiz istek döngüsü yaratır.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchTickets() }, [statusTab, sortMode, severityFilter, categoryFilter, dateFilter, refreshKey, propProjectId, filterStatus, filterSeverity, isAdmin, role, authProjectId, user?.id])
 
   useEffect(() => {

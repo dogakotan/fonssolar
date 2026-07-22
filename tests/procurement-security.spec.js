@@ -101,6 +101,59 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     expect(exportResponse.status).toBe(403)
   })
 
+  test('cross-project proje yöneticisi projects tablosunu doğrudan tüm kapsamıyla okuyabilir', async () => {
+    const { data: projectRows, error } = await pm.from('projects').select('id')
+
+    expect(error).toBeNull()
+    expect(projectRows.map(project => project.id)).toEqual(
+      expect.arrayContaining([siteProjectId, foreignProjectId]),
+    )
+  })
+
+  test('tedarik ve teslimat tamamlandı onayını yalnızca proje yöneticisi verebilir', async () => {
+    const { data: initial, error: initialError } = await pm.from('projects')
+      .select('procurement_completed,procurement_completed_at,procurement_completed_by')
+      .eq('id', foreignProjectId)
+      .single()
+    expect(initialError).toBeNull()
+    expect(initial.procurement_completed).toBe(false)
+
+    const { error: adminError } = await admin.rpc('set_project_procurement_completed', {
+      p_project_id: foreignProjectId,
+      p_completed: true,
+    })
+    expect(adminError?.message).toContain('yalnızca proje yöneticisi')
+
+    const { error: siteError } = await santiye.rpc('set_project_procurement_completed', {
+      p_project_id: foreignProjectId,
+      p_completed: true,
+    })
+    expect(siteError?.message).toContain('yalnızca proje yöneticisi')
+
+    const { error: completeError } = await pm.rpc('set_project_procurement_completed', {
+      p_project_id: foreignProjectId,
+      p_completed: true,
+    })
+    expect(completeError).toBeNull()
+
+    const { data: completed, error: readError } = await pm.from('projects')
+      .select('procurement_completed,procurement_completed_at,procurement_completed_by')
+      .eq('id', foreignProjectId)
+      .single()
+    expect(readError).toBeNull()
+    expect(completed).toMatchObject({
+      procurement_completed: true,
+      procurement_completed_by: pmId,
+    })
+    expect(completed.procurement_completed_at).toBeTruthy()
+
+    const { error: restoreError } = await pm.rpc('set_project_procurement_completed', {
+      p_project_id: foreignProjectId,
+      p_completed: false,
+    })
+    expect(restoreError).toBeNull()
+  })
+
   test('oturumsuz kullanıcı hassas yazma RPC’lerini çağıramaz', async () => {
     const attempts = await Promise.all([
       anon.rpc('create_purchase_request_with_items', {
@@ -117,6 +170,7 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
       }),
       anon.rpc('resubmit_rejected_invoice', { p_invoice_id: '00000000-0000-0000-0000-000000000000' }),
       anon.rpc('delete_rejected_invoice', { p_invoice_id: '00000000-0000-0000-0000-000000000000' }),
+      anon.rpc('set_project_procurement_completed', { p_project_id: siteProjectId, p_completed: true }),
     ])
     for (const result of attempts) expect(result.error).toBeTruthy()
   })

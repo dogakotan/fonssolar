@@ -1,29 +1,17 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
-import { getAuthRedirectUrl } from '../../../lib/authRedirect'
 import { getProjects } from '../../../api'
 
-const SIRKET_GENELI = ['admin', 'muhasebe']
+const SIRKET_GENELI = ['admin', 'muhasebe', 'proje_yoneticisi']
 
 const PROJE_BAZLI = [
-  'santiye_sefi', 'muhendis', 'koordinator', 'proje_yoneticisi',
-  'mekanik_sef', 'elektrik_sefi', 'enh_sorumlusu',
-  'evrak_takip', 'evrak_takip_uzmani',
-  'is_makinesi_operatoru', 'is_makinesi_operator_sefi',
-  'isg_sorumlusu', 'kalite_kontrol_sefi',
-  'lojistik_tedarik_sorumlusu', 'maliyet_kontrolcu',
-  'operasyon_sorumlusu', 'proje_koordinatoru', 'proje_tasarim_sorumlusu',
+  'santiye_sefi',
 ]
 
 // Dropdown'da gösterilecek benzersiz proje bazlı roller
 const PROJE_BAZLI_SECENEK = [
-  'santiye_sefi', 'muhendis', 'koordinator', 'proje_yoneticisi',
-  'mekanik_sef', 'elektrik_sefi', 'enh_sorumlusu',
-  'evrak_takip', 'is_makinesi_operatoru',
-  'isg_sorumlusu', 'kalite_kontrol_sefi',
-  'lojistik_tedarik_sorumlusu', 'maliyet_kontrolcu',
-  'operasyon_sorumlusu', 'proje_koordinatoru', 'proje_tasarim_sorumlusu',
+  'santiye_sefi',
 ]
 
 const ROL_ETIKET = {
@@ -104,21 +92,36 @@ const INP = {
 }
 const LBL = { fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }
 
+function PasswordEye({ hidden }) {
+  return hidden ? (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+    </svg>
+  ) : (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" x2="22" y1="2" y2="22"/>
+    </svg>
+  )
+}
+
 function KullaniciModal({ user: editUser, projects, onClose, onSaved, isAdmin }) {
   const isNew   = !editUser
   const isPBazli = (rk) => PROJE_BAZLI.includes(rk)
   // proje_yoneticisi yeni kullanıcı oluşturabilir ama 'admin' rolünde biri
   // oluşturamaz (yetki yükseltme koruması — create-user edge function'ı da
   // aynı kontrolü sunucu tarafında yapıyor, bu yalnızca UI seviyesi).
-  const creatorRoles = isAdmin ? SIRKET_GENELI : SIRKET_GENELI.filter(r => r !== 'admin')
+  const companyRoles = isAdmin ? SIRKET_GENELI : SIRKET_GENELI.filter(r => r !== 'admin')
+  const initialScope = isPBazli(editUser?.role_key) ? 'project' : 'company'
 
   const [form, setForm] = useState({
     full_name:  editUser?.full_name  || '',
     email:      editUser?.email      || '',
-    role_key:   editUser?.role_key   || 'muhendis',
+    role_key:   editUser?.role_key   || companyRoles[0],
     project_id: editUser?.project_id || '',
     password:   '',
   })
+  const [scope, setScope] = useState(initialScope)
+  const [showPassword, setShowPassword] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err,    setErr]    = useState('')
 
@@ -129,11 +132,20 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved, isAdmin })
     if (!isPBazli(v)) set('project_id', '')
   }
 
+  const handleScopeChange = (nextScope) => {
+    setScope(nextScope)
+    setForm(current => ({
+      ...current,
+      role_key: nextScope === 'company' ? companyRoles[0] : PROJE_BAZLI_SECENEK[0],
+      project_id: '',
+    }))
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.full_name.trim() || !form.email.trim()) return
-    if (isNew && !form.password.trim()) { setErr('Şifre zorunludur.'); return }
-    if (isNew && form.password.length < 6) { setErr('Şifre en az 6 karakter olmalıdır.'); return }
+    if (scope === 'project' && !form.project_id) { setErr('Proje bazlı kullanıcı için proje seçimi zorunludur.'); return }
+    if (isNew && form.password.length < 8) { setErr('Geçici şifre en az 8 karakter olmalıdır.'); return }
     setSaving(true)
     setErr('')
     try {
@@ -142,16 +154,12 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved, isAdmin })
       if (isNew) {
         const payload = {
           email:      form.email.trim(),
-          password:   form.password,
           full_name:  form.full_name.trim(),
           role_key:   form.role_key,
           project_id: projId,
+          password:   form.password,
         }
         await callEdgeFn('create-user', payload)
-        // project_id'yi doğrudan profiles'a yaz (edge fn desteklemese de çalışır)
-        if (projId) {
-          await supabase.from('profiles').update({ project_id: projId }).eq('email', form.email.trim())
-        }
       } else {
         // Bu ekranda e-posta/şifre değiştirilmediği için Edge Function'a gerek yok.
         // Proje ve rol doğrudan profiles tablosundaki kullanıcı profiline kaydedilir.
@@ -200,15 +208,26 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved, isAdmin })
             />
           </div>
 
+          <fieldset style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend style={LBL}>Kullanıcı kapsamı</legend>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {[
+                { value: 'company', title: 'Şirket geneli', description: 'Rolüne atanmış sayfalarda şirket kapsamıyla çalışır.' },
+                { value: 'project', title: 'Proje bazlı', description: 'Yalnızca seçilen projede çalışır.' },
+              ].map(option => (
+                <label key={option.value} style={{ border: `1px solid ${scope === option.value ? '#185FA5' : '#E5E7EB'}`, borderRadius: 10, padding: 12, cursor: 'pointer', background: scope === option.value ? '#EFF6FF' : '#fff' }}>
+                  <input type="radio" name="user-scope" value={option.value} checked={scope === option.value} onChange={() => handleScopeChange(option.value)} style={{ marginRight: 7 }} />
+                  <strong style={{ fontSize: 13, color: '#111827' }}>{option.title}</strong>
+                  <span style={{ display: 'block', marginTop: 5, fontSize: 11, lineHeight: 1.4, color: '#6B7280' }}>{option.description}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
           <div>
             <label style={LBL}>Rol</label>
             <select style={INP} value={form.role_key} onChange={e => handleRolChange(e.target.value)}>
-              <optgroup label="Şirket Geneli">
-                {creatorRoles.map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
-              </optgroup>
-              <optgroup label="Proje Bazlı">
-                {PROJE_BAZLI_SECENEK.map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
-              </optgroup>
+              {(scope === 'company' ? companyRoles : PROJE_BAZLI_SECENEK).map(r => <option key={r} value={r}>{ROL_ETIKET[r] || r}</option>)}
             </select>
           </div>
 
@@ -227,18 +246,15 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved, isAdmin })
 
           {isNew && (
             <div>
-              <label style={LBL}>Şifre *</label>
-              <input
-                type="password"
-                style={INP}
-                value={form.password}
-                onChange={e => set('password', e.target.value)}
-                placeholder="En az 6 karakter"
-                minLength={6}
-                required
-              />
-              <p style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
-                Kullanıcı ilk girişte şifresini değiştirebilir.
+              <label style={LBL}>Geçici şifre *</label>
+              <div style={{ position: 'relative' }}>
+                <input type={showPassword ? 'text' : 'password'} style={{ ...INP, paddingRight: 44 }} value={form.password} onChange={e => set('password', e.target.value)} placeholder="En az 8 karakter" minLength={8} autoComplete="new-password" required />
+                <button type="button" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 0, background: 'transparent', cursor: 'pointer', fontSize: 18, color: '#64748B' }}>
+                  <PasswordEye hidden={!showPassword} />
+                </button>
+              </div>
+              <p style={{ fontSize: 11, color: '#6B7280', margin: '5px 0 0', lineHeight: 1.5 }}>
+                E-posta gönderilmez. Bu şifreyi kullanıcıya güvenli bir kanaldan iletin.
               </p>
             </div>
           )}
@@ -252,7 +268,7 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved, isAdmin })
             </button>
             <button type="submit" disabled={saving}
               style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
-              {saving ? 'Kaydediliyor…' : isNew ? 'Kullanıcı Oluştur' : 'Kaydet'}
+              {saving ? 'Oluşturuluyor…' : isNew ? 'Kullanıcıyı Oluştur' : 'Kaydet'}
             </button>
           </div>
         </form>
@@ -262,7 +278,11 @@ function KullaniciModal({ user: editUser, projects, onClose, onSaved, isAdmin })
 }
 
 function SifreSifirlaModal({ user: targetUser, onClose }) {
-  const [sent,    setSent]    = useState(false)
+  const [password, setPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(false)
   const [err,     setErr]     = useState('')
 
@@ -270,9 +290,10 @@ function SifreSifirlaModal({ user: targetUser, onClose }) {
     setLoading(true)
     setErr('')
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(targetUser.email, { redirectTo: getAuthRedirectUrl('/dashboard') })
-      if (error) throw error
-      setSent(true)
+      if (password.length < 8) throw new Error('Şifre en az 8 karakter olmalıdır.')
+      if (password !== confirmation) throw new Error('Şifreler eşleşmiyor.')
+      await callManageFn('set-password', targetUser.id, { password, targetEmail: targetUser.email })
+      setSaved(true)
     } catch (err) {
       setErr(err.message || 'Bir hata oluştu.')
     } finally {
@@ -283,12 +304,11 @@ function SifreSifirlaModal({ user: targetUser, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400, padding: 32 }}>
-        {sent ? (
+        {saved ? (
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>✉️</div>
-            <p style={{ color: '#065F46', fontWeight: 600, marginBottom: 6, fontSize: 16 }}>Bağlantı Gönderildi</p>
+            <p style={{ color: '#065F46', fontWeight: 600, marginBottom: 6, fontSize: 16 }}>Şifre Güncellendi</p>
             <p style={{ color: '#6B7280', fontSize: 13, lineHeight: 1.6, marginBottom: 20 }}>
-              <strong>{targetUser.email}</strong> adresine şifre sıfırlama bağlantısı gönderildi.
+              Kullanıcı yeni geçici şifresiyle giriş yapabilir.
             </p>
             <button onClick={onClose}
               style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -297,10 +317,21 @@ function SifreSifirlaModal({ user: targetUser, onClose }) {
           </div>
         ) : (
           <>
-            <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 600, color: '#111827' }}>Şifre Sıfırlama</h3>
+            <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 600, color: '#111827' }}>Yeni Geçici Şifre</h3>
             <p style={{ color: '#6B7280', fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-              <strong>{targetUser.full_name || targetUser.email}</strong> kullanıcısına şifre sıfırlama e-postası gönderilecek.
+              <strong>{targetUser.full_name || targetUser.email}</strong> kullanıcısı için e-posta göndermeden yeni şifre belirleyin.
             </p>
+            <p style={{ margin: '0 0 12px', padding: 10, borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: 12 }}>
+              Şifresi değiştirilecek hesap: <strong>{targetUser.email}</strong>
+            </p>
+            <div style={{ position: 'relative', marginBottom: 10 }}>
+              <input type={showPassword ? 'text' : 'password'} style={{ ...INP, paddingRight: 44 }} value={password} onChange={e => setPassword(e.target.value)} placeholder="Yeni şifre (en az 8 karakter)" minLength={8} autoComplete="new-password" />
+              <button type="button" onClick={() => setShowPassword(value => !value)} aria-label={showPassword ? 'Şifreyi gizle' : 'Şifreyi göster'} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 0, background: 'transparent', cursor: 'pointer', color: '#64748B' }}><PasswordEye hidden={!showPassword} /></button>
+            </div>
+            <div style={{ position: 'relative', marginBottom: 12 }}>
+              <input type={showConfirmation ? 'text' : 'password'} style={{ ...INP, paddingRight: 44 }} value={confirmation} onChange={e => setConfirmation(e.target.value)} placeholder="Yeni şifre tekrar" minLength={8} autoComplete="new-password" />
+              <button type="button" onClick={() => setShowConfirmation(value => !value)} aria-label={showConfirmation ? 'Şifreyi gizle' : 'Şifreyi göster'} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 0, background: 'transparent', cursor: 'pointer', color: '#64748B' }}><PasswordEye hidden={!showConfirmation} /></button>
+            </div>
             {err && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{err}</p>}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <button onClick={onClose}
@@ -309,7 +340,7 @@ function SifreSifirlaModal({ user: targetUser, onClose }) {
               </button>
               <button onClick={handleReset} disabled={loading}
                 style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '9px 22px', fontSize: 14, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: loading ? 0.7 : 1 }}>
-                {loading ? 'Gönderiliyor…' : 'E-posta Gönder'}
+                {loading ? 'Kaydediliyor…' : 'Şifreyi Güncelle'}
               </button>
             </div>
           </>

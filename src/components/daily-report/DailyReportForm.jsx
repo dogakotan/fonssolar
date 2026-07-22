@@ -245,27 +245,29 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const weatherCity = project?.location?.split('/')?.[0]?.trim() || null
   const liveWeather = useWeather(weatherCity)
 
+  // Formun ilk açılış verisi bir kez yüklenmelidir; loadAll render kapsamındaki
+  // tüm form yardımcılarını kullandığından dependency yapmak yeniden-yükleme döngüsü yaratır.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadAll() }, [])
+
+  const currentWeather = liveWeather.current
 
   useEffect(() => {
     // alreadyExists true ise formda yüklenmiş gerçek bir rapor var — canlı hava
     // durumu onun weather alanının üzerine yazmamalı (aksi halde tarih değişince
     // yüklenen geçmiş rapor, o günün havasıyla değil bugünün canlı havasıyla görünür).
-    if (!initialReportId && !alreadyExists && liveWeather.current?.label) {
-      const weatherNote = formatWeatherNote(liveWeather.current)
+    if (!initialReportId && !alreadyExists && currentWeather?.label) {
+      const weatherNote = formatWeatherNote(currentWeather)
       setFormData(f => ({
         ...f,
-        weather: normalizeWeather(liveWeather.current.label),
+        weather: normalizeWeather(currentWeather.label),
         weather_note: f.weather_note || weatherNote,
       }))
     }
   }, [
     initialReportId,
     alreadyExists,
-    liveWeather.current?.label,
-    liveWeather.current?.temp,
-    liveWeather.current?.wind,
-    liveWeather.current?.humidity,
+    currentWeather,
   ])
 
   // Tarih art arda hızlı değiştiğinde (örn. gün/ay/yıl segmentleri tek tek

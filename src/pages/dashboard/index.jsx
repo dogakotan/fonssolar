@@ -339,12 +339,7 @@ export default function Dashboard() {
           <ProjeTabSatinAlma projectId={projectId} siteChiefView openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
         )}
         {activeTab === 'satin-alma'   && role === 'proje_yoneticisi' && (
-          // scopeProjectId boşsa (çok projeli proje yöneticisi) tek proje seçimine
-          // zorlamıyoruz — TedarikKuyrugu bu durumda admin gibi erişebildiği TÜM
-          // projelerin tedarik kuyruğunu aggregate gösterir (RLS has_project_access
-          // ile sınırlar). genel/is-plani sekmelerindeki tekli proje seçimi ayrı,
-          // buna dokunulmadı.
-          <ProjeTabSatinAlma projectId={null} procurementManagerView projects={scopeProjects} openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
+          <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
         )}
         {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && (
           <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />

@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { useWeather } from '../../../hooks/useWeather'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { normalizeStatus, statusLabel } from '../../../utils/satinAlma'
+import { SEVERITY_META } from '../../../utils/ticketSeverity'
 import { PROJECT_STATUS_META } from '../../../utils/projectStatus'
 import { TONE, DAILY_REPORT_STATUS } from '../../../components/ui/StatusBadge'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
@@ -278,17 +279,8 @@ function normalizePurchase(pr) {
   }
 }
 
-function getAutoRiskSeverity(risk, todayText) {
-  if (risk.rule_code === 'malzeme_fazla_talep') return 'yüksek'
-  if (risk.rule_code !== 'gorev_gecikmesi') return (risk.severity || 'orta').toLowerCase()
-
-  const riskDate = risk.due_date || risk.target_date || risk.planned_end || risk.created_at
-  if (!riskDate) return 'orta'
-
-  const today = new Date(`${todayText}T00:00:00`)
-  const due = new Date(`${String(riskDate).slice(0, 10)}T00:00:00`)
-  const overdueDays = Math.max(0, Math.floor((today - due) / 86400000))
-  return overdueDays >= 7 ? 'kritik' : 'orta'
+function getAutoRiskSeverity(risk) {
+  return String(risk.severity || 'orta').toLocaleLowerCase('tr-TR')
 }
 
 function ProjectWeatherCard({ location, lostDays, reportWeather }) {
@@ -760,26 +752,29 @@ export default function ProjectOverviewDashboard({
             ? <p className="project-empty">Açık ticket bulunmuyor.</p>
             : (
               <div className="project-ticket-list">
-                {tickets.slice(0, 5).map(ticket => (
+                {tickets.slice(0, 5).map(ticket => {
+                  const severity = SEVERITY_META[String(ticket.severity || '').toLocaleLowerCase('tr-TR')]
+                  return (
                   <div key={ticket.id} style={{
                     padding: '8px 10px', background: '#f8fafc',
                     borderRadius: 8, border: '1px solid #e2e8f0',
-                    borderLeft: `3px solid ${ticket.severity === 'kritik' ? '#ef4444' : ticket.severity === 'yüksek' ? '#f59e0b' : '#94a3b8'}`,
+                    borderLeft: `3px solid ${severity?.color || '#94a3b8'}`,
                     flexShrink: 0,
                   }}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {ticket.title}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                      <span className={`badge ${ticket.severity === 'kritik' ? 'red' : ticket.severity === 'yüksek' ? 'amber' : 'gray'}`} style={{ fontSize: 9 }}>
-                        {ticket.severity || '—'}
+                      <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 999, padding: '2px 7px', color: severity?.color || '#64748b', background: severity?.bg || '#f1f5f9' }}>
+                        {severity?.label || '—'}
                       </span>
                       <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
                         {new Date(ticket.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                       </span>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )
           }
@@ -795,7 +790,7 @@ export default function ProjectOverviewDashboard({
           ) : (
             <div className="project-risk-list">
               {openRisks.map(risk => {
-                const severity = getAutoRiskSeverity(risk, effectiveDate)
+                const severity = getAutoRiskSeverity(risk)
                 const target = risk.rule_code === 'gorev_gecikmesi' ? 'gantt'
                   : risk.rule_code === 'malzeme_fazla_talep' ? 'satin-alma'
                   : null

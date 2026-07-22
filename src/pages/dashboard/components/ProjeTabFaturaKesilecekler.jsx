@@ -3,7 +3,8 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import { toUserMessage as translateError } from '../../../utils/errors'
 import Pager from '../../../components/ui/Pager'
-import Badge, { PR_STATUS } from '../../../components/ui/StatusBadge'
+import Badge from '../../../components/ui/Badge'
+import { PR_STATUS } from '../../../components/ui/StatusBadge'
 
 const PAGE_SIZE = 10
 const ROW_HEIGHT = 44
@@ -346,10 +347,25 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
   useEffect(() => { setPage(0) }, [rows.length])
 
   const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
+  const pendingNewMaterials = pending.filter(item => item.is_new)
 
   return (
     <div>
       {canReview && <BekleyenDegisikliklerPanel items={pending} onReviewed={onPendingChanged} />}
+
+      {canRequest && !canReview && pendingNewMaterials.length > 0 && (
+        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
+          <h4 style={{ margin: '0 0 8px', fontSize: 12.5, fontWeight: 700, color: '#92400E' }}>Onaya Gönderilen Yeni Malzemeler ({pendingNewMaterials.length})</h4>
+          <div style={{ display: 'grid', gap: 7 }}>
+            {pendingNewMaterials.map(item => (
+              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', background: '#fff', border: '1px solid #FDE68A', borderRadius: 8, padding: '9px 11px' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.equipment || 'Yeni malzeme'} · {formatQty(item.new_planned_qty)} {item.unit || ''}</span>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7', borderRadius: 999, padding: '3px 8px', whiteSpace: 'nowrap' }}>Yönetici onayı bekliyor</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

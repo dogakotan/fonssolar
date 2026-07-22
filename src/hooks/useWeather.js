@@ -56,9 +56,12 @@ export function useWeather(location) {
   const depKey = typeof location === 'string'
     ? location
     : (location ? `${location.lat},${location.lon}` : null)
+  const locationName = typeof location === 'string' ? location : null
+  const latitude = typeof location === 'object' && location ? location.lat : null
+  const longitude = typeof location === 'object' && location ? location.lon : null
 
   useEffect(() => {
-    if (!location) {
+    if (!depKey) {
       setState({ loading: false, error: null, current: null, tomorrow: null })
       return
     }
@@ -67,11 +70,11 @@ export function useWeather(location) {
     async function load() {
       try {
         let lat, lon
-        if (typeof location === 'string') {
-          ;({ lat, lon } = await geocode(location))
+        if (locationName) {
+          ;({ lat, lon } = await geocode(locationName))
         } else {
-          lat = location.lat
-          lon = location.lon
+          lat = latitude
+          lon = longitude
         }
         const data = await fetchWeather(lat, lon)
         const c = data.current
@@ -97,7 +100,7 @@ export function useWeather(location) {
       }
     }
     load()
-  }, [depKey])
+  }, [depKey, locationName, latitude, longitude])
 
   return state
 }

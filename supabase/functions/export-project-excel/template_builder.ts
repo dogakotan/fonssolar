@@ -257,7 +257,7 @@ export function buildWorkbook(ExcelJS, categoryWeights = CANONICAL_CATEGORY_WEIG
       ["1","Proje Bilgileri -> projects","Proje ID: kucuk harf, bosluksuz, tire."],
       ["2","İş Kalemleri -> project_tasks","Kategori/Durum dropdown. Kritik mi?=Evet isaretlenen gorevler kritik yol sayilir."],
       ["3","Kategori Ağırlıkları (salt okunur) -> project_category_weights","Panel montaji %20, digerleri %10/%5, toplam %100."],
-      ["4","Riskler -> project_risks","Manuel + otomatik (gorev gecikmesi, malzeme fazla talebi) riskler. Kategori: Is Kalemi/Satin Alma/Diger. Sadece MEVCUT proje guncellemesinde iceri aktarilir, yeni proje olusturmada bu sayfa okunmaz."],
+      ["4","Riskler -> project_risks","Manuel risklerde siddet Olasilik x Etki skorundan hesaplanir. Otomatik risklerde orta/yuksek/kritik seviyesi Supabase risk motorundan gelir. Kategori: Is Kalemi/Satin Alma/Diger."],
       ["5","Bütçe -> budget_lines","Planlanan tutarlar."],
       ["6","Malzeme Listesi -> procurement_items","BOM planlanan miktarlar."],
     ];

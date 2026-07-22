@@ -23,7 +23,7 @@ export const normalizeStatus = (status) => {
 }
 
 export const statusLabel = (status) => ({
-  bekliyor: 'Bekliyor',
+  bekliyor: 'Talep Oluşturuldu',
   // StatusBadge.jsx'in PR_STATUS'üyle aynı sebep: "Onaylandı" sıradaki adımı değil geçmişi
   // anlatıyordu, kullanıcı talebin şu an kimin elinde olduğunu görmek istiyor.
   onaylandi: 'Proje Yöneticisinde',
@@ -34,8 +34,8 @@ export const statusLabel = (status) => ({
   // StatusBadge.jsx'teki PR_STATUS'la aynı sebep: fatura_onay_bekliyor pratikte hiç
   // üretilmiyor bile olsa, aynı akışın iki farklı görünen ismi olmasın diye eşitlendi.
   fatura_bekliyor: 'Fatura Bekleniyor',
-  fatura_onay_bekliyor: 'Fatura Bekleniyor',
-  faturasi_kesildi: 'Faturası Kesildi',
+  fatura_onay_bekliyor: 'Fatura Onayda',
+  faturasi_kesildi: 'Fatura Kesildi',
   iptal: 'İptal Edildi',
 })[normalizeStatus(status)] || String(status || 'Durum yok').replace(/_/g, ' ')
 

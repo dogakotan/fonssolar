@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { riskBreakdownForItems, normalizeStatus, isAwaitingInvoice } from '../../utils/satinAlma'
-import Badge, { PR_STATUS } from '../ui/StatusBadge'
+import Badge from '../ui/Badge'
+import { PR_STATUS } from '../ui/StatusBadge'
 import FaturaOlusturModal from './FaturaOlusturModal'
 
 const fmtQty = (value) =>
@@ -31,7 +32,7 @@ function requestType(req, items) {
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'Hizmet' : 'Malzeme'
 }
 
-function Step({ done, active, label, sub, last = false }) {
+function Step({ done, active, label, last = false }) {
   const color = done ? '#22C55E' : active ? '#F59E0B' : '#CBD5E1'
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr', gap: 8, position: 'relative' }}>
@@ -39,7 +40,6 @@ function Step({ done, active, label, sub, last = false }) {
       <span style={{ position: 'relative', zIndex: 1, width: 10, height: 10, borderRadius: '50%', background: color, marginTop: 4, boxShadow: `0 0 0 4px ${done ? '#DCFCE7' : active ? '#FEF3C7' : '#F1F5F9'}` }} />
       <div>
         <p style={{ margin: 0, fontSize: 12.5, fontWeight: 800, color: done || active ? '#0F172A' : '#94A3B8' }}>{label}</p>
-        <p style={{ margin: '2px 0 0', fontSize: 11, color: '#64748B', lineHeight: 1.35 }}>{sub}</p>
       </div>
     </div>
   )
@@ -78,8 +78,6 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const description = req.description || req.request_note || req.notes || '-'
   const requester = req.requester_name || req.requested_by_name || req.created_by_name || '—'
   const type = requestType(req, items)
-  const anyTracked = breakdown.some(row => !(type === 'Malzeme' && row.planned <= 0))
-  const approvalDate = req.approved_at || req.updated_at
   const invoiceDone = status === 'faturasi_kesildi'
   const invoiceActive = ['fatura_bekliyor', 'fatura_onay_bekliyor'].includes(status)
   const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
@@ -128,11 +126,17 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <section style={CARD}>
               <h3 style={TITLE}>Talep Bilgileri</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div><p style={LABEL}>Talep / Malzeme</p><p style={VALUE}>{req.title || req.material_name || '-'}</p></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', columnGap: 16, rowGap: 12 }}>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <p style={LABEL}>Talep / Malzeme</p>
+                  <p style={{ ...VALUE, lineHeight: 1.35, overflowWrap: 'anywhere' }}>{req.title || req.material_name || '-'}</p>
+                </div>
                 <div><p style={LABEL}>Talep Türü</p><p style={VALUE}>{type}</p></div>
-                <div><p style={LABEL}>Oluşturan</p><p style={VALUE}>{requester}</p></div>
                 <div><p style={LABEL}>Talep Tarihi</p><p style={VALUE}>{fmtDate(req.request_date || req.created_at)}</p></div>
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <p style={LABEL}>Oluşturan</p>
+                  <p style={{ ...VALUE, lineHeight: 1.35 }}>{requester}</p>
+                </div>
               </div>
             </section>
 
@@ -142,36 +146,25 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                 <Step
                   done
                   label="Talep Oluşturuldu"
-                  sub={`${requester} · ${fmtDate(req.created_at)}`}
                 />
                 <Step
                   active={status === 'bekliyor'}
                   done={approvalDone}
                   label={isRejected ? 'Yönetici Onayı Reddedildi' : approvalDone ? 'Yönetici Onayı Alındı' : 'Yönetici Onayı Bekliyor'}
-                  sub={isRejected
-                    ? `Red tarihi · ${fmtDate(approvalDate)}`
-                    : approvalDone
-                      ? `Onay tarihi · ${fmtDate(approvalDate)}`
-                      : 'Şu anki adım'}
                 />
                 <Step
                   active={procurementActive}
                   done={procurementDone}
-                  label="Tedarikçi / Satın Alma Bilgisi"
-                  sub={procurementDone
-                    ? `${req.suppliers?.name || 'Tedarikçi'} · ${fmtDate(req.purchase_date)}`
-                    : procurementActive ? 'Proje yöneticisi girişi bekleniyor' : 'Onay sonrası başlar'}
+                  label="Proje Yöneticisinde"
                 />
                 <Step
                   active={invoiceActive}
                   done={invoiceDone}
                   label="Fatura Bekleniyor"
-                  sub={invoiceActive ? 'Muhasebe/onay sürecinde' : invoiceDone ? 'Tamamlandı' : procurementDone ? 'Tedarik tamamlandı, fatura kesilebilir' : 'Tedarik sonrası başlar'}
                 />
                 <Step
                   done={invoiceDone}
                   label="Fatura Kesildi"
-                  sub={invoiceDone ? 'Süreç tamamlandı' : 'Bekliyor'}
                   last
                 />
               </div>
@@ -219,11 +212,6 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                     </div>
                   )
                 })}
-                {anyTracked && (
-                  <p style={{ margin: 0, fontSize: 11, color: '#64748B' }}>
-                    "Planlanan" malzeme listesindeki (BOM) miktar, "Toplam İstenen" bu malzeme için açılmış tüm taleplerin toplamıdır.
-                  </p>
-                )}
               </div>
             )}
           </section>

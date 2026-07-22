@@ -88,7 +88,12 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
       {!siteChiefView && !procurementManagerView && (
         <div className="sa-overview-grid">
           <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
-          <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} doviz={doviz} />
+          <ProjeTabSatinAlmaSidebar
+            tedarik={tedarik}
+            dagilim={dagilim}
+            doviz={doviz}
+            hideMaterialTotal={role === 'proje_yoneticisi'}
+          />
         </div>
       )}
       {!procurementManagerView && <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>

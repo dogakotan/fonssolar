@@ -112,6 +112,9 @@ export function AuthProvider({ children }) {
   )
 }
 
+// Provider ve hook aynı modülde tutuluyor; hook bir React bileşeni olmadığı için
+// Fast Refresh kuralına bilinçli, tek-export istisnası.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   return useContext(AuthContext)
 }

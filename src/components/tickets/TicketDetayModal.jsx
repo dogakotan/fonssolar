@@ -55,6 +55,9 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
     fetchNotifications()
     fetchHistory()
     fetchAttachments()
+  // Dört yükleyici aynı ticket kimliğinin anık görüntüsünü getirir; render-başına
+  // oluşan fonksiyon referanslarını eklemek tekrar-yükleme döngüsü yaratır.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial?.id])
 
   async function fetchTicket() {

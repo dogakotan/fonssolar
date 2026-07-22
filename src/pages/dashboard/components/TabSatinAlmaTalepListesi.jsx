@@ -5,20 +5,20 @@ import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
 import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModal'
 import Pager from '../../../components/ui/Pager'
-import Badge, { PR_STATUS } from '../../../components/ui/StatusBadge'
+import Badge from '../../../components/ui/Badge'
+import { PR_STATUS } from '../../../components/ui/StatusBadge'
 import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tüm Durumlar' },
-  { value: 'bekliyor', label: 'Onay Bekleyen' },
+  { value: 'bekliyor', label: 'Talep Oluşturuldu' },
   { value: 'onaylandi', label: 'Proje Yöneticisinde' },
-  { value: 'fatura_sureci', label: 'Fatura Süreci' },
-  { value: 'faturasi_kesildi', label: 'Tamamlandı' },
+  { value: 'satin_alindi', label: 'Fatura Bekleniyor' },
+  { value: 'fatura_onay_bekliyor', label: 'Fatura Onayda' },
+  { value: 'faturasi_kesildi', label: 'Fatura Kesildi' },
   { value: 'red_edildi', label: 'Reddedildi' },
   { value: 'iptal', label: 'İptal' },
 ]
-
-const INVOICE_FLOW_STATUSES = new Set(['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'])
 
 const PAGE_SIZE = 10
 const ROW_HEIGHT = 44
@@ -87,10 +87,14 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
   const [errorMessage, setErrorMessage] = useState('')
   const [page, setPage] = useState(0)
 
-  const canCreate = !isAdmin && role !== 'muhasebe'
+  const canCreate = role === 'santiye_sefi' || role === 'proje_yoneticisi'
   const canInvoice = isMuhasebe
   const canApprove = isAdmin
+  const canCompleteProcurement = role === 'proje_yoneticisi'
 
+  // fetchData kapsam değerleri değiştiğinde çalışır; render-başına oluşan
+  // fonksiyonun kendisini dependency yapmak tekrar çağrı döngüsüne neden olur.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [projectId, filterDate, onlyPending, refreshKey])
   useEffect(() => { setPage(0) }, [statusFilter, onlyPending, projectId, refreshKey])
 
@@ -106,7 +110,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
       onOpenedRequest?.()
     })
     return () => { alive = false }
-  }, [openRequestId])
+  }, [openRequestId, onOpenedRequest])
 
   // Üst bileşen (ProjeTabSatinAlma) procurement_items'i zaten tek bir RPC ile getirdiyse
   // burada aynı tabloyu ikinci kez sorgulamak yerine o veriden malzeme planını hesaplıyoruz.
@@ -228,7 +232,6 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
     if (onlyPending) return true
     if (statusFilter === 'all') return true
     const normalized = normalizeStatus(request.status)
-    if (statusFilter === 'fatura_sureci') return INVOICE_FLOW_STATUSES.has(normalized)
     return normalized === statusFilter
   })
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -270,7 +273,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
               onClick={() => setShowNew(true)}
               style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
             >
-              + Yeni Talep
+              + Yeni Satın Alma Talebi
             </button>
           )}
         </div>
@@ -299,7 +302,9 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
             </thead>
             <tbody>
               {pageRows.map(request => {
-                const isPending = normalizeStatus(request.status) === 'bekliyor'
+                const normalizedStatus = normalizeStatus(request.status)
+                const isPending = normalizedStatus === 'bekliyor'
+                const isWaitingForProjectManager = normalizedStatus === 'onaylandi'
                 const rowMaterialPlan = projectId ? materialPlan : (materialPlanByProject.get(request.project_id) || EMPTY_MAP)
                 const rowRequestedTotals = projectId ? requestedTotals : (requestedTotalsByProject.get(request.project_id) || EMPTY_MAP)
                 const risk = riskState(request.items || [], rowMaterialPlan, rowRequestedTotals, request.category || requestType(request).toLocaleLowerCase('tr-TR'))
@@ -340,6 +345,15 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                           </button>
                           <button onClick={event => updateStatus(event, request.id, 'reddedildi')} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                             {actionLoading === request.id ? '…' : 'Reddet'}
+                          </button>
+                        </div>
+                      ) : canCompleteProcurement && isWaitingForProjectManager ? (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
+                          <button onClick={event => updateStatus(event, request.id, 'satin_alindi')} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {actionLoading === request.id ? '…' : 'Tamamlandı'}
+                          </button>
+                          <button onClick={event => updateStatus(event, request.id, 'iptal')} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {actionLoading === request.id ? '…' : 'İptal Et'}
                           </button>
                         </div>
                       ) : isPending ? (

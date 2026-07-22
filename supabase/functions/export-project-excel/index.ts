@@ -128,11 +128,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    /* 4) Riskler (F skor, G şiddet formülleri; dokunma; J = kategori) */
-    writeSheet(ws("Riskler"), 5, (risks.data ?? []).map((r, i) => ({
+    /* 4) Riskler
+       - Manuel risk: F skor ve G şiddet şablon formülleriyle hesaplanır.
+       - Otomatik risk: olasılık/etki yoktur; Supabase risk motorunun severity değeri
+         G sütununa doğrudan yazılır. Aksi halde boş hücreler 0 sayılıp yanlışlıkla
+         "düşük" görünüyordu. */
+    const riskRows = risks.data ?? [];
+    const riskSheet = ws("Riskler");
+    writeSheet(riskSheet, 5, riskRows.map((r, i) => ({
       A: i + 1, B: r.title, C: r.description, D: r.probability, E: r.impact,
       H: r.status, I: r.mitigation, J: RISK_CAT_TO_LABEL[r.category] ?? "Diğer",
     })), ["A","B","C","D","E","H","I","J"]);
+    riskRows.forEach((risk, index) => {
+      const row = 5 + index;
+      const hasRiskMatrix = Number(risk.probability) >= 1 && Number(risk.impact) >= 1;
+      if (!hasRiskMatrix && risk.severity) {
+        riskSheet.getCell(`F${row}`).value = null;
+        riskSheet.getCell(`G${row}`).value = String(risk.severity).toLocaleLowerCase("tr-TR");
+      }
+    });
 
     /* 5) Bütçe */
     writeSheet(ws("Bütçe"), 6, (budget.data ?? []).map((r) => ({
@@ -159,4 +173,3 @@ Deno.serve(async (req) => {
     return jsonErr({ ok: false, error: String(e?.message ?? e) }, 500);
   }
 });
-
