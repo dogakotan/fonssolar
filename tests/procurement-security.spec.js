@@ -31,7 +31,6 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     const { data: createdId, error: createError } = await pm.rpc('create_purchase_request_with_items', {
       p_project_id: foreignProjectId,
       p_title: marker,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: pmId,
@@ -80,7 +79,6 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     const { error: foreignCreateError } = await santiye.rpc('create_purchase_request_with_items', {
       p_project_id: foreignProjectId,
       p_title: `${marker}_FORBIDDEN`,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: siteId,
@@ -157,7 +155,7 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
   test('oturumsuz kullanıcı hassas yazma RPC’lerini çağıramaz', async () => {
     const attempts = await Promise.all([
       anon.rpc('create_purchase_request_with_items', {
-        p_project_id: siteProjectId, p_title: marker, p_urgency: 'normal', p_category: 'diger',
+        p_project_id: siteProjectId, p_title: marker, p_category: 'diger',
         p_request_note: marker, p_requested_by: siteId,
         p_items: [{ name: marker, quantity: 1, unit: 'Adet', bom_item_id: null }],
       }),

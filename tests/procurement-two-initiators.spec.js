@@ -16,7 +16,6 @@ test.describe.serial('Şantiye şefi ve proje yöneticisi satın alma akışlar�
     const { data, error } = await client.rpc('create_purchase_request_with_items', {
       p_project_id: projectId,
       p_title: `${marker} ${suffix}`,
-      p_urgency: 'normal',
       p_category: category,
       p_request_note: marker,
       p_requested_by: userId,

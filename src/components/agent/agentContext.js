@@ -134,7 +134,7 @@ async function ctxSatinAlma(projectId, selectedDate) {
   const [prRes, procRes] = await Promise.allSettled([
     withDateFilter(
       supabase.from('purchase_requests')
-        .select('title, status, urgency, created_at')
+        .select('title, status, created_at')
         .match(pid ? { project_id: pid } : {})
         .order('created_at', { ascending: false })
         .limit(20),
@@ -154,7 +154,7 @@ async function ctxSatinAlma(projectId, selectedDate) {
   const items = procRes.status === 'fulfilled' ? (procRes.value.data || []) : []
 
   const reqLines = reqs.map(r =>
-    `  - [${r.status}] ${r.title} | Aciliyet: ${fmt(r.urgency)} | Tarih: ${fmt(r.created_at?.slice(0, 10))}`
+    `  - [${r.status}] ${r.title} | Tarih: ${fmt(r.created_at?.slice(0, 10))}`
   )
 
   const itemLines = items.map(i =>

@@ -46,6 +46,11 @@ function Step({ done, active, label, last = false }) {
 }
 
 const emptyMap = new Map()
+const BOM_STATE_META = {
+  riskli: { label: 'Riskli', tone: 'danger' },
+  listede_yok: { label: 'Listede Yok', tone: 'warning' },
+  uygun: { label: 'Uygun', tone: 'success' },
+}
 
 export default function TalepDetayModal({ request, talepId, materialPlan = emptyMap, requestedTotals = emptyMap, siteChiefView = false, onClose }) {
   const { isAdmin, isMuhasebe, user } = useAuth()
@@ -78,6 +83,13 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const description = req.description || req.request_note || req.notes || '-'
   const requester = req.requester_name || req.requested_by_name || req.created_by_name || '—'
   const type = requestType(req, items)
+  const bomState = type !== 'Malzeme' || breakdown.length === 0
+    ? null
+    : breakdown.some(row => row.planned <= 0)
+      ? 'listede_yok'
+      : breakdown.some(row => row.risky)
+        ? 'riskli'
+        : 'uygun'
   const invoiceDone = status === 'faturasi_kesildi'
   const invoiceActive = ['fatura_bekliyor', 'fatura_onay_bekliyor'].includes(status)
   const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
@@ -116,18 +128,21 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
       <div style={{ width: 'min(680px, calc(100vw - 36px))', background: '#F8FAFC', borderRadius: 12, boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)', overflow: 'hidden' }}>
         <header style={{ background: '#fff', borderBottom: '1px solid #E5E7EB', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Talep Detayı</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Satın Alma Talebi</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{requestNo(req)} · {req.title || req.material_name || 'Satın alma talebi'}</p>
           </div>
-          {siteChiefView ? (
-            <span style={{
-              background: isCancelled ? '#FEE2E2' : siteChiefComplete ? '#DCFCE7' : siteChiefProcessing ? '#FEF3C7' : '#EFF6FF',
-              color: isCancelled ? '#991B1B' : siteChiefComplete ? '#166534' : siteChiefProcessing ? '#92400E' : '#1D4ED8',
-              fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, whiteSpace: 'nowrap',
-            }}>
-              {isCancelled ? 'İptal Edildi' : siteChiefComplete ? 'İşlem Tamamlandı' : siteChiefProcessing ? 'İşleme Alındı' : 'Talep Oluşturuldu'}
-            </span>
-          ) : <Badge map={PR_STATUS} value={req.status} />}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {bomState && <Badge map={BOM_STATE_META} value={bomState} prefix="BOM" />}
+            {siteChiefView ? (
+              <span style={{
+                background: isCancelled ? '#FEE2E2' : siteChiefComplete ? '#DCFCE7' : siteChiefProcessing ? '#FEF3C7' : '#EFF6FF',
+                color: isCancelled ? '#991B1B' : siteChiefComplete ? '#166534' : siteChiefProcessing ? '#92400E' : '#1D4ED8',
+                fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, whiteSpace: 'nowrap',
+              }}>
+                {isCancelled ? 'İptal Edildi' : siteChiefComplete ? 'İşlem Tamamlandı' : siteChiefProcessing ? 'İşleme Alındı' : 'Talep Oluşturuldu'}
+              </span>
+            ) : <Badge map={PR_STATUS} value={req.status} />}
+          </div>
           <button onClick={onClose} style={{ border: 'none', background: 'transparent', color: '#64748B', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
         </header>
 
@@ -151,9 +166,9 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
               </div>
             </section>
 
-            <section style={CARD}>
+            <section style={{ ...CARD, display: 'flex', flexDirection: 'column' }}>
               <h3 style={TITLE}>{siteChiefView ? 'İşlem Süreci' : 'Onay Süreci'}</h3>
-              <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: 'flex', flex: 1, flexDirection: 'column', justifyContent: 'space-evenly', gap: 10 }}>
                 {siteChiefView ? (
                   <>
                     <Step done label="Talep Oluşturuldu" />

@@ -42,21 +42,40 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
   })
 
   test('yönetici satın alma onay kuyruğunu ve finans onayını görür', async ({ page }) => {
-    await loginUi(page, process.env.TEST_ADMIN_EMAIL, process.env.TEST_ADMIN_PASSWORD)
-    await openMenu(page, 'Satın Alma')
-    await expect(page.getByRole('button', { name: 'Onay Bekleyenler', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Onayla', exact: true }).first()).toBeVisible()
-    await openMenu(page, 'Finans')
-    await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toBeVisible()
+    const { client: pm, user: pmUser } = await signIn(
+      process.env.TEST_PROJEYONETICISI_EMAIL,
+      process.env.TEST_PROJEYONETICISI_PASSWORD,
+    )
+    const marker = `E2E_ADMIN_QUEUE_${Date.now()}`
+    const { data: requestId, error: createError } = await pm.rpc('create_purchase_request_with_items', {
+      p_project_id: process.env.TEST_PROJECT_IZMIR,
+      p_title: marker,
+      p_category: 'diger',
+      p_request_note: marker,
+      p_requested_by: pmUser.id,
+      p_items: [{ name: marker, quantity: 1, unit: 'Adet', bom_item_id: null }],
+    })
+    expect(createError).toBeNull()
 
-    await openMenu(page, 'Projeler')
-    await page.getByText('Ege Enerji İzmir GES TEST', { exact: true }).first().click()
-    await page.getByRole('button', { name: /Dışa Aktar/ }).click()
-    await expect(page.getByRole('button', { name: 'Proje Excelini İndir', exact: true })).toBeVisible()
-    await page.getByRole('main').getByRole('button', { name: 'Finans', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toBeVisible()
+    try {
+      await loginUi(page, process.env.TEST_ADMIN_EMAIL, process.env.TEST_ADMIN_PASSWORD)
+      await openMenu(page, 'Satın Alma')
+      await expect(page.getByRole('button', { name: 'Onay Bekleyenler', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Onayla', exact: true }).first()).toBeVisible()
+      await openMenu(page, 'Finans')
+      await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toBeVisible()
+
+      await openMenu(page, 'Projeler')
+      await page.getByText('Ege Enerji İzmir GES TEST', { exact: true }).first().click()
+      await page.getByRole('button', { name: /Dışa Aktar/ }).click()
+      await expect(page.getByRole('button', { name: 'Proje Excelini İndir', exact: true })).toBeVisible()
+      await page.getByRole('main').getByRole('button', { name: 'Finans', exact: true }).click()
+      await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toBeVisible()
+    } finally {
+      if (requestId) await pm.from('purchase_requests').delete().eq('id', requestId)
+    }
   })
 
   test('muhasebe yalnız fatura alanını görür ve fatura formunda belge alanı yoktur', async ({ page }) => {
@@ -83,7 +102,7 @@ test.describe.serial('Fatura iptali yönetici ve muhasebe ekran akışı', () =>
     )
     supplierId = (await pm.from('suppliers').select('id').limit(1).single()).data.id
     const { data: createdId, error: createError } = await pm.rpc('create_purchase_request_with_items', {
-      p_project_id: projectId, p_title: marker, p_urgency: 'normal', p_category: 'diger',
+      p_project_id: projectId, p_title: marker, p_category: 'diger',
       p_request_note: marker, p_requested_by: pmId,
       p_items: [{ name: marker, quantity: 1, unit: 'Adet', bom_item_id: null }],
     })

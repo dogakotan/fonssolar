@@ -902,7 +902,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       put(`C${row}`, purchase.title || purchase.material_name || purchase.description || '')
       put(`E${row}`, purchase.quantity || '')
       put(`F${row}`, purchase.unit || '')
-      put(`G${row}`, purchase.priority || purchase.urgency || '')
       put(`H${row}`, purchase.supplier || '')
       put(`J${row}`, purchase.status || '')
       put(`K${row}`, formatExcelDate(purchase.required_date || purchase.delivery_date || purchase.created_at))

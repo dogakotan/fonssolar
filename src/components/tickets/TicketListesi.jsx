@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import YeniTicketModal from './YeniTicketModal'
 import TicketDetayModal from './TicketDetayModal'
+import SiteChiefTicketDetayModal from './SiteChiefTicketDetayModal'
 import DateNavigator from '../ui/DateNavigator'
 import ApprovalStepsHorizontal from '../ui/ApprovalStepsHorizontal'
 import { SEVERITY_META as SEVERITY, SEVERITY_ORDER, SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
@@ -619,11 +620,19 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
         />
       )}
       {selected && (
-        <TicketDetayModal
-          ticket={selected}
-          onClose={() => setSelected(null)}
-          onUpdated={() => { setSelected(null); fetchTickets(); onNewTicket?.() }}
-        />
+        role === 'santiye_sefi' ? (
+          <SiteChiefTicketDetayModal
+            ticket={selected}
+            onClose={() => setSelected(null)}
+            onUpdated={() => { setSelected(null); fetchTickets(); onNewTicket?.() }}
+          />
+        ) : (
+          <TicketDetayModal
+            ticket={selected}
+            onClose={() => setSelected(null)}
+            onUpdated={() => { setSelected(null); fetchTickets(); onNewTicket?.() }}
+          />
+        )
       )}
       {quickAction && (
         <QuickActionModal

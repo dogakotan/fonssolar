@@ -6,10 +6,10 @@ import { useSantiyeData } from '../hooks/useSantiyeData'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
 import YeniTicketModal from '../components/tickets/YeniTicketModal'
 import YeniTalepModal from '../components/satin-alma/YeniTalepModal'
-import TicketDetayModal from '../components/tickets/TicketDetayModal'
+import SiteChiefTicketDetayModal from '../components/tickets/SiteChiefTicketDetayModal'
 import TalepDetayModal from '../components/satin-alma/TalepDetayModal'
 import Badge from '../components/ui/Badge'
-import { TONE, PR_STATUS, PR_URGENCY, TK_STATUS, TK_SEVERITY } from '../components/ui/StatusBadge'
+import { TONE, PR_STATUS, TK_STATUS, TK_SEVERITY } from '../components/ui/StatusBadge'
 import Pager from '../components/ui/Pager'
 
 function fmtDate(d) {
@@ -145,7 +145,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   const [toast, setToast] = useState('')
   const [expandedProgressGroups, setExpandedProgressGroups] = useState({})
 
-  const { project, openPurchaseRequests, openTickets, todayReport, recentReports, stats, progressSummary, progressItems, refetch, loading: dataLoading, refreshing, error, authorized } = useSantiyeData(projectId)
+  const { project, openPurchaseRequests, openTickets, materialPlan, requestedTotals, todayReport, recentReports, stats, progressSummary, progressItems, refetch, loading: dataLoading, refreshing, error, authorized } = useSantiyeData(projectId)
   const weatherCity = extractWeatherCity(project)
   const weather     = useWeather(weatherCity)
   const [machineDetail, setMachineDetail] = useState(null)
@@ -557,7 +557,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
         <div style={{ padding: '8px 16px 10px' }}>
           {visibleRequests.length === 0 ? (
             <p style={{ textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 13, padding: '16px 0', margin: 0 }}>
-              Açık talep bulunmuyor.
+              Talep bulunmuyor.
             </p>
           ) : (
             <div>
@@ -578,7 +578,6 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
                     <span className="ss-list-badges">
                       {isPurchase ? (
                         <>
-                          <Badge map={PR_URGENCY} value={item.urgency} />
                           <Badge map={PR_STATUS} value={item.status} />
                         </>
                       ) : (
@@ -670,7 +669,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
         />
       )}
       {detayTicket && (
-        <TicketDetayModal
+        <SiteChiefTicketDetayModal
           ticket={detayTicket}
           onClose={() => { setDetayTicket(null); refetch() }}
           onUpdated={() => { setDetayTicket(null); refetch() }}
@@ -679,6 +678,9 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
       {detayTalep && (
         <TalepDetayModal
           request={detayTalep}
+          siteChiefView
+          materialPlan={materialPlan}
+          requestedTotals={requestedTotals}
           onClose={() => { setDetayTalep(null); refetch() }}
         />
       )}

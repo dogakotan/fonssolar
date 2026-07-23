@@ -27,7 +27,6 @@ test.describe.serial('Bildirim gerçek zaman ve kullanıcı izolasyonu', () => {
     const { data: createdId, error: createError } = await pm.rpc('create_purchase_request_with_items', {
       p_project_id: process.env.TEST_PROJECT_IZMIR,
       p_title: marker,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: pmId,

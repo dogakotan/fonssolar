@@ -151,7 +151,6 @@ test.describe('Faz E — otomatik regresyon suite', () => {
     const { data: insertedId, error: insertError } = await pm.rpc('create_purchase_request_with_items', {
       p_project_id: PROJECT_KAYSERI,
       p_title: `${TEST_MARKER}_LEAK`,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: TEST_MARKER,
       p_requested_by: pmUser.id,
@@ -188,7 +187,6 @@ test.describe('Faz E — otomatik regresyon suite', () => {
     const { data: insertedId, error: insertError } = await pm.rpc('create_purchase_request_with_items', {
       p_project_id: PROJECT_IZMIR,
       p_title: `${TEST_MARKER}_NEGATIVE`,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: TEST_MARKER,
       p_requested_by: pmUser.id,

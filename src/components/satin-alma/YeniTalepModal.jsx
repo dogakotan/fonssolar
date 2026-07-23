@@ -4,11 +4,6 @@ import { useAuth } from '../../context/AuthContext'
 
 const UNITS = ['Adet', 'Metre', 'Kg', 'Lt', 'Rulo', 'Kutu', 'Takım', 'Ton', 'M²', 'M³']
 const OTHER_VALUE = '__diger__'
-const URGENCY_OPTIONS = [
-  { value: 'normal', label: 'Normal' },
-  { value: 'acil', label: 'Acil' },
-  { value: 'çok_acil', label: 'Çok Acil' },
-]
 
 const INPUT = {
   border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px',
@@ -36,7 +31,7 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, ava
   const [materialOptions, setMaterialOptions] = useState([])
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState(null)
-  const [form, setForm] = useState({ project_id: defaultProjectId || '', title: '', category: 'malzeme', urgency: 'normal', request_note: '' })
+  const [form, setForm] = useState({ project_id: defaultProjectId || '', title: '', category: 'malzeme', request_note: '' })
   const [item, setItem] = useState({ name: '', quantity: 1, unit: 'Adet', bom_item_id: null })
   const [useOther, setUseOther] = useState(false)
   const [materialMenuOpen, setMaterialMenuOpen] = useState(false)
@@ -173,7 +168,6 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, ava
     const { error } = await supabase.rpc('create_purchase_request_with_items', {
       p_project_id:   form.project_id,
       p_title:        form.title.trim(),
-      p_urgency:      form.urgency,
       p_category:     form.category,
       p_request_note: form.request_note.trim() || null,
       p_requested_by: user.id,
@@ -227,21 +221,13 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, ava
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <div>
-              <label style={LABEL}>Tip</label>
-              <select value={form.category} onChange={handleCategoryChange} style={INPUT}>
-                <option value="malzeme">Malzeme</option>
-                <option value="hizmet">Hizmet</option>
-                <option value="diger">Diğer</option>
-              </select>
-            </div>
-            <div>
-              <label style={LABEL}>Aciliyet</label>
-              <select value={form.urgency} onChange={setF('urgency')} style={INPUT}>
-                {URGENCY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
+          <div>
+            <label style={LABEL}>Tip</label>
+            <select value={form.category} onChange={handleCategoryChange} style={INPUT}>
+              <option value="malzeme">Malzeme</option>
+              <option value="hizmet">Hizmet</option>
+              <option value="diger">Diğer</option>
+            </select>
           </div>
 
           <div>

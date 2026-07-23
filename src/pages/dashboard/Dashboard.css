@@ -1276,7 +1276,17 @@
   flex: 0 0 230px;
 }
 
+.site-chief-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
 @media (max-width: 560px) {
+  .site-chief-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
   .ticket-detail-body {
     padding: 16px;
     gap: 16px;
@@ -1353,11 +1363,6 @@
 .tl-card-date  { font-size: 11px; color: #9CA3AF; margin-left: auto; white-space: nowrap; }
 
 /* ── Satin Alma — filtreler mobilde gizle ── */
-.sa-filter-urgency { display: flex; gap: 6px; align-items: center; }
-@media (max-width: 640px) {
-  .sa-filter-urgency { display: none !important; }
-}
-
 /* ── Satin Alma — mobil kart ── */
 .sa-card {
   padding: 13px 16px;
