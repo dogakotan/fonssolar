@@ -35,6 +35,21 @@ export const PR_STATUS = {
   reddedildi:           { label: 'Reddedildi',            tone: 'danger' },
   iptal:                { label: 'İptal',                 tone: 'muted' },
 }
+
+export const SITE_CHIEF_PR_STATUS = {
+  talep_olusturuldu:    { label: 'Talep Oluşturuldu',  tone: 'primary' },
+  fiyat_girildi:        { label: 'Talep Oluşturuldu',  tone: 'primary' },
+  onay_bekliyor:        { label: 'Talep Oluşturuldu',  tone: 'primary' },
+  bekliyor:             { label: 'Talep Oluşturuldu',  tone: 'primary' },
+  onaylandi:            { label: 'İşleme Alındı',      tone: 'warning' },
+  satin_alindi:         { label: 'İşlem Tamamlandı',   tone: 'success' },
+  fatura_bekliyor:      { label: 'İşlem Tamamlandı',   tone: 'success' },
+  fatura_onay_bekliyor: { label: 'İşlem Tamamlandı',   tone: 'success' },
+  faturasi_kesildi:     { label: 'İşlem Tamamlandı',   tone: 'success' },
+  reddedildi:           { label: 'İşlem İptal Edildi', tone: 'danger' },
+  red_edildi:           { label: 'İşlem İptal Edildi', tone: 'danger' },
+  iptal:                { label: 'İşlem İptal Edildi', tone: 'muted' },
+}
 // tickets_status_check (DB) 5 değere izin verir — bu harita önceden yalnızca 4'ünü tanıyordu
 // (iptal_edildi eksikti), iptal edilmiş bir ticket ham enum metnine düşüyordu.
 export const TK_STATUS = {

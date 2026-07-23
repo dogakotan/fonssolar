@@ -9,7 +9,7 @@ import YeniTalepModal from '../components/satin-alma/YeniTalepModal'
 import SiteChiefTicketDetayModal from '../components/tickets/SiteChiefTicketDetayModal'
 import TalepDetayModal from '../components/satin-alma/TalepDetayModal'
 import Badge from '../components/ui/Badge'
-import { TONE, PR_STATUS, TK_STATUS, TK_SEVERITY } from '../components/ui/StatusBadge'
+import { TONE, SITE_CHIEF_PR_STATUS, TK_STATUS, TK_SEVERITY } from '../components/ui/StatusBadge'
 import Pager from '../components/ui/Pager'
 
 function fmtDate(d) {
@@ -578,7 +578,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
                     <span className="ss-list-badges">
                       {isPurchase ? (
                         <>
-                          <Badge map={PR_STATUS} value={item.status} />
+                          <Badge map={SITE_CHIEF_PR_STATUS} value={item.status} />
                         </>
                       ) : (
                         <>
