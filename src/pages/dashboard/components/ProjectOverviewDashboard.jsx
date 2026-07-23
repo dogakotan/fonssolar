@@ -7,6 +7,7 @@ import { SEVERITY_META } from '../../../utils/ticketSeverity'
 import { PROJECT_STATUS_META } from '../../../utils/projectStatus'
 import { TONE, DAILY_REPORT_STATUS } from '../../../components/ui/StatusBadge'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
+import Pager from '../../../components/ui/Pager'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -69,6 +70,8 @@ const PURCHASE_STATUS_BADGE = {
   faturasi_kesildi: 'green',
   iptal: 'red',
 }
+
+const RISK_PAGE_SIZE = 4
 
 const WEATHER_META = {
   'açık': { label: 'Açık', emoji: '☀️' },
@@ -367,6 +370,7 @@ export default function ProjectOverviewDashboard({
   const [sitePhotoReport, setSitePhotoReport] = useState(null)
   const [sitePhotosLoading, setSitePhotosLoading] = useState(false)
   const [photoLightbox, setPhotoLightbox] = useState(null)
+  const [riskPage, setRiskPage]           = useState(0)
 
   // Haftalık → o haftanın son günü, Aylık → o ayın son günü, Günlük → filterDate
   const effectiveDate = useMemo(() => {
@@ -383,6 +387,10 @@ export default function ProjectOverviewDashboard({
     }
     return filterDate
   }, [filterDate, reportPeriod])
+
+  useEffect(() => {
+    setRiskPage(0)
+  }, [projectId, effectiveDate])
 
   const { data: byDateData, loading, refreshing, error, refetch } = useDashboardData(
     'get_project_by_date',
@@ -509,6 +517,12 @@ export default function ProjectOverviewDashboard({
     weight: Number(cw.weight_pct || 0),
   }))
   const openRisks = risks.filter(r => r.source === 'otomatik')
+  const riskTotalPages = Math.max(1, Math.ceil(openRisks.length / RISK_PAGE_SIZE))
+  const safeRiskPage = Math.min(riskPage, riskTotalPages - 1)
+  const visibleRisks = openRisks.slice(
+    safeRiskPage * RISK_PAGE_SIZE,
+    (safeRiskPage + 1) * RISK_PAGE_SIZE,
+  )
   const todayLabel = new Date().toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' })
   const sitePhotoUrl = path => supabase.storage.from('saha-fotolari').getPublicUrl(path).data.publicUrl
 
@@ -788,40 +802,43 @@ export default function ProjectOverviewDashboard({
           {openRisks.length === 0 ? (
             <p className="project-empty">Açık risk bulunmuyor.</p>
           ) : (
-            <div className="project-risk-list">
-              {openRisks.map(risk => {
-                const severity = getAutoRiskSeverity(risk)
-                const target = risk.rule_code === 'gorev_gecikmesi' ? 'gantt'
-                  : risk.rule_code === 'malzeme_fazla_talep' ? 'satin-alma'
-                  : null
-                return (
-                  <div
-                    key={risk.id}
-                    onClick={target ? () => onGoTab?.(target) : undefined}
-                    style={{
-                      padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0',
-                      borderLeft: `3px solid ${SEV_BORDER[severity] || '#94a3b8'}`,
-                      cursor: target ? 'pointer' : 'default', flexShrink: 0,
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {risk.title}
+            <>
+              <div className="project-risk-list">
+                {visibleRisks.map(risk => {
+                  const severity = getAutoRiskSeverity(risk)
+                  const target = risk.rule_code === 'gorev_gecikmesi' ? 'gantt'
+                    : risk.rule_code === 'malzeme_fazla_talep' ? 'satin-alma'
+                    : null
+                  return (
+                    <div
+                      key={risk.id}
+                      onClick={target ? () => onGoTab?.(target) : undefined}
+                      style={{
+                        padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0',
+                        borderLeft: `3px solid ${SEV_BORDER[severity] || '#94a3b8'}`,
+                        cursor: target ? 'pointer' : 'default', flexShrink: 0,
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {risk.title}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                        <span className={`badge ${RISK_BADGE[severity] || 'gray'}`} style={{ fontSize: 9 }}>
+                          {severity}
+                        </span>
+                        <span style={{ fontSize: 9, color: '#475569', background: '#eef2f7', padding: '1px 6px', borderRadius: 999 }}>
+                          {RISK_CATEGORY_LABEL[risk.category] || 'Diğer'}
+                        </span>
+                        <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
+                          {RISK_RULE_LABEL[risk.rule_code] || 'Otomatik tespit'}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                      <span className={`badge ${RISK_BADGE[severity] || 'gray'}`} style={{ fontSize: 9 }}>
-                        {severity}
-                      </span>
-                      <span style={{ fontSize: 9, color: '#475569', background: '#eef2f7', padding: '1px 6px', borderRadius: 999 }}>
-                        {RISK_CATEGORY_LABEL[risk.category] || 'Diğer'}
-                      </span>
-                      <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
-                        {RISK_RULE_LABEL[risk.rule_code] || 'Otomatik tespit'}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+              <Pager page={safeRiskPage} totalPages={riskTotalPages} onChange={setRiskPage} />
+            </>
           )}
         </div>
 

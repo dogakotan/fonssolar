@@ -5,7 +5,6 @@ import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../../../components/ui/DataStatusBanner'
 import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
-import TedarikKuyrugu from './TedarikKuyrugu'
 
 export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
   const { role, isAdmin } = useAuth()
@@ -42,7 +41,7 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
   const TABS = [
     { key: 'talepler', label: 'Tüm Talepler' },
     ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
-    ...(role === 'proje_yoneticisi' ? [{ key: 'tedarik', label: 'İşlem Bekleyenler' }] : []),
+    ...(role === 'proje_yoneticisi' ? [{ key: 'tedarik', label: 'Bekleyen' }] : []),
   ]
 
   const activeProjectId = projectFilter === 'all' ? undefined : projectFilter
@@ -85,7 +84,16 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
         />
       )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu onChanged={refresh} procurement={scopedProcurement} projectId={activeProjectId} refreshKey={refreshKey} />}
-      {tab === 'tedarik' && role === 'proje_yoneticisi' && <TedarikKuyrugu onChanged={refresh} projectId={activeProjectId} projects={projectOptions} refreshKey={refreshKey} />}
+      {tab === 'tedarik' && role === 'proje_yoneticisi' && (
+        <TabSatinAlmaTalepListesi
+          onChanged={refresh}
+          procurement={scopedProcurement}
+          projectId={activeProjectId}
+          refreshKey={refreshKey}
+          fixedStatus="onaylandi"
+          listTitle="Bekleyen Talepler"
+        />
+      )}
     </div>
   )
 }

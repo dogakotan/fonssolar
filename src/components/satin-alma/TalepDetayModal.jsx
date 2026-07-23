@@ -45,7 +45,7 @@ function Step({ done, active, label, last = false }) {
 
 const emptyMap = new Map()
 export default function TalepDetayModal({ request, talepId, materialPlan = emptyMap, requestedTotals = emptyMap, siteChiefView = false, onClose }) {
-  const { isAdmin, isMuhasebe, user } = useAuth()
+  const { isAdmin, isMuhasebe, role, user } = useAuth()
   const [data, setData] = useState(request || null)
   const [items, setItems] = useState(request?.items || [])
   const [note, setNote] = useState('')
@@ -70,13 +70,15 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
 
   const req = data || request || {}
   const status = normalizeStatus(req.status)
-  const canAct = isAdmin && status === 'bekliyor'
+  const canReview = isAdmin && status === 'bekliyor'
+  const canComplete = role === 'proje_yoneticisi' && status === 'onaylandi'
+  const canAct = canReview || canComplete
   const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
   const description = req.description || req.request_note || req.notes || '-'
   const requester = req.requester_name || req.requested_by_name || req.created_by_name || '—'
   const type = requestType(req, items)
   const invoiceDone = status === 'faturasi_kesildi'
-  const invoiceActive = ['fatura_bekliyor', 'fatura_onay_bekliyor'].includes(status)
+  const invoiceActive = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(status)
   const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const procurementActive = status === 'onaylandi'
   const procurementDone = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
@@ -89,20 +91,44 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   async function updateStatus(nextStatus) {
     setSaving(true)
     setErrorMessage('')
+
+    if (nextStatus === 'satin_alindi') {
+      const { error } = await supabase.rpc('complete_project_manager_purchase_request', {
+        p_request_id: req.id,
+      })
+      setSaving(false)
+      if (error) {
+        console.error('project manager purchase completion error:', error)
+        setErrorMessage(error.message || 'Talep tamamlanamadı.')
+        return
+      }
+      onClose()
+      return
+    }
+
     const payload = {
       status: nextStatus,
-      approved_by: user?.id || null,
-      approved_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+    }
+    if (canReview) {
+      payload.approved_by = user?.id || null
+      payload.approved_at = new Date().toISOString()
     }
     const combinedNote = [req.notes, note].filter(Boolean).join('\n')
     if (combinedNote) payload.notes = combinedNote
 
-    const { error } = await supabase.from('purchase_requests').update(payload).eq('id', req.id)
+    const expectedStatus = canReview ? 'bekliyor' : 'onaylandi'
+    const { data: updatedRequest, error } = await supabase
+      .from('purchase_requests')
+      .update(payload)
+      .eq('id', req.id)
+      .eq('status', expectedStatus)
+      .select('id')
+      .maybeSingle()
     setSaving(false)
-    if (error) {
+    if (error || !updatedRequest) {
       console.error('purchase request update error:', error)
-      setErrorMessage('İşlem kaydedilemedi.')
+      setErrorMessage(error?.message || 'Talep artık bu işlem için uygun değil. Listeyi yenileyip tekrar deneyin.')
       return
     }
     onClose()
@@ -110,10 +136,15 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1000, display: 'grid', placeItems: 'center', padding: 18 }}>
-      <div style={{ width: 'min(680px, calc(100vw - 36px))', background: '#F8FAFC', borderRadius: 12, boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)', overflow: 'hidden' }}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="purchase-request-dialog-title"
+        style={{ width: 'min(680px, calc(100vw - 36px))', background: '#F8FAFC', borderRadius: 12, boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)', overflow: 'hidden' }}
+      >
         <header style={{ background: '#fff', borderBottom: '1px solid #E5E7EB', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Satın Alma Talebi</h2>
+            <h2 id="purchase-request-dialog-title" style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Satın Alma Talebi</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{requestNo(req)} · {req.title || req.material_name || 'Satın alma talebi'}</p>
           </div>
           <button onClick={onClose} style={{ border: 'none', background: 'transparent', color: '#64748B', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
@@ -232,9 +263,9 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
 
           <section style={CARD}>
             <h3 style={TITLE}>Açıklama</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: canAct ? '1fr 1fr' : '1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: canReview ? '1fr 1fr' : '1fr', gap: 10 }}>
               <p style={{ margin: 0, minHeight: 46, maxHeight: 70, overflow: 'hidden', fontSize: 12.5, lineHeight: 1.45, color: '#334155', whiteSpace: 'pre-wrap' }}>{description}</p>
-              {canAct && (
+              {canReview && (
                 <textarea
                   value={note}
                   onChange={event => setNote(event.target.value)}
@@ -248,16 +279,20 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
           {canAct && (
             <section style={{ ...CARD, padding: 12 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', gap: 10, alignItems: 'center' }}>
-                <span />
-                <button onClick={() => updateStatus('reddedildi')} disabled={saving} style={{ background: '#DC2626', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>Reddet</button>
-                <button onClick={() => updateStatus('onaylandi')} disabled={saving} style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>Onayla</button>
+                <span style={{ color: '#64748B', fontSize: 12.5 }}>
+                  {canReview ? 'Yönetici kararını bu talep üzerinden verebilir.' : 'Proje yöneticisi işlemi tamamlayabilir veya talebi reddedebilir.'}
+                </span>
+                <button onClick={() => updateStatus(canReview ? 'reddedildi' : 'iptal')} disabled={saving} style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>Reddet</button>
+                <button onClick={() => updateStatus(canReview ? 'onaylandi' : 'satin_alindi')} disabled={saving} style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
+                  {saving ? 'Kaydediliyor…' : canReview ? 'Onayla' : 'Tamamlandı'}
+                </button>
               </div>
             </section>
           )}
 
           {canInvoice && (
             <section style={{ ...CARD, padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <p style={{ margin: 0, fontSize: 12.5, color: '#64748B' }}>Tedarik tamamlandı, henüz faturası kesilmedi.</p>
+              <p style={{ margin: 0, fontSize: 12.5, color: '#64748B' }}>Proje yöneticisi işlemi tamamladı, henüz faturası kesilmedi.</p>
               <button onClick={() => setShowFaturaModal(true)} style={{ background: '#5B21B6', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
                 Fatura Oluştur
               </button>

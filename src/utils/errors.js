@@ -1,5 +1,5 @@
 // Postgres/Supabase hatalarını Türkçe kullanıcı mesajına çeviren tek kaynak —
-// DailyReportForm.jsx, FaturaOlusturModal.jsx, TedarikKuyrugu.jsx'teki üç
+// DailyReportForm.jsx ve FaturaOlusturModal.jsx'teki
 // bağımsız `toUserMessage()` kopyasının tekilleştirilmiş hali. Her ekranın
 // kendine özel kuralları (`rules`) ve varsayılan mesajı (`fallback`) farklı
 // olabilir, o yüzden bunlar çağıran tarafından parametre olarak geçiliyor —

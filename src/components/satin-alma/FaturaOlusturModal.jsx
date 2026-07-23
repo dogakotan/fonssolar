@@ -18,7 +18,7 @@ function requestCategoryToInvoiceCategory(category) {
 }
 
 const INVOICE_ERROR_RULES = [
-  { match: 'henüz proje yöneticisi tarafından tedarik aşamasına alınmadı', message: 'Bu talep için tedarikçi/satın alma bilgisi henüz girilmedi. Fatura eklemeden önce proje yöneticisinin tedarik adımını tamamlaması gerekiyor.' },
+  { match: ['fatura eklemeye uygun değil', 'henüz proje yöneticisi tarafından'], message: 'Bu talep henüz proje yöneticisi tarafından tamamlanmadı. Fatura eklemeden önce talebin “Proje Yöneticisinde” aşamasının tamamlanması gerekiyor.' },
   { match: ['duplicate', 'unique'], message: 'Bu talep için zaten bir fatura kaydı var.' },
 ]
 

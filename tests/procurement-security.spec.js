@@ -169,6 +169,7 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
       anon.rpc('resubmit_rejected_invoice', { p_invoice_id: '00000000-0000-0000-0000-000000000000' }),
       anon.rpc('delete_rejected_invoice', { p_invoice_id: '00000000-0000-0000-0000-000000000000' }),
       anon.rpc('set_project_procurement_completed', { p_project_id: siteProjectId, p_completed: true }),
+      anon.rpc('complete_project_manager_purchase_request', { p_request_id: requestId }),
     ])
     for (const result of attempts) expect(result.error).toBeTruthy()
   })
@@ -177,9 +178,43 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     expect((await admin.from('purchase_requests').update({
       status: 'onaylandi', approved_by: adminId, approved_at: new Date().toISOString(),
     }).eq('id', requestId)).error).toBeNull()
-    expect((await pm.from('purchase_requests').update({
-      supplier_id: supplierId, purchase_date: new Date().toISOString().slice(0, 10), purchased_by: pmId,
-    }).eq('id', requestId)).error).toBeNull()
+
+    const adminCompletion = await admin.rpc('complete_project_manager_purchase_request', {
+      p_request_id: requestId,
+    })
+    expect(adminCompletion.error?.message).toContain('yalnızca proje yöneticisi')
+
+    const siteCompletion = await santiye.rpc('complete_project_manager_purchase_request', {
+      p_request_id: requestId,
+    })
+    expect(siteCompletion.error?.message).toContain('yalnızca proje yöneticisi')
+
+    const pmCompletion = await pm.rpc('complete_project_manager_purchase_request', {
+      p_request_id: requestId,
+    })
+    expect(pmCompletion.error).toBeNull()
+    expect(pmCompletion.data).toMatchObject({
+      request_id: requestId,
+      project_id: foreignProjectId,
+      status: 'satin_alindi',
+    })
+
+    const duplicateCompletion = await pm.rpc('complete_project_manager_purchase_request', {
+      p_request_id: requestId,
+    })
+    expect(duplicateCompletion.error?.message).toContain('proje yöneticisinde bekleyen')
+
+    const { data: completedRequest, error: completedRequestError } = await admin
+      .from('purchase_requests')
+      .select('status,purchase_date,purchased_by')
+      .eq('id', requestId)
+      .single()
+    expect(completedRequestError).toBeNull()
+    expect(completedRequest).toMatchObject({
+      status: 'satin_alindi',
+      purchased_by: pmId,
+    })
+    expect(completedRequest.purchase_date).toBeTruthy()
 
     const { data: invoice, error: invoiceError } = await muhasebe.from('invoices').insert({
       project_id: foreignProjectId,

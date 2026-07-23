@@ -222,12 +222,30 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
               DOSYA EKLE (PDF, EXCEL VEYA FOTOĞRAF)
             </label>
             <input
+              id="new-ticket-files"
               type="file"
               multiple
               accept="image/*,.pdf,.xls,.xlsx,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={e => setFiles(Array.from(e.target.files || []))}
-              style={{ fontSize: 13, fontFamily: 'inherit' }}
+              style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}
             />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <label
+                htmlFor="new-ticket-files"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  minHeight: 38, padding: '0 15px', border: '1px solid #B8D2EA', borderRadius: 8,
+                  background: '#EEF5FB', color: '#185FA5', fontSize: 13, fontWeight: 600,
+                  fontFamily: 'inherit', cursor: 'pointer', userSelect: 'none',
+                }}
+              >
+                <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1 }}>＋</span>
+                Dosya Seç
+              </label>
+              <span style={{ fontSize: 12.5, color: files.length ? '#374151' : '#9CA3AF' }}>
+                {files.length ? `${files.length} dosya seçildi` : 'Henüz dosya seçilmedi'}
+              </span>
+            </div>
             {files.length > 0 && (
               <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
                 {files.map((file, index) => (

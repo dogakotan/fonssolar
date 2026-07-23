@@ -43,8 +43,7 @@ export const statusLabel = (status) => ({
 // faturası kesilmedi mi? -> "Faturası Kesilecekler" kuyruğunda görünmeli ve Fatura Oluştur
 // aksiyonu gösterilmeli. "onaylandi" durumu artık YETERLİ DEĞİL — DB (trg_guard_invoice_
 // requires_procurement_done) da bu durumda fatura eklemeyi reddediyor, proje yöneticisi
-// önce Tedarik Kuyruğu'nda tedarikçi + satın alma tarihini girip talebi satin_alindi'ye
-// otomatik ilerletmeli.
+// önce "Proje Yöneticisinde" aşamasını tamamlayıp talebi satin_alindi'ye ilerletmeli.
 export function isAwaitingInvoice(request) {
   return !request.invoice_id && normalizeStatus(request.status) === 'satin_alindi'
 }
@@ -58,13 +57,15 @@ export function buildApprovalSteps(status) {
   const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(s)
   const procurementActive = s === 'onaylandi'
   const procurementDone = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(s)
-  const invoiceActive = ['fatura_bekliyor', 'fatura_onay_bekliyor'].includes(s)
+  // satin_alindi, proje yöneticisinin işi tamamladığı ve sıranın hemen muhasebeye
+  // geçtiği durumdur; bu yüzden süreç çizgisinde bekleyen adım "Fatura Bekleniyor"dur.
+  const invoiceActive = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(s)
   const invoiceDone = s === 'faturasi_kesildi'
 
   return [
     { key: 'talep', label: 'Talep Oluşturuldu', done: true },
     { key: 'onay', label: isRejected ? 'Onay Reddedildi' : 'Yönetici Onayı', done: approvalDone, active: s === 'bekliyor', rejected: isRejected },
-    { key: 'tedarik', label: 'Tedarikçi / Satın Alma', done: procurementDone, active: procurementActive },
+    { key: 'proje_yoneticisi', label: 'Proje Yöneticisinde', done: procurementDone, active: procurementActive },
     { key: 'fatura_bekliyor', label: 'Fatura Bekleniyor', done: invoiceDone, active: invoiceActive },
     { key: 'fatura_kesildi', label: 'Fatura Kesildi', done: invoiceDone },
   ]
