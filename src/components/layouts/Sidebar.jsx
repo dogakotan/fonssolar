@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../context/AuthContext'
-import { NAVIGATION } from '../../config/navigation'
 
 export default function Sidebar({ active, onTab, onLogout, isOpen }) {
-  const { role } = useAuth()
+  const { navigation } = useAuth()
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-collapsed') === 'true' } catch { return false }
   })
@@ -116,9 +115,9 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
   ]
 
   // 'bildirimler' rol tanımından bağımsız her zaman görünür (RLS: recipient_id=auth.uid())
-  // — henüz NAVIGATION'a eklenmemiş olası bir rolde bile bildirim erişimi kaybolmasın diye.
-  const visibleItems = role
-    ? items.filter(item => item.key === 'bildirimler' || (NAVIGATION[role]?.sidebarItems || []).includes(item.key))
+  // — roles.sidebar_items henüz yüklenmemiş/boşsa bile bildirim erişimi kaybolmasın diye.
+  const visibleItems = navigation
+    ? items.filter(item => item.key === 'bildirimler' || (navigation.sidebarItems || []).includes(item.key))
     : []
 
   return (

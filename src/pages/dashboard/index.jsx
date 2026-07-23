@@ -20,7 +20,6 @@ import FloatingAgent from '../../components/agent/FloatingAgent'
 import NotificationBell from '../../components/ui/NotificationBell'
 import DailyReportForm from '../../components/daily-report/DailyReportForm'
 import DailyReportList from '../DailyReportList'
-import { NAVIGATION, ROLE_LABEL, FIELD_SPECIALIST_ROLES } from '../../config/navigation'
 import './Dashboard.css'
 
 const TABS = {
@@ -70,7 +69,7 @@ function ProjeSecimGerekli({ projects, onSelect }) {
 }
 
 export default function Dashboard() {
-  const { user, role, isAdmin, projectId, loading: authLoading, authError } = useAuth()
+  const { user, role, isAdmin, projectId, loading: authLoading, authError, navigation, roleLabel } = useAuth()
   const { scopeProjectId: contextScopeProjectId, projects: scopeProjects } = useScope()
   // ScopeContext artık manuel override desteklemiyor (header seçicisi kalkınca kasıtlı
   // sadeleştirildi, scopeProjectId yalnızca tek-proje kullanıcıda otomatik çözülüyor).
@@ -100,19 +99,19 @@ export default function Dashboard() {
 
   // Kısıtlı roller → başlangıç sekmesi
   useEffect(() => {
-    if (!role) return
-    const defaultTab = NAVIGATION[role]?.defaultTab
+    if (!role || !navigation) return
+    const defaultTab = navigation.defaultTab
     if (defaultTab) {
       setActiveTab(defaultTab)
       return
     }
     // Kısıtsız roller (tabs: null — admin/koordinator/proje_koordinatoru/muhendis/
     // maliyet_kontrolcu) için 'is-plani' sekmesinin hiç render dalı yok (yalnızca
-    // santiye_sefi/proje_yoneticisi/saha uzmanı rollerinde var, bkz. dash-content).
-    // Paylaşımlı bir cihazda önceki rolden localStorage'da kalan bu değer boş ekrana
-    // yol açabilir — güvenli varsayılana (genel) düş.
+    // santiye_sefi/proje_yoneticisi rollerinde var, bkz. dash-content). Paylaşımlı
+    // bir cihazda önceki rolden localStorage'da kalan bu değer boş ekrana yol
+    // açabilir — güvenli varsayılana (genel) düş.
     setActiveTab(current => (current === 'is-plani' ? 'genel' : current))
-  }, [role])
+  }, [role, navigation])
 
   useEffect(() => {
     window.localStorage.setItem('dashboard-active-tab', activeTab)
@@ -144,7 +143,7 @@ export default function Dashboard() {
   }
 
   function handleTabChange(tab) {
-    const allowed = NAVIGATION[role]?.tabs
+    const allowed = navigation?.tabs
     if (allowed && !allowed.includes(tab)) return
     if (role === 'santiye_sefi' && tab === 'daily-report') {
       setEditReportId(null)
@@ -276,7 +275,7 @@ export default function Dashboard() {
                   {user?.email?.split('@')[0] || 'Kullanıcı'}
                 </p>
                 <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)', whiteSpace: 'nowrap' }}>
-                  {ROLE_LABEL[role] || '—'}
+                  {roleLabel || '—'}
                 </p>
               </div>
             </div>
@@ -306,9 +305,6 @@ export default function Dashboard() {
           !scopeProjectId && scopeProjects.length > 1
             ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />
             : <TabIsPlan projectId={scopeProjectId} />
-        )}
-        {activeTab === 'is-plani'     && FIELD_SPECIALIST_ROLES.includes(role) && (
-          <TabIsPlan projectId={projectId} />
         )}
         {activeTab === 'bildirimler'  && (
           <TabBildirimler

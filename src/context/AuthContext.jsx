@@ -71,6 +71,16 @@ export function AuthProvider({ children }) {
         return
       }
 
+      // Sekme/sidebar izinleri artık navigation.js'te hardcoded değil, roles
+      // tablosundan okunuyor (allowed_tabs/default_tab/sidebar_items) — yeni bir
+      // rol eklendiğinde/rol izinleri değiştiğinde tek yer burasıdır.
+      const { data: roleRow, error: roleRowError } = await supabase
+        .from('roles')
+        .select('display_name, is_manager, allowed_tabs, default_tab, sidebar_items')
+        .eq('key', roleKey)
+        .maybeSingle()
+      if (roleRowError) throw roleRowError
+
       const projects = Array.isArray(projectData) ? projectData : []
       const homeProjectId = profileData?.project_id ?? null
       // Tek projeli kullanıcı doğrudan o projeyi kullanır. Birden fazla proje
@@ -89,6 +99,13 @@ export function AuthProvider({ children }) {
         full_name: profileData?.full_name || authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email,
         role_key: roleKey,
         project_id: assignedProjectId,
+        role_label: roleRow?.display_name || roleKey,
+        is_manager: roleRow?.is_manager ?? false,
+        navigation: {
+          tabs: roleRow?.allowed_tabs ?? null,
+          defaultTab: roleRow?.default_tab ?? null,
+          sidebarItems: roleRow?.sidebar_items ?? [],
+        },
       })
     } catch (err) {
       setAuthError(err?.message || 'Profil ve rol bilgisi yuklenemedi.')
@@ -102,8 +119,11 @@ export function AuthProvider({ children }) {
   const isAdmin    = role === 'admin'
   const isMuhasebe = role === 'muhasebe'
   const projectId  = profile?.project_id ?? null
+  const roleLabel  = profile?.role_label ?? null
+  const isManager  = profile?.is_manager ?? false
+  const navigation = profile?.navigation ?? null
 
-  const value = { user, profile, role, isAdmin, isMuhasebe, loading, projectId, authError }
+  const value = { user, profile, role, isAdmin, isMuhasebe, loading, projectId, authError, roleLabel, isManager, navigation }
 
   return (
     <AuthContext.Provider value={value}>

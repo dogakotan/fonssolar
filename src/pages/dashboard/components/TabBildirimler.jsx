@@ -4,7 +4,6 @@ import { useAuth } from '../../../context/AuthContext'
 import Badge from '../../../components/ui/Badge'
 import { INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS, PR_STATUS, TK_STATUS } from '../../../components/ui/StatusBadge'
 import Pager from '../../../components/ui/Pager'
-import { MANAGER_ROLES } from '../../../config/navigation'
 import { dedupeNotifications, notificationDisplay } from '../../../utils/notifications'
 
 const BADGE_MAP = {
@@ -58,8 +57,7 @@ function reminderTone(n) {
 }
 
 export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToRequest, onGoToInvoice, onGoToMalzemeListesi }) {
-  const { user, role } = useAuth()
-  const isManager = MANAGER_ROLES.includes(role)
+  const { user, isManager } = useAuth()
   const [items, setItems] = useState([])
   const [liveStatus, setLiveStatus] = useState({})
   const [invoiceStepSummary, setInvoiceStepSummary] = useState({})

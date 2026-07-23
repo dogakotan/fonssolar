@@ -428,160 +428,57 @@ kontrol ediliyor. **Ayrıca bu denetim sırasında `get_advisors` ile bağımsı
 (2026-07-17'de eklenmişti) hiç `REVOKE ... FROM PUBLIC, anon` almamıştı — `anon` (oturum
 açmamış) rolü bile bu iki hassas yazma RPC'sini çağırabiliyordu; bu turda kapatıldı.
 
-### Roller (19, `roles` tablosunda tanımlı — `select key, display_name, is_manager, cross_project from roles`)
-admin, koordinator, proje_koordinatoru, muhendis, proje_tasarim_sorumlusu,
-santiye_sefi, proje_kurulum_sefi, elektrik_sefi, mekanik_sef, isg_sorumlusu,
-kalite_kontrol_sefi, lojistik_tedarik, proje_yoneticisi, enh_sorumlusu,
-operasyon_sorumlusu, evrak_takip, maliyet_kontrolcu, muhasebe, is_makinesi_operator
+### Roller (4, `roles` tablosunda tanımlı — `select key, display_name, is_manager, cross_project, allowed_tabs, default_tab, sidebar_items from roles`)
+admin, muhasebe, proje_yoneticisi, santiye_sefi.
 
-`is_manager=true`: admin, koordinator, proje_koordinatoru, maliyet_kontrolcu,
-muhasebe (tüm yönetici bildirimlerini alır, `has_project_access` her projeye
-izin verir). `cross_project=true`: lojistik_tedarik, **proje_yoneticisi**
-(2026-07-17'de `false`'tan `true`'ya çevrildi — kullanıcı proje yöneticisinin
-admin gibi tüm projeleri görebilmesini istedi; `lojistik_tedarik` ile aynı
-mekanizma: manager değil ama tek projeye kilitli değil). **Bu bayrak
-2026-07-21'e kadar fiilen çalışmıyordu** — `get_project_scope()` yalnızca
-`is_manager`'a bakıyordu, `cross_project`'ı hiç kontrol etmiyordu (bkz. RPC
-katmanı → "Yetki/kapsam çekirdeği" için tam detay); düzeltilene kadar
-proje_yoneticisi yalnızca `profiles.project_id`'deki tek ev projesini
-görebiliyordu. `proje_yoneticisi`
-(2026-07-16'da `satin_alma_uzmani` rolünün yerine geçti) hâlâ bir "ev projesi"ne
-(`profiles.project_id`) atanabilir ama bu artık yalnızca kozmetik/varsayılan —
-`has_project_access` zaten `cross_project=true` ile her projeye izin veriyor.
-Frontend tarafı (`index.jsx`, 2026-07-17 içinde iki aşamada değişti — önce
-benim tek satırlık `scopeProjectId` bağlantım, sonra kullanıcının kendi
-genişletmesi): `ROLE_TABS.proje_yoneticisi` artık `['genel', 'projeler',
-'is-plani', 'satin-alma', 'bildirimler']` (eskiden yalnızca
-`['satin-alma','bildirimler']`) — bu rol artık admin gibi **Projeler**
-sekmesinden proje listesini gezip bir projeye tıklayınca o projenin tam
-`ProjeDetay` görünümüne (8 iç sekme: Genel Proje/İş Planı/Satın Alma/Malzeme
-Listesi/Finans/Ticket/Raporlar/Ekip) girebiliyor. **2026-07-20'de**
-`ProjeDetay.jsx`'in eski `canViewFinanceAndTickets = role !== 'proje_yoneticisi'`
-guard'ı kaldırıldı: bir projenin içine girince Finans'ı **salt-okunur** (fatura
-ekleyemez/onaylayamaz/iptal edemez — `FaturaListesi`/`OnayKuyrugu`'da
-`isAdmin || isMuhasebe`'den türetilen `canAct`/`readonly` ile), Tickets'ı ise
-**santiye_sefi ile aynı tam yetki** seviyesinde görüyor (`TicketListesi.jsx`'in
-`fetchTickets`'ına ayrı bir `proje_yoneticisi` dalı eklendi — `propProjectId`'ye
-göre süzülür, çünkü bu rol çoklu projeye erişebiliyor).
-**2026-07-21'de bu role admin'in üst-seviye sekmelerinin çoğu eklendi**
-(kullanıcı isteği: "her sayfayı görsün, yetkili olduğu alanlarda tuşlasın") —
-`navigation.js`'e ilk turda `finans, tickets, kullanicilar, proje-ekle`
-eklenmişti; kullanıcı bunun ardından **kendi elle düzenlemesiyle** `finans`
-ve `is-plani`'yı proje_yoneticisi'nin listesinden çıkardı (güncel tabs:
-`genel, projeler, satin-alma, tickets, kullanicilar, proje-ekle, bildirimler`
-— 7 sekme). Tickets zaten `isAdmin` bazlı iç aksiyon kısıtlamasına sahip
-olduğundan (yukarıdaki paragraf) üst-seviye Tickets sekmesi de aynı tam-yetki
-davranışını otomatik miras aldı, ekstra guard gerekmedi. **Kullanıcılar** ve
-**Proje Yönetimi** (`proje-ekle`) ekranlarında ise önceden **hiç iç aksiyon
-kısıtlaması yoktu** (yalnızca dıştan `isAdmin` kapısı) — bu ikisine `isAdmin &&`
-ile sarmalanmış yeni bir iç gate eklendi (`TabKullanicilar.jsx`: + Kullanıcı
-Ekle/Düzenle/Şifre/Sil; `TabProjeYonetimi.jsx`: Yeni Proje/Excel import/
-Düzenle/Excel export/Sil — bu sonuncusu kademeli proje silme dahil en yüksek
-blast-radius'lu ekran) — proje_yoneticisi bu ikisini tam listeyle ama tamamen
-salt-okunur görüyor. **2026-07-21'de (aynı gün, ayrı ve daha kapsamlı bir
-denetim turunda) bu "tamamen salt-okunur" karar kısmen gevşetildi:** kullanıcı
-proje_yoneticisi'nin "kullanıcı oluşturabilmesi" ve "proje şablonu ile proje
-ekleyebilmesi" gerektiğini netleştirdi — bu iki **oluşturma** aksiyonu artık
-`isAdmin || role==='proje_yoneticisi'` (`canCreate`/`canCreateProject`) ile açık,
-ama Düzenle/Şifre/Sil (`TabKullanicilar.jsx`) ve Düzenle/Excel export/Sil
-(`TabProjeYonetimi.jsx`) hâlâ `isAdmin`-only. Sunucu tarafı da uyumlu hâle
-getirildi: `create-user` edge function'ı önceden sertçe `role_key!=='admin'`
-ise reddediyordu (frontend'i açsam bile proje_yoneticisi hiç kullanıcı
-oluşturamazdı) — artık `['admin','proje_yoneticisi']` kabul ediyor, ama
-`role_key==='admin'` atanmak istenirse çağıran admin değilse reddediyor
-(yetki yükseltme koruması, `KullaniciModal`'ın rol dropdown'ı da aynı kısıtı
-istemci tarafında tekrar ediyor). `import-project-excel` edge function'ında ise
-tam tersi bir bulgu çıktı: **yeni proje oluşturma dalında (`isNewProject`)
-hiçbir rol kontrolü yoktu** — herhangi bir authenticated kullanıcı (santiye_sefi
-dahil) doğrudan API çağrısıyla yeni proje oluşturabiliyordu; bu da
-`['admin','proje_yoneticisi']`'e kilitlendi (mevcut proje güncelleme dalı zaten
-`user_has_project_access` ile korunuyordu, değişmedi). Aynı turda `TabProjeYonetimi.jsx` ve `TabTickets.jsx`'in
-proje filtre dropdown'larındaki raw `.from('projects')` sorguları da
-`getProjects()`'e geçirildi. `index.jsx`'teki `genel` sekmesi de proje_yoneticisi'ne
-özel `ProjeSecimGerekli` (proje seçim ekranı) dalından çıkarılıp diğer kısıtsız
-rollerle aynı şartsız `TabGenel` render'ına alındı — girişte artık admin gibi
-doğrudan "Tüm Projeler" agregatı açılıyor, proje seçmesi gerekmiyor (`is-plani`
-zaten kaldırıldığı için oradaki proje-seçim ekranı artık konu dışı).
+**2026-07-22'de 19 rolden 4'e indirildi** (`prune_roles_to_active_four`
+migration'ı) — `profiles.role_key`'in `roles(key)`'e **FK**'si olduğu için
+(`profiles_role_key_fkey`, `ON UPDATE CASCADE`) artık yalnızca bu 4 rol bir
+profile atanabilir; `profiles_role_key_check` CHECK constraint'i hâlâ eski
+19 değerlik listeyi metin olarak içeriyor ama FK ondan daha sıkı olduğundan
+CHECK yanıltıcı/geçersiz kalmış durumda — gerçek kısıt FK'dir. Canlı veride
+(6 profil) de yalnızca bu 4 rol kullanılıyor. Eski 19-rol genişletmesinin
+(`koordinator`, `proje_koordinatoru`, `muhendis`, `maliyet_kontrolcu` + 11
+saha/teknik uzman rolü: `elektrik_sefi`, `mekanik_sef`, `isg_sorumlusu`,
+`kalite_kontrol_sefi`, `enh_sorumlusu`, `proje_kurulum_sefi`,
+`proje_tasarim_sorumlusu`, `evrak_takip`, `operasyon_sorumlusu`,
+`is_makinesi_operator`, `lojistik_tedarik`) tüm frontend izleri (eski
+`FIELD_SPECIALIST_ROLES` sabiti ve buna bağlı ölü `index.jsx` render dalı
+dahil) 2026-07-23'te temizlendi — bu roller yeniden aktifleştirilirse önce
+`roles` tablosuna satır eklenmesi (display_name/is_manager/cross_project/
+allowed_tabs/default_tab/sidebar_items) gerekir.
 
-**Ayrı, daha köklü bir bug (2026-07-21, aynı gün):** kullanıcı proje_yoneticisi
-hesabıyla test ederken her iki test projesinin (İzmir + Kayseri) verisini de
-görmesi gerekirken yalnızca birini (İzmir, `profiles.project_id`'deki ev
-projesi) gördüğünü fark etti. Kök neden `get_project_scope()`'un
-`roles.cross_project`'ı HİÇ kontrol etmemesiydi (yalnızca `is_manager`'a
-bakıyordu) — bu, aşağıdaki "Yetki/kapsam çekirdeği" notunda detaylandırılan,
-`get_my_projects()` dahil neredeyse tüm dual-scope RPC'leri etkileyen ciddi bir
-gap'ti; `has_project_access(p_project_id)` (tek-proje kontrolü) bunu zaten doğru
-yapıyordu, yalnızca aggregate tarafı eksikti. 1 migration (onaylı) ile
-düzeltildi, `get_my_projects()` artık cross_project rollerde gerçekten TÜM
-erişilebilir projeleri (yeni eklenenler dahil, dinamik) dönüyor.
-`genel`/`is-plani`/`satin-alma` üst-seviye sekmeleri `scopeProjectId`
-(`ScopeContext`) kullanıyor; header'daki global proje seçici `<select>`
-(`showAllOption`/`scopeProjects`/`setScopeProjectId`) kullanıcı tarafından
-kasıtlı olarak kaldırıldı (bkz. Genel Proje bölümündeki not). **Bug + düzeltme
-(2026-07-17, aynı gün):** header seçicisi kalkınca çok projeli bir
-`proje_yoneticisi` (artık `cross_project=true`) için bu üç sekmede
-`scopeProjectId` hiç set edilemiyordu (tek projeli kullanıcıda `ScopeContext`
-otomatik çözüyordu, ama proje_yoneticisi artık 3+ projeye erişebiliyor) —
-ekran sonsuza kadar "Yükleniyor…" durumunda kalıyordu, Playwright ile canlı
-tespit edildi. İlk düzeltme denemesi `useScope()`'tan var olmayan bir
-`setScopeProjectId` çağırdığı için `onSelect is not a function` hatası verdi —
-kullanıcının `ScopeContext.jsx` sadeleştirmesi (header seçicisi kalkınca)
-`setScopeProjectId`/`showAllOption`'ı TAMAMEN kaldırmış, `scopeProjectId`
-artık `projects.length === 1 ? projects[0].id : null` şeklinde sabit türetilen,
-override edilemeyen bir değer. Kesin düzeltme: ortak `ScopeContext`'e hiç
-dokunulmadan, `index.jsx` içinde yalnızca `role === 'proje_yoneticisi'` için
-yerel bir state (`pySelectedProjectId`/`setPySelectedProjectId`) eklendi;
-`scopeProjectId` bu rol için `contextScopeProjectId || pySelectedProjectId`
-olarak hesaplanıyor. `ProjeSecimGerekli` bileşeni (`scopeProjectId` boş ve
-birden fazla proje varsa devreye girer — Projeler sekmesi DEĞİL, o zaten kendi
-listesini gösteriyordu) bu yerel state'i `onSelect` ile dolduruyor. Diğer
-rollerin (admin/manager) `scopeProjectId=null` = "Tüm Projeler" davranışına
-DOKUNULMADI. Playwright ile 2. denemede tam PASS doğrulandı (konsol hatası yok,
-proje seçimi → Genel/İş Planı/Satın Alma verisi doğru yükleniyor).
+`is_manager=true`: admin, muhasebe (tüm yönetici bildirimlerini alır,
+`has_project_access` her projeye izin verir). `cross_project=true`:
+proje_yoneticisi (tüm projelere erişir, `get_project_scope`/
+`has_project_access` üzerinden — bkz. RPC katmanı → "Yetki/kapsam çekirdeği").
+proje_yoneticisi hâlâ bir "ev projesi"ne (`profiles.project_id`) atanabilir
+ama bu yalnızca kozmetik/varsayılan; `genel`/`satin-alma` üst-seviye
+sekmelerinde `ScopeContext`'in otomatik çözemediği çoklu-proje durumunda
+`index.jsx`'teki yerel `pySelectedProjectId` state'i + `ProjeSecimGerekli`
+ekranı devreye girer. `ProjeDetay.jsx`'in iç sekmelerinde proje_yoneticisi
+için Finans salt-okunur, Tickets santiye_sefi ile aynı tam yetkide.
 
-**Frontend artık 19 rolün tamamını tanıyor (2026-07-18'de genişletildi).**
-Önceden yalnızca 6 rol (admin, muhasebe, santiye_sefi, muhendis, koordinator,
-proje_yoneticisi) `ROLE_TABS`/`ROLE_LABEL`/`Sidebar.jsx`'te tanımlıydı; diğer
-13 rolle giren bir kullanıcı sidebar'da yalnızca "Bildirimler"i görüyordu.
-Kullanıcıyla birlikte 3 gruba ayrıldı:
-- **`koordinator` ile birebir aynı erişim:** `proje_koordinatoru` — `SAHA_ROLES`e
-  eklendi (Genel/Projeler/Satın Alma/Tickets), `ROLE_TABS`'ta hiç kaydı yok
-  (koordinator/muhendis/admin gibi "kısıtsız" — yalnızca Sidebar görünürlüğü
-  gate ediyor, route seviyesinde kısıt yok; bu, mevcut yönetici rollerinin
-  hepsinde zaten var olan bir desen, yeni bir açık değil).
-- **`maliyet_kontrolcu` (muhasebe+koordinator karışımı):** Genel + Projeler +
-  Finans (`Sidebar.jsx`'te bu 3 item'ın `roles` dizisine eklendi), aynı şekilde
-  `ROLE_TABS`'ta kısıtsız.
-- **11 tek-projeli saha/teknik uzman rolü** (`elektrik_sefi`, `mekanik_sef`,
-  `isg_sorumlusu`, `kalite_kontrol_sefi`, `enh_sorumlusu`, `proje_kurulum_sefi`,
-  `proje_tasarim_sorumlusu`, `evrak_takip`, `operasyon_sorumlusu`,
-  `is_makinesi_operator`, `lojistik_tedarik`) — henüz kendi özel modülleri
-  yok (İSG/ENH gibi modüller hâlâ "Hiç yapılmamış modüller"de), bu yüzden
-  hepsi `santiye_sefi`'nin genel demetini paylaşıyor: Genel Bakış + İş Planı +
-  Satın Alma + Tickets + Bildirimler (`FIELD_SPECIALIST_ROLES` sabiti hem
-  `index.jsx`'te hem `Sidebar.jsx`'te ayrı ayrı tanımlı — iki dosya arasında
-  paylaşılan bir roller modülü yok, mevcut kod stiliyle tutarlı), ama
-  `santiye_sefi`'ye özel Günlük Rapor formu/listesi (`daily-report`/
-  `rapor-listesi`) VERİLMEDİ — o bileşenler saha şefine özel. Bu roller
-  `ROLE_TABS`'ta kısıtlı (yalnızca bu 5 sekme) ve `ROLE_DEFAULT`'ta `genel`.
-  `TabIsPlan`'a `siteChiefView` geçilmiyor (santiye_sefi'ye özel sadeleştirilmiş
-  görünüm bu rollere uygulanmıyor, `proje_yoneticisi` ile aynı davranış —
-  görev sorumlusu/notlar dahil tam görünüm). `lojistik_tedarik` (`cross_project=true`
-  olmasına rağmen) bilinçli olarak diğer saha rolleriyle aynı tek-proje
-  (`profiles.project_id`) demetine dahil edildi — kullanıcı "hepsine aynı
-  demet" dedi, `proje_yoneticisi`'nin çoklu-proje deseni burada kullanılmadı.
-  **Güncel karar (2026-07-20):** Kullanıcı ayrı Kalite Kontrol modülünü istemedi;
-  modül frontend'den kaldırıldı. `kalite_kontrol_sefi` yeniden bu jenerik uzman
-  demetini kullanıyor ve `FIELD_SPECIALIST_ROLES` içinde kalıyor. Rolün kendisini,
-  kullanıcı kayıtlarını veya geçmiş veritabanı verilerini silme.
-
-Bu değişiklik yalnızca sidebar görünürlüğü/üst-seviye sekme yönlendirmesi —
-`ProjeDetay.jsx`'in iç sekmeleri zaten `role !== 'proje_yoneticisi'` gibi
-permissive kontroller kullandığından (bkz. `canViewFinanceAndTickets`) yeni
-roller "Projeler" sekmesinden bir projeye girdiklerinde otomatik doğru
-çalışıyor, ayrı bir değişiklik gerekmedi. Kalıcı/ideal çözüm hâlâ
-`roles` tablosundan okunan bir izin matrisi olurdu (bkz. Bilinen açık
-noktalar) — bu tur hızlı, dosya-içi bir genişletme.
+**Rol → sekme/sidebar erişimi artık DB-tabanlı (2026-07-23, önceki "hardcoded
+navigation.js" açık noktası kapandı):** `src/config/navigation.js` (hardcoded
+`NAVIGATION[role]` sabiti + `FIELD_SPECIALIST_ROLES`/`MANAGER_ROLES`/
+`ROLE_LABEL`) tamamen kaldırıldı. `roles` tablosuna 3 kolon eklendi:
+`allowed_tabs text[]` (NULL = kısıtsız, admin gibi tüm sekmelere erişir),
+`default_tab text` (rol değişince zorla geçilecek sekme, NULL = zorlama yok),
+`sidebar_items text[]` (Sidebar'da görünecek nav item key'leri) — 4 rolün
+değerleri eski `navigation.js` ile birebir aynı (davranış değişikliği yok,
+yalnızca veri kaynağı taşındı). `roles` tablosu zaten `authenticated` için
+tam okunabilir (`roles_read_all` policy, `qual: true`) — ayrı bir RPC
+gerekmedi, `AuthContext.jsx` `get_my_role()`'den gelen role_key ile `roles`
+satırını doğrudan `.from('roles').select(...)` ile çekiyor. Context'e üç yeni
+alan eklendi: `navigation: {tabs, defaultTab, sidebarItems}`, `roleLabel`
+(eski hardcoded `ROLE_LABEL` map'inin yerine `roles.display_name`),
+`isManager` (eski hardcoded `MANAGER_ROLES` dizisinin yerine
+`roles.is_manager`). `Sidebar.jsx`, `index.jsx`, `TabBildirimler.jsx` artık
+bunları `useAuth()`'tan okuyor. Yeni bir rol eklendiğinde/bir rolün sekme
+erişimi değiştiğinde artık tek yer `roles` tablosudur — kod değişikliği
+gerekmez. Migration: `add_role_navigation_matrix`; `procurement-role-acceptance.spec.js`
+(4 rolün ekran kabulü) dahil tam Playwright paketi 60/60 geçti.
 
 ### RPC katmanı (canlı)
 
@@ -1783,18 +1680,12 @@ Alma/Finans Test Verisi notu).
   tasarım gereği yalnızca proje kapsamlı. İkisi de birleştirilmedi/birleştirilmeyecek.
   Eski 5 fazlı teknik plan dosyası (`C:\Users\fonss\Claude\Projects\Fons Solar\satin-alma-finans-birlestirme-cc-prompt.md`)
   artık tarihsel referans, güncel değil.
-- **Frontend artık 19/19 rolü tanıyor (2026-07-18'de kapandı, yukarı bkz. Roller
-  bölümü)** — 2026-07-20'de (A3) `ROLE_TABS`/`ROLE_DEFAULT`/`ROLE_LABEL`/
-  `Sidebar.jsx`'in per-item `roles` dizileri tek dosyaya (`src/config/navigation.js`,
-  `NAVIGATION[role] = {tabs, defaultTab, sidebarItems}`) konsolide edildi, ama
-  hâlâ hardcoded — `roles` tablosundan okunan gerçek bir izin matrisi DEĞİL.
-  `kalite_kontrol_sefi` (2026-07-20'de kendi modülü kaldırıldığı için, bkz.
-  Tamamlanan büyük görevler) dahil 11 saha/teknik rolü hâlâ aynı jenerik demeti
-  paylaşıyor (Genel/İş Planı/Satın Alma/Tickets) — İSG/ENH gibi modüller
-  yazılınca bu rollerin erişimi yeniden gözden geçirilmeli.
-  (`mechanical_checklist`/`electrical_checklist` tabloları — aynı gruptaki
-  mekanik/elektrik checklist'ler — DB'den tamamen kaldırıldı, bu artık onlar
-  için geçerli değil.)
+- **Rol/izin matrisi DB-tabanlı hale getirildi, roller 4'e indirildi (2026-07-22/23'te
+  kapandı, yukarı bkz. Roller bölümü)** — önceki `src/config/navigation.js`
+  (hardcoded `NAVIGATION[role]`) tamamen kaldırıldı, `roles` tablosundaki
+  `allowed_tabs`/`default_tab`/`sidebar_items` kolonlarından okunuyor.
+  (`mechanical_checklist`/`electrical_checklist` tabloları — eski 19-rol
+  döneminden kalma mekanik/elektrik checklist'ler — DB'den tamamen kaldırıldı.)
 - **Genel Proje kartlarındaki personel/makine sayıları ile dönem export'u
   farklı kaynaklardan besleniyor — DOĞRULANDI, kasıtlı (2026-07-18):**
   `ProjectOverviewDashboard.jsx` `get_project_by_date`'in `personnel`/`machinery`
@@ -1850,143 +1741,27 @@ Alma/Finans Test Verisi notu).
 
 ## Son değişiklik
 
-**22.07.2026 — ESLint uyarı temizliği:** Mevcut 25 React uyarısı temizlendi.
-Durum badge sabitleri ile `Badge` bileşeni ayrı modüllere bölündü; gerçek eksik
-Hook callback bağımlılıkları eklendi. Yalnızca bilinçli mount/kapsam tetikleyicilerinde,
-yeniden-sorgu döngüsünü engelleyen gerekçeli ve satır bazlı lint istisnaları kaldı.
-`npm run lint` 0 hata/0 warning, production build başarılı ve tam Playwright paketi
-57/57 geçti. Vite'ın bundle boyutu/statik+dinamik import bildirimleri ESLint uyarısı
-değildir; ayrı performans optimizasyonu kapsamındadır.
+**23.07.2026 — Rol/izin matrisi DB-tabanlı hale getirildi, hardcoded `navigation.js`
+kaldırıldı.** Bu iş sırasında beklenmedik bir bulgu çıktı: `roles` tablosu
+2026-07-22'de (`prune_roles_to_active_four` migration'ı, önceden CLAUDE.md'ye
+hiç yansımamıştı) zaten 19 rolden 4'e (`admin`, `muhasebe`, `proje_yoneticisi`,
+`santiye_sefi`) indirilmişti — `profiles.role_key`'in `roles(key)`'e FK'si
+olduğu için diğer 15 rol artık hiçbir profile atanamıyor. Buna göre kapsam
+yalnızca bu 4 rolle sınırlandırıldı (kullanıcı onayıyla).
 
-**22.07.2026 — Bundle optimizasyonu:** Dashboard route'u `React.lazy` +
-`Suspense` ile login kabuğundan ayrıldı. Başlangıç uygulama chunk'ı yaklaşık
-950 KB'dan 12.9 KB'a indi; dashboard chunk'ı 566.7 KB. Recharts ve fflate ayrı
-vendor chunk'larına alındı. PDF için kullanılan 651 KB Roboto Base64 artık JS
-modülü değil, yalnızca PDF üretiminde `/fonts/roboto-regular.base64.txt`
-adresinden indirilen cache'lenebilir statik asset. `exportUtils` statik/dinamik import
-çakışması kaldırıldı. Production build'de 600 KB üstü chunk ve Vite chunk
-uyarısı kalmadı; lint temiz, font kaynak/build bütünlüğü geçti ve tam test
-paketi 57/57 başarılı. İlk tam test koşusundaki tek realtime timeout izole
-tekrarda ve son tam pakette geçti; kod regresyonu değildi.
-
-**21.07.2026 — Proje yöneticisinin satın alma talebi oluşturması canlı
-Supabase ve E2E testleriyle sertleştirildi.** Proje yöneticisi
-`cross_project=true` olduğu için `get_my_projects()` ile tüm mevcut projeleri
-seçebilir; `YeniTalepModal` proje seçimini zorunlu gösterir ve seçim yoksa açık
-hata verir. Talep `create_purchase_request_with_items` ile
-`talep_olusturuldu` durumunda oluşur; sonraki akış şantiye şefi talebiyle
-aynıdır.
-
-Onaylı `require_project_for_purchase_requests` migration'ı
-`purchase_requests.project_id` alanını `NOT NULL`, proje FK'sını
-`ON DELETE RESTRICT` yaptı. RPC boş veya mevcut olmayan proje kimliğini
-reddediyor; kimlik ve proje erişim kontrolleri korunuyor. Canlı testte proje
-yöneticisinin tüm projeleri gördüğü, farklı projede talep açabildiği, boş
-projenin reddedildiği ve tam fatura akışı doğrulandı: ilk 3/3 Playwright
-testi ve production build geçti. Ardından şantiye şefi ile proje yöneticisi
-ayrı ayrı; admin talep onayı/reddi, PM tedarik/iptal, muhasebe faturası,
-admin fatura reddi/onayı ve muhasebenin red sonrası düzenle-yeniden gönder
-veya sil akışlarında 6/6 ek canlı testten geçti. Bildirim alıcıları da
-her aşamada doğrulandı. Son veri denetimi: projesiz talep 0, yetim proje
-referansı 0, test talebi/faturası/bildirimi 0.
-
-Aynı gün Malzeme Listesi → proje Excel export bağlantısı da canlı Edge
-Function ile 3/3 test edildi: yeni malzeme beklerken Excel'e girmedi ve admin
-onayından sonra yeni satır oldu; miktar değişikliği beklerken eski miktar,
-onaydan sonra yeni miktar yazıldı; reddedilen değişiklik hem tabloda hem
-Excel'de etkisiz kaldı. Test gerçekten indirilen XLSX'in `Malzeme Listesi`
-sayfasındaki malzeme adı ve planlanan miktar hücrelerini okudu. Geçici
-malzeme/değişiklik/bildirim kayıtları temizlendi (0/0/0).
-
-Sonraki sıralı denetimin 1. adımı olan yetki/RLS paketi 4/4 canlı testten
-geçti: şantiye şefi başka projeyi listeleyemedi, talebini okuyup yazamadı,
-detay RPC'sini ve Excel export'unu kullanamadı; anon istemci hassas satın
-alma/malzeme/fatura RPC'lerini çağıramadı; muhasebe ve proje yöneticisi fatura
-onayını değiştiremedi, admin değiştirebildi; `requested_by`/`project_id`
-manipülasyonları reddedildi. Test talebi/faturası/bildirimi temizliği 0/0/0.
-
-Sıralı denetimin 2. adımında malzeme sınırlarında 3 gerçek açık bulundu
-ve onaylı `harden_procurement_item_change_boundaries` migration'ıyla kapatıldı:
-aynı kaleme ikinci bekleyen değişiklik, aynı projede normalize edilmiş aynı
-malzeme adı ve sıfır/negatif miktar artık hem RPC hem constraint/unique index
-seviyesinde reddediliyor. Arayüz minimumu `0.01` oldu. Çift admin incelemesi
-zaten doğru biçimde reddediliyordu. Sınır + mevcut onay/Excel regresyonu
-7/7, production build geçti; anon/PUBLIC EXECUTE kapalı, authenticated açık
-ve fonksiyon içi rol/proje kontrolleri aktif. Test temizliği 0/0/0.
-
-Sıralı denetimin 3. adımında risk sınıflandırmasında 3 frontend
-tutarsızlığı düzeltildi: `diger` satır rozeti gibi KPI'da da `listede_yok`;
-karışık malzeme talebinde herhangi bir eksik BOM kalemi varsa `listede_yok`
-riske göre öncelikli; `classifyRequestTypes` artık `diger` sayacını üretiyor
-ve donut grafik Malzeme/Hizmet/Diğer üçlüsünü gösteriyor. Alt/eşit/aşım,
-kümülatif iki bekleyen talep, listede yok, hizmet, diğer, karışık kalem
-ve red/iptal hariç tutma testleri 7/7; production build geçti.
-
-Aynı gün satın alma talepleri tek kalemle sınırlandırıldı. Onaylı
-`enforce_single_item_purchase_requests` migration'ı, oluşturma RPC'sinde
-`p_items` dizisinin tam olarak bir eleman olmasını zorunlu tutuyor; tablo
-trigger'ı ise RPC dışından ve eşzamanlı denemelerde aynı talebe ikinci kalem
-eklenmesini parent satır kilidiyle engelliyor. Çok kalemli oluşturmanın atomik
-reddi, normal tek kalemli oluşturma, doğrudan ikinci kalem ekleme ve yarış
-durumu test edildi. Satın alma, iki başlatıcı rolü, yönetici, proje yöneticisi,
-muhasebe, fatura red/onay/sil, RLS ve risk regresyonları toplam 23/23 geçti.
-Fatura/finans bağlantıları bozulmasın diye canlıdaki üç eski çok kalemli kayıt
-otomatik bölünmedi; kural yeni talepler için eksiksiz uygulanıyor.
-
-Muhasebe fatura sınır denetiminde, reddedilmiş faturası duran talebe ikinci
-aktif fatura eklenebilmesi ve iptal/reddedilmiş satın alma talebinin tekrar
-faturalanabilmesi açıkları bulundu. Onaylı
-`harden_purchase_invoice_singleton_and_stage_guard` migration'ı talep başına
-reddedilmiş dahil tek fatura zorunluluğu getirdi; fatura yalnızca
-`satin_alindi` durumundaki talebe ve talebin kendi projesiyle eklenebilir.
-RLS görünürlüğü için trigger fonksiyonu sabit `search_path` ile
-`SECURITY DEFINER` çalışır, ancak trigger fonksiyonu API RPC'si değildir ve
-fatura INSERT yetkisi mevcut RLS tarafından sınırlandırılmaya devam eder.
-Erken fatura, yanlış proje ve ikinci fatura regresyonları eklendi; satın alma
-paketi 23/23 geçti, geçici kayıt kalmadı.
-
-Yönetici fatura uygunluk aşamasında yalnızca admin onay/red yetkisi, red sonrası
-muhasebenin düzenle-yeniden gönder veya sil akışları, onay sonrası talebin
-`faturasi_kesildi` olması ve `cost_allocations` kaydı doğrulandı. Aynı onayın
-ikinci kez denenmesi yeni maliyet veya bildirim üretmiyor; fatura başına maliyet
-ve onay adımı unique indexlerle korunuyor. Odak paket 5/5 geçti. Ayrıca artık
-hiçbir talep/faturaya bağlı olmayan 442 eski `E2E_` satın alma/fatura bildirimi
-temizlendi; kalıcı altı yönetici kuyruğu talebi korunuyor.
-
-Finans/maliyet yansıması sayısal farklarla test edildi: 100 TRY + %20 KDV
-beklerken `pendingAmount` değerini 120 artırıp `totalActual` değerini
-değiştirmedi; red sonrası 0 etki bıraktı. Fatura 110 TRY olarak düzenlenip
-yeniden gönderildiğinde ve onaylandığında 22 TRY KDV ile 132 TRY tek maliyet
-kaydı oluştu; `totalActual` ve maliyet kovası 132 arttı, `remainingBudget`
-132 azaldı. Red edilen veya silinen fatura finans toplamlarına girmedi ve zaman
-serisi boşluksuz kaldı. Maliyet ekranı/Excel/PDF aynı `costBuckets` verisini
-kullanıyor; eski “KDV hariç” notu gerçek hesapla uyumlu olacak şekilde
-“Gerçekleşen fatura tutarları KDV dahildir” olarak düzeltildi ve export sütunu
-da açıkça KDV dahil şeklinde adlandırıldı. Odak testleri 3/3 ve production
-build geçti; test kaydı kalmadı.
-
-Muhasebe rolü için ekran gizlemenin ötesinde veri-katmanı izolasyonu uygulandı.
-Onaylı `isolate_accounting_role_scope` migration'ı muhasebenin satın alma
-liste/detay/overview erişimini yalnız `satin_alindi` ve `fatura_bekliyor`
-talepleriyle sınırladı; genel/tek-proje finans overview RPC'leri muhasebeye
-`authorized:false` döndürüyor. İç RPC'ler yeniden adlandırılıp PUBLIC/anon/
-authenticated EXECUTE'tan çıkarıldı; yalnız rol kontrolü yapan wrapper'lar API'ye
-açık. Raw RLS'de muhasebe `budget_lines`, `cost_allocations` ve
-`procurement_items` okuyup/yazamıyor; fatura, tedarikçi, fatura bekleyen talep ve
-kendi bildirim erişimi korunuyor. Arayüzde Finans yalnız Faturalar sekmesini,
-Satın Alma yalnız fatura kesilecek listeyi gösteriyor; genel KPI, maliyet ve
-yönetici onay kuyruğu kaldırıldı. API+UI kapsam testleri 2/2, tüm rol/satın alma
-paketi 25/25 ve production build geçti. 181 yetim E2E bildirimi temizlendi;
-kalıcı altı yönetici kuyruğu talebi korunuyor.
-
-Bildirim gerçek zaman/izolasyon E2E testi eklendi. Proje yöneticisinin açtığı
-geçici talep, açık Yönetici → Bildirimler ekranında sayfa yenilenmeden göründü;
-`created` olayı için tam bir bildirim oluştu. Başka kullanıcı bildirimi ne
-okuyabildi ne de `is_read` alanını değiştirebildi; yönetici satıra tıklayınca
-`is_read=true` ve `read_at` yazıldı. Şantiye şefi/PM başlatıcıları, yönetici,
-muhasebe, fatura red-yeniden gönder-onay/sil zincirindeki alıcı regresyonları da
-3/3 geçti. Gerçek zaman/okundu testi 1/1 geçti; 36 yetim test bildirimi
-temizlendi ve E2E talep/fatura/bildirim sayıları 0/0/0 doğrulandı.
+Migration `add_role_navigation_matrix`: `roles` tablosuna `allowed_tabs text[]`
+(NULL = kısıtsız), `default_tab text`, `sidebar_items text[]` kolonları eklendi,
+4 rol için eski `navigation.js` değerleriyle birebir aynı veri backfill edildi
+(davranış değişikliği yok). `roles` zaten `authenticated`'a tam okunabilir
+olduğundan yeni bir RPC gerekmedi. `AuthContext.jsx` artık `get_my_role()`'den
+sonra `roles` satırını çekip context'e `navigation`/`roleLabel`/`isManager`
+ekliyor; `Sidebar.jsx`/`index.jsx`/`TabBildirimler.jsx` bunları `useAuth()`'tan
+okuyor. `src/config/navigation.js` (hardcoded `NAVIGATION`/`FIELD_SPECIALIST_ROLES`/
+`MANAGER_ROLES`/`ROLE_LABEL`) tamamen silindi; `index.jsx`'teki artık
+ulaşılamaz `FIELD_SPECIALIST_ROLES` render dalı da kaldırıldı. `npx eslint src`
+0 hata, `npx vite build` temiz, tam Playwright paketi (`procurement-role-acceptance.spec.js`
+dahil) 60/60 geçti. CLAUDE.md'nin "Roller" bölümü de bu turda 19-rol
+anlatısından 4-rol güncel duruma indirgendi (155→52 satır).
 
 ## Önceki değişiklik
 
