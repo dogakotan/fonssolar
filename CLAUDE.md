@@ -247,6 +247,15 @@ görüntüsüyle karşılaştırır; aradan otomatik aşım (veya başka bir ona
 geçtiyse onayı sessizce ezmek yerine açık hatayla reddeder, admin talebi
 reddedip güncel miktarla yeniden değerlendirmek zorunda kalır.
 
+`procurement_items`'ta `status`/`priority`/`order_date`/`expected_delivery`/
+`actual_delivery`/`supplier`/`notes`/`updated_by`/`received_by`/`received_date`
+kolonları satın alma talebi akışından ÖNCEKİ bir sipariş-takip tasarımından
+kalma — hiçbir güncel RPC/UI artık bunlara yazmıyor (onları güncelleyen tek
+RPC olan `update_procurement_status` dead code olarak kaldırıldı), bazılarında
+eski/donmuş veri hâlâ duruyor ama kolonlar bilinçli olarak silinmedi. Malzeme
+Listesi artık yalnızca `planned_qty` ile takip ediliyor. Bu alanlara dayanan
+yeni bir özellik istenirse önce bu notu hatırlat.
+
 ### Ticket oluşturma — genel vs proje bazlı
 `tickets.project_id` nullable — `NULL` "genel" (projeye bağlı olmayan) ticket
 demek. Tek-proje rolleri için `YeniTicketModal.jsx`'te "Genel ticket olarak aç"
@@ -301,7 +310,7 @@ sonuncuların `_internal` varyantları var (`get_finans_overview_internal`,
 **Yazma:** `create_purchase_request_with_items` (tek kalem zorunlu,
 `p_requested_by`/`has_project_access` içeride doğrulanır), `save_daily_report`
 (`p_issues` id-bazlı upsert — ticket bağlantısı için kritik, bkz. Trigger
-zincirleri), `update_procurement_status`, `resubmit_rejected_invoice`,
+zincirleri), `resubmit_rejected_invoice`,
 `delete_rejected_invoice`, `create_procurement_item_change_request`,
 `review_procurement_item_change_request`, `create_procurement_item_add_request`,
 `save_project_category_weights` (proje sihirbazındaki kategori ağırlıkları,
@@ -545,33 +554,46 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**23.07.2026 — Risk kapanma mantığı onaya bağlandı + Malzeme Listesi/Riskler
-tek sayfa oldu.** Önceki görevde eklenen ayrı "Riskler" sekmesi geri alınıp
-Malzeme Listesi'ne alt-sekme olarak taşındı (`ProjeTabMalzemeListesi.jsx`
-içinde `section` state'i, `ProjeTabRiskler.jsx` aynı kalarak). `ProjeDetay.jsx`
-yine 8 sekmeye döndü; Genel Proje'nin "Riskler" kartındaki "Tümünü Gör" linki
-artık `goToTab('riskler')` yardımcı fonksiyonuyla Malzeme Listesi sekmesini
-açıp içindeki `riskler` alt-sekmesine düşüyor. Riskler tablosunun satır
-yüksekliği daraltıldı (`TD height:46`, önceki 64'ten).
+**23.07.2026 — Genel Bakış rozet teması birleştirildi + Malzeme Listesi
+değişiklik geçmişi/işareti + ölü kod ve eski RPC temizliği.**
 
-Asıl davranış değişikliği `fn_recompute_auto_risks`'te: (1) `gorev_gecikmesi`
-riski artık görevin `progress_pct >= 100` olmasıyla (veya `tamamlandi`/`iptal`
-durumuyla) kapanıyor — yalnızca plan bitiş tarihinin ileri alınıp "gecikmiş
-görünmekten çıkması" artık yetmiyor, risk açık kalmaya devam ediyor. (2)
-`malzeme_fazla_talep` riski artık miktar matematiği kendiliğinden düzelse
-(örn. fazla talep reddedilse/iptal olsa) bile OTOMATİK kapanmıyor — yalnızca
-yeni `p_close_material_risks` parametresi `true` geçildiğinde kapanıyor, bu da
-yalnızca iki "yönetici onayı" anında oluyor: satın alma talebi `onaylandi`ya
-geçtiğinde (`trg_recompute_risks_from_purchase_request`) veya
-`review_procurement_item_change_request` ile bir BOM miktar artışı
-onaylandığında. Yeni `project_risks.closed_at` kolonu kapanma anını tutuyor;
-`fn_set_risk_closed_at()` BEFORE INSERT/UPDATE trigger'ı bunu hem otomatik hem
-manuel kapanışlarda tek noktadan yönetiyor (kapatıldı'ya geçince `now()`,
-çıkınca `null`). Canlı testte ayrıca **pre-existing bir hata** bulundu ve
-düzeltildi: `requested_qty` hesabındaki `LEFT JOIN ... pr.status NOT IN
-('reddedildi','iptal')` filtresi yalnızca `pr.*` kolonlarını null yapıyordu,
-`SUM(pri.quantity)` reddedilen taleplerin miktarını hâlâ sayıyordu — `FILTER
-(WHERE pr.id IS NOT NULL)` ile düzeltildi. Tüm senaryolar (görev %100/gecikme
-ileri alma/malzeme reddi-vs-onayı) test proje `test-izmir-ges-2026`'da canlı
-simüle edilip PASS doğrulandı, veriler temizlendi; `get_advisors` yeni bir
-uyarı göstermedi.
+Genel Proje (`ProjectOverviewDashboard.jsx`): Satın Alma/bütçe-yüzdesi/ticket
+severity rozetleri risk rozetiyle aynı ortak `DotBadge` (dot + kalın renkli
+metin) temasına geçirildi, metinler değişmedi. Bu sırada gerçek bir hata
+bulundu ve düzeltildi: `getStatusDotColor` başta `normalizeStatus()`'un
+döndürdüğü `red_edildi` anahtarını `PR_STATUS` (StatusBadge.jsx, ham DB enum'u
+`reddedildi` kullanıyor) üzerinden aratıyordu, anahtar uyuşmazlığı yüzünden
+"Red Edildi" durumu sessizce gri/muted'e düşüyordu — yerine normalizeStatus'un
+kendi kanonik kümesine göre `PURCHASE_STATUS_TONE` haritası eklendi. Riskler
+kartının pager'ı `forceShow` ile tek sayfa olsa bile "1/1" gösteriyor; kart
+başlığı "Malzeme Kalemleri / Satın Alma" → "Satın Alma".
+
+Malzeme Listesi (`ProjeTabFaturaKesilecekler.jsx`): `get_satin_alma_overview`
+artık her BOM kalemi için `has_history` (bool) döndürüyor — kalemin onaylı bir
+miktar/ekleme değişikliği VEYA geri alınmamış bir otomatik fazla satın alma
+eklemesi varsa true; reddedilen talepler ve geri alınmış eklemeler SAYILMIYOR.
+Satır sonunda buna bağlı kırmızı "!" işareti var, tıklamak `MalzemeGecmisiModal`'ı
+açıyor — bu artık iki ayrı (ve ayrı ayrı sıralanan) kutu yerine TEK, tarihe göre
+sıralı bir zaman çizelgesi: onaylı miktar değişiklikleri + onaylı "yeni malzeme
+ekleme" olayları (bu ikinci tür `procurement_item_id IS NULL` taşıdığı için proje +
+malzeme adı eşleşmesiyle ayrıca aranıyor) + geri alınmamış otomatik fazla satın
+alma eklemeleri, hepsi kısa tek satırda (tarih + miktar değişimi). Reddedilen
+talepler ve geri alınmış eklemeler artık hiç listelenmiyor — kutu yalnızca
+GERÇEKTEN stok durumunu değiştirmiş olayları gösteriyor. Fatura/onay-durumu
+detayları kaldırıldı (kapsam dışı, bu kutunun amacı yalnızca miktar geçmişi).
+
+Ölü kod / eski RPC temizliği: `src/utils/satinAlma.js`'teki sıfır-kullanımlı
+`aggregateMaterialsAcrossProjects` kaldırıldı. AI sohbet context builder'ı
+(`src/components/agent/agentContext.js`, `ctxSatinAlma`) `procurement_items.status/
+priority/expected_delivery/supplier` okuyordu — bu kolonlara artık hiçbir RPC/UI
+yazmıyor (bkz. Malzeme listesi bölümü), AI'a donmuş veri besliyordu; yerine hâlâ
+canlı olan `equipment/category/planned_qty` okunuyor. Aynı yerde gerçek bir hata
+daha bulundu: `procurement_items`'ın `created_at` kolonu yok, ama sorgu
+`withDateFilter` ile `.lte('created_at', ...)` uyguluyordu — `selectedDate`
+seçiliyken bu sorgu sessizce hiç veri dönmüyordu; filtre kaldırıldı (bu tablo
+tarih bazlı bir log değil, canlı BOM anlık görüntüsü). DB'de tek yazarı olan
+`update_procurement_status` RPC'si (hiçbir `.rpc()` çağrısından referans
+almıyordu) dead code olarak `DROP FUNCTION` edildi; `procurement_items`'taki
+ilgili kolonlar (`order_date`/`expected_delivery`/`supplier`/`notes`/vb.) bazı
+satırlarda hâlâ eski veri taşıyor ama bilinçli olarak silinmedi (bkz. Malzeme
+listesi bölümündeki not).

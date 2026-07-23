@@ -58,15 +58,27 @@ const RISK_RULE_LABEL = {
   malzeme_fazla_talep: 'Malzeme Fazla Talebi',
 }
 
-const PURCHASE_STATUS_BADGE = {
-  bekliyor: 'blue',
-  onaylandi: 'amber',
-  red_edildi: 'red',
-  satin_alindi: 'green',
-  fatura_bekliyor: 'gray',
-  fatura_onay_bekliyor: 'amber',
-  faturasi_kesildi: 'green',
-  iptal: 'red',
+const TICKET_SEV_DOT = {
+  kritik: '#dc2626',
+  yüksek: '#ea580c',
+  orta: '#d97706',
+  düşük: '#64748b',
+}
+
+// normalizeStatus()'un döndürdüğü kanonik durum kümesi üzerinden ton eşleme —
+// PR_STATUS (StatusBadge.jsx) ham DB enum'larını (reddedildi) kullanıyor,
+// normalizeStatus ise kendi kısaltılmış kümesini (red_edildi) döndürüyor;
+// ikisini doğrudan karıştırmak "red_edildi" anahtarının PR_STATUS'ta hiç
+// bulunmamasına ve sessizce gri/muted'e düşmesine yol açıyordu.
+const PURCHASE_STATUS_TONE = {
+  bekliyor: 'primary',
+  onaylandi: 'warning',
+  red_edildi: 'danger',
+  satin_alindi: 'warning',
+  fatura_bekliyor: 'warning',
+  fatura_onay_bekliyor: 'primary',
+  faturasi_kesildi: 'success',
+  iptal: 'muted',
 }
 
 const RISK_PAGE_SIZE = 4
@@ -268,8 +280,18 @@ function LinkButton({ children, onClick }) {
   )
 }
 
-function getStatusBadge(status) {
-  return PURCHASE_STATUS_BADGE[normalizeStatus(status)] || 'gray'
+function getStatusDotColor(status) {
+  const tone = PURCHASE_STATUS_TONE[normalizeStatus(status)] || 'muted'
+  return TONE[tone].text
+}
+
+function DotBadge({ color, label }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color, fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      {label}
+    </span>
+  )
 }
 
 function normalizePurchase(pr) {
@@ -712,13 +734,13 @@ export default function ProjectOverviewDashboard({
 
         <div className="card project-mini-card project-purchase-card">
           <div className="project-card-title">
-            <h3>Malzeme Kalemleri / Satın Alma</h3>
+            <h3>Satın Alma</h3>
             <LinkButton onClick={() => onGoTab?.('satin-alma')}>Tüm Satın Almalar</LinkButton>
           </div>
           {purchaseRows.length ? purchaseRows.slice(0, 5).map((row, idx) => (
             <div className="project-list-row" key={`${row.material}-${idx}`}>
               <strong>{row.material}</strong>
-              <span className={`badge ${getStatusBadge(row.status)}`}>{row.statusLabel}</span>
+              <DotBadge color={getStatusDotColor(row.status)} label={row.statusLabel} />
               <small>{fmtDate(row.delivery)}</small>
             </div>
           )) : <p className="project-empty">Satın alma kaydı yok.</p>}
@@ -736,7 +758,9 @@ export default function ProjectOverviewDashboard({
                 {fmtMoney(spent)} ₺ <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-muted)' }}>/ {totalBudget ? `${fmtMoney(totalBudget)} ₺` : '—'}</span>
               </p>
             </div>
-            <span className={`badge ${budgetPct > 90 ? 'red' : 'blue'}`} style={{ fontSize: 12, flexShrink: 0 }}>%{budgetPct}</span>
+            <span style={{ flexShrink: 0 }}>
+              <DotBadge color={budgetPct > 90 ? '#dc2626' : '#185FA5'} label={`%${budgetPct}`} />
+            </span>
           </div>
           <div style={{ marginTop: 8 }}>
             <MiniProgress value={budgetPct} color={budgetPct > 90 ? '#ef4444' : '#185FA5'} />
@@ -774,7 +798,8 @@ export default function ProjectOverviewDashboard({
               <>
                 <div className="project-ticket-list">
                   {visibleTickets.map(ticket => {
-                    const severity = SEVERITY_META[String(ticket.severity || '').toLocaleLowerCase('tr-TR')]
+                    const severityKey = String(ticket.severity || '').toLocaleLowerCase('tr-TR')
+                    const severity = SEVERITY_META[severityKey]
                     return (
                     <div key={ticket.id} style={{
                       padding: '8px 10px', background: '#f8fafc',
@@ -786,9 +811,7 @@ export default function ProjectOverviewDashboard({
                         {ticket.title}
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                        <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 999, padding: '2px 7px', color: severity?.color || '#64748b', background: severity?.bg || '#f1f5f9' }}>
-                          {severity?.label || '—'}
-                        </span>
+                        <DotBadge color={TICKET_SEV_DOT[severityKey] || '#64748b'} label={severity?.label || '—'} />
                         <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
                           {new Date(ticket.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                         </span>
@@ -833,10 +856,7 @@ export default function ProjectOverviewDashboard({
                         {risk.title}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: SEV_BORDER[severity] || '#94a3b8', fontSize: 10, fontWeight: 700 }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: SEV_BORDER[severity] || '#94a3b8' }} />
-                          {RISK_SEVERITY_LABEL[severity] || severity}
-                        </span>
+                        <DotBadge color={SEV_BORDER[severity] || '#94a3b8'} label={RISK_SEVERITY_LABEL[severity] || severity} />
                         <span style={{ fontSize: 9, color: '#475569', background: '#eef2f7', padding: '1px 6px', borderRadius: 999 }}>
                           {RISK_CATEGORY_LABEL[risk.category] || 'Diğer'}
                         </span>
@@ -848,7 +868,7 @@ export default function ProjectOverviewDashboard({
                   )
                 })}
               </div>
-              <Pager page={safeRiskPage} totalPages={riskTotalPages} onChange={setRiskPage} />
+              <Pager page={safeRiskPage} totalPages={riskTotalPages} onChange={setRiskPage} forceShow />
             </>
           )}
         </div>

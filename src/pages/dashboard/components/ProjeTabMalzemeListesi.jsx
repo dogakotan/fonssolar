@@ -60,7 +60,6 @@ export default function ProjeTabMalzemeListesi({ projectId, filterDate, activeSe
       ) : (
         <ProjeTabFaturaKesilecekler
           rows={rows}
-          requests={requestsUntilDate}
           loading={loading}
           pendingChanges={pendingChanges}
           onPendingChanged={refetch}

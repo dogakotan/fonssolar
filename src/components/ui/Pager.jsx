@@ -5,8 +5,9 @@ const PAGER_BTN = {
 }
 
 // Liste kartlarının boyu sayfa değişince zıplamasın diye kompakt "‹ 2/3 ›" stilinde sayfalama.
-export default function Pager({ page, totalPages, onChange }) {
-  if (totalPages <= 1) return null
+// forceShow: tek sayfa olsa bile "1/1" göstermeye devam eder (ör. Genel Bakış'taki Riskler kartı).
+export default function Pager({ page, totalPages, onChange, forceShow = false }) {
+  if (totalPages <= 1 && !forceShow) return null
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, paddingTop: 10 }}>
       <button

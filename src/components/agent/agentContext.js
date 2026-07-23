@@ -140,14 +140,18 @@ async function ctxSatinAlma(projectId, selectedDate) {
         .limit(20),
       ceiling
     ),
-    withDateFilter(
-      supabase.from('procurement_items')
-        .select('category, equipment, status, priority, expected_delivery, supplier')
-        .match(pid ? { project_id: pid } : {})
-        .order('priority', { ascending: true })
-        .limit(30),
-      ceiling
-    ),
+    // status/priority/expected_delivery/supplier kolonları eski (satın alma talebi
+    // akışından önceki) bir sipariş-takip tasarımından kalma — artık hiçbir RPC/UI
+    // bunları yazmıyor, bu yüzden burada okunmuyor; malzeme listesi artık yalnızca
+    // planned_qty ile takip ediliyor (bkz. CLAUDE.md "Malzeme listesi (BOM)").
+    // withDateFilter uygulanmıyor: procurement_items'ın created_at kolonu yok (canlı BOM
+    // anlık görüntüsü, tarih bazlı bir log değil) — uygulanırsa selectedDate seçiliyken
+    // sorgu sessizce reddedilip bu bölüm hep boş dönerdi.
+    supabase.from('procurement_items')
+      .select('category, equipment, planned_qty')
+      .match(pid ? { project_id: pid } : {})
+      .order('item_no', { ascending: true })
+      .limit(30),
   ])
 
   const reqs  = prRes.status   === 'fulfilled' ? (prRes.value.data   || []) : []
@@ -158,7 +162,7 @@ async function ctxSatinAlma(projectId, selectedDate) {
   )
 
   const itemLines = items.map(i =>
-    `  - [${i.status}] ${i.equipment} | Öncelik: ${fmt(i.priority)} | Tedarikçi: ${fmt(i.supplier)} | Termin: ${fmt(i.expected_delivery)}`
+    `  - ${i.equipment} | Kategori: ${fmt(i.category)} | Planlanan Miktar: ${fmt(i.planned_qty)}`
   )
 
   return [

@@ -148,6 +148,7 @@ export function buildMaterialListRows(materials, requests) {
       required: Math.max(0, planned - sent),
       addedQty: toNumber(material.added_qty),
       addedViaCount: Number(material.added_via_count || 0),
+      hasHistory: !!material.has_history,
     }
   })
 }
@@ -210,19 +211,4 @@ export function groupByProjectId(rows) {
     groups.get(projectId).rows.push(row)
   })
   return groups
-}
-
-// Her proje için classifyMaterials'i ayrı çağırıp {total, ok, excess} toplamlarını döner.
-// Asla projeler arası düzleştirilmiş (flatten) bir malzeme haritası kullanmaz.
-export function aggregateMaterialsAcrossProjects(materialsByProject, requestsByProject) {
-  const totals = { total: 0, ok: 0, excess: 0, missing: 0 }
-  requestsByProject.forEach((group, projectId) => {
-    const materials = materialsByProject.get(projectId)?.rows || []
-    const result = classifyMaterials(materials, group.rows)
-    totals.total += result.total
-    totals.ok += result.ok
-    totals.excess += result.excess
-    totals.missing += result.missing
-  })
-  return totals
 }
