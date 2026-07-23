@@ -8,11 +8,12 @@ import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import DailyReportDetail from './DailyReportDetail'
 import Badge from '../components/ui/Badge'
 import { DAILY_REPORT_STATUS } from '../components/ui/StatusBadge'
-import { exportToExcel, exportToPdf } from '../utils/exportUtils'
+import { exportToPdf } from '../utils/exportUtils'
 import {
   fetchXlsxTemplate,
   setTemplateCell as setExcelTemplateCell,
   xlsxZipBlob,
+  downloadXlsxZip,
   formatExcelDate,
 } from '../utils/excelUtils'
 
@@ -40,6 +41,11 @@ function weekAgoStr() {
 
 function norm(value) {
   return String(value || '').toLocaleLowerCase('tr-TR')
+}
+
+function displayLabel(value) {
+  const text = String(value || '').replaceAll('_', ' ').trim()
+  return text ? text.charAt(0).toLocaleUpperCase('tr-TR') + text.slice(1) : '—'
 }
 
 function sumCount(rows, predicate) {
@@ -170,7 +176,10 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
   async function buildReportRows(reportId) {
-    const { data, error } = await supabase.rpc('get_daily_report_detail', { p_report_id: reportId })
+    const [{ data, error }, { data: reportMeta }] = await Promise.all([
+      supabase.rpc('get_daily_report_detail', { p_report_id: reportId }),
+      supabase.from('daily_reports').select('weather_loss_day').eq('id', reportId).maybeSingle(),
+    ])
     if (error || !data) return { rows: [], projectName: 'Proje', titleDate: '' }
 
     const report  = data.report  || {}
@@ -182,9 +191,10 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
       ['Genel', 'Konum',           project.location || '—'],
       ['Genel', 'Tarih',           report.report_date ? new Date(report.report_date).toLocaleDateString('tr-TR') : '—'],
       ['Genel', 'Hazırlayan',      creatorName      || '—'],
-      ['Genel', 'Hava',            report.weather   || '—'],
+      ['Genel', 'Hava',            displayLabel(report.weather)],
       ['Genel', 'Hava Notu',       report.weather_note || '—'],
-      ['Genel', 'Durum',           report.general_status || '—'],
+      ['Genel', 'Durum',           displayLabel(report.general_status)],
+      ['Genel', 'Hava Kayıplı Gün', reportMeta?.weather_loss_day ? 'Evet' : 'Hayır'],
       ['Genel', 'Toplam Personel', String(report.worker_count || 0)],
       ['Genel', 'Notlar',          report.notes     || '—'],
     ]
@@ -193,7 +203,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
       rows.push(['Personel', `${p.shift} / ${p.department}`, String(p.count || 0)])
     })
     ;(data.machinery || []).forEach(m => {
-      rows.push(['İş Makinesi', m.machine_type || '—', `${m.count || 0} adet · ${m.status || '—'}${m.notes ? ` · ${m.notes}` : ''}`])
+      rows.push(['İş Makinesi', displayLabel(m.machine_type), `${m.count || 0} adet · ${displayLabel(m.status)}${m.notes ? ` · ${m.notes}` : ''}`])
     })
     ;(data.progress || []).forEach(p => {
       const item = p.progress_items || {}
@@ -282,7 +292,11 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     put('B5', projectData.name || exportProjectId)
     put('E5', formatExcelDate(report.report_date))
     put('H5', String(report.id).slice(0, 8).toUpperCase())
-    put('J5', report.weather || '')
+    put('J5', [
+      displayLabel(report.weather),
+      `Genel: ${displayLabel(report.general_status)}`,
+      report.weather_loss_day ? 'Hava Kayıplı Gün' : '',
+    ].filter(Boolean).join(' · '))
     put('L5', creatorName)
 
     const p = (departments, shifts) => sumCount(personnel, row => {
@@ -303,18 +317,13 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
       put(`${col}11`, p(keys, ['işçi', 'isci', 'yardımcı', 'yardimci']))
     })
 
-    const machineRows = {
-      ekskavatör: 16, ekskavator: 16, 'rok_delim': 17, 'rok delim': 17,
-      'kolon çakım': 18, 'kolon cakim': 18, forklift: 19, vinç: 20, vinc: 20,
-      jcb: 21, loader: 21, loder: 21, kamyon: 22, jeneratör: 23, jenerator: 23,
-    }
-    machinery.forEach(machine => {
-      const type = norm(machine.machine_type).replaceAll('_', ' ')
-      const match = Object.entries(machineRows).find(([key]) => type.includes(key))
-      if (!match) return
-      const row = match[1]
+    // Makine/ekipman adları artık serbest metindir. Şablondaki sekiz satıra,
+    // kullanıcı hangi adı girdiyse onu yaz; bilinmeyen ekipmanları atlama.
+    machinery.filter(machine => Number(machine.count || 0) > 0).slice(0, 8).forEach((machine, index) => {
+      const row = 16 + index
+      put(`C${row}`, displayLabel(machine.machine_type))
       put(`E${row}`, Number(machine.count || 0))
-      put(`F${row}`, machine.status || '')
+      put(`F${row}`, displayLabel(machine.status))
       put(`G${row}`, machine.usage_area || machine.notes || '')
       put(`J${row}`, machine.notes || '')
     })
@@ -383,7 +392,10 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
 
     put('C110', report.isg_notes || reportNotes.isg_notes || '')
     put('C111', report.incident_notes || reportNotes.incident_notes || '')
-    put('C112', reportNotes.description || report.notes || report.weather_note || '')
+    put('C112', [
+      report.weather_loss_day ? 'HAVA KAYIPLI GÜN' : '',
+      reportNotes.description || report.notes || report.weather_note || '',
+    ].filter(Boolean).join(' — '))
     put('C114', creatorName)
 
     files['xl/worksheets/sheet1.xml'] = strToU8(xml)
@@ -432,11 +444,15 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
         URL.revokeObjectURL(url)
         return
       }
+      if (type === 'excel') {
+        const { files, reportDate } = await buildReportExcelById(reportId, exportProjectId)
+        downloadXlsxZip(files, `gunluk-rapor-${exportProjectId}-${reportDate}.xlsx`)
+        return
+      }
       const { rows, projectName: pName, titleDate } = await buildReportRows(reportId)
       const title = 'Günlük Rapor'
       const columns = ['Bölüm', 'Alan', 'Değer']
-      if (type === 'excel') exportToExcel(title, 'gunluk', columns, rows)
-      else exportToPdf(title, 'gunluk', columns, rows, { orientation: 'portrait', projectName: pName, subtitle: titleDate })
+      exportToPdf(title, 'gunluk', columns, rows, { orientation: 'portrait', projectName: pName, subtitle: titleDate })
     } catch (error) {
       if (type === 'pdf') alert(`PDF oluşturulamadı: ${error.message}\n\nPDF servisi çalışıyor mu? → pdf-service/start.bat`)
       else throw error

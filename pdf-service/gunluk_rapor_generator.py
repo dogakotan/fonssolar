@@ -263,15 +263,11 @@ class ExcelData:
         for ri, role in enumerate(['muhendis', 'usta', 'isci'], start=9):
             self.personel[role] = {k: (self._c(ri, 4 + ci) or 0) for ci, k in enumerate(keys)}
 
-        ekip_isimleri = [
-            'Ekskavatör', 'Rok Delgi Makinesi', 'Kolon Çakım Makinesi',
-            'Forklift', 'Vinç', 'JCB / Loder', 'Kamyon / Nakliye', 'Jeneratör',
-        ]
         self.ekipman = []
-        for i, isim in enumerate(ekip_isimleri):
+        for i in range(8):
             r = 16 + i
             self.ekipman.append({
-                'isim':  isim,
+                'isim':  str(self._c(r, 3)) or 'Ekipman',
                 'adet':  self._c(r, 5),
                 'durum': self._c(r, 6),
                 'alan':  self._c(r, 7),
@@ -456,6 +452,7 @@ def build_equipment_table(d: ExcelData):
     # Sadece o gun kullanilan ekipmanlar (adet > 0)
     aktif = [e for e in d.ekipman if e['adet'] and str(e['adet']).strip() not in ('', '0')]
 
+    status_styles = []
     if not aktif:
         rows.append([
             P("—", 7, align=TA_CENTER),
@@ -464,7 +461,18 @@ def build_equipment_table(d: ExcelData):
             P("", 7),
         ])
     else:
-        for e in aktif:
+        for row_index, e in enumerate(aktif, start=1):
+            status = str(e['durum'] or '').strip().casefold()
+            status_color = (
+                RED_C if status in ('arızalı', 'arizali')
+                else ORANGE if status in ('beklemede', 'bekliyor')
+                else GREEN if status in ('çalışıyor', 'calisiyor')
+                else TEXT
+            )
+            status_styles.extend([
+                ('TEXTCOLOR', (2, row_index), (2, row_index), status_color),
+                ('FONTNAME', (2, row_index), (2, row_index), BASE_BOLD),
+            ])
             rows.append([
                 P(e['isim'], 7, bold=True),
                 P(str(e['adet']), 7, align=TA_CENTER),
@@ -476,7 +484,7 @@ def build_equipment_table(d: ExcelData):
     t.setStyle(TableStyle(BASE_STYLE + [
         ('BACKGROUND',    (0, 0), (-1, 0), MID_BLUE),
         ('ROWBACKGROUNDS',(0, 1), (-1,-1), [WHITE, ROW_ALT]),
-    ]))
+    ] + status_styles))
     return t
 
 
@@ -804,12 +812,19 @@ def generate_pdf(excel_path: str, foto_dir: str = None, output_path: str = None,
 
     story.append(build_signature_row(d))
 
-    story.append(PageBreak())
-    story.extend(build_photo_story(
-        foto_dir,
-        d.hazirlayan or d.olusturan,
-        photo_paths=supabase_photos or None,
-    ))
+    local_photos_exist = bool(
+        foto_dir and os.path.isdir(foto_dir) and any(
+            name.lower().endswith(('.jpg', '.jpeg', '.png'))
+            for name in os.listdir(foto_dir)
+        )
+    )
+    if supabase_photos or local_photos_exist:
+        story.append(PageBreak())
+        story.extend(build_photo_story(
+            foto_dir,
+            d.hazirlayan or d.olusturan,
+            photo_paths=supabase_photos or None,
+        ))
 
     doc.build(story, onFirstPage=hf, onLaterPages=hf)
     print(f"  PDF olusturuldu: {output_path}")

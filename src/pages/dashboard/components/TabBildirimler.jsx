@@ -4,8 +4,6 @@ import { useAuth } from '../../../context/AuthContext'
 import Badge from '../../../components/ui/Badge'
 import { INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS, PR_STATUS, TK_STATUS } from '../../../components/ui/StatusBadge'
 import Pager from '../../../components/ui/Pager'
-import ApprovalStepsHorizontal from '../../../components/ui/ApprovalStepsHorizontal'
-import { buildApprovalSteps } from '../../../utils/satinAlma'
 import { MANAGER_ROLES } from '../../../config/navigation'
 import { dedupeNotifications, notificationDisplay } from '../../../utils/notifications'
 
@@ -14,17 +12,6 @@ const BADGE_MAP = {
   ticket: TK_STATUS,
   invoice: INVOICE_STATUS,
   procurement_item_change_request: PROCUREMENT_CHANGE_STATUS,
-}
-
-function buildTicketSteps(status) {
-  const isCancelled = status === 'iptal_edildi'
-  const isProcessing = status === 'işlemde'
-  const isClosed = status === 'kapatıldı'
-  return [
-    { key: 'gonderildi', label: 'Gönderildi', done: true },
-    { key: 'islemde', label: isCancelled ? 'İptal Edildi' : 'İşlemde', done: !isCancelled && (isProcessing || isClosed), active: isProcessing, rejected: isCancelled },
-    { key: 'kapatildi', label: 'Kapatıldı', done: isClosed },
-  ]
 }
 
 // Bildirim tipine göre ikon/etiket — filtre çipleri ve satır ikonu için ortak kaynak.
@@ -266,6 +253,8 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                     {showBucket && <div className="bildirim-bucket">{bucket}</div>}
                     <button
                       onClick={() => handleClick(n)}
+                      data-notification-id={n.id}
+                      data-entity-id={n.entity_id || undefined}
                       className={`bildirim-row${!n.is_read ? ' unread' : ''}`}
                       style={tone ? { background: tone.bg } : undefined}
                     >
@@ -273,15 +262,9 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                       <div className="bildirim-body">
                         <p className="bildirim-title">{display.title}</p>
                         {display.body && <p className="bildirim-desc">{display.body}</p>}
-                        {live?.kind === 'purchase_request' && (
-                          <ApprovalStepsHorizontal steps={buildApprovalSteps(live.status)} />
-                        )}
-                        {live?.kind === 'ticket' && (
-                          <ApprovalStepsHorizontal steps={buildTicketSteps(live.status)} />
-                        )}
-                        {live && ['invoice', 'procurement_item_change_request'].includes(live.kind) && BADGE_MAP[live.kind] && (
+                        {live && BADGE_MAP[live.kind] && (
                           <p className="bildirim-live">
-                            Şu an: <Badge map={BADGE_MAP[live.kind]} value={live.status} />
+                            Güncel durum: <Badge map={BADGE_MAP[live.kind]} value={live.status} />
                           </p>
                         )}
                         {isManager && n.entity_type === 'invoice' && invoiceStepSummary[n.entity_id] && (

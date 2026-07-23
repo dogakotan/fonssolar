@@ -1,7 +1,13 @@
 import { TONE } from './StatusBadge'
 
+function humanize(value) {
+  if (!value) return '—'
+  const text = String(value).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return text.charAt(0).toLocaleUpperCase('tr-TR') + text.slice(1)
+}
+
 export default function Badge({ map, value }) {
-  const entry = map[value] || { label: value || '—', tone: 'muted' }
+  const entry = map[value] || { label: humanize(value), tone: 'muted' }
   const tone = TONE[entry.tone] || TONE.muted
   return (
     <span style={{

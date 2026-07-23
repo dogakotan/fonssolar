@@ -9,8 +9,9 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
   test('şantiye şefi bağlı projesinde belge istemeden talep formunu açar', async ({ page }) => {
     await loginUi(page, process.env.TEST_IZMIR_EMAIL, process.env.TEST_IZMIR_PASSWORD)
     await openMenu(page, 'Satın Alma')
-    await expect(page.getByRole('button', { name: '+ Yeni Talep', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '+ Yeni Talep', exact: true }).click()
+    const newRequestButton = page.getByRole('button', { name: '+ Yeni Satın Alma Talebi', exact: true })
+    await expect(newRequestButton).toBeVisible()
+    await newRequestButton.click()
     await expect(page.getByRole('heading', { name: 'Yeni Satın Alma Talebi' })).toBeVisible()
     const fixedProject = page.locator('select:disabled').filter({ has: page.locator('option:checked', { hasText: 'Ege Enerji İzmir GES TEST' }) })
     await expect(fixedProject).toBeVisible()
@@ -25,7 +26,7 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
     await expect(page.getByText('Proje *', { exact: true })).toBeVisible()
     const projectSelect = page.locator('select').filter({ has: page.locator('option', { hasText: '— Proje seçin —' }) })
     await expect(projectSelect).toBeVisible()
-    expect(await projectSelect.locator('option').count()).toBeGreaterThan(1)
+    await expect.poll(() => projectSelect.locator('option').count()).toBeGreaterThan(1)
   })
 
   test('proje yöneticisi proje Excelini görür, proje finansında yalnız genel özeti görür', async ({ page }) => {

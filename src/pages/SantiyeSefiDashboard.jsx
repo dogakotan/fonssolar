@@ -78,22 +78,56 @@ function extractWeatherCity(project) {
 }
 
 // KPI kart satırındaki tekil bilgi kartı — tıklanabilirse buton, değilse div.
-function KpiCard({ label, value, tone = 'muted', onClick }) {
+function KpiCard({ label, value, tone = 'muted', children, className = '' }) {
   const t = TONE[tone] || TONE.muted
-  const Tag = onClick ? 'button' : 'div'
   return (
-    <Tag
-      onClick={onClick}
+    <div
+      className={`${className} ss-kpi-tone-${tone}`.trim()}
       style={{
         background: t.bg, border: '1px solid var(--color-border-md)', borderRadius: 12,
         padding: '12px 14px', textAlign: 'left', fontFamily: 'inherit',
-        cursor: onClick ? 'pointer' : 'default', minHeight: 76,
+        minHeight: 112,
         display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
       }}
     >
       <span style={{ fontSize: 13, color: 'var(--color-muted)', fontWeight: 500 }}>{label}</span>
-      <span style={{ fontSize: 24, fontWeight: 500, color: t.text }}>{value}</span>
-    </Tag>
+      <span className="ss-kpi-value" style={{ fontSize: 24, fontWeight: 500, color: t.text }}>{value}</span>
+      {children && <div className="ss-kpi-detail">{children}</div>}
+    </div>
+  )
+}
+
+function DetailKpiCard({ label, total, entries, type, emptyText, warning }) {
+  const isPersonnel = type === 'personnel'
+  return (
+    <div className={`ss-detail-kpi ss-overview-${type}`}>
+      <div className="ss-detail-kpi-top">
+        <span className={`ss-detail-kpi-icon ss-detail-kpi-icon--${type}`} aria-hidden="true">
+          {isPersonnel ? (
+            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+          ) : (
+            <svg viewBox="0 0 24 24"><path d="M3 17h18M5 17l1-7h9l3 4h3v3M8 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM20 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0ZM8 10V7h5l2 3" /></svg>
+          )}
+        </span>
+        <div>
+          <span className="ss-detail-kpi-label">{label}</span>
+          <strong className="ss-detail-kpi-total">{total}</strong>
+        </div>
+        {warning && <span className="ss-detail-kpi-warning">{warning}</span>}
+      </div>
+      <div className="ss-detail-table">
+        <div className="ss-detail-table-head"><span>Dağılım</span></div>
+        <div className="ss-detail-table-body">
+          {entries.length > 0 ? entries.map(entry => (
+            <div className="ss-detail-table-row" key={entry.label}>
+              <span title={entry.label}>{entry.label}</span><strong>{entry.count}</strong>
+            </div>
+          )) : (
+            <div className="ss-detail-table-empty">{emptyText}</div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -109,6 +143,7 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   const [detayTicket, setDetayTicket] = useState(null)
   const [detayTalep, setDetayTalep]   = useState(null)
   const [toast, setToast] = useState('')
+  const [expandedProgressGroups, setExpandedProgressGroups] = useState({})
 
   const { project, openPurchaseRequests, openTickets, todayReport, recentReports, stats, progressSummary, progressItems, refetch, loading: dataLoading, refreshing, error, authorized } = useSantiyeData(projectId)
   const weatherCity = extractWeatherCity(project)
@@ -162,28 +197,18 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
     ? new Date(recentReports[0].report_date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
     : null
 
-  const machineTooltip = !lastReportId
-    ? 'Henüz rapor girilmedi'
-    : !machineDetail
-      ? 'Yükleniyor…'
-      : [
-          lastReportDateLabel ? `Rapor: ${lastReportDateLabel}` : null,
-          ...(machineDetail.rows.length
-            ? machineDetail.rows.map(r => `${DEPT_TITLE(r.machine_type)}: ${r.count} adet (${r.status})`)
-            : ['Araç/makine kaydı yok']),
-          machineDetail.broken > 0 ? `⚠ ${machineDetail.broken} araç arızalı` : null,
-        ].filter(Boolean).join('\n')
+  const personnelEntries = Object.entries(personnelDetail || {})
+    .filter(([, count]) => Number(count) > 0)
+    .map(([dept, count]) => ({ label: DEPT_LABELS[dept] || DEPT_TITLE(dept), count }))
 
-  const personnelTooltip = !lastReportId
-    ? 'Henüz rapor girilmedi'
-    : !personnelDetail
-      ? 'Yükleniyor…'
-      : [
-          lastReportDateLabel ? `Rapor: ${lastReportDateLabel}` : null,
-          ...(Object.keys(personnelDetail).length
-            ? Object.entries(personnelDetail).map(([dept, count]) => `${DEPT_LABELS[dept] || DEPT_TITLE(dept)}: ${count} kişi`)
-            : ['Personel kaydı yok']),
-        ].filter(Boolean).join('\n')
+  const activeMachinesByType = new Map()
+  ;(machineDetail?.rows || [])
+    .filter(row => row.status === 'çalışıyor' && Number(row.count) > 0)
+    .forEach(row => {
+      const label = DEPT_TITLE(row.machine_type)
+      activeMachinesByType.set(label, (activeMachinesByType.get(label) || 0) + Number(row.count))
+    })
+  const activeMachineEntries = Array.from(activeMachinesByType, ([label, count]) => ({ label, count }))
 
   function showToast(msg) {
     setToast(msg)
@@ -227,7 +252,10 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
       const rankDiff = rank(a.scheduleState) - rank(b.scheduleState)
       return rankDiff !== 0 ? rankDiff : a.pct - b.pct
     })
-    .slice(0, 6)
+
+  const overdueProgressItems = rankedProgressItems.filter(x => x.scheduleState === 'overdue')
+  const activeProgressItems = rankedProgressItems.filter(x => x.scheduleState === 'active')
+  const PROGRESS_PREVIEW_LIMIT = 3
 
   const requestItems = [
     ...openPurchaseRequests.map(item => ({ ...item, _type: 'purchase' })),
@@ -244,12 +272,6 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
   const safeRequestPage = Math.min(requestPage, requestTotalPages - 1)
   const reportTotalPages = Math.max(1, Math.ceil(recentReports.length / PAGE_SIZE))
   const safeReportPage = Math.min(reportPage, reportTotalPages - 1)
-
-  function goRequests(tab = 'all') {
-    setTalepTab(tab)
-    setRequestPage(0)
-    document.getElementById('taleplerim')?.scrollIntoView({ behavior: 'smooth' })
-  }
 
   function openTodayReport() {
     todayReport ? onEditReport?.(todayReport.id) : onNewReport?.()
@@ -289,71 +311,87 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
         </span>
       </div>
 
-      {/* KPI Cards — 1.Bugünkü rapor 2.Açık talep 3.Açık ticket 4.Son rapor işçi 5.Son rapor araç 6.Hava */}
-      <div className="ss-kpi-grid-6" style={{ marginBottom: 16 }}>
+      {/* KPI Cards — rapor, açık işler, son rapor personel/araç detayı ve hava */}
+      <div className="ss-kpi-grid-overview" style={{ marginBottom: 16 }}>
         <KpiCard
+          className="ss-overview-report"
           label="Bugünkü Rapor"
           value={todayReport ? 'Girildi' : 'Bekliyor'}
           tone={todayReport ? 'success' : 'warning'}
-          onClick={openTodayReport}
-        />
+        >
+          <span>{lastReportDateLabel ? `Son rapor: ${lastReportDateLabel}` : 'Bugün için durum'}</span>
+          <button type="button" className="ss-kpi-inline-action" onClick={openTodayReport}>
+            {todayReport ? 'Raporu Gör' : 'Rapor Gir'}
+          </button>
+        </KpiCard>
+
         <KpiCard
-          label="Açık Satın Alma Talebi"
+          className="ss-overview-purchase"
+          label="Satın Alma Talepleri"
           value={stats.prCount}
           tone="primary"
-          onClick={() => goRequests('satin_alma')}
-        />
+        >
+          <button type="button" className="ss-kpi-inline-action" onClick={() => setShowTalep(true)}>Yeni Talep</button>
+        </KpiCard>
+
         <KpiCard
-          label="Açık Ticket"
+          className="ss-overview-ticket"
+          label="Ticket Talepleri"
           value={stats.ticketCount}
           tone="primary"
-          onClick={() => goRequests('ticket')}
-        />
-        <div className="kpi-hover" data-tooltip={personnelTooltip} style={{ position: 'relative' }}>
-          <KpiCard
-            label="Son Rapor İşçi Sayısı"
-            value={recentReports[0]?.worker_count ?? '—'}
-            tone="muted"
-          />
-        </div>
-        <div className="kpi-hover" data-tooltip={machineTooltip} style={{ position: 'relative' }}>
-          <KpiCard
-            label="Son Rapor Aktif Araç"
-            value={machineDetail?.active ?? '—'}
-            tone="muted"
-          />
-        </div>
+        >
+          <button type="button" className="ss-kpi-inline-action" onClick={() => setShowTicket(true)}>Yeni Ticket</button>
+        </KpiCard>
 
-        {/* Hava Durumu */}
-        <div style={{
-          background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12,
-          padding: '12px 14px', minHeight: 76, display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
-        }}>
-          <span style={{ fontSize: 13, color: 'var(--color-muted)', fontWeight: 500 }}>
-            Hava{weatherCity ? ` — ${weatherCity}` : ''}
-          </span>
+        <DetailKpiCard
+          label="Son Rapor Personel"
+          total={recentReports[0]?.worker_count ?? '—'}
+          entries={personnelEntries}
+          type="personnel"
+          emptyText={lastReportId ? 'Personel kaydı yok' : 'Henüz rapor girilmedi'}
+        />
+
+        <DetailKpiCard
+          label="Son Rapor Aktif Araç"
+          total={machineDetail?.active ?? '—'}
+          entries={activeMachineEntries}
+          type="vehicle"
+          emptyText={lastReportId ? 'Aktif araç kaydı yok' : 'Henüz rapor girilmedi'}
+          warning={machineDetail?.broken > 0 ? `${machineDetail.broken} arızalı araç` : null}
+        />
+
+        {/* Hava Durumu — yönetici genel bakışındaki KPI teması */}
+        <div className="stat-card project-weather-card ss-overview-weather" style={{ borderTop: '3px solid #0ea5e9' }}>
+          <p className="stat-label">Hava Durumu{weatherCity ? ` — ${weatherCity}` : ''}</p>
           {!weatherCity ? (
-            <p style={{ fontSize: 12, color: 'var(--color-muted-light)', margin: 0 }}>{dataLoading ? 'Yükleniyor…' : 'Konum tanımsız'}</p>
-          ) : weather.loading || !weather.current ? (
-            <p style={{ fontSize: 12, color: 'var(--color-muted-light)', margin: 0 }}>Yükleniyor…</p>
-          ) : weather.error ? (
-            <p style={{ fontSize: 12, color: 'var(--color-muted-light)', margin: 0 }}>Alınamadı</p>
+            <p className="stat-note">{dataLoading ? 'Yükleniyor…' : 'Konum tanımsız'}</p>
+          ) : weather.loading ? (
+            <p className="stat-value" style={{ fontSize: '1.5rem' }}>...</p>
+          ) : weather.error || !weather.current ? (
+            <p className="stat-note">Veri alınamadı</p>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 18, lineHeight: 1 }}>{weather.current.emoji}</span>
-              <span style={{ fontSize: 18, fontWeight: 500, color: 'var(--color-text)' }}>{weather.current.temp}°C</span>
-            </div>
+            <>
+              <div className="project-weather-main">
+                <span className="project-weather-emoji">{weather.current.emoji}</span>
+                <div>
+                  <strong>{weather.current.temp}°C</strong>
+                  <p>{weather.current.label}</p>
+                </div>
+                <div className="project-weather-meta">
+                  <span>Rüzgâr: <strong>{weather.current.wind} km/sa</strong></span>
+                  <span>Nem: <strong>%{weather.current.humidity}</strong></span>
+                </div>
+              </div>
+              {weather.tomorrow && (
+                <div className="project-weather-tomorrow">
+                  <span>Yarın</span>
+                  <strong>{weather.tomorrow.emoji} {weather.tomorrow.max}°/{weather.tomorrow.min}°</strong>
+                  <small>Yağış olasılığı %{weather.tomorrow.rain}</small>
+                </div>
+              )}
+            </>
           )}
         </div>
-      </div>
-
-      {/* Aksiyon alanı — 3 buton yan yana, mobilde alt alta sarar */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <button onClick={openTodayReport} style={{ ...BTN_ACTION_PRIMARY, width: 'auto', flex: '1 1 200px' }}>
-          📋 {todayReport ? 'Günlük Raporu Görüntüle' : 'Günlük Rapor Gir'}
-        </button>
-        <button onClick={() => setShowTalep(true)} style={{ ...BTN_ACTION_OUTLINE, width: 'auto', flex: '1 1 200px' }}>🛒 Satın Alma Talebi</button>
-        <button onClick={() => setShowTicket(true)} style={{ ...BTN_ACTION_OUTLINE, width: 'auto', flex: '1 1 200px' }}>🎫 Ticket Aç</button>
       </div>
 
       {/* Proje İlerlemesi — tek net genel ilerleme çubuğu (plan işaretli) + kalemler yatay bar listesi olarak,
@@ -391,17 +429,6 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
                   </p>
                 )}
 
-                {progressSummary.progress_variance != null && (
-                  <p style={{
-                    margin: '0 0 10px', fontSize: 12, fontWeight: 600,
-                    color: Number(progressSummary.progress_variance) >= 0 ? 'var(--color-success)' : 'var(--color-danger)',
-                  }}>
-                    {Number(progressSummary.progress_variance) >= 0
-                      ? `Plana göre ${progressSummary.progress_variance} puan önde`
-                      : `Plana göre ${Math.abs(progressSummary.progress_variance)} puan geride`}
-                  </p>
-                )}
-
                 <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
                     <strong style={{ color: 'var(--color-text-sub)' }}>{progressSummary.completed_tasks}</strong>/{progressSummary.total_tasks} görev tamamlandı
@@ -426,50 +453,64 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
               <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 600, color: 'var(--color-muted-light)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
                 İlerleme Kalemleri · geciken ve bugün aktif olanlar
               </p>
-              {rankedProgressItems.length === 0 ? (
-                <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted-light)' }}>
-                  Bugün için planlı olarak devam eden veya geciken kalem yok.
-                </p>
-              ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {rankedProgressItems.map(({ item, pct, scheduleState, overdueLabel }) => {
-                    const tone = scheduleState === 'overdue'
-                      ? 'var(--color-danger)'
-                      : pct >= 70 ? 'var(--color-success)' : pct >= 35 ? 'var(--color-primary)' : 'var(--color-danger)'
-                    return (
-                      <div key={item.id} className="pi-item-row" style={{
-                        padding: '9px 10px', background: 'var(--color-surface)',
-                        border: scheduleState === 'overdue' ? '1px solid var(--color-danger)' : '1px solid var(--color-border)',
-                        borderRadius: 8,
-                      }}>
-                        <div className="pi-item-name-col">
-                          <span title={item.name} style={{
-                            display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--color-text)',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {item.name}
-                          </span>
-                          <span style={{ fontSize: 10, color: 'var(--color-muted-light)', whiteSpace: 'nowrap' }}>
-                            {Number(item.total_progress).toLocaleString('tr-TR')}/{Number(item.target_qty).toLocaleString('tr-TR')} {item.unit}
-                          </span>
-                        </div>
-                        <div className="pi-item-bar-col">
-                          <div style={{ flex: 1, position: 'relative', height: 8, background: 'var(--color-border)', borderRadius: 4, overflow: 'hidden', minWidth: 40 }}>
-                            <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', borderRadius: 4, background: tone, width: `${pct}%`, transition: 'width .4s' }} />
-                          </div>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: tone, width: 34, textAlign: 'right', flexShrink: 0 }}>%{pct}</span>
-                          {scheduleState === 'overdue' && (
-                            <span title={`${overdueLabel} bitmeliydi`} style={{ fontSize: 13, flexShrink: 0 }}>⚠</span>
-                          )}
-                          {scheduleState === 'active' && (
-                            <span title="Bugün aktif" style={{ fontSize: 10, color: 'var(--color-primary)', flexShrink: 0 }}>●</span>
-                          )}
-                        </div>
+              <div className="pi-groups-grid">
+                {[
+                  { key: 'overdue', title: 'Gecikenler', items: overdueProgressItems, tone: 'danger' },
+                  { key: 'active', title: 'Bugün devam edenler', items: activeProgressItems, tone: 'primary' },
+                ].map(group => {
+                  const isExpanded = Boolean(expandedProgressGroups[group.key])
+                  const visibleItems = isExpanded ? group.items : group.items.slice(0, PROGRESS_PREVIEW_LIMIT)
+                  const remainingCount = group.items.length - visibleItems.length
+                  return (
+                    <section key={group.key} className={`pi-group pi-group--${group.tone}`}>
+                      <div className="pi-group-header">
+                        <span>{group.title}</span>
+                        <strong>{group.items.length}</strong>
                       </div>
-                    )
-                  })}
+                      <div className={`pi-group-list${isExpanded ? ' pi-group-list--expanded' : ''}`}>
+                        {visibleItems.length === 0 ? (
+                          <p className="pi-group-empty">
+                            {group.key === 'overdue' ? 'Geciken iş yok.' : 'Bugün devam eden iş yok.'}
+                          </p>
+                        ) : visibleItems.map(({ item, pct, scheduleState, overdueLabel }) => {
+                          const tone = scheduleState === 'overdue'
+                            ? 'var(--color-danger)'
+                            : pct >= 70 ? 'var(--color-success)' : 'var(--color-primary)'
+                          return (
+                            <div key={item.id} className="pi-compact-row">
+                              <div className="pi-compact-main">
+                                <span className="pi-compact-name" title={item.name}>{item.name}</span>
+                                <span className="pi-compact-meta">
+                                  {scheduleState === 'overdue' && overdueLabel ? `${overdueLabel} tarihinde bitmeliydi` : 'Bugün aktif'}
+                                </span>
+                              </div>
+                              <div className="pi-compact-progress">
+                                <div className="pi-compact-track">
+                                  <div style={{ width: `${pct}%`, background: tone }} />
+                                </div>
+                                <strong style={{ color: tone }}>%{pct}</strong>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      {(remainingCount > 0 || isExpanded) && (
+                        <button
+                          type="button"
+                          className="pi-group-more"
+                          onClick={() => setExpandedProgressGroups(current => ({
+                            ...current,
+                            [group.key]: !isExpanded,
+                          }))}
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? 'Listeyi daralt' : `+${remainingCount} iş daha göster`}
+                        </button>
+                      )}
+                    </section>
+                  )
+                })}
               </div>
-              )}
             </div>
           )}
         </div>
@@ -513,21 +554,21 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
           ))}
         </div>
 
-        <div style={{ padding: 16 }}>
+        <div style={{ padding: '8px 16px 10px' }}>
           {visibleRequests.length === 0 ? (
             <p style={{ textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 13, padding: '16px 0', margin: 0 }}>
               Açık talep bulunmuyor.
             </p>
           ) : (
             <div>
-              <div style={{ minHeight: PAGE_SIZE * 53 }}>
+              <div>
               {visibleRequests.slice(safeRequestPage * PAGE_SIZE, safeRequestPage * PAGE_SIZE + PAGE_SIZE).map(item => {
                 const isPurchase = item._type === 'purchase'
                 return (
                   <button
                     key={`${item._type}-${item.id}`}
                     onClick={() => isPurchase ? setDetayTalep(item) : setDetayTicket(item)}
-                    className="ss-list-row"
+                    className="ss-list-row ss-request-row"
                     style={{ width: '100%', border: 'none', background: 'none', borderBottom: '1px solid var(--color-border)', fontFamily: 'inherit' }}
                   >
                     <span style={{ fontSize: 18, flexShrink: 0 }}>{isPurchase ? '🛒' : '🎫'}</span>
@@ -577,14 +618,14 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
           <button onClick={() => onTabChange?.('rapor-listesi')} style={BTN_SM_OUTLINE}>Tümünü Gör</button>
         </div>
 
-        <div style={{ padding: 16 }}>
+        <div style={{ padding: '8px 16px 10px' }}>
           {recentReports.length === 0 ? (
             <p style={{ textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 13, padding: '16px 0', margin: 0 }}>
               Henüz günlük rapor girilmedi.
             </p>
           ) : (
             <div>
-              <div style={{ minHeight: PAGE_SIZE * 53 }}>
+              <div>
               {recentReports.slice(safeReportPage * PAGE_SIZE, safeReportPage * PAGE_SIZE + PAGE_SIZE).map(report => (
                 <button
                   key={report.id}
@@ -648,16 +689,6 @@ export default function SantiyeSefiDashboard({ onTabChange, onNewReport, onEditR
 const CARD_BASE = {
   background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 14,
   padding: '14px 16px', boxShadow: 'var(--shadow-card)',
-}
-const BTN_ACTION_PRIMARY = {
-  background: 'var(--color-primary)', color: 'var(--color-surface)', border: 'none', borderRadius: 10,
-  padding: '12px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-  width: '100%', minHeight: 44,
-}
-const BTN_ACTION_OUTLINE = {
-  background: 'var(--color-surface)', color: 'var(--color-primary)', border: '1px solid var(--color-border-md)', borderRadius: 10,
-  padding: '12px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-  width: '100%', minHeight: 44,
 }
 const BTN_SM_OUTLINE = {
   background: 'var(--color-surface)', color: 'var(--color-primary)', border: '1px solid var(--color-border-md)', borderRadius: 6,

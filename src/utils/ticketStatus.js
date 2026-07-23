@@ -10,9 +10,9 @@ export const STATUS_META = {
 }
 
 export const CATEGORY_META = {
-  'genel':    { bg: '#F3F4F6', color: '#6B7280' },
-  'elektrik': { bg: '#EFF6FF', color: '#185FA5' },
-  'mekanik':  { bg: '#F5F3FF', color: '#7C3AED' },
+  'genel':    { bg: '#F3F4F6', color: '#6B7280', label: 'Genel' },
+  'elektrik': { bg: '#EFF6FF', color: '#185FA5', label: 'Elektrik' },
+  'mekanik':  { bg: '#F5F3FF', color: '#7C3AED', label: 'Mekanik' },
 }
 
 export const STATUS_TABS = [

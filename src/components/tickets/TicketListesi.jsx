@@ -4,11 +4,24 @@ import { useAuth } from '../../context/AuthContext'
 import YeniTicketModal from './YeniTicketModal'
 import TicketDetayModal from './TicketDetayModal'
 import DateNavigator from '../ui/DateNavigator'
+import ApprovalStepsHorizontal from '../ui/ApprovalStepsHorizontal'
 import { SEVERITY_META as SEVERITY, SEVERITY_ORDER, SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
-import { STATUS_META as STATUS, CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
+import { CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
 
-const TH = { padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.5px' }
+const TH = { height: 24, boxSizing: 'border-box', padding: '0 12px', lineHeight: '24px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', whiteSpace: 'nowrap', verticalAlign: 'middle' }
+const TD = { height: 64, boxSizing: 'border-box', padding: '0 12px', fontSize: 12.5, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
+
+function buildTicketSteps(status) {
+  const isCancelled = status === 'iptal_edildi'
+  const isProcessing = status === 'işlemde'
+  const isClosed = status === 'kapatıldı'
+  return [
+    { key: 'gonderildi', label: 'Gönderildi', done: true },
+    { key: 'islemde', label: isCancelled ? 'İptal Edildi' : 'İşlemde', done: !isCancelled && (isProcessing || isClosed), active: isProcessing, rejected: isCancelled },
+    { key: 'kapatildi', label: 'Kapatıldı', done: isClosed },
+  ]
+}
 
 function actionOwnerText(ticket) {
   const name = ticket.updater?.full_name
@@ -149,12 +162,6 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   const [selected, setSelected]             = useState(null)
   const [quickAction, setQuickAction]       = useState(null)
   const isProjectManager = role === 'proje_yoneticisi'
-  const visibleStatusTabs = [
-    { key: 'all', label: 'Tümü' },
-    { key: 'acik', label: 'Açık' },
-    { key: 'islemde', label: 'İşlemde' },
-    { key: 'sonuclandi', label: 'Sonuçlandı' },
-  ]
 
   useEffect(() => {
     if (filterDateProp) setDateFilter(filterDateProp)
@@ -262,30 +269,31 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     setLoading(false)
   }
 
-  const tabBtn = (active) => ({
-    background: 'none', border: 'none', padding: '9px 18px',
-    fontSize: 13, fontWeight: active ? 600 : 400,
-    color: active ? '#185FA5' : '#6B7280', cursor: 'pointer',
-    fontFamily: 'inherit',
-    borderBottom: active ? '2px solid #185FA5' : '2px solid transparent',
-    marginBottom: -2, transition: 'all 0.15s',
-  })
-
   return (
-    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12 }}>
+    <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
 
-      {/* Status tabs + toolbar */}
-      <div className="tl-tabs-bar">
-        {visibleStatusTabs.map(t => (
-          <button key={t.key} style={tabBtn(statusTab === t.key)} onClick={() => setStatusTab(t.key)}>
-            {t.label}
-          </button>
-        ))}
+      {/* Satın alma tablosuyla aynı başlık + durum filtresi */}
+      <div className="tl-tabs-bar" style={{ padding: '9px 14px' }}>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>Tüm Ticketlar</h3>
+        <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 7 }}>
+          {tickets.length} ticket
+        </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, padding: '8px 0', alignItems: 'center' }}>
 
+          <select
+            value={statusTab}
+            onChange={event => setStatusTab(event.target.value)}
+            style={{ border: '1px solid var(--color-border-md)', borderRadius: 7, padding: '5px 28px 5px 10px', fontSize: 12, color: 'var(--color-text-sub)', background: 'var(--color-surface)', cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
+          >
+            <option value="all">Tüm Durumlar</option>
+            <option value="acik">Açık</option>
+            <option value="islemde">İşlemde</option>
+            <option value="sonuclandi">Sonuçlandı</option>
+          </select>
+
           {/* Severity sub-butonlar — sadece severity sort aktifse */}
-          {(sortMode === 'sev_desc' || sortMode === 'sev_asc') && (
+          {false && (sortMode === 'sev_desc' || sortMode === 'sev_asc') && (
             <div className="tl-toolbar-sev" style={{ display: 'flex', gap: 4 }}>
               {[{ key: 'all', label: 'Tümü' }, ...SEVERITY_OPTIONS.map(o => ({ key: o.value, label: o.label }))].map(s => (
                 <button
@@ -306,7 +314,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
           )}
 
           {/* Tarih Seç — sadece ikon */}
-          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+          <div style={{ position: 'relative', display: 'none', alignItems: 'center' }}>
             <label style={{
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 34, height: 34,
@@ -334,7 +342,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
           </div>
 
           {/* Filtrele butonu */}
-          <div style={{ position: 'relative' }}>
+          <div style={{ position: 'relative', display: 'none' }}>
             {showFilterMenu && (
               <div style={{ position: 'fixed', inset: 0, zIndex: 50 }} onClick={() => setShowFilterMenu(false)} />
             )}
@@ -451,18 +459,17 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
         <>
           {/* Desktop tablo */}
           <div className="desk-only" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1120 }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid #E5E7EB' }}>
-                  {['#', 'AÇIKLAMA', 'CİNS', 'ACİLİYET', 'DURUM', 'OLUŞTURAN', 'OLUŞTURULMA TARİHİ', ...(statusTab === 'sonuclandi' ? ['SONUÇLANMA TARİHİ'] : []), 'İŞLEM'].map(h => (
-                    <th key={h} style={TH}>{h}</th>
+                <tr>
+                  {['TICKET', 'OLUŞTURAN', 'CİNS', 'ACİLİYET', 'İŞLEM DURUMU', 'İŞLEM'].map(h => (
+                    <th key={h} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1, boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {tickets.map((t, idx) => {
                   const sv = SEVERITY[t.severity] || SEVERITY['orta']
-                  const st = STATUS[t.status]     || STATUS['gönderildi']
                   const ca = CATEGORY[t.category] || CATEGORY['genel']
 
                   const isActive   = t.status === 'gönderildi' || t.status === 'açık' || t.status === 'işlemde'
@@ -479,44 +486,39 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                     <tr
                       key={t.id}
                       onClick={() => setSelected(t)}
-                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: 'transparent' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#E5E7EB'}
+                      style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer', background: 'transparent' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      <td style={{ padding: '12px 16px', fontSize: 12, color: '#9CA3AF', fontWeight: 500 }}>#{idx + 1}</td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: '#111827' }}>
-                        <span style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.45 }}>
-                          {t.description || t.title}
-                        </span>
+                      <td style={{ ...TD, minWidth: 280 }}>
+                        <div style={{ display: 'grid', gap: 5 }}>
+                          <strong style={{ color: 'var(--color-text)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.description || t.title}>
+                            {t.description || t.title}
+                          </strong>
+                          <span style={{ color: 'var(--color-primary)', fontSize: 11, fontWeight: 800 }}>TKT-{String(t.id || '').replaceAll('-', '').slice(-3).toUpperCase() || String(idx + 1).padStart(3, '0')}</span>
+                        </div>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ background: ca.bg, color: ca.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                      <td style={{ ...TD, minWidth: 160 }}>
+                        <div style={{ display: 'grid', gap: 4 }}>
+                          <strong style={{ color: 'var(--color-text-sub)', fontSize: 12.5 }}>{t.creator?.full_name || '—'}</strong>
+                          <span style={{ color: 'var(--color-muted)', fontSize: 11 }}>{fmtDate(t.created_at)}</span>
+                        </div>
+                      </td>
+                      <td style={TD}>
+                        <span style={{ color: ca.color, fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>
                           {t.category?.charAt(0).toUpperCase() + t.category?.slice(1)}
                         </span>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ background: sv.bg, color: sv.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                      <td style={TD}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: sv.color, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: sv.color }} />
                           {sv.label}
                         </span>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{ background: st.bg, color: st.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>
-                          {st.label}
-                        </span>
+                      <td style={{ ...TD, minWidth: 330 }}>
+                        <ApprovalStepsHorizontal steps={buildTicketSteps(t.status)} />
                       </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>
-                        {t.creator?.full_name || <span style={{ color: '#D1D5DB' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>
-                        {fmtDate(t.created_at)}
-                      </td>
-                      {statusTab === 'sonuclandi' && (
-                        <td style={{ padding: '12px 16px', fontSize: 13, color: '#6B7280', whiteSpace: 'nowrap' }}>
-                          {fmtDate(t.status === 'iptal_edildi' ? t.cancelled_at : t.closed_at)}
-                        </td>
-                      )}
-
-                      <td style={{ padding: '10px 16px' }} onClick={e => e.stopPropagation()}>
+                      <td style={{ ...TD, minWidth: 150 }} onClick={e => e.stopPropagation()}>
                         {(canProcess || canClose || canCancel || canDelete) ? (
                           <div>
                             <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
@@ -570,7 +572,6 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
           <div className="mob-only">
             {tickets.map((t, idx) => {
               const sv = SEVERITY[t.severity] || SEVERITY['orta']
-              const st = STATUS[t.status]     || STATUS['gönderildi']
               const ca = CATEGORY[t.category] || CATEGORY['genel']
               return (
                 <div key={t.id} className="tl-card" onClick={() => setSelected(t)}>
@@ -591,9 +592,9 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                     <span style={{ background: sv.bg, color: sv.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
                       {sv.label}
                     </span>
-                    <span style={{ background: st.bg, color: st.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
-                      {st.label}
-                    </span>
+                    <div style={{ flex: '1 1 100%', width: '100%' }}>
+                      <ApprovalStepsHorizontal steps={buildTicketSteps(t.status)} />
+                    </div>
                     <span className="tl-card-date">
                       Oluşturulma: {fmtDate(t.created_at)}
                     </span>

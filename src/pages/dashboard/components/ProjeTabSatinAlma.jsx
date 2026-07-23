@@ -96,7 +96,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
           />
         </div>
       )}
-      {!procurementManagerView && <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
+      {!siteChiefView && !procurementManagerView && <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             background: 'none', border: 'none', padding: '10px 22px',

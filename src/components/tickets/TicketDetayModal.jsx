@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import ApprovalStepsHorizontal from '../ui/ApprovalStepsHorizontal'
 import { SEVERITY_META as SEVERITY } from '../../utils/ticketSeverity'
 import { STATUS_META as STATUS, CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
 
@@ -12,6 +13,17 @@ const ACTION_QUESTIONS = {
   delete:  'Bu ticket tamamen silinecek. Onaylıyor musunuz?',
 }
 
+function buildTicketSteps(status) {
+  const isCancelled = status === 'iptal_edildi'
+  const isProcessing = status === 'işlemde'
+  const isClosed = status === 'kapatıldı'
+  return [
+    { key: 'gonderildi', label: 'Gönderildi', done: true },
+    { key: 'islemde', label: isCancelled ? 'İptal Edildi' : 'İşlemde', done: !isCancelled && (isProcessing || isClosed), active: isProcessing, rejected: isCancelled },
+    { key: 'kapatildi', label: 'Kapatıldı', done: isClosed },
+  ]
+}
+
 function Badge({ map, value }) {
   const b = map[value] || { bg: '#F3F4F6', color: '#374151', label: value || '—' }
   return (
@@ -19,6 +31,14 @@ function Badge({ map, value }) {
       {b.label || (value?.charAt(0)?.toUpperCase() + value?.slice(1)) || '—'}
     </span>
   )
+}
+
+function readableValue(field, value) {
+  if (!value) return '—'
+  const map = field === 'status' ? STATUS : field === 'severity' ? SEVERITY : field === 'category' ? CATEGORY : null
+  if (map?.[value]?.label) return map[value].label
+  const text = String(value).replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return text.charAt(0).toLocaleUpperCase('tr-TR') + text.slice(1)
 }
 
 export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }) {
@@ -31,6 +51,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
   const [error, setError]                  = useState(null)
   const [pendingAction, setPendingAction]  = useState(null)
   const [confirmVisible, setConfirmVisible] = useState(false)
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState(null)
 
   useEffect(() => {
     if (!initial?.id) return
@@ -90,9 +111,22 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
   }
 
   async function deleteAttachment(att) {
-    await supabase.storage.from('ticket-ekleri').remove([att.storage_path])
-    await supabase.from('ticket_attachments').delete().eq('id', att.id)
+    setDeletingAttachmentId(att.id)
+    setError(null)
+    const { error: storageError } = await supabase.storage.from('ticket-ekleri').remove([att.storage_path])
+    if (storageError) {
+      setError('Dosya depolama alanından silinemedi.')
+      setDeletingAttachmentId(null)
+      return
+    }
+    const { error: rowError } = await supabase.from('ticket_attachments').delete().eq('id', att.id)
+    if (rowError) {
+      setError('Dosya kaydı silinemedi. Lütfen tekrar deneyin.')
+      setDeletingAttachmentId(null)
+      return
+    }
     setAttachments(prev => prev.filter(a => a.id !== att.id))
+    setDeletingAttachmentId(null)
   }
 
   function initiateAction(type) {
@@ -186,7 +220,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
               <span style={{ background: ca.bg, color: ca.color, fontSize: 11, fontWeight: 500, padding: '2px 10px', borderRadius: 20 }}>
-                {ticket.category?.charAt(0).toUpperCase() + ticket.category?.slice(1) || '—'}
+                {ca.label || readableValue('category', ticket.category)}
               </span>
               <Badge map={SEVERITY} value={ticket.severity} />
               <Badge map={STATUS}   value={ticket.status} />
@@ -197,6 +231,13 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
             {loadingTicket && <p style={{ margin: '4px 0 0', fontSize: 11, color: '#9CA3AF' }}>Detaylar yükleniyor…</p>}
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#9CA3AF', flexShrink: 0, lineHeight: 1 }}>×</button>
+        </div>
+
+        <div style={{ padding: '14px 24px', borderBottom: '1px solid #E5E7EB', background: '#F8FAFC' }}>
+          <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.45px' }}>
+            İşlem Durumu
+          </p>
+          <ApprovalStepsHorizontal steps={buildTicketSteps(ticket.status)} />
         </div>
 
         {/* Body */}
@@ -237,9 +278,10 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                         {canDelete && (
                           <button
                             onClick={() => deleteAttachment(att)}
+                            disabled={deletingAttachmentId === att.id}
                             title="Sil"
                             style={{ position: 'absolute', top: -6, right: -6, width: 18, height: 18, borderRadius: '50%', background: '#DC2626', color: '#fff', border: 'none', fontSize: 11, lineHeight: 1, cursor: 'pointer' }}
-                          >×</button>
+                          >{deletingAttachmentId === att.id ? '…' : '×'}</button>
                         )}
                       </div>
                     )
@@ -257,7 +299,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                     <div key={h.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: '#6B7280', padding: '4px 0 4px 10px', position: 'relative' }}>
                       <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#D1D5DB', flexShrink: 0, marginTop: 3, position: 'absolute', left: -4 }} />
                       <span>
-                        {h.field === 'status' ? `Durum: ${h.old_value || '—'} → ${h.new_value}` : `${h.field}: ${h.old_value || '—'} → ${h.new_value}`}
+                        {`${readableValue(null, h.field)}: ${readableValue(h.field, h.old_value)} → ${readableValue(h.field, h.new_value)}`}
                         {' — '}<strong style={{ color: '#374151' }}>{h.profiles?.full_name || '—'}</strong>
                         {' — '}{fmtDate(h.created_at)}
                       </span>

@@ -11,8 +11,12 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const WEATHER_OPTIONS = ['açık', 'parçalı bulutlu', 'bulutlu', 'yağmurlu', 'karlı', 'fırtınalı']
 const STATUS_OPTIONS  = ['normal', 'dikkat', 'kritik']
+const STATUS_LABELS   = { normal: 'Normal', dikkat: 'Dikkat', kritik: 'Kritik' }
+const WEATHER_LABELS  = {
+  açık: 'Açık', 'parçalı bulutlu': 'Parçalı Bulutlu', bulutlu: 'Bulutlu',
+  yağmurlu: 'Yağmurlu', karlı: 'Karlı', fırtınalı: 'Fırtınalı',
+}
 const SHIFTS          = ['mühendis', 'usta', 'işçi']
 const DEPARTMENTS     = ['idari', 'mekanik', 'elektrik', 'yevmiyeci']
 const SHIFT_LABELS    = { mühendis: 'Mühendis', usta: 'Usta', işçi: 'İşçi' }
@@ -23,17 +27,7 @@ const MACH_STATUS_COLOR = {
   arızalı:   'var(--color-danger)',
   beklemede: 'var(--color-warning)',
 }
-const MACHINERY_PRESETS = ['ekskavatör', 'jcb', 'loader', 'rok_delim', 'gayk_delici', 'vinç', 'kamyon', 'traktör']
-const MACHINE_LABELS = {
-  ekskavatör: 'Ekskavatör',
-  jcb: 'JCB',
-  loader: 'Loader',
-  rok_delim: 'Rok Delim',
-  gayk_delici: 'Gayk Delici',
-  vinç: 'Vinç',
-  kamyon: 'Kamyon',
-  traktör: 'Traktör',
-}
+const MACH_STATUS_LABELS = { çalışıyor: 'Çalışıyor', arızalı: 'Arızalı', beklemede: 'Beklemede' }
 const MACHINE_TYPE_ALIASES = {
   'ekskavatör': 'ekskavatör',
   'ekskavator': 'ekskavatör',
@@ -74,8 +68,9 @@ function formatWeatherNote(current) {
 }
 
 function normalizeMachineType(value) {
-  const key = String(value || '').trim().toLocaleLowerCase('tr-TR')
-  return MACHINE_TYPE_ALIASES[key] || (MACHINERY_PRESETS.includes(key) ? key : '')
+  const raw = String(value || '').trim()
+  const key = raw.toLocaleLowerCase('tr-TR')
+  return MACHINE_TYPE_ALIASES[key] || raw
 }
 
 const DAILY_REPORT_ERROR_RULES = [
@@ -90,22 +85,11 @@ function toUserMessage(e) {
   return translateError(e, { rules: DAILY_REPORT_ERROR_RULES, fallback: 'Kayıt sırasında bir hata oluştu. Lütfen tekrar deneyin.' })
 }
 
-const CATEGORY_LABELS = {
-  mobilizasyon: 'Mobilizasyon', mekanik: 'Mekanik', elektrik_dc: 'Elektrik DC',
-  elektrik_ac: 'Elektrik AC', elektrik_og: 'Elektrik OG', topraklama: 'Topraklama',
-  enh: 'ENH', devreye_alma: 'Devreye Alma', elektrik: 'Elektrik', inşaat: 'İnşaat', diğer: 'Diğer',
-}
-const CATEGORY_COLORS = {
-  mobilizasyon: '#6366F1', mekanik: '#0EA5E9', elektrik_dc: '#F59E0B', elektrik_ac: '#F59E0B',
-  elektrik_og: '#EF4444', topraklama: '#84CC16', enh: '#8B5CF6', devreye_alma: '#185FA5',
-  elektrik: '#F59E0B', inşaat: '#78716C', diğer: '#9CA3AF',
-}
-
 function initPersonnel() {
   return SHIFTS.map(shift => ({ shift, idari: 0, mekanik: 0, elektrik: 0, yevmiyeci: 0 }))
 }
 function initMachinery() {
-  return MACHINERY_PRESETS.map(machine_type => ({ machine_type, count: 0, status: 'çalışıyor', notes: '' }))
+  return []
 }
 function newMachineryRow() {
   return { machine_type: '', count: 0, status: 'çalışıyor', notes: '' }
@@ -168,10 +152,10 @@ function issueDescription(row) {
 
 function reportNotesPayload(formData) {
   return encodeMeta(REPORT_NOTES_META_PREFIX, {
-    isg_notes: formData.isg_notes || '',
-    incident_notes: formData.incident_notes || '',
-    description: formData.notes || '',
-  }, formData.notes || '')
+    isg_notes: String(formData.isg_notes || '').trim() || 'İSG ile ilgili olumsuzluk bildirilmedi.',
+    incident_notes: String(formData.incident_notes || '').trim() || 'Olağandışı olay veya şantiye ziyareti bildirilmedi.',
+    description: String(formData.notes || '').trim() || 'Ek saha notu bulunmuyor.',
+  }, String(formData.notes || '').trim() || 'Ek saha notu bulunmuyor.')
 }
 
 function InfoTile({ label, value }) {
@@ -190,9 +174,8 @@ const SECTION_DEFS = [
   { key: 'machinery', label: 'Makine / Ekipman',    icon: '🚜' },
   { key: 'tasks',     label: 'Günün İşleri',         icon: '🗓️' },
   { key: 'progress',  label: 'İlerleme Girişi',      icon: '📈' },
-  { key: 'issues',    label: 'Sorunlar',             icon: '⚠️' },
-  { key: 'photos',    label: 'Fotoğraflar',          icon: '📷' },
-  { key: 'notes',     label: 'Notlar',               icon: '🗒️' },
+  { key: 'photos',    label: 'Fotoğraflar',          icon: '📷', optional: true },
+  { key: 'notes',     label: 'Notlar',               icon: '🗒️', optional: true },
 ]
 
 export default function DailyReportForm({ reportId: initialReportId, onBack, onSaved, className = '', onGoToTicket }) {
@@ -202,13 +185,16 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const [openSection, setOpenSection] = useState(null) // null | bölüm anahtarı (SECTION_DEFS.key)
   const panelSnapshotRef = useRef(null)
   const [reportId, setReportId]     = useState(initialReportId || null)
+  const [reportOwnerId, setReportOwnerId] = useState(null)
   const [project, setProject]       = useState(null)
   const [resolvedProjectId, setResolvedProjectId] = useState(null)
   const [preparedBy, setPreparedBy] = useState('')
   const [loading, setLoading]       = useState(true)
   const [saving, setSaving]         = useState(false)
+  const [deleting, setDeleting]     = useState(false)
   const [error, setError]           = useState('')
   const [toast, setToast]           = useState('')
+  const [panelError, setPanelError] = useState('')
 
   // Step 1
   const [formData, setFormData] = useState({
@@ -219,7 +205,10 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     isg_notes:      '',
     incident_notes: '',
     notes:          '',
+    weather_loss_day: false,
   })
+  const [showWeatherNote, setShowWeatherNote] = useState(false)
+  const [weatherLossCount, setWeatherLossCount] = useState(0)
 
   // Step 2
   const [personnel, setPersonnel]   = useState(initPersonnel)
@@ -230,6 +219,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const [todayQty, setTodayQty]           = useState({})
   const [itemNotes, setItemNotes]         = useState({})
   const [existingQtys, setExistingQtys]   = useState({})
+  const [additionalProgressIds, setAdditionalProgressIds] = useState([])
   const [doneTasks, setDoneTasks]         = useState([newTaskRow()])
   const [plannedTasks, setPlannedTasks]   = useState([newTaskRow()])
 
@@ -285,9 +275,10 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     // tek çağrıyla gelir (mevcut RPC, ayrı ayrı supabase.from() sorgularıyla aynı veriyi döner).
     // daily_tasks bu RPC'nin dönüşünde henüz yok, o yüzden ayrı sorgulanıyor. RPC materials
     // de döndürüyor ama bu form artık Malzeme Kullanımı bölümünü göstermediği için kullanılmıyor.
-    const [detailRes, taskRes] = await Promise.all([
+    const [detailRes, taskRes, reportMetaRes] = await Promise.all([
       supabase.rpc('get_daily_report_detail', { p_report_id: id }),
       supabase.from('daily_tasks').select('*').eq('report_id', id).order('order_index'),
+      supabase.from('daily_reports').select('weather_loss_day').eq('id', id).maybeSingle(),
     ])
 
     if (seq !== undefined && seq !== dateCheckSeqRef.current) return // daha yeni bir tarih değişikliği bunu geçersiz kıldı
@@ -296,6 +287,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
     if (detail?.report) {
       const r = detail.report
+      setReportOwnerId(r.created_by || null)
       const reportNotes = decodeMeta(REPORT_NOTES_META_PREFIX, r.notes)
       setFormData({
         report_date:    r.report_date || todayStr(),
@@ -305,7 +297,9 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         isg_notes:      reportNotes.isg_notes || '',
         incident_notes: reportNotes.incident_notes || '',
         notes:          reportNotes.description || '',
+        weather_loss_day: Boolean(reportMetaRes.data?.weather_loss_day),
       })
+      setShowWeatherNote(Boolean(r.weather_note))
     }
 
     // Personnel
@@ -407,7 +401,9 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       isg_notes:      '',
       incident_notes: '',
       notes:          '',
+      weather_loss_day: false,
     })
+    setShowWeatherNote(false)
     setPersonnel(initPersonnel())
     setMachinery(initMachinery())
     setExistingQtys({})
@@ -418,6 +414,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setExistingPhotos([])
     setIssues([newIssueRow()])
     setIssueTicketInfo({})
+    setReportOwnerId(null)
   }
 
   // Create-mode'da: seçilen tarihte zaten rapor var mı diye bakar. Varsa
@@ -455,7 +452,29 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     } else {
       setAlreadyExists(false)
       setReportId(null)
+      const { data: draft } = await supabase
+        .from('daily_report_drafts')
+        .select('payload')
+        .eq('project_id', effectiveProjectId)
+        .eq('report_date', date)
+        .eq('user_id', user?.id)
+        .maybeSingle()
+
+      if (seq !== dateCheckSeqRef.current) return
       resetToBlank(date)
+      const payload = draft?.payload
+      if (payload) {
+        setFormData(current => ({ ...current, ...(payload.formData || {}), report_date: date }))
+        setPersonnel(Array.isArray(payload.personnel) ? payload.personnel : initPersonnel())
+        setMachinery(Array.isArray(payload.machinery) ? payload.machinery : [])
+        setDoneTasks(Array.isArray(payload.doneTasks) && payload.doneTasks.length ? payload.doneTasks : [newTaskRow()])
+        setPlannedTasks(Array.isArray(payload.plannedTasks) && payload.plannedTasks.length ? payload.plannedTasks : [newTaskRow()])
+        setTodayQty(payload.todayQty || {})
+        setItemNotes(payload.itemNotes || {})
+        setAdditionalProgressIds(Array.isArray(payload.additionalProgressIds) ? payload.additionalProgressIds : [])
+        setShowWeatherNote(Boolean(payload.formData?.weather_note))
+        showToast('Taslak yüklendi')
+      }
     }
   }
 
@@ -474,14 +493,19 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       setProject(resolvedProject || null)
       setResolvedProjectId(effectiveProjectId)
 
-      const [itemsRes] = await Promise.all([
+      const [itemsRes, weatherLossRes] = await Promise.all([
         supabase.from('project_tasks')
-          .select('id, task_name, unit, target_qty, total_progress, category, planned_start')
+          .select('id, task_name, unit, target_qty, total_progress, category, planned_start, planned_end, status')
           .eq('project_id', effectiveProjectId)
           .gt('target_qty', 0)
           .order('planned_start'),
+        supabase.from('daily_reports')
+          .select('id', { count: 'exact', head: true })
+          .eq('project_id', effectiveProjectId)
+          .eq('weather_loss_day', true),
       ])
       setProgressItems((itemsRes.data || []).map(t => ({ ...t, name: t.task_name })))
+      setWeatherLossCount(weatherLossRes.count || 0)
 
       const [profileRes] = await Promise.all([
         user?.id
@@ -614,10 +638,17 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
   function openPanel(key) {
     panelSnapshotRef.current = captureSnapshot()
+    setPanelError('')
     setOpenSection(key)
   }
   function closePanelSave() {
+    const sectionDef = SECTION_DEFS.find(section => section.key === openSection)
+    if (!sectionDef?.optional && !SECTION_STATE[openSection]?.complete) {
+      setPanelError(`${SECTION_DEFS.find(section => section.key === openSection)?.label || 'Bu bölüm'} için gerekli bilgileri girin.`)
+      return
+    }
     panelSnapshotRef.current = null
+    setPanelError('')
     setOpenSection(null)
   }
   function closePanelCancel() {
@@ -626,7 +657,99 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setOpenSection(null)
   }
 
+  async function handleWeatherLossDay() {
+    if (saving) return
+    setSaving(true)
+    setError('')
+    try {
+      const effectiveProjectId = resolvedProjectId || project?.id || projectId
+      if (!effectiveProjectId || !user?.id) throw new Error('Kullanıcı veya proje bilgisi yüklenemedi.')
+
+      let rid = reportId
+      const wasAlreadyWeatherLoss = Boolean(formData.weather_loss_day)
+      if (rid) {
+        const { error: updateError } = await supabase
+          .from('daily_reports')
+          .update({
+            weather_loss_day: true,
+            weather: formData.weather,
+            weather_note: formData.weather_note || formatWeatherNote(currentWeather) || null,
+          })
+          .eq('id', rid)
+        if (updateError) throw updateError
+      } else {
+        const { data: inserted, error: insertError } = await supabase
+          .from('daily_reports')
+          .insert({
+            project_id: effectiveProjectId,
+            report_date: formData.report_date,
+            created_by: user.id,
+            general_status: 'dikkat',
+            worker_count: 0,
+            weather: formData.weather,
+            weather_note: formData.weather_note || formatWeatherNote(currentWeather) || null,
+            notes: reportNotesPayload(formData),
+            weather_loss_day: true,
+          })
+          .select('id')
+          .single()
+        if (insertError) throw insertError
+        rid = inserted.id
+        setReportId(rid)
+      }
+
+      setFormData(f => ({ ...f, weather_loss_day: true, general_status: 'dikkat' }))
+      if (!wasAlreadyWeatherLoss) setWeatherLossCount(count => count + 1)
+      showToast('Hava kayıplı gün kaydedildi')
+      setTimeout(() => onSaved?.(), 650)
+    } catch (e) {
+      setError(toUserMessage(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleBack() {
+    if (saving) return
+    setSaving(true)
+    setError('')
+    try {
+      const effectiveProjectId = resolvedProjectId || project?.id || projectId
+      if (!effectiveProjectId || !user?.id) throw new Error('Kullanıcı veya proje bilgisi yüklenemedi.')
+      const payload = {
+        formData,
+        personnel,
+        machinery,
+        doneTasks,
+        plannedTasks,
+        todayQty,
+        itemNotes,
+        additionalProgressIds,
+      }
+      const { error: draftError } = await supabase.from('daily_report_drafts').upsert({
+        project_id: effectiveProjectId,
+        report_date: formData.report_date,
+        user_id: user.id,
+        payload,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'project_id,report_date,user_id' })
+      if (draftError) throw draftError
+      onBack?.()
+    } catch (e) {
+      setError(toUserMessage(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   async function handleSave() {
+    const incompleteSections = SECTION_DEFS.filter(section => !section.optional && !SECTION_STATE[section.key]?.complete)
+    if (incompleteSections.length > 0) {
+      setError(`Raporu göndermek için şu bölümleri doldurun: ${incompleteSections.map(section => section.label).join(', ')}.`)
+      setOpenSection(incompleteSections[0].key)
+      setPanelError(`${incompleteSections[0].label} için gerekli bilgileri girin.`)
+      return
+    }
     setSaving(true)
     setError('')
     try {
@@ -698,6 +821,18 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       if (saveErr) throw saveErr
       setReportId(rid)
 
+      const { error: weatherLossError } = await supabase
+        .from('daily_reports')
+        .update({ weather_loss_day: Boolean(formData.weather_loss_day) })
+        .eq('id', rid)
+      if (weatherLossError) throw weatherLossError
+
+      await supabase.from('daily_report_drafts')
+        .delete()
+        .eq('project_id', effectiveProjectId)
+        .eq('report_date', formData.report_date)
+        .eq('user_id', user.id)
+
       // Fotoğraflar: Storage API'ye Postgres fonksiyonundan erişilemediği için
       // yükleme + kayıt istemci tarafında ayrı kalır.
       for (const photo of photos) {
@@ -727,13 +862,113 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     }
   }
 
+  async function handleDelete() {
+    if (!reportId || deleting || saving) return
+    const confirmed = window.confirm(
+      `${new Date(formData.report_date).toLocaleDateString('tr-TR')} tarihli raporu kalıcı olarak silmek istediğinize emin misiniz?`
+    )
+    if (!confirmed) return
+
+    setDeleting(true)
+    setError('')
+    try {
+      const photoPaths = existingPhotos.map(photo => photo.storage_path).filter(Boolean)
+      const { data: deletedRows, error: deleteError } = await supabase
+        .from('daily_reports')
+        .delete()
+        .eq('id', reportId)
+        .select('id')
+
+      if (deleteError) throw deleteError
+      if (!deletedRows?.length) throw new Error('Bu raporu silme yetkiniz bulunmuyor veya rapor artık mevcut değil.')
+
+      if (photoPaths.length > 0) {
+        const { error: storageError } = await supabase.storage.from('saha-fotolari').remove(photoPaths)
+        if (storageError) console.warn('Rapor silindi ancak bazı fotoğraf dosyaları temizlenemedi:', storageError)
+      }
+
+      showToast('Rapor silindi')
+      setTimeout(() => onSaved?.(), 450)
+    } catch (e) {
+      setError(toUserMessage(e))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   // ─── Grouped progress items ───────────────────────────────────────────────
-  const groupedItems = {}
-  progressItems.forEach(item => {
-    const cat = item.category || 'diğer'
-    if (!groupedItems[cat]) groupedItems[cat] = []
-    groupedItems[cat].push(item)
+  const reportDay = formData.report_date
+  const scheduledProgressItems = progressItems.filter(item => {
+    const status = String(item.status || '').toLocaleLowerCase('tr-TR')
+    const isComplete = ['tamamlandi', 'tamamlandı', 'done'].includes(status)
+    const isOverdue = !isComplete && item.planned_end && item.planned_end < reportDay
+    const isActiveToday = item.planned_start && item.planned_start <= reportDay && (!item.planned_end || item.planned_end >= reportDay)
+    const isAlreadyInReport = Number(existingQtys[item.id]) > 0
+    return isOverdue || isActiveToday || isAlreadyInReport || additionalProgressIds.includes(item.id)
   })
+  const optionalProgressItems = progressItems.filter(item => !scheduledProgressItems.some(visible => visible.id === item.id))
+  const overdueProgressItems = scheduledProgressItems.filter(item => {
+    const status = String(item.status || '').toLocaleLowerCase('tr-TR')
+    const isComplete = ['tamamlandi', 'tamamlandı', 'done'].includes(status)
+    return !isComplete && item.planned_end && item.planned_end < reportDay
+  })
+  const todayProgressItems = scheduledProgressItems.filter(item => !overdueProgressItems.some(overdue => overdue.id === item.id))
+
+  function renderProgressItem(item, tone) {
+    const existQty = Number(existingQtys[item.id]) || 0
+    const prevTotal = Math.max(0, (Number(item.total_progress) || 0) - existQty)
+    const todayVal = Number(todayQty[item.id]) || 0
+    const cumulative = prevTotal + todayVal
+    const target = Number(item.target_qty) || 0
+    const pct = target > 0 ? Math.min(100, (cumulative / target * 100)).toFixed(1) : '—'
+    const isOver = target > 0 && cumulative > target
+    const toneColor = tone === 'overdue' ? 'var(--color-danger)' : 'var(--color-primary)'
+    const toneBg = tone === 'overdue' ? 'var(--color-danger-bg)' : 'var(--color-primary-bg)'
+
+    return (
+      <div key={item.id} style={{ ...CARD_ROW, border: `1.5px solid ${toneColor}`, background: 'var(--color-surface)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ fontSize: 13, color: 'var(--color-text)' }}>{item.name}</strong>
+            <div style={{ marginTop: 3, fontSize: 11, color: 'var(--color-muted-light)' }}>
+              {item.unit} · Hedef {target} · Önceki toplam {prevTotal.toFixed(1)}
+            </div>
+          </div>
+          <span style={{ padding: '4px 8px', borderRadius: 999, background: toneBg, color: toneColor, fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
+            {pct !== '—' ? `%${pct}` : '—'}
+          </span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12 }}>
+          <div>
+            <label style={LABEL}>Bugün</label>
+            <input
+              type="number" min={0} step="0.01"
+              value={todayQty[item.id] || ''}
+              onChange={e => setTodayQty(prev => ({ ...prev, [item.id]: e.target.value }))}
+              style={{ ...INPUT, borderColor: isOver ? 'var(--color-danger)' : toneColor }}
+              placeholder="0"
+            />
+          </div>
+          <div>
+            <label style={LABEL}>Kümülatif</label>
+            <div style={{ ...INPUT, background: 'var(--color-bg)', fontWeight: 600, color: isOver ? 'var(--color-danger)' : 'var(--color-text)' }}>
+              {cumulative.toFixed(1)}
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop: 10 }}>
+          <label style={LABEL}>Not</label>
+          <input
+            type="text"
+            value={itemNotes[item.id] || ''}
+            onChange={e => setItemNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
+            placeholder={isOver ? 'Aşma sebebi...' : 'Not...'}
+            style={{ ...INPUT, borderColor: isOver && !itemNotes[item.id] ? 'var(--color-danger)' : undefined }}
+          />
+        </div>
+      </div>
+    )
+  }
 
   // ─── Loading ──────────────────────────────────────────────────────────────
   if (loading) {
@@ -756,7 +991,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const SECTION_STATE = {
     general: {
       complete: true,
-      preview: `${formData.weather} · ${formData.general_status}`,
+      preview: `${WEATHER_LABELS[formData.weather] || formData.weather} · ${STATUS_LABELS[formData.general_status] || formData.general_status}${formData.weather_loss_day ? ' · Hava kayıplı gün' : ''}`,
     },
     personnel: {
       complete: totalPersonnel > 0,
@@ -767,13 +1002,13 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       preview: filledMachinery.length > 0 ? `${filledMachinery.length} makine` : 'Henüz girilmedi',
     },
     tasks: {
-      complete: (filledDoneTasks.length + filledPlannedTasks.length) > 0,
+      complete: filledDoneTasks.length > 0 && filledPlannedTasks.length > 0,
       preview: (filledDoneTasks.length + filledPlannedTasks.length) > 0
         ? `${filledDoneTasks.length} tamamlanan, ${filledPlannedTasks.length} planlanan`
         : 'Henüz girilmedi',
     },
     progress: {
-      complete: filledProgressItems.length > 0,
+      complete: progressItems.length === 0 || filledProgressItems.length > 0,
       preview: filledProgressItems.length > 0
         ? `${filledProgressItems.length} kalem güncellendi`
         : (progressItems.length ? 'Henüz girilmedi' : 'Bu projeye iş kalemi tanımlanmamış'),
@@ -787,12 +1022,15 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       preview: totalPhotoCount > 0 ? `${totalPhotoCount} fotoğraf` : 'Henüz eklenmedi',
     },
     notes: {
-      complete: true,
-      preview: formData.notes ? formData.notes.slice(0, 40) : 'Not eklenmedi',
+      complete: Boolean(String(formData.isg_notes || '').trim() || String(formData.incident_notes || '').trim() || String(formData.notes || '').trim()),
+      preview: (formData.notes || formData.isg_notes || formData.incident_notes)
+        ? String(formData.notes || formData.isg_notes || formData.incident_notes).slice(0, 40)
+        : 'Henüz girilmedi',
     },
   }
 
-  const completedCount = SECTION_DEFS.filter(d => SECTION_STATE[d.key].complete).length
+  const requiredSections = SECTION_DEFS.filter(section => !section.optional)
+  const completedRequiredCount = requiredSections.filter(section => SECTION_STATE[section.key].complete).length
   const activeSectionDef = SECTION_DEFS.find(d => d.key === openSection)
 
   return (
@@ -815,7 +1053,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         boxShadow: 'var(--shadow-card)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
-          <button onClick={onBack} style={BTN_BACK}>← Geri</button>
+          <button onClick={handleBack} disabled={saving} style={{ ...BTN_BACK, opacity: saving ? .65 : 1 }}>{saving ? 'Taslak kaydediliyor…' : '← Geri'}</button>
           {alreadyExists && !initialReportId && (
             <span style={{
               background: 'rgba(245, 158, 11, 0.18)', color: '#FDE68A', borderRadius: 8,
@@ -847,7 +1085,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
             >
               <span style={{ fontSize: 18, flexShrink: 0 }}>{def.icon}</span>
               <span className="ss-list-title" style={{ fontWeight: 600 }}>
-                {def.label}
+                {def.label}{def.optional ? ' (Opsiyonel)' : ''}
                 <span style={{ display: 'block', fontSize: 11.5, fontWeight: 400, color: 'var(--color-muted-light)', marginTop: 2 }}>
                   {state.preview}
                 </span>
@@ -869,11 +1107,23 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         position: 'sticky', bottom: 0, background: 'var(--color-bg)', paddingTop: 10, paddingBottom: 10, marginTop: 4,
       }}>
         <span style={{ fontSize: 12, color: 'var(--color-muted)', fontWeight: 600 }}>
-          {completedCount}/{SECTION_DEFS.length} bölüm dolduruldu
+          {completedRequiredCount}/{requiredSections.length} zorunlu bölüm dolduruldu
         </span>
-        <button onClick={handleSave} disabled={saving} style={{ ...BTN_SUBMIT, opacity: saving ? 0.7 : 1 }}>
-          {saving ? 'Gönderiliyor…' : '📋 Raporu Gönder'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          {reportId && reportOwnerId === user?.id && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={saving || deleting}
+              style={{ ...BTN_DELETE_REPORT, opacity: saving || deleting ? 0.6 : 1 }}
+            >
+              {deleting ? 'Siliniyor…' : 'Raporu Sil'}
+            </button>
+          )}
+          <button onClick={handleSave} disabled={saving || deleting} style={{ ...BTN_SUBMIT, opacity: saving || deleting ? 0.7 : 1 }}>
+            {saving ? 'Gönderiliyor…' : '📋 Raporu Gönder'}
+          </button>
+        </div>
       </div>
 
       {/* ── Bölüm paneli — sağdan (masaüstü) / alttan (mobil) açılır ── */}
@@ -906,19 +1156,34 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                     </div>
                     <div>
                       <label style={LABEL}>Hava Durumu</label>
-                      <select value={formData.weather} onChange={e => setFormData(f => ({ ...f, weather: e.target.value }))} style={INPUT}>
-                        {WEATHER_OPTIONS.map(w => <option key={w}>{w}</option>)}
-                      </select>
+                      <div style={{ ...INPUT, background: 'var(--color-primary-bg)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <strong>{WEATHER_LABELS[formData.weather] || formData.weather}</strong>
+                        <span style={{ color: 'var(--color-primary)', fontSize: 11, fontWeight: 700 }}>API’den otomatik</span>
+                      </div>
                     </div>
                     <div>
                       <label style={LABEL}>Genel Durum</label>
                       <select value={formData.general_status} onChange={e => setFormData(f => ({ ...f, general_status: e.target.value }))} style={INPUT}>
-                        {STATUS_OPTIONS.map(s => <option key={s}>{s}</option>)}
+                        {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
                       </select>
                     </div>
-                    <div style={{ gridColumn: '1 / -1' }}>
-                      <label style={LABEL}>Hava Durumu Notu (opsiyonel)</label>
-                      <input type="text" value={formData.weather_note} onChange={e => setFormData(f => ({ ...f, weather_note: e.target.value }))} placeholder="Hava durumu hakkında ek not..." style={INPUT} />
+                    <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => setShowWeatherNote(v => !v)}
+                          aria-label="Hava durumu notu ekle"
+                          title="Hava durumu notu ekle"
+                          style={{ ...BTN_GHOST, width: 38, minHeight: 38, padding: 0, fontSize: 20 }}
+                        >+</button>
+                        <span style={{ color: 'var(--color-text-sub)', fontSize: 12, fontWeight: 600 }}>Opsiyonel hava notu</span>
+                        <button type="button" onClick={handleWeatherLossDay} disabled={saving} style={{ ...BTN_WEATHER_LOSS, marginLeft: 'auto', opacity: saving ? .65 : 1 }}>
+                          Hava Kayıplı Gün Gir · Toplam {weatherLossCount}
+                        </button>
+                      </div>
+                      {showWeatherNote && (
+                        <input type="text" value={formData.weather_note} onChange={e => setFormData(f => ({ ...f, weather_note: e.target.value }))} placeholder="Hava durumu hakkında ek not..." style={INPUT} />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -988,12 +1253,13 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                         {machinery.map((row, i) => (
                           <tr key={i}>
                             <td style={TD}>
-                              <select value={normalizeMachineType(row.machine_type)} onChange={e => updateMachinery(i, 'machine_type', e.target.value)} style={{ ...INPUT, padding: '5px 8px' }}>
-                                <option value="">Makine seçin</option>
-                                {MACHINERY_PRESETS.map(type => (
-                                  <option key={type} value={type}>{MACHINE_LABELS[type] || type}</option>
-                                ))}
-                              </select>
+                              <input
+                                type="text"
+                                value={row.machine_type}
+                                onChange={e => updateMachinery(i, 'machine_type', e.target.value)}
+                                placeholder="Makine veya ekipman adı"
+                                style={{ ...INPUT, padding: '5px 8px' }}
+                              />
                             </td>
                             <td style={TD}>
                               <input type="number" min={0} value={row.count} onChange={e => updateMachinery(i, 'count', e.target.value)} style={NUM_INPUT} />
@@ -1004,7 +1270,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                                 onChange={e => updateMachinery(i, 'status', e.target.value)}
                                 style={{ ...INPUT, padding: '5px 8px', borderColor: MACH_STATUS_COLOR[row.status], color: MACH_STATUS_COLOR[row.status], fontWeight: 600 }}
                               >
-                                {MACH_STATUS.map(s => <option key={s}>{s}</option>)}
+                                {MACH_STATUS.map(s => <option key={s} value={s}>{MACH_STATUS_LABELS[s]}</option>)}
                               </select>
                             </td>
                             <td style={TD}>
@@ -1018,7 +1284,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                       </tbody>
                     </table>
                   </div>
-                  <button onClick={addMachineryRow} style={{ ...BTN_GHOST, marginTop: 10 }}>+ Satır Ekle</button>
+                  <button onClick={addMachineryRow} style={{ ...BTN_GHOST, marginTop: 10 }}>+ Makine / Ekipman Ekle</button>
                 </div>
               )}
 
@@ -1068,7 +1334,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
               {/* İlerleme Girişi */}
               {openSection === 'progress' && (
                 <div>
-                  <p style={{ margin: '0 0 16px', fontSize: 11, color: 'var(--color-muted-light)' }}>Yüzde sistem tarafından hesaplanır — girilmez.</p>
                   {progressItems.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--color-muted-light)' }}>
                       <p style={{ fontSize: 32, margin: '0 0 12px' }}>📋</p>
@@ -1076,80 +1341,52 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                       <p style={{ fontSize: 12 }}>Proje yöneticisi iş kalemlerini tanımladıktan sonra bu bölüm aktif olacak.</p>
                     </div>
                   ) : (
-                    <div>
-                      <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--color-muted-light)' }}>Bugün tamamlanan miktarları girin. Yalnızca miktar girilen kalemler kaydedilir.</p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                        {Object.entries(groupedItems).map(([cat, items]) => (
-                          <div key={cat}>
-                            <span style={{
-                              display: 'inline-block', padding: '5px 10px', borderRadius: 6, marginBottom: 10,
-                              background: CATEGORY_COLORS[cat] || 'var(--color-muted-light)',
-                              color: 'var(--color-surface)', fontSize: 11, fontWeight: 700,
-                              textTransform: 'uppercase', letterSpacing: '0.5px',
-                            }}>
-                              {CATEGORY_LABELS[cat] || cat}
-                            </span>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                              {items.map(item => {
-                                const existQty = Number(existingQtys[item.id]) || 0
-                                const prevTotal = Math.max(0, (Number(item.total_progress) || 0) - existQty)
-                                const todayVal  = Number(todayQty[item.id]) || 0
-                                const cumulative = prevTotal + todayVal
-                                const target = Number(item.target_qty) || 0
-                                const pct = target > 0 ? Math.min(100, (cumulative / target * 100)).toFixed(1) : '—'
-                                const isOver = target > 0 && cumulative > target
-
-                                return (
-                                  <div key={item.id} style={{ ...CARD_ROW, background: isOver ? 'var(--color-danger-bg)' : CARD_ROW.background }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                                      <div style={{ minWidth: 0 }}>
-                                        <strong style={{ fontSize: 13, color: 'var(--color-text)' }}>{item.name}</strong>
-                                        <div style={{ fontSize: 11, color: 'var(--color-muted-light)' }}>
-                                          {item.unit} · Hedef {target} · Önceki toplam {prevTotal.toFixed(1)}
-                                        </div>
-                                      </div>
-                                      <span style={{
-                                        fontWeight: 700, fontSize: 13, flexShrink: 0,
-                                        color: Number(pct) >= 100 ? 'var(--color-success)' : Number(pct) >= 50 ? 'var(--color-primary)' : 'var(--color-muted-light)',
-                                      }}>
-                                        {pct !== '—' ? `${pct}%` : '—'}
-                                      </span>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-                                      <div>
-                                        <label style={LABEL}>Bugün</label>
-                                        <input
-                                          type="number" min={0} step="0.01"
-                                          value={todayQty[item.id] || ''}
-                                          onChange={e => setTodayQty(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                          style={{ ...INPUT, borderColor: isOver ? 'var(--color-danger)' : undefined }}
-                                          placeholder="0"
-                                        />
-                                      </div>
-                                      <div>
-                                        <label style={LABEL}>Kümülatif</label>
-                                        <div style={{ ...INPUT, background: 'var(--color-bg)', fontWeight: 600, color: isOver ? 'var(--color-danger)' : 'var(--color-text)' }}>
-                                          {cumulative.toFixed(1)}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <div style={{ marginTop: 10 }}>
-                                      <label style={LABEL}>Not</label>
-                                      <input
-                                        type="text"
-                                        value={itemNotes[item.id] || ''}
-                                        onChange={e => setItemNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
-                                        placeholder={isOver ? 'Aşma sebebi...' : 'Not...'}
-                                        style={{ ...INPUT, borderColor: isOver && !itemNotes[item.id] ? 'var(--color-danger)' : undefined }}
-                                      />
-                                    </div>
-                                  </div>
-                                )
-                              })}
-                            </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                      {overdueProgressItems.length > 0 && (
+                        <section style={{ border: '1px solid color-mix(in srgb, var(--color-danger) 35%, var(--color-border))', borderRadius: 12, overflow: 'hidden' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: 'var(--color-danger-bg)', color: 'var(--color-danger-text)', fontSize: 12, fontWeight: 800 }}>
+                            <span>Geciken İşler</span>
+                            <span>{overdueProgressItems.length}</span>
                           </div>
-                        ))}
-                      </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
+                            {overdueProgressItems.map(item => renderProgressItem(item, 'overdue'))}
+                          </div>
+                        </section>
+                      )}
+
+                      {todayProgressItems.length > 0 && (
+                        <section style={{ border: '1px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-border))', borderRadius: 12, overflow: 'hidden' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', background: 'var(--color-primary-bg)', color: 'var(--color-primary)', fontSize: 12, fontWeight: 800 }}>
+                            <span>Bugün Devam Edenler</span>
+                            <span>{todayProgressItems.length}</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
+                            {todayProgressItems.map(item => renderProgressItem(item, 'today'))}
+                          </div>
+                        </section>
+                      )}
+
+                      {overdueProgressItems.length === 0 && todayProgressItems.length === 0 && (
+                        <div style={{ padding: 18, border: '1px dashed var(--color-border-md)', borderRadius: 10, color: 'var(--color-muted)', fontSize: 12, textAlign: 'center' }}>
+                          Bugün için otomatik gösterilecek iş kalemi bulunmuyor.
+                        </div>
+                      )}
+
+                      {optionalProgressItems.length > 0 && (
+                        <div style={{ padding: 12, border: '1px dashed color-mix(in srgb, var(--color-primary) 45%, var(--color-border))', borderRadius: 10, background: 'color-mix(in srgb, var(--color-primary) 3%, var(--color-surface))' }}>
+                          <label style={{ ...LABEL, color: 'var(--color-primary)', marginBottom: 7 }}>+ İş Kalemi Ekle</label>
+                          <select
+                            value=""
+                            onChange={e => {
+                              if (e.target.value) setAdditionalProgressIds(prev => [...new Set([...prev, e.target.value])])
+                            }}
+                            style={INPUT}
+                          >
+                            <option value="">İş kalemi seçin…</option>
+                            {optionalProgressItems.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1318,7 +1555,8 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
               )}
 
             </div>
-            <div style={{ ...MODAL_HEADER, borderTop: '1px solid var(--color-border)', borderBottom: 'none', gap: 10 }}>
+            <div style={{ ...MODAL_HEADER, borderTop: '1px solid var(--color-border)', borderBottom: 'none', gap: 10, flexWrap: 'wrap' }}>
+              {panelError && <p style={{ flex: '1 1 100%', margin: 0, color: 'var(--color-danger)', fontSize: 12, fontWeight: 600 }}>{panelError}</p>}
               <button onClick={closePanelCancel} style={BTN_GHOST}>İptal</button>
               <button onClick={closePanelSave} style={BTN_PRIMARY}>Kaydet ve Kapat</button>
             </div>
@@ -1364,6 +1602,8 @@ const BTN_PRIMARY   = { background: '#2563EB', color: '#fff', border: 'none', bo
 const BTN_GHOST     = { background: 'none', color: '#2563EB', border: '1px solid #2563EB', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 40 }
 const BTN_BACK       = { background: 'rgba(255,255,255,0.12)', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', minHeight: 36 }
 const BTN_SUBMIT     = { background: '#2563EB', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 22px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }
+const BTN_WEATHER_LOSS = { background: 'var(--color-warning-bg)', color: 'var(--color-warning-text)', border: '1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-border))', borderRadius: 8, padding: '9px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', minHeight: 38, whiteSpace: 'nowrap' }
+const BTN_DELETE_REPORT = { background: 'var(--color-danger-bg)', color: 'var(--color-danger-text)', border: '1px solid color-mix(in srgb, var(--color-danger) 24%, var(--color-border))', borderRadius: 10, padding: '11px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', minHeight: 48, whiteSpace: 'nowrap' }
 const BTN_REMOVE    = { background: 'var(--color-danger-bg)', color: 'var(--color-danger)', border: 'none', borderRadius: 6, width: 32, height: 32, fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'inherit', flexShrink: 0 }
 const CHECK_BADGE   = {
   width: 24, height: 24, borderRadius: '50%', background: 'var(--color-success)', color: '#fff',

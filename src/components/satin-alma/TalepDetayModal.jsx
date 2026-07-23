@@ -47,7 +47,7 @@ function Step({ done, active, label, last = false }) {
 
 const emptyMap = new Map()
 
-export default function TalepDetayModal({ request, talepId, materialPlan = emptyMap, requestedTotals = emptyMap, onClose }) {
+export default function TalepDetayModal({ request, talepId, materialPlan = emptyMap, requestedTotals = emptyMap, siteChiefView = false, onClose }) {
   const { isAdmin, isMuhasebe, user } = useAuth()
   const [data, setData] = useState(request || null)
   const [items, setItems] = useState(request?.items || [])
@@ -84,6 +84,9 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const procurementActive = status === 'onaylandi'
   const procurementDone = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const isRejected = status === 'red_edildi'
+  const isCancelled = isRejected || status === 'iptal'
+  const siteChiefProcessing = status === 'onaylandi'
+  const siteChiefComplete = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const canInvoice = (isAdmin || isMuhasebe) && isAwaitingInvoice(req)
 
   async function updateStatus(nextStatus) {
@@ -116,7 +119,15 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
             <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0F172A' }}>Talep Detayı</h2>
             <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{requestNo(req)} · {req.title || req.material_name || 'Satın alma talebi'}</p>
           </div>
-          <Badge map={PR_STATUS} value={req.status} />
+          {siteChiefView ? (
+            <span style={{
+              background: isCancelled ? '#FEE2E2' : siteChiefComplete ? '#DCFCE7' : siteChiefProcessing ? '#FEF3C7' : '#EFF6FF',
+              color: isCancelled ? '#991B1B' : siteChiefComplete ? '#166534' : siteChiefProcessing ? '#92400E' : '#1D4ED8',
+              fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, whiteSpace: 'nowrap',
+            }}>
+              {isCancelled ? 'İptal Edildi' : siteChiefComplete ? 'İşlem Tamamlandı' : siteChiefProcessing ? 'İşleme Alındı' : 'Talep Oluşturuldu'}
+            </span>
+          ) : <Badge map={PR_STATUS} value={req.status} />}
           <button onClick={onClose} style={{ border: 'none', background: 'transparent', color: '#64748B', fontSize: 24, lineHeight: 1, cursor: 'pointer' }}>×</button>
         </header>
 
@@ -141,8 +152,20 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
             </section>
 
             <section style={CARD}>
-              <h3 style={TITLE}>Onay Süreci</h3>
+              <h3 style={TITLE}>{siteChiefView ? 'İşlem Süreci' : 'Onay Süreci'}</h3>
               <div style={{ display: 'grid', gap: 10 }}>
+                {siteChiefView ? (
+                  <>
+                    <Step done label="Talep Oluşturuldu" />
+                    <Step
+                      active={siteChiefProcessing}
+                      done={siteChiefProcessing || siteChiefComplete}
+                      label={isCancelled ? 'İşlem İptal Edildi' : 'İşleme Alındı'}
+                    />
+                    <Step done={siteChiefComplete} label="İşlem Tamamlandı" last />
+                  </>
+                ) : (
+                  <>
                 <Step
                   done
                   label="Talep Oluşturuldu"
@@ -167,6 +190,8 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                   label="Fatura Kesildi"
                   last
                 />
+                  </>
+                )}
               </div>
             </section>
           </div>

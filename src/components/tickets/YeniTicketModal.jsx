@@ -40,7 +40,6 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
   const hasFixedProject = !!(defaultProject || projectId)
   const [projectOptions, setProjectOptions] = useState([])
   const [selectedProjectId, setSelectedProjectId] = useState('')
-  const [openAsGeneral, setOpenAsGeneral] = useState(false)
 
   useEffect(() => {
     if (hasFixedProject) return
@@ -83,6 +82,10 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
 
   const needsProjectPick = !hasFixedProject && category !== 'genel'
 
+  function removeSelectedFile(indexToRemove) {
+    setFiles(current => current.filter((_, index) => index !== indexToRemove))
+  }
+
   async function handleSubmit() {
     if (!description.trim()) return
     if (needsProjectPick && !selectedProjectId) {
@@ -92,10 +95,10 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
     setSaving(true)
     setError(null)
 
-    const effectiveProjectId = hasFixedProject
-      ? (openAsGeneral ? null : (projectId || null))
-      : (selectedProjectId || null)
-    const ticketLocation = project?.location || null
+    const effectiveProjectId = category === 'genel'
+      ? null
+      : hasFixedProject ? (project?.id || projectId || null) : (selectedProjectId || null)
+    const ticketLocation = category === 'genel' ? null : (project?.location || null)
 
     const { data: inserted, error: err } = await supabase.from('tickets').insert({
       project_id:  effectiveProjectId,
@@ -149,20 +152,14 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
               <>
                 <div style={ROW}>
                   <span style={ROW_LABEL}>Proje</span>
-                  <span style={ROW_VALUE}>{openAsGeneral ? 'Genel (projeye bağlı değil)' : projeAdi}</span>
+                  <span style={ROW_VALUE}>{category === 'genel' ? 'Genel (projeye bağlı değil)' : projeAdi}</span>
                 </div>
-                {!openAsGeneral && (
+                {category !== 'genel' && (
                   <div style={ROW}>
                     <span style={ROW_LABEL}>Lokasyon</span>
                     <span style={ROW_VALUE}>{lokasyon}</span>
                   </div>
                 )}
-                <div style={{ ...ROW, borderBottom: 'none' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#6B7280', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={openAsGeneral} onChange={e => setOpenAsGeneral(e.target.checked)} />
-                    Genel ticket olarak aç (belirli bir projeye bağlı olmasın)
-                  </label>
-                </div>
               </>
             ) : needsProjectPick && (
               <div style={ROW}>
@@ -217,20 +214,33 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
             />
           </div>
 
-          {/* Dosya/Foto ekle */}
+          {/* PDF, Excel veya fotoğraf ekle */}
           <div>
             <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 6 }}>
-              DOSYA / FOTO EKLE
+              DOSYA EKLE (PDF, EXCEL VEYA FOTOĞRAF)
             </label>
             <input
               type="file"
               multiple
-              accept="image/*,.pdf"
+              accept="image/*,.pdf,.xls,.xlsx,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={e => setFiles(Array.from(e.target.files || []))}
               style={{ fontSize: 13, fontFamily: 'inherit' }}
             />
             {files.length > 0 && (
-              <p style={{ margin: '6px 0 0', fontSize: 12, color: '#6B7280' }}>{files.length} dosya seçildi</p>
+              <div style={{ display: 'grid', gap: 6, marginTop: 10 }}>
+                {files.map((file, index) => (
+                  <div key={`${file.name}-${file.lastModified}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', border: '1px solid #E5E7EB', borderRadius: 8, background: '#F9FAFB' }}>
+                    <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12, color: '#374151' }}>{file.name}</span>
+                    <span style={{ flexShrink: 0, fontSize: 10, color: '#9CA3AF' }}>{(file.size / 1024 / 1024).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} MB</span>
+                    <button
+                      type="button"
+                      onClick={() => removeSelectedFile(index)}
+                      aria-label={`${file.name} dosyasını kaldır`}
+                      style={{ flexShrink: 0, border: 'none', background: 'transparent', color: '#DC2626', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
