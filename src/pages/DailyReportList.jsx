@@ -58,6 +58,18 @@ function dailyProgressStatus(pct) {
   return ''
 }
 
+function aggregateProgressRows(rows) {
+  const grouped = new Map()
+  ;(rows || []).forEach(row => {
+    if (!row.task_id) return
+    const current = grouped.get(row.task_id) || { ...row, qty_added: 0, notes: [] }
+    current.qty_added += Number(row.qty_added || 0)
+    if (row.note) current.notes.push(row.note)
+    grouped.set(row.task_id, current)
+  })
+  return grouped
+}
+
 function decodeStoredMeta(prefix, value) {
   const text = String(value || '')
   if (!text.startsWith(prefix)) return { description: text }
@@ -205,7 +217,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     ;(data.machinery || []).forEach(m => {
       rows.push(['İş Makinesi', displayLabel(m.machine_type), `${m.count || 0} adet · ${displayLabel(m.status)}${m.notes ? ` · ${m.notes}` : ''}`])
     })
-    ;(data.progress || []).forEach(p => {
+    aggregateProgressRows(data.progress).forEach(p => {
       const item = p.progress_items || {}
       rows.push(['İmalat', item.name || '—', `${p.qty_added || 0} ${item.unit || ''} · Toplam: ${item.total_progress || 0}/${item.target_qty || 0}`])
     })
@@ -282,7 +294,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
     const personnel = personnelRes.data || []
     const machinery = machineryRes.data || []
     const progressItems = progressItemsRes.data || []
-    const progressByItem = new Map((progressDailyRes.data || []).map(row => [row.task_id, row]))
+    const progressByItem = aggregateProgressRows(progressDailyRes.data || [])
     const creatorName = creatorRes.data?.full_name || creatorRes.data?.email || ''
     const reportNotes = decodeStoredMeta('__REPORT_NOTES_META__', report.notes)
 
@@ -350,7 +362,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
       put(`H${row}`, cumulative || '')
       put(`I${row}`, pct)
       put(`J${row}`, dailyProgressStatus(Math.round(pct * 100)))
-      put(`K${row}`, daily?.note || daily?.notes || item.notes || '')
+      put(`K${row}`, daily?.notes?.join(' · ') || daily?.note || item.notes || '')
     })
 
     ;(materialUsageRes.data || []).slice(0, 7).forEach((material, idx) => {

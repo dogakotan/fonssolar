@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
+import { useAuth } from '../../../context/AuthContext'
 
 const GROUP_ORDER = [
   'Projelendirme & İzinler',
@@ -156,6 +157,18 @@ function statusLabel(status) {
   return STATUS_LABELS[status] || status?.replace(/_/g, ' ') || '-'
 }
 
+function riskSeverityLabel(task) {
+  const severity = String(task?.risk_severity || (task?.is_critical ? 'kritik' : 'orta'))
+    .toLocaleLowerCase('tr-TR')
+  return {
+    düşük: 'Düşük',
+    orta: 'Orta',
+    yüksek: 'Yüksek',
+    kritik: 'Kritik',
+    çok_kritik: 'Çok Kritik',
+  }[severity] || severity.replaceAll('_', ' ')
+}
+
 function pctFromDailyProgress(targetQty, dailyRows) {
   if (targetQty <= 0) return 0
 
@@ -164,6 +177,7 @@ function pctFromDailyProgress(targetQty, dailyRows) {
 }
 
 export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily', siteChiefView = false }) {
+  const { role } = useAuth()
   const [tasks, setTasks] = useState([])
   const [project, setProject] = useState(null)
   const [siteChief, setSiteChief] = useState(null)
@@ -178,6 +192,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const [groupFilter, setGroupFilter] = useState('all')
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [panelOpen, setPanelOpen] = useState(true)
+  const [progressTask, setProgressTask] = useState(null)
   const topScrollRef = useRef(null)
   const bottomScrollRef = useRef(null)
   const bodyScrollRef = useRef(null)
@@ -323,6 +338,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   }, [selectedTaskId, withDates])
 
   const selectedTask = withDates.find(task => task.id === selectedTaskId) || null
+  const canAddProgress = Boolean(projectId && ['santiye_sefi', 'proje_yoneticisi'].includes(role))
 
   // Görevin kendi bugünkü katkısı — proje-geneli değil, sadece bu göreve bağlı
   // project_tasks.target_qty'ye karşı bugün girilen miktar üzerinden hesaplanır. Erken
@@ -548,7 +564,10 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                               <span className="gantt-code">
                                 {task.task_code || index + 1}
                               </span>
-                              <span className={`gantt-name${isLate ? ' late' : ''}`}>{task.task_name || '-'}</span>
+                              <span className={`gantt-name${isLate ? ' late' : ''}`}>
+                                {task.task_name || '-'}
+                                {isLate ? ` (${riskSeverityLabel(task)})` : ''}
+                              </span>
                               <span>{fmtDate(task.planned_start)}</span>
                               <span className={isLate ? 'late' : ''}>{fmtDate(task.planned_end)}</span>
                               <span>{duration} gün</span>
@@ -590,12 +609,24 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
             siteChief={siteChief}
             isRisky={selectedTask ? isTaskLate(selectedTask, today) : false}
             siteChiefView={siteChiefView}
+            canAddProgress={canAddProgress}
+            onAddProgress={() => setProgressTask(selectedTask)}
             onClose={() => setPanelOpen(false)}
           />
         ) : (
           <button className="gantt-panel-reopen" onClick={() => setPanelOpen(true)}>Görev Detayı</button>
         )}
       </div>
+      {progressTask && (
+        <ProgressEntryModal
+          task={progressTask}
+          onClose={() => setProgressTask(null)}
+          onSaved={() => {
+            setProgressTask(null)
+            refetch()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -692,7 +723,7 @@ function KpiIcon({ name }) {
   )
 }
 
-function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefView, onClose }) {
+function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefView, canAddProgress, onAddProgress, onClose }) {
   if (!task) {
     return (
       <aside className="gantt-detail-panel">
@@ -719,7 +750,7 @@ function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefV
     ['Süre', `${duration} gün`],
     ['Kümülatif İlerleme', `%${task.progress_pct || 0}`, 'blue'],
     ['Günlük İlerleme', `%${dailyPct || 0}`, dailyPct > 0 ? 'green' : 'muted'],
-    ['Risk Durumu', isRisky ? 'Riskli' : 'Normal', isRisky ? 'red' : 'muted'],
+    ['Risk Durumu', isRisky ? `Riskli (${riskSeverityLabel(task)})` : 'Normal', isRisky ? 'red' : 'muted'],
     ...(siteChiefView && task.equipment_notes ? [['Ekipman Notu', task.equipment_notes]] : []),
     ...(siteChiefView && task.notes ? [['Not', task.notes]] : []),
   ]
@@ -744,7 +775,121 @@ function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefV
             <strong className={tone ? `tone-${tone}` : ''}>{value}</strong>
           </div>
         ))}
+        {canAddProgress && Number(task.target_qty || 0) > 0 && (
+          <button
+            type="button"
+            onClick={onAddProgress}
+            style={{
+              width: '100%', marginTop: 12, border: 'none', borderRadius: 9,
+              padding: '10px 12px', background: 'var(--color-primary)', color: '#fff',
+              fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            + İlerleme Gir
+          </button>
+        )}
       </div>
     </aside>
+  )
+}
+
+function ProgressEntryModal({ task, onClose, onSaved }) {
+  const [quantity, setQuantity] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const remaining = Math.max(0, Number(task.target_qty || 0) - Number(task.total_progress || 0))
+
+  async function save() {
+    const qty = Number(String(quantity).replace(',', '.'))
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError('İlerleme miktarı sıfırdan büyük olmalıdır.')
+      return
+    }
+    if (qty > remaining && !note.trim()) {
+      setError('Hedef aşımı için açıklama girin.')
+      return
+    }
+
+    setSaving(true)
+    setError('')
+    const { error: rpcError } = await supabase.rpc('add_task_progress', {
+      p_task_id: task.id,
+      p_qty: qty,
+      p_note: note.trim() || null,
+      p_report_date: new Date().toISOString().slice(0, 10),
+    })
+    setSaving(false)
+    if (rpcError) {
+      setError(rpcError.message || 'İlerleme kaydedilemedi.')
+      return
+    }
+    onSaved()
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="İlerleme Gir"
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(15,23,42,.45)',
+        display: 'grid', placeItems: 'center', padding: 16,
+      }}
+      onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}
+    >
+      <div style={{ width: 'min(460px, 100%)', background: '#fff', borderRadius: 14, boxShadow: '0 24px 70px rgba(15,23,42,.28)', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 16, color: 'var(--color-text)' }}>İlerleme Gir</h3>
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{task.task_code} · {task.task_name}</p>
+          </div>
+          <button type="button" onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--color-muted)', cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ padding: 18, display: 'grid', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {[
+              ['Hedef', `${Number(task.target_qty || 0).toLocaleString('tr-TR')} ${task.unit || ''}`],
+              ['Tamamlanan', `${Number(task.total_progress || 0).toLocaleString('tr-TR')} ${task.unit || ''}`],
+              ['Kalan', `${remaining.toLocaleString('tr-TR')} ${task.unit || ''}`],
+            ].map(([label, value]) => (
+              <div key={label} style={{ padding: 10, borderRadius: 9, background: 'var(--color-bg)' }}>
+                <span style={{ display: 'block', fontSize: 10.5, color: 'var(--color-muted)' }}>{label}</span>
+                <strong style={{ display: 'block', marginTop: 3, fontSize: 12.5, color: 'var(--color-text)' }}>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--color-text-sub)' }}>
+            Bugünkü İlerleme ({task.unit || 'birim'})
+            <input
+              type="number"
+              min="0"
+              step="any"
+              value={quantity}
+              onChange={event => setQuantity(event.target.value)}
+              autoFocus
+              style={{ border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '10px 11px', font: 'inherit' }}
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--color-text-sub)' }}>
+            Not
+            <textarea
+              rows={3}
+              value={note}
+              onChange={event => setNote(event.target.value)}
+              placeholder="Yapılan işi veya hedef aşımı nedenini yazın"
+              style={{ border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '10px 11px', font: 'inherit', resize: 'vertical' }}
+            />
+          </label>
+          {error && <p style={{ margin: 0, fontSize: 12, color: 'var(--color-danger)', fontWeight: 600 }}>{error}</p>}
+        </div>
+        <div style={{ padding: '12px 18px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" onClick={onClose} disabled={saving} style={{ border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '9px 14px', background: '#fff', cursor: 'pointer' }}>İptal</button>
+          <button type="button" onClick={save} disabled={saving} style={{ border: 'none', borderRadius: 8, padding: '9px 14px', background: 'var(--color-primary)', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: saving ? .65 : 1 }}>
+            {saving ? 'Kaydediliyor…' : 'İlerlemeyi Kaydet'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }

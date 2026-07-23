@@ -150,15 +150,17 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
           <div>
             {hasFixedProject ? (
               <>
-                <div style={ROW}>
-                  <span style={ROW_LABEL}>Proje</span>
-                  <span style={ROW_VALUE}>{category === 'genel' ? 'Genel (projeye bağlı değil)' : projeAdi}</span>
-                </div>
                 {category !== 'genel' && (
-                  <div style={ROW}>
-                    <span style={ROW_LABEL}>Lokasyon</span>
-                    <span style={ROW_VALUE}>{lokasyon}</span>
-                  </div>
+                  <>
+                    <div style={ROW}>
+                      <span style={ROW_LABEL}>Proje</span>
+                      <span style={ROW_VALUE}>{projeAdi}</span>
+                    </div>
+                    <div style={ROW}>
+                      <span style={ROW_LABEL}>Lokasyon</span>
+                      <span style={ROW_VALUE}>{lokasyon}</span>
+                    </div>
+                  </>
                 )}
               </>
             ) : needsProjectPick && (

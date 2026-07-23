@@ -174,8 +174,8 @@ const SECTION_DEFS = [
   { key: 'machinery', label: 'Makine / Ekipman',    icon: '🚜' },
   { key: 'tasks',     label: 'Günün İşleri',         icon: '🗓️' },
   { key: 'progress',  label: 'İlerleme Girişi',      icon: '📈' },
-  { key: 'photos',    label: 'Fotoğraflar',          icon: '📷', optional: true },
-  { key: 'notes',     label: 'Notlar',               icon: '🗒️', optional: true },
+  { key: 'photos',    label: 'Fotoğraflar',          icon: '📷', optional: true, hideOptionalLabel: true },
+  { key: 'notes',     label: 'Notlar',               icon: '🗒️', optional: true, hideOptionalLabel: true },
 ]
 
 export default function DailyReportForm({ reportId: initialReportId, onBack, onSaved, className = '', onGoToTicket }) {
@@ -217,6 +217,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   // Step 3
   const [progressItems, setProgressItems] = useState([])
   const [todayQty, setTodayQty]           = useState({})
+  const [manualQty, setManualQty]         = useState({})
   const [itemNotes, setItemNotes]         = useState({})
   const [existingQtys, setExistingQtys]   = useState({})
   const [additionalProgressIds, setAdditionalProgressIds] = useState([])
@@ -339,9 +340,17 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     // Progress qtys — task_id ile anahtarlanır (eski item_id-bazlı satırlarda da
     // Migration A/B ile backfill edilmiş task_id kullanılabilir hale geldi).
     const eQtys = {}
-    ;(detail?.progress || []).forEach(e => { eQtys[e.task_id] = Number(e.qty_added) || 0 })
+    const manualQtys = {}
+    ;(detail?.progress || []).forEach(e => {
+      const qty = Number(e.qty_added) || 0
+      eQtys[e.task_id] = (eQtys[e.task_id] || 0) + qty
+      if (e.source === 'manual') {
+        manualQtys[e.task_id] = (manualQtys[e.task_id] || 0) + qty
+      }
+    })
     setExistingQtys(eQtys)
     setTodayQty({ ...eQtys })
+    setManualQty(manualQtys)
 
     const taskRows = taskRes.data || []
     const loadedDone = taskRows
@@ -408,6 +417,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setMachinery(initMachinery())
     setExistingQtys({})
     setTodayQty({})
+    setManualQty({})
     setDoneTasks([newTaskRow()])
     setPlannedTasks([newTaskRow()])
     setPhotos([])
@@ -607,6 +617,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       doneTasks: doneTasks.map(r => ({ ...r })),
       plannedTasks: plannedTasks.map(r => ({ ...r })),
       todayQty: { ...todayQty },
+      manualQty: { ...manualQty },
       itemNotes: { ...itemNotes },
       existingQtys: { ...existingQtys },
       issues: issues.map(r => ({ ...r })),
@@ -624,6 +635,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setDoneTasks(snap.doneTasks)
     setPlannedTasks(snap.plannedTasks)
     setTodayQty(snap.todayQty)
+    setManualQty(snap.manualQty || {})
     setItemNotes(snap.itemNotes)
     setExistingQtys(snap.existingQtys)
     setIssues(snap.issues)
@@ -784,7 +796,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
       const progressRows = []
       for (const item of progressItems) {
-        const newQty = Number(todayQty[item.id]) || 0
+        const newQty = Math.max(0, (Number(todayQty[item.id]) || 0) - (Number(manualQty[item.id]) || 0))
         if (newQty > 0) {
           progressRows.push({ task_id: item.id, qty_added: newQty, note: itemNotes[item.id] || null })
         }
@@ -1085,7 +1097,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
             >
               <span style={{ fontSize: 18, flexShrink: 0 }}>{def.icon}</span>
               <span className="ss-list-title" style={{ fontWeight: 600 }}>
-                {def.label}{def.optional ? ' (Opsiyonel)' : ''}
+                {def.label}{def.optional && !def.hideOptionalLabel ? ' (Opsiyonel)' : ''}
                 <span style={{ display: 'block', fontSize: 11.5, fontWeight: 400, color: 'var(--color-muted-light)', marginTop: 2 }}>
                   {state.preview}
                 </span>
@@ -1522,7 +1534,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
               {openSection === 'notes' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <div>
-                    <label style={LABEL}>İSG Notları (opsiyonel)</label>
+                    <label style={LABEL}>İSG Notları</label>
                     <textarea
                       value={formData.isg_notes}
                       onChange={e => setFormData(f => ({ ...f, isg_notes: e.target.value }))}
@@ -1532,7 +1544,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                     />
                   </div>
                   <div>
-                    <label style={LABEL}>Olağandışı Olay / Şantiye Ziyareti (opsiyonel)</label>
+                    <label style={LABEL}>Olağandışı Olay / Şantiye Ziyareti</label>
                     <textarea
                       value={formData.incident_notes}
                       onChange={e => setFormData(f => ({ ...f, incident_notes: e.target.value }))}

@@ -800,7 +800,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     const machinery = machineryRes.data || []
     const progressItems = progressItemsRes.data || []
     const progressDaily = progressDailyRes.data || []
-    const progressByItem = new Map(progressDaily.map(row => [row.task_id, row]))
+    const progressByItem = new Map()
+    progressDaily.forEach(row => {
+      const current = progressByItem.get(row.task_id) || { ...row, qty_added: 0, notes: [] }
+      current.qty_added += Number(row.qty_added || 0)
+      if (row.note) current.notes.push(row.note)
+      progressByItem.set(row.task_id, current)
+    })
     const creatorName = creatorRes.data?.full_name || creatorRes.data?.email || ''
 
     let xml = strFromU8(files['xl/worksheets/sheet1.xml'])
@@ -880,7 +886,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       put(`H${row}`, cumulative || '')
       put(`I${row}`, pct)
       put(`J${row}`, dailyProgressStatus(Math.round(pct * 100)))
-      put(`K${row}`, daily?.note || daily?.notes || item.notes || '')
+      put(`K${row}`, daily?.notes?.join(' · ') || daily?.note || item.notes || '')
     })
 
     const materialUsage = materialUsageRes.data || []

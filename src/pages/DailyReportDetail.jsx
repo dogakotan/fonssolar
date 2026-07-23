@@ -26,6 +26,17 @@ function Badge({ text, style }) {
   )
 }
 
+function aggregateProgressRows(rows) {
+  const grouped = new Map()
+  ;(rows || []).forEach(row => {
+    if (!row.task_id) return
+    const current = grouped.get(row.task_id) || { ...row, qty_added: 0 }
+    current.qty_added += Number(row.qty_added || 0)
+    grouped.set(row.task_id, current)
+  })
+  return [...grouped.values()]
+}
+
 export default function DailyReportDetail({ reportId, onClose, onEdit }) {
   const { data, loading, refreshing, error, refetch } = useDashboardData(
     'get_daily_report_detail',
@@ -36,7 +47,7 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
   const report     = data?.report     || null
   const personnel  = data?.personnel  || []
   const machinery  = data?.machinery  || []
-  const progress   = data?.progress   || []
+  const progress   = aggregateProgressRows(data?.progress || [])
   const materials  = data?.materials  || []
   const photos     = data?.photos     || []
   const issues     = data?.issues     || []
