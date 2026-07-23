@@ -49,6 +49,15 @@ const RISK_BADGE = {
   dusuk: 'blue',
 }
 
+const RISK_SEVERITY_LABEL = {
+  kritik: 'Kritik',
+  yüksek: 'Yüksek',
+  yuksek: 'Yüksek',
+  orta: 'Orta',
+  düşük: 'Düşük',
+  dusuk: 'Düşük',
+}
+
 const RISK_CATEGORY_LABEL = {
   is_kalemi: 'İş Kalemi',
   satin_alma: 'Satın Alma',
@@ -72,6 +81,7 @@ const PURCHASE_STATUS_BADGE = {
 }
 
 const RISK_PAGE_SIZE = 4
+const TICKET_PAGE_SIZE = 4
 
 const WEATHER_META = {
   'açık': { label: 'Açık', emoji: '☀️' },
@@ -371,6 +381,7 @@ export default function ProjectOverviewDashboard({
   const [sitePhotosLoading, setSitePhotosLoading] = useState(false)
   const [photoLightbox, setPhotoLightbox] = useState(null)
   const [riskPage, setRiskPage]           = useState(0)
+  const [ticketPage, setTicketPage]       = useState(0)
 
   // Haftalık → o haftanın son günü, Aylık → o ayın son günü, Günlük → filterDate
   const effectiveDate = useMemo(() => {
@@ -399,7 +410,7 @@ export default function ProjectOverviewDashboard({
   )
   const authorized = byDateData?.authorized ?? true
   useRealtimeRefresh(
-    ['daily_reports', { table: 'progress_daily', filterColumn: null }, 'project_tasks', 'tickets', 'purchase_requests', 'invoices'],
+    ['daily_reports', { table: 'progress_daily', filterColumn: null }, 'project_tasks', 'project_risks', 'tickets', 'purchase_requests', 'invoices'],
     refetch,
     { enabled: !!projectId, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
   )
@@ -522,6 +533,12 @@ export default function ProjectOverviewDashboard({
   const visibleRisks = openRisks.slice(
     safeRiskPage * RISK_PAGE_SIZE,
     (safeRiskPage + 1) * RISK_PAGE_SIZE,
+  )
+  const ticketTotalPages = Math.max(1, Math.ceil(tickets.length / TICKET_PAGE_SIZE))
+  const safeTicketPage = Math.min(ticketPage, ticketTotalPages - 1)
+  const visibleTickets = tickets.slice(
+    safeTicketPage * TICKET_PAGE_SIZE,
+    (safeTicketPage + 1) * TICKET_PAGE_SIZE,
   )
   const todayLabel = new Date().toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' })
   const sitePhotoUrl = path => supabase.storage.from('saha-fotolari').getPublicUrl(path).data.publicUrl
@@ -765,31 +782,34 @@ export default function ProjectOverviewDashboard({
           {tickets.length === 0
             ? <p className="project-empty">Açık ticket bulunmuyor.</p>
             : (
-              <div className="project-ticket-list">
-                {tickets.slice(0, 5).map(ticket => {
-                  const severity = SEVERITY_META[String(ticket.severity || '').toLocaleLowerCase('tr-TR')]
-                  return (
-                  <div key={ticket.id} style={{
-                    padding: '8px 10px', background: '#f8fafc',
-                    borderRadius: 8, border: '1px solid #e2e8f0',
-                    borderLeft: `3px solid ${severity?.color || '#94a3b8'}`,
-                    flexShrink: 0,
-                  }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ticket.title}
+              <>
+                <div className="project-ticket-list">
+                  {visibleTickets.map(ticket => {
+                    const severity = SEVERITY_META[String(ticket.severity || '').toLocaleLowerCase('tr-TR')]
+                    return (
+                    <div key={ticket.id} style={{
+                      padding: '8px 10px', background: '#f8fafc',
+                      borderRadius: 8, border: '1px solid #e2e8f0',
+                      borderLeft: `3px solid ${severity?.color || '#94a3b8'}`,
+                      flexShrink: 0,
+                    }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ticket.title}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 999, padding: '2px 7px', color: severity?.color || '#64748b', background: severity?.bg || '#f1f5f9' }}>
+                          {severity?.label || '—'}
+                        </span>
+                        <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
+                          {new Date(ticket.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                      <span style={{ fontSize: 9, fontWeight: 700, borderRadius: 999, padding: '2px 7px', color: severity?.color || '#64748b', background: severity?.bg || '#f1f5f9' }}>
-                        {severity?.label || '—'}
-                      </span>
-                      <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
-                        {new Date(ticket.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
-                      </span>
-                    </div>
-                  </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+                <Pager page={safeTicketPage} totalPages={ticketTotalPages} onChange={setTicketPage} />
+              </>
             )
           }
         </div>
@@ -824,7 +844,7 @@ export default function ProjectOverviewDashboard({
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
                         <span className={`badge ${RISK_BADGE[severity] || 'gray'}`} style={{ fontSize: 9 }}>
-                          {severity}
+                          {RISK_SEVERITY_LABEL[severity] || severity}
                         </span>
                         <span style={{ fontSize: 9, color: '#475569', background: '#eef2f7', padding: '1px 6px', borderRadius: 999 }}>
                           {RISK_CATEGORY_LABEL[risk.category] || 'Diğer'}

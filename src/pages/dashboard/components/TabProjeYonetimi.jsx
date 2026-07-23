@@ -321,7 +321,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{p.start_date || '—'}</td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{p.target_date || '—'}</td>
                       <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                        {isAdmin && (
+                        {canCreateProject && (
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                             <button
                               onClick={() => { setEditProject(p); setView('edit') }}
@@ -330,20 +330,24 @@ export default function TabProjeYonetimi({ onViewProject }) {
                             >
                               Düzenle
                             </button>
-                            <button
-                              onClick={() => handleExport(p)}
-                              disabled={isDel || isExp}
-                              style={{ padding: '4px 10px', background: 'transparent', color: '#15803d', border: '1px solid #16a34a', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isExp ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isExp ? 0.6 : 1 }}
-                            >
-                              {isExp ? '…' : 'Excel'}
-                            </button>
-                            <button
-                              onClick={() => handleDelete(p)}
-                              disabled={isDel || isExp}
-                              style={{ padding: '4px 10px', background: 'transparent', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isDel ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isDel ? 0.6 : 1 }}
-                            >
-                              {isDel ? '…' : 'Sil'}
-                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleExport(p)}
+                                disabled={isDel || isExp}
+                                style={{ padding: '4px 10px', background: 'transparent', color: '#15803d', border: '1px solid #16a34a', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isExp ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isExp ? 0.6 : 1 }}
+                              >
+                                {isExp ? '…' : 'Excel'}
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleDelete(p)}
+                                disabled={isDel || isExp}
+                                style={{ padding: '4px 10px', background: 'transparent', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isDel ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isDel ? 0.6 : 1 }}
+                              >
+                                {isDel ? '…' : 'Sil'}
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>

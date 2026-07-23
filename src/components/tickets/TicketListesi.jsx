@@ -163,6 +163,10 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   const [selected, setSelected]             = useState(null)
   const [quickAction, setQuickAction]       = useState(null)
   const isProjectManager = role === 'proje_yoneticisi'
+  const canManage = isAdmin || isProjectManager
+  // Satın Alma sekmesindeki Talepler/Onay Bekleyenler ayrımıyla aynı desen — yönetici
+  // rolleri işleme almayı beklediği ticket'ları ayrı bir sekmede görsün.
+  const [viewTab, setViewTab] = useState('all') // 'all' | 'onay'
 
   useEffect(() => {
     if (filterDateProp) setDateFilter(filterDateProp)
@@ -192,7 +196,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   // Listeyi belirleyen tüm değerler açıkça dependency'de; fetchTickets'in render-başına
   // değişen referansını eklemek gereksiz istek döngüsü yaratır.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchTickets() }, [statusTab, sortMode, severityFilter, categoryFilter, dateFilter, refreshKey, propProjectId, filterStatus, filterSeverity, isAdmin, role, authProjectId, user?.id])
+  useEffect(() => { fetchTickets() }, [statusTab, sortMode, severityFilter, categoryFilter, dateFilter, refreshKey, propProjectId, filterStatus, filterSeverity, isAdmin, role, authProjectId, user?.id, viewTab])
 
   useEffect(() => {
     function handler(e) {
@@ -220,8 +224,12 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
       .select('*, creator:profiles!tickets_created_by_fkey(full_name)')
       .order(dateColumn, { ascending, nullsFirst: false })
 
-    // Status filtresi
-    if (filterStatus && filterStatus !== 'all') {
+    // Status filtresi — "Onay Bekleyenler" sekmesi işleme alınmayı bekleyen
+    // (gönderildi/açık) ticket'lara sabit filtrelenir, dropdown'daki durum
+    // filtresiyle çakışmasın diye onu ezer.
+    if (viewTab === 'onay') {
+      q = q.in('status', ['gönderildi', 'açık'])
+    } else if (filterStatus && filterStatus !== 'all') {
       q = q.eq('status', filterStatus)
     } else if (['acik', 'islemde', 'sonuclandi'].includes(statusTab)) {
       q = q.eq('workflow_stage', statusTab)
@@ -273,15 +281,36 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
 
+      {/* Satın Alma sekmesindeki Talepler/Onay Bekleyenler ayrımıyla aynı desen */}
+      {canManage && (
+        <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--color-border-md)', padding: '0 14px' }}>
+          {[{ key: 'all', label: 'Tüm Ticketlar' }, { key: 'onay', label: 'Onay Bekleyenler' }].map(t => (
+            <button key={t.key} onClick={() => setViewTab(t.key)} style={{
+              background: 'none', border: 'none', padding: '10px 18px',
+              fontSize: 13, fontWeight: viewTab === t.key ? 600 : 400,
+              color: viewTab === t.key ? 'var(--color-primary)' : 'var(--color-muted)',
+              cursor: 'pointer', fontFamily: 'inherit',
+              borderBottom: viewTab === t.key ? '2px solid var(--color-primary)' : '2px solid transparent',
+              marginBottom: -2,
+            }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Satın alma tablosuyla aynı başlık + durum filtresi */}
       <div className="tl-tabs-bar" style={{ padding: '9px 14px' }}>
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>Tüm Ticketlar</h3>
+        <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
+          {viewTab === 'onay' ? 'Onay Bekleyenler' : 'Tüm Ticketlar'}
+        </h3>
         <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 7 }}>
           {tickets.length} ticket
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, padding: '8px 0', alignItems: 'center' }}>
 
+          {viewTab !== 'onay' && (
           <select
             value={statusTab}
             onChange={event => setStatusTab(event.target.value)}
@@ -292,6 +321,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
             <option value="islemde">İşlemde</option>
             <option value="sonuclandi">Sonuçlandı</option>
           </select>
+          )}
 
           {/* Severity sub-butonlar — sadece severity sort aktifse */}
           {false && (sortMode === 'sev_desc' || sortMode === 'sev_asc') && (
@@ -460,7 +490,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
         <>
           {/* Desktop tablo */}
           <div className="desk-only" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1120 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 920 }}>
               <thead>
                 <tr>
                   {['TICKET', 'OLUŞTURAN', 'CİNS', 'ACİLİYET', 'İŞLEM DURUMU', 'İŞLEM'].map(h => (
@@ -491,7 +521,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      <td style={{ ...TD, minWidth: 280 }}>
+                      <td style={{ ...TD, minWidth: 220 }}>
                         <div style={{ display: 'grid', gap: 5 }}>
                           <strong style={{ color: 'var(--color-text)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={t.description || t.title}>
                             {t.description || t.title}
@@ -499,7 +529,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                           <span style={{ color: 'var(--color-primary)', fontSize: 11, fontWeight: 800 }}>TKT-{String(t.id || '').replaceAll('-', '').slice(-3).toUpperCase() || String(idx + 1).padStart(3, '0')}</span>
                         </div>
                       </td>
-                      <td style={{ ...TD, minWidth: 160 }}>
+                      <td style={{ ...TD, minWidth: 140 }}>
                         <div style={{ display: 'grid', gap: 4 }}>
                           <strong style={{ color: 'var(--color-text-sub)', fontSize: 12.5 }}>{t.creator?.full_name || '—'}</strong>
                           <span style={{ color: 'var(--color-muted)', fontSize: 11 }}>{fmtDate(t.created_at)}</span>
@@ -516,7 +546,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                           {sv.label}
                         </span>
                       </td>
-                      <td style={{ ...TD, minWidth: 330 }}>
+                      <td style={{ ...TD, minWidth: 220 }}>
                         <ApprovalStepsHorizontal steps={buildTicketSteps(t.status)} />
                       </td>
                       <td style={{ ...TD, minWidth: 150 }} onClick={e => e.stopPropagation()}>

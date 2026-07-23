@@ -76,11 +76,17 @@ export default function ProjeTabSatinAlmaSidebar({ tedarik, dagilim, doviz, hide
       <section className="sa-panel-card">
         <p className="sa-eyebrow">Malzeme Tedarik</p>
         <ColumnChart total={tedarik.total} totalLabel="talep" items={tedarikItems} hideTotal={hideMaterialTotal} />
+        <p style={{ margin: '8px 0 0', fontSize: 10.5, color: 'var(--color-muted)', lineHeight: 1.4 }}>
+          Bu dağılım yalnızca şu an onay bekleyen {tedarik.total} talebin malzeme durumuna göre hesaplanmıştır.
+        </p>
       </section>
 
       <section className="sa-panel-card">
         <p className="sa-eyebrow">Talep Dağılımı</p>
         <RequestTypeChart dagilim={dagilim} />
+        <p style={{ margin: '8px 0 0', fontSize: 10.5, color: 'var(--color-muted)', lineHeight: 1.4 }}>
+          Bu dağılım toplam {dagilim.malzeme + dagilim.hizmet + dagilim.diger} talep sayısından hesaplanmıştır.
+        </p>
       </section>
 
       <section className="sa-panel-card sa-currency-card">

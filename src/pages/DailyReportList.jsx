@@ -19,7 +19,7 @@ import {
 
 const PAGE_SIZE = 10
 
-const PDF_SERVICE_ENDPOINT = import.meta.env.VITE_PDF_SERVICE_URL || 'http://127.0.0.1:8002/generate-pdf'
+const PDF_SERVICE_ENDPOINT = import.meta.env.VITE_PDF_SERVICE_URL || '/generate-pdf'
 
 const WEATHER_EMOJI = {
   'Güneşli': '☀️', 'Parçalı Bulutlu': '⛅', 'Bulutlu': '☁️',
@@ -465,7 +465,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
       const columns = ['Bölüm', 'Alan', 'Değer']
       exportToPdf(title, 'gunluk', columns, rows, { orientation: 'portrait', projectName: pName, subtitle: titleDate })
     } catch (error) {
-      if (type === 'pdf') alert(`PDF oluşturulamadı: ${error.message}\n\nPDF servisi çalışıyor mu? → pdf-service/start.bat`)
+      if (type === 'pdf') alert(`PDF oluşturulamadı: ${error.message}\n\nPython PDF servisi başlatılamadı.`)
       else throw error
     } finally {
       setExportingId(null)

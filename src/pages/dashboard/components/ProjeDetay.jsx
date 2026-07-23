@@ -27,7 +27,7 @@ import {
 } from '../../../utils/excelUtils'
 import { exportProjectExcelBlob, downloadBlob } from '../../../utils/projectExcelBridge'
 
-const PDF_SERVICE_ENDPOINT = import.meta.env.VITE_PDF_SERVICE_URL || 'http://127.0.0.1:8002/generate-pdf'
+const PDF_SERVICE_ENDPOINT = import.meta.env.VITE_PDF_SERVICE_URL || '/generate-pdf'
 
 // ── Periyot yardımcıları ──────────────────────────────────────────────────────
 const PERIODS = [
@@ -981,7 +981,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       try {
         await exportSelectedDailyReportPDF()
       } catch (error) {
-        alert(`PDF oluşturulamadı: ${error.message}\n\nPDF servisi çalışıyor mu? → pdf-service/start.bat`)
+        alert(`PDF oluşturulamadı: ${error.message}\n\nPython PDF servisi başlatılamadı.`)
       }
       return
     }

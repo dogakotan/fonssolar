@@ -336,42 +336,43 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
   const [editingRow, setEditingRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [showNewMaterial, setShowNewMaterial] = useState(false)
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
-  const safePage = Math.min(page, totalPages - 1)
-  const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
   const canRequest = isAdmin || role === 'proje_yoneticisi'
   const canReview = isAdmin
   const pending = canRequest ? pendingChanges : []
 
-  useEffect(() => { setPage(0) }, [rows.length])
+  // Onaya gönderilmiş yeni malzeme talepleri henüz gerçek bir procurement_items satırı
+  // değil — ayrı bir kutuda gizli kalmasın diye listeye "Bekliyor" rozetli sanal bir satır
+  // olarak eklenir, miktar değişikliği taleplerinin satır-içi rozetiyle tutarlı görünür.
+  const pendingNewRows = pending.filter(item => item.is_new).map(item => ({
+    id: `pending-new-${item.id}`,
+    material: item.equipment || 'Yeni malzeme',
+    unit: item.unit || '',
+    planned: Number(item.new_planned_qty || 0),
+    sent: 0,
+    required: Number(item.new_planned_qty || 0),
+    addedQty: 0,
+    addedViaCount: 0,
+    isPendingNew: true,
+  }))
+  const allRows = [...pendingNewRows, ...rows]
+  const totalPagesAll = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE))
+  const safePageAll = Math.min(page, totalPagesAll - 1)
+  const pageRowsAll = allRows.slice(safePageAll * PAGE_SIZE, safePageAll * PAGE_SIZE + PAGE_SIZE)
+
+  useEffect(() => { setPage(0) }, [allRows.length])
 
   const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
-  const pendingNewMaterials = pending.filter(item => item.is_new)
 
   return (
     <div>
       {canReview && <BekleyenDegisikliklerPanel items={pending} onReviewed={onPendingChanged} />}
 
-      {canRequest && !canReview && pendingNewMaterials.length > 0 && (
-        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
-          <h4 style={{ margin: '0 0 8px', fontSize: 12.5, fontWeight: 700, color: '#92400E' }}>Onaya Gönderilen Yeni Malzemeler ({pendingNewMaterials.length})</h4>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {pendingNewMaterials.map(item => (
-              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', background: '#fff', border: '1px solid #FDE68A', borderRadius: 8, padding: '9px 11px' }}>
-                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--color-text)' }}>{item.equipment || 'Yeni malzeme'} · {formatQty(item.new_planned_qty)} {item.unit || ''}</span>
-                <span style={{ fontSize: 10.5, fontWeight: 700, color: '#92400E', background: '#FEF3C7', borderRadius: 999, padding: '3px 8px', whiteSpace: 'nowrap' }}>Yönetici onayı bekliyor</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', margin: 0 }}>Malzeme Listesi</h3>
           <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20 }}>
-            {rows.length} kalem
+            {allRows.length} kalem
           </span>
           {canRequest && (
             <button onClick={() => setShowNewMaterial(true)} style={{ marginLeft: 'auto', background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -382,7 +383,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
 
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>Yükleniyor…</div>
-        ) : rows.length === 0 ? (
+        ) : allRows.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>
             Bu projeye ait malzeme listesi henüz eklenmemiş.
           </div>
@@ -398,7 +399,19 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map(row => {
+                {pageRowsAll.map(row => {
+                  if (row.isPendingNew) {
+                    return (
+                      <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border)', background: '#FFFBEB' }}>
+                        <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text)' }}>{row.material}</td>
+                        <td style={TD} colSpan={canRequest ? 4 : 3}>
+                          <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                            Yeni Malzeme — Onay Bekliyor: {formatQty(row.planned)} {row.unit}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  }
                   const pendingChange = pendingByItemId.get(row.id)
                   return (
                   <tr key={row.id || row.material} onClick={() => setDetailRow(row)} style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}>
@@ -420,7 +433,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
                         )}
                         {pendingChange && (
                           <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                            Onay bekliyor: {formatQty(pendingChange.old_planned_qty)} → {formatQty(pendingChange.new_planned_qty)}
+                            Miktar Artışı — Onay Bekliyor: {formatQty(pendingChange.old_planned_qty)} → {formatQty(pendingChange.new_planned_qty)} {row.unit}
                           </span>
                         )}
                       </div>
@@ -453,7 +466,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
             </table>
           </div>
           <div style={{ padding: '4px 14px 12px' }}>
-            <Pager page={safePage} totalPages={totalPages} onChange={setPage} />
+            <Pager page={safePageAll} totalPages={totalPagesAll} onChange={setPage} />
           </div>
           </>
         )}

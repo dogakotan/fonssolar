@@ -21,6 +21,8 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
   test('proje yöneticisi satın alma talebinde proje seçmek zorundadır', async ({ page }) => {
     await loginUi(page, process.env.TEST_PROJEYONETICISI_EMAIL, process.env.TEST_PROJEYONETICISI_PASSWORD)
     await openMenu(page, 'Satın Alma')
+    await expect(page.getByRole('option', { name: 'Fatura Bekleniyor', exact: true })).toHaveCount(1)
+    await expect(page.getByRole('option', { name: 'Fatura Onayda', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: /Yeni Satın Alma Talebi/ }).click()
     await expect(page.getByRole('heading', { name: 'Yeni Satın Alma Talebi' })).toBeVisible()
     await expect(page.getByText('Proje *', { exact: true })).toBeVisible()

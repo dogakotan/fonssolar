@@ -19,6 +19,16 @@ const STATUS_FILTERS = [
   { value: 'iptal', label: 'İptal' },
 ]
 
+const PROJECT_MANAGER_STATUS_FILTERS = [
+  { value: 'all', label: 'Tüm Durumlar' },
+  { value: 'bekliyor', label: 'Talep Oluşturuldu' },
+  { value: 'onaylandi', label: 'Proje Yöneticisinde' },
+  { value: 'invoice_waiting', label: 'Fatura Bekleniyor' },
+  { value: 'faturasi_kesildi', label: 'Fatura Kesildi' },
+  { value: 'red_edildi', label: 'Reddedildi' },
+  { value: 'iptal', label: 'İptal' },
+]
+
 const SITE_CHIEF_STATUS_FILTERS = [
   { value: 'all', label: 'Tüm Durumlar' },
   { value: 'created', label: 'Talep Oluşturuldu' },
@@ -309,6 +319,9 @@ export default function TabSatinAlmaTalepListesi({
       if (statusFilter === 'completed') return ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(normalized)
       return true
     }
+    if (role === 'proje_yoneticisi' && statusFilter === 'invoice_waiting') {
+      return ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(normalized)
+    }
     return normalized === statusFilter
   })
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -343,7 +356,12 @@ export default function TabSatinAlmaTalepListesi({
               onChange={event => setStatusFilter(event.target.value)}
               style={{ border: '1px solid var(--color-border-md)', borderRadius: 7, padding: '5px 28px 5px 10px', fontSize: 12, color: 'var(--color-text-sub)', background: 'var(--color-surface)', cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
             >
-              {(siteChiefView ? SITE_CHIEF_STATUS_FILTERS : STATUS_FILTERS).map(({ value, label }) => (
+              {(siteChiefView
+                ? SITE_CHIEF_STATUS_FILTERS
+                : role === 'proje_yoneticisi'
+                  ? PROJECT_MANAGER_STATUS_FILTERS
+                  : STATUS_FILTERS
+              ).map(({ value, label }) => (
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
@@ -372,7 +390,7 @@ export default function TabSatinAlmaTalepListesi({
       ) : (
         <>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: projectId ? 760 : 860 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: projectId ? 660 : 760 }}>
             <thead>
               <tr>
                 {headers.map(header => (
@@ -396,7 +414,7 @@ export default function TabSatinAlmaTalepListesi({
                     onMouseEnter={event => { event.currentTarget.style.background = 'var(--color-bg)' }}
                     onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
                   >
-                    <td style={{ ...TD, minWidth: projectId ? 280 : 260 }}>
+                    <td style={{ ...TD, minWidth: projectId ? 240 : 220 }}>
                       <div style={{ display: 'grid', gap: 5 }}>
                         <strong style={{ color: 'var(--color-text)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={materialTitle(request)}>{materialTitle(request)}</strong>
                         <span style={{ color: 'var(--color-primary)', fontSize: 11, fontWeight: 800 }}>{requestNo(request)}</span>
@@ -405,7 +423,7 @@ export default function TabSatinAlmaTalepListesi({
                     {!projectId && (
                       <td style={{ ...TD, color: 'var(--color-text-sub)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={request.project_name || ''}>{request.project_name || '—'}</td>
                     )}
-                    <td style={{ ...TD, minWidth: 150 }}>
+                    <td style={{ ...TD, minWidth: 130 }}>
                       <div style={{ display: 'grid', gap: 4 }}>
                         <strong style={{ color: 'var(--color-text-sub)', fontSize: 12.5 }}>{requesterName(request)}</strong>
                         <span style={{ color: 'var(--color-muted)', fontSize: 11 }}>{fmtDate(request.request_date || request.created_at)}</span>
@@ -417,7 +435,7 @@ export default function TabSatinAlmaTalepListesi({
                         {requestType(request)}
                       </span>
                     </td>
-                    <td style={{ ...TD, minWidth: 440 }}>
+                    <td style={{ ...TD, minWidth: 300 }}>
                       <ApprovalStepsHorizontal steps={siteChiefView ? buildSiteChiefSteps(request.status) : buildApprovalSteps(request.status)} />
                     </td>
                     {showActions && (

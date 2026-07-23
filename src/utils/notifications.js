@@ -66,15 +66,14 @@ export function notificationDisplay(notification, live) {
           : notification.body,
       }
     case 'procurement_item_change_request':
-      return {
-        title: 'Malzeme değişikliği güncellendi',
-        body: status
-          ? `Güncel durum: ${labelFromMap(PROCUREMENT_CHANGE_STATUS, status)}`
-          : notification.body,
-      }
+      // Bu bildirim türünde DB (create/review RPC'leri) her olayda zaten "Yeni malzeme
+      // ekleme..." / "Malzeme miktarı değişikliği..." ayrımını yapan özgün title/body
+      // üretiyor — burada jenerik bir "güncellendi" metnine ezmek hangi talebin ne
+      // olduğunu (stok artışı mı, yeni malzeme mi) gizliyordu.
+      return { title: notification.title, body: notification.body }
     default:
       return { title: notification.title, body: notification.body }
   }
 }
-import { INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS, TK_STATUS } from '../components/ui/StatusBadge'
+import { INVOICE_STATUS, TK_STATUS } from '../components/ui/StatusBadge'
 import { statusLabel as purchaseStatusLabel } from './satinAlma'
