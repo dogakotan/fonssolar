@@ -224,8 +224,12 @@ gösterilir.
    `new_category` ile bir satır düşürür; admin onaylayınca `INSERT INTO
    procurement_items` ile kalem gerçekten listeye eklenir.
 
-Teoride ikisi/üçü aynı anda tetiklenebilir (bir kalem için hem bekleyen manuel
-talep hem otomatik aşım) — nadir bir yarış durumu, kilitlenmedi.
+İkisi/üçü aynı anda tetiklenebilir (bir kalem için hem bekleyen manuel talep
+hem otomatik aşım) — bu durumda `review_procurement_item_change_request`
+onay anında güncel `planned_qty`'yi talebin `old_planned_qty` anlık
+görüntüsüyle karşılaştırır; aradan otomatik aşım (veya başka bir onay)
+geçtiyse onayı sessizce ezmek yerine açık hatayla reddeder, admin talebi
+reddedip güncel miktarla yeniden değerlendirmek zorunda kalır.
 
 ### Ticket oluşturma — genel vs proje bazlı
 `tickets.project_id` nullable — `NULL` "genel" (projeye bağlı olmayan) ticket
@@ -499,25 +503,21 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 - **Realtime ölçek notu:** Mevcut 2 test projesi ölçeğinde sorun yok;
   Supabase'in önerdiği Broadcast-from-database'e geçiş ileride gündeme
   gelebilir.
-- **Küçük, kasıtlı kapatılmamış bir yarış durumu:** BOM kalemi için hem
-  otomatik hem manuel miktar değişikliği aynı anda tetiklenirse manuel
-  talebin eski-değer anlık görüntüsü geçersiz kalabilir — nadir, izlemede.
 - Manuel proje sihirbazı yolundaki client-side mini-importer
   (`src/utils/projectExcelImport.js`) hâlâ eski, daha dar bir kategori setiyle
   sınırlı — ikincil yol olduğu için düşük öncelikli.
 
 ## Son değişiklik
 
-**23.07.2026 — Rol/izin matrisi DB-tabanlı hale getirildi + CLAUDE.md
-kısaltıldı.** `roles` tablosunun 2026-07-22'de zaten 19 rolden 4'e
-(admin/muhasebe/proje_yoneticisi/santiye_sefi) indirilmiş olduğu (önceden
-dokümante edilmemiş) fark edildi. Buna göre hardcoded `src/config/navigation.js`
-kaldırılıp `roles.allowed_tabs`/`default_tab`/`sidebar_items` kolonlarına
-taşındı (migration `add_role_navigation_matrix`, davranış değişikliği yok);
-`AuthContext` artık `navigation`/`roleLabel`/`isManager` sağlıyor. `npx eslint
-src` 0 hata, `npx vite build` temiz, tam Playwright paketi 60/60 geçti. Aynı
-oturumda bu dosya da (2180→~700 satır) kronolojik anlatıdan arındırılıp
-sistemin güncel haline indirgendi; kapanmış/artık geçersiz maddeler (eski
-19-rol genişletmesi, kalite kontrol modülü kalıntıları, çözülmüş "Bilinen açık
-noktalar" maddeleri) kaldırıldı, tablo/RPC listeleri canlı DB ile çapraz
-kontrol edilip düzeltildi (34 tablo, kalite kontrol RPC'leri artık yok).
+**23.07.2026 — BOM manuel miktar değişikliği onayındaki yarış durumu
+kapatıldı.** `review_procurement_item_change_request` RPC'si artık onay
+anında güncel `planned_qty`'yi talebin `old_planned_qty` anlık görüntüsüyle
+karşılaştırıyor (`FOR UPDATE` ile kilitleyerek) — talep oluşturulduktan sonra
+otomatik aşım mekanizması (veya başka bir onay) `planned_qty`'yi değiştirmişse
+onay artık sessizce ezmek yerine açık bir Türkçe hatayla reddediliyor
+(migration `guard_procurement_item_change_approval_against_stale_snapshot`).
+Gerçek bir yarış senaryosu (eski anlık görüntüyle onay denemesi) + normal
+(yarışsız) onay akışı canlı DB'de simüle edilip ikisi de PASS doğrulandı;
+mevcut `material-boundaries.spec.js`/`material-list-excel.spec.js` regresyonu
+7/7 geçti, `get_advisors` yeni bir uyarı göstermedi. Bu, CLAUDE.md'nin
+"Bilinen açık noktalar"ında duran bir maddeydi, kapatıldı.
