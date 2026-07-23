@@ -625,6 +625,13 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
 export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab }) {
   const [tab, setTab]                = useState(initialTab || 'genel')
+  // Malzeme Listesi/Riskler tek sayfada iki alt-sekme — Genel Proje'deki Riskler
+  // kartından "Tümünü Gör" tıklanınca doğrudan Riskler alt-sekmesine düşsün diye.
+  const [malzemeSection, setMalzemeSection] = useState('malzeme')
+  const goToTab = tabKey => {
+    if (tabKey === 'riskler') { setMalzemeSection('riskler'); setTab('malzeme-listesi') }
+    else setTab(tabKey)
+  }
   const [project, setProject]        = useState(null)
   const [wps, setWPs]                = useState([])
   const [progressSummary, setProgressSummary] = useState(null)
@@ -1327,7 +1334,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       ) : tab === 'satin-alma' ? (
         <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
       ) : tab === 'malzeme-listesi' ? (
-        <ProjeTabMalzemeListesi projectId={projectId} filterDate={filterDate} />
+        <ProjeTabMalzemeListesi
+          projectId={projectId}
+          filterDate={filterDate}
+          activeSection={malzemeSection}
+          onSectionChange={setMalzemeSection}
+          onGoTab={setTab}
+        />
       ) : tab === 'finans' ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'raporlar' ? (
@@ -1339,7 +1352,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           tasks={wps}
           filterDate={filterDate}
           reportPeriod={filterMode === 'haftalik' ? 'weekly' : filterMode === 'aylik' ? 'monthly' : 'daily'}
-          onGoTab={setTab}
+          onGoTab={goToTab}
           progressSummary={progressSummary}
         />
       ) : (

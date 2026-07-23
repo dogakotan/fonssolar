@@ -38,17 +38,6 @@ const TASK_CATEGORY_LABEL = {
   kosk_trafo:     'Köşk Trafo',
 }
 
-// SEV_BORDER'la (aşağıda) tutarlı 4 ayrı ton — 'orta' önceden 'yüksek' ile aynı 'amber'
-// rengi kullanıyordu, SEV_BORDER'daki gri (#94a3b8) ile çelişiyordu, ayrım kayboluyordu.
-const RISK_BADGE = {
-  kritik: 'red',
-  yüksek: 'amber',
-  yuksek: 'amber',
-  orta: 'gray',
-  düşük: 'blue',
-  dusuk: 'blue',
-}
-
 const RISK_SEVERITY_LABEL = {
   kritik: 'Kritik',
   yüksek: 'Yüksek',
@@ -818,6 +807,7 @@ export default function ProjectOverviewDashboard({
         <div className="card project-mini-card project-risk-card">
           <div className="project-card-title">
             <h3>Riskler</h3>
+            <LinkButton onClick={() => onGoTab?.('riskler')}>Tümünü Gör</LinkButton>
           </div>
           {openRisks.length === 0 ? (
             <p className="project-empty">Açık risk bulunmuyor.</p>
@@ -843,7 +833,8 @@ export default function ProjectOverviewDashboard({
                         {risk.title}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                        <span className={`badge ${RISK_BADGE[severity] || 'gray'}`} style={{ fontSize: 9 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: SEV_BORDER[severity] || '#94a3b8', fontSize: 10, fontWeight: 700 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: SEV_BORDER[severity] || '#94a3b8' }} />
                           {RISK_SEVERITY_LABEL[severity] || severity}
                         </span>
                         <span style={{ fontSize: 9, color: '#475569', background: '#eef2f7', padding: '1px 6px', borderRadius: 999 }}>

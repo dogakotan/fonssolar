@@ -19,24 +19,32 @@ const STATUS_LABEL = {
 
 const STATUS_COLOR = PROJECT_STATUS_META
 
+// procurement_item_change_requests/adjustments ve daily_report_material_usage,
+// procurement_items'a NO ACTION ile bağlı — o yüzden procurement_items'tan ÖNCE
+// silinmeleri gerekiyor, aksi halde proje silme FK ihlaliyle patlar.
 const SUB_TABLES = [
   'project_tasks',
   'project_risks',
+  'procurement_item_change_requests',
+  'procurement_item_adjustments',
+  'daily_report_material_usage',
   'procurement_items',
   'budget_lines',
 ]
 
+// quality_inspections kalite kontrol modülüyle birlikte DB'den tamamen kaldırıldı
+// (bkz. CLAUDE.md) — burada hâlâ referans edilmesi proje silmeyi herkes için
+// (admin dahil) "tablo bulunamadı" hatasıyla kırıyordu.
 const PROJECT_DELETE_TABLES = [
-  'agent_reports', 'quality_inspections',
+  'agent_reports',
 ]
 
 const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu.xlsx'
 
 export default function TabProjeYonetimi({ onViewProject }) {
   const { isAdmin, role } = useAuth()
-  // proje_yoneticisi Excel şablonuyla proje ekleyebilir (import-project-excel
-  // edge function'ı da bunu sunucu tarafında izin veriyor) — Düzenle/Excel
-  // export/Sil hâlâ isAdmin-only (kademeli proje silme dahil, blast radius yüksek).
+  // proje_yoneticisi admin ile aynı yetkilere sahip: proje ekleme (Excel şablonu),
+  // Düzenle, Excel export ve Sil (kademeli proje silme dahil) — hepsi bu satıra bağlı.
   const canCreateProject = isAdmin || role === 'proje_yoneticisi'
   const [view,            setView]            = useState('list')
   const [editProject,     setEditProject]     = useState(null)
@@ -330,24 +338,20 @@ export default function TabProjeYonetimi({ onViewProject }) {
                             >
                               Düzenle
                             </button>
-                            {isAdmin && (
-                              <button
-                                onClick={() => handleExport(p)}
-                                disabled={isDel || isExp}
-                                style={{ padding: '4px 10px', background: 'transparent', color: '#15803d', border: '1px solid #16a34a', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isExp ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isExp ? 0.6 : 1 }}
-                              >
-                                {isExp ? '…' : 'Excel'}
-                              </button>
-                            )}
-                            {isAdmin && (
-                              <button
-                                onClick={() => handleDelete(p)}
-                                disabled={isDel || isExp}
-                                style={{ padding: '4px 10px', background: 'transparent', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isDel ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isDel ? 0.6 : 1 }}
-                              >
-                                {isDel ? '…' : 'Sil'}
-                              </button>
-                            )}
+                            <button
+                              onClick={() => handleExport(p)}
+                              disabled={isDel || isExp}
+                              style={{ padding: '4px 10px', background: 'transparent', color: '#15803d', border: '1px solid #16a34a', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isExp ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isExp ? 0.6 : 1 }}
+                            >
+                              {isExp ? '…' : 'Excel'}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(p)}
+                              disabled={isDel || isExp}
+                              style={{ padding: '4px 10px', background: 'transparent', color: 'var(--color-danger)', border: '1px solid var(--color-danger)', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 500, cursor: isDel ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: isDel ? 0.6 : 1 }}
+                            >
+                              {isDel ? '…' : 'Sil'}
+                            </button>
                           </div>
                         )}
                       </td>
