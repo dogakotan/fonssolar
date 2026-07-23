@@ -27,11 +27,23 @@ const GROUP_CONFIG = {
 }
 
 const STATUS_LABELS = {
+  beklemede: 'Beklemede',
   devam_ediyor: 'Devam Ediyor',
   tamamlandi: 'Tamamlandı',
   askida: 'Askıda',
-  bekliyor: 'Bekliyor',
+  iptal: 'İptal',
 }
+
+// Adim2IsKalemleri.jsx'teki wizard durum düzenleyicisiyle aynı 5 değer —
+// yalnız target_qty'si olmayan (miktarla ölçülemeyen, kilometre taşı) iş
+// kalemlerinde gösterilen durum güncelleme seçici için.
+const MILESTONE_STATUS_OPTIONS = [
+  { v: 'beklemede', l: 'Beklemede' },
+  { v: 'devam_ediyor', l: 'Devam Ediyor' },
+  { v: 'tamamlandi', l: 'Tamamlandı' },
+  { v: 'askida', l: 'Askıda' },
+  { v: 'iptal', l: 'İptal' },
+]
 
 const W_NO = 42
 const W_NAME = 170
@@ -611,6 +623,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
             siteChiefView={siteChiefView}
             canAddProgress={canAddProgress}
             onAddProgress={() => setProgressTask(selectedTask)}
+            onStatusUpdated={refetch}
             onClose={() => setPanelOpen(false)}
           />
         ) : (
@@ -723,7 +736,7 @@ function KpiIcon({ name }) {
   )
 }
 
-function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefView, canAddProgress, onAddProgress, onClose }) {
+function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefView, canAddProgress, onAddProgress, onStatusUpdated, onClose }) {
   if (!task) {
     return (
       <aside className="gantt-detail-panel">
@@ -788,8 +801,64 @@ function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefV
             + İlerleme Gir
           </button>
         )}
+        {/* Ölçülebilir hedefi (target_qty) olmayan kilometre taşı işler (ör. Trafo
+            Enerjilendirme, SCADA İşlemleri) miktarla ilerleme giremez — bunun yerine
+            doğrudan durum güncellenir (bkz. set_task_milestone_status RPC). */}
+        {canAddProgress && !(Number(task.target_qty || 0) > 0) && (
+          <MilestoneStatusControl task={task} onSaved={onStatusUpdated} />
+        )}
       </div>
     </aside>
+  )
+}
+
+function MilestoneStatusControl({ task, onSaved }) {
+  const [status, setStatus] = useState(task.status)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => { setStatus(task.status) }, [task.id, task.status])
+
+  async function handleChange(event) {
+    const next = event.target.value
+    const previous = status
+    setStatus(next)
+    setSaving(true)
+    setError('')
+    const { error: rpcError } = await supabase.rpc('set_task_milestone_status', {
+      p_task_id: task.id,
+      p_status: next,
+    })
+    setSaving(false)
+    if (rpcError) {
+      setError(rpcError.message || 'Durum güncellenemedi.')
+      setStatus(previous)
+      return
+    }
+    onSaved?.()
+  }
+
+  return (
+    <div style={{ marginTop: 12, padding: 10, borderRadius: 9, border: '1px solid var(--color-border-md)', background: 'var(--color-bg)' }}>
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-muted)', marginBottom: 6 }}>
+        Durum Güncelle {saving && '· kaydediliyor…'}
+      </label>
+      <select
+        value={status}
+        onChange={handleChange}
+        disabled={saving}
+        style={{
+          width: '100%', border: '1px solid var(--color-border-md)', borderRadius: 8,
+          padding: '8px 10px', font: 'inherit', fontSize: 12.5, fontWeight: 600,
+          color: 'var(--color-text)', background: '#fff', cursor: saving ? 'wait' : 'pointer',
+        }}
+      >
+        {MILESTONE_STATUS_OPTIONS.map(opt => (
+          <option key={opt.v} value={opt.v}>{opt.l}</option>
+        ))}
+      </select>
+      {error && <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}>{error}</p>}
+    </div>
   )
 }
 
