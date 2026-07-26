@@ -777,6 +777,27 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
+- ~~`FaturaOlusturModal.jsx` kullanılamıyordu~~ **düzeltildi (2026-07-27) —**
+  bkz. "Son değişiklik". `complete_project_manager_purchase_request` RPC'si
+  (proje yöneticisinin "Tamamlandı" butonu, tedarik adımı) `supplier_id`'ye hiç
+  dokunmuyor (yalnızca `purchase_date`/`purchased_by` yazıyor — eski,
+  kaldırılmış `TedarikKuyrugu.jsx`'in muhtemelen ayrı bir form alanıyla topladığı
+  bu bilgi, yerine gelen tek-tık akışta hiç toplanmıyor), bu yüzden onaylanıp
+  tedarik edilen HER talepte `purchase_requests.supplier_id` null kalıyor.
+  `FaturaOlusturModal.jsx`'in `canSave`'i `form.supplier_id` gerektirdiğinden
+  ama formda tedarikçi seçecek alan olmadığından "Taslak Kaydet"/"Devam Et"
+  kalıcı disabled kalıyordu — `FaturaFormModal.jsx`'teki tedarikçi seçici +
+  "+ yeni tedarikçi" deseni buraya da eklendi (tedarik adımına dokunulmadı,
+  kullanıcı kararıyla wizard tarafı tercih edildi). Gerçek tarayıcıda
+  doğrulandı: tedarikçi seçilince buton aktifleşiyor, fatura `taslak` olarak
+  kaydediliyor, console hatası yok.
+- **`FaturaListesi.jsx`'teki üst-sağ buton etiketi ile davranışı uyuşmuyor
+  olabilir:** buton "▤ Faturalanacak Talepler" yazıyor ama `onClick`'i
+  `setEditingInvoice(null); setShowForm(true)` — yani gerçekte Satın Alma'daki
+  "Faturalanacak Talepler" kuyruğuna gitmiyor, doğrudan boş "Yeni Fatura"
+  formunu açıyor. Bu görev kapsamında yalnızca fark edildi (test bu davranışı
+  kullanarak `FaturaFormModal`'ı başarıyla açtı), düzeltilmedi/onaylanmadı —
+  kasıtlı bir "hızlı ekle" kısayolu mu yoksa yanlış etiket mi belirsiz.
 - **`tests/procurement-workflow.spec.js` ve birkaç `procurement-*`/`accounting-scope`
   testi eski akışa göre yazılmış, güncellenmedi.** 2026-07-26'da satın
   alma→fatura akışı uçtan uca test edilirken fark edildi: bu spec'ler kaldırılmış
@@ -835,6 +856,56 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   yansıtıyor, sadece `schema_migrations` geçmişiyle 1:1 eşleşmiyor.
 
 ## Son değişiklik
+
+**27.07.2026 (devam 2) — "Fatura Oluştur" wizard'ına tedarikçi seçici eklendi,
+bug tamamen düzeltildi.**
+
+Bir önceki UI test turunda bulunan bug (`FaturaOlusturModal.jsx`'in kalıcı
+disabled kalması, çünkü tedarik adımı hiçbir zaman `purchase_requests.
+supplier_id`'yi set etmiyor ve wizard'da onu seçecek bir alan yoktu)
+kullanıcıya soruldu — "wizard'a tedarikçi seçici ekle" tercih edildi (tedarik
+adımına geri dönüş yerine). `FaturaOlusturModal.jsx`'in "Fatura Bilgileri"
+kartına, `FaturaFormModal.jsx`'teki ile birebir aynı desende (dropdown +
+"+ Yeni tedarikçi" inline mini-form) bir Tedarikçi alanı eklendi — "Bağlı Satın
+Alma Talebi" kartındaki salt-okunur Tedarikçi önizlemesi buna bağlı olarak
+otomatik güncelleniyor (`selectedSupplier` zaten `form.supplier_id`'den
+türüyordu, dokunulmadı). Gerçek tarayıcıda (muhasebe hesabıyla, gerçek bir
+onaylanmış+tedarik edilmiş talep üzerinden) doğrulandı: tedarikçi seçilmeden
+"Taslak Kaydet" disabled, seçilince aktif, fatura `taslak` durumunda doğru
+`supplier_id` ile kaydediliyor, console hatası yok. Lint clean. Test verisi
+temizlendi (bu arada yine `procurement_item_adjustments` FK'si yüzünden 2 test
+talebi silinemedi, aynı düzeltme uygulanıp `AC Kablo 3x185mm2` BOM kalemi
+tekrar 11100'e geri alındı).
+
+**27.07.2026 (devam) — Aynı akış gerçek tarayıcıda (Playwright, 4 rolle) tekrar
+test edildi; 4 backend düzeltmesi UI üzerinden doğrulandı + 2 yeni bulgu.**
+
+Önceki 4 backend düzeltmesi (kismen_odendi, satın alma onay yetkisi,
+remaining_amount, purchase_request senkronu) commit edildikten sonra kullanıcı
+"tüm flowları dene" dedi — bu kez gerçek tarayıcıda, 4 farklı rolle
+(admin/proje_yöneticisi/muhasebe/santiye_şefi), UI tıklamalarıyla. Sonuç: 6/6
+adım (talep onayı, tedarik tamamlama, bağımsız fatura oluşturma, Onay
+Kuyruğu'ndan onaylama, kısmi+tam ödeme girişi) console hatası olmadan geçti —
+4 backend fix'i gerçek kullanıcı aksiyonlarıyla da doğrulandı (ör. onay
+sonrası `remaining_amount=600` doğru başlıyor, kısmi ödeme `kismen_odendi`'ye
+sorunsuz geçiyor).
+
+Ayrıca 2 yeni bulgu ortaya çıktı (bkz. "Bilinen açık noktalar", ikisi de
+düzeltilmedi — kullanıcı onayı bekliyor):
+1. **`FaturaOlusturModal.jsx` ("Fatura Oluştur" wizard'ı) kullanılamıyor** —
+   tedarik adımı (`complete_project_manager_purchase_request`) `supplier_id`'yi
+   hiç set etmiyor, wizard'da tedarikçi seçecek alan da yok, "Taslak
+   Kaydet"/"Devam Et" kalıcı disabled. Canlıda "Faturalanacak Talepler"
+   kuyruğundaki 8/8 satır Tedarikçi kolonunda "—" gösteriyor.
+2. `FaturaListesi.jsx`'teki "▤ Faturalanacak Talepler" butonu aslında "Yeni
+   Fatura" formunu açıyor (etiket/davranış uyuşmazlığı, düşük öncelik).
+
+Test verisi (UITEST_*/E2E_* öneklerinde) temizlendi — bu arada önceki oturumun
+E2E script'lerinden kalan 32 test satın alma talebinin `procurement_item_
+adjustments` FK'si yüzünden silinemediği fark edildi (kendi kendine yol açtığım
+bir temizlik bug'ı: cleanup fonksiyonu delete hatalarını kontrol etmiyordu),
+`AC Kablo 3x185mm2` BOM kaleminin `planned_qty`'si gerçek/legacy aşım kaydı
+(delta 92) korunarak orijinal değerine (11100) geri alındı.
 
 **27.07.2026 — Satın alma→fatura akışı uçtan uca test edildi; ödeme takibi
 sisteminde biri komple bloke eden 4 gerçek bug bulunup düzeltildi.**
