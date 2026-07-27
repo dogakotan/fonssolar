@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { withSignedStorageUrls } from '../../../utils/storageUrls'
 import { useWeather } from '../../../hooks/useWeather'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { normalizeStatus, statusLabel } from '../../../utils/satinAlma'
@@ -473,7 +474,7 @@ export default function ProjectOverviewDashboard({
         .order('created_at', { ascending: false })
 
       if (!alive) return
-      setSitePhotos(photos || [])
+      setSitePhotos(await withSignedStorageUrls('saha-fotolari', photos || []))
       setSitePhotosLoading(false)
     }
 
@@ -513,7 +514,7 @@ export default function ProjectOverviewDashboard({
   const totalBudget    = budgetLines.reduce((s, b) => s + Number(b.planned_amount || 0), 0)
   const spent          = invoices
     .filter(i => ['onaylandı','onaylandi','ödendi','odendi','paid','approved'].includes((i.status||'').toLowerCase()))
-    .reduce((s, i) => s + Number(i.total_amount || i.amount || 0), 0)
+    .reduce((s, i) => s + Number(i.total_amount_try ?? i.total_amount ?? i.amount ?? 0), 0)
   const budgetPct      = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0
   const target         = currentProject?.target_date ? new Date(`${currentProject.target_date}T00:00:00`) : null
   const selected       = new Date(`${effectiveDate}T00:00:00`)
@@ -552,7 +553,6 @@ export default function ProjectOverviewDashboard({
     (safeTicketPage + 1) * TICKET_PAGE_SIZE,
   )
   const todayLabel = new Date().toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' })
-  const sitePhotoUrl = path => supabase.storage.from('saha-fotolari').getPublicUrl(path).data.publicUrl
 
   if (loading) {
     return (
@@ -887,7 +887,7 @@ export default function ProjectOverviewDashboard({
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginTop: 8 }}>
             {sitePhotos.slice(0, 12).map(photo => {
-              const url = sitePhotoUrl(photo.storage_path)
+              const url = photo.signed_url
               return (
                 <button
                   key={photo.id}
