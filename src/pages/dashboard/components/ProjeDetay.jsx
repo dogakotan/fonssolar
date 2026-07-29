@@ -371,7 +371,7 @@ const tabBtn = {
 }
 const tabBtnActive = {
   ...tabBtn, background: 'var(--color-primary)', color: '#fff',
-  borderColor: 'var(--color-primary)', fontWeight: 600,
+  border: '1px solid var(--color-primary)', fontWeight: 600,
 }
 const periodBtn = {
   padding: '5px 14px', borderRadius: 20, border: '1px solid var(--color-border)',
@@ -380,7 +380,7 @@ const periodBtn = {
 }
 const periodBtnActive = {
   ...periodBtn, background: 'var(--color-primary)', color: '#fff',
-  borderColor: 'var(--color-primary)',
+  border: '1px solid var(--color-primary)',
 }
 const periodNavBtn = {
   padding: '2px 8px', borderRadius: 6, border: '1px solid var(--color-border)',

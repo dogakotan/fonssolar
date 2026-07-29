@@ -5,10 +5,12 @@ import { useAuth } from '../../context/AuthContext'
 import { useScope } from '../../context/ScopeContext'
 import Sidebar from '../../components/layouts/Sidebar'
 import TabGenel from './components/TabGenel'
+import MuhasebeGenelOzet from './components/MuhasebeGenelOzet'
 import TabProjeler from './components/TabProjeler'
 import TabSatinAlma from './components/TabSatinAlma'
 import ProjeTabSatinAlma from './components/ProjeTabSatinAlma'
 import TabFinans from './components/TabFinans'
+import TabOdemeler from './components/TabOdemeler'
 import TabTickets from './components/TabTickets'
 import TabSantiyeSefi from './components/TabSantiyeSefi'
 import TabKullanicilar from './components/TabKullanicilar'
@@ -25,8 +27,9 @@ import './Dashboard.css'
 const TABS = {
   genel:            { title: 'Genel Bakış',      subtitle: 'Proje özeti ve aktif görevler' },
   projeler:         { title: 'Projeler',          subtitle: 'Tüm GES projeleri' },
-  'satin-alma':     { title: 'Satın Alma',        subtitle: 'Tedarik talepleri ve siparişler' },
+  'satin-alma':     { title: 'Bekleyenler',       subtitle: 'Tedarik talepleri ve siparişler' },
   finans:           { title: 'Finans',            subtitle: 'Fatura yönetimi ve maliyet takibi' },
+  odemeler:         { title: 'Ödemeler',          subtitle: 'Ödeme takibi ve tedarikçi bakiyeleri' },
   tickets:          { title: 'Ticket Sistemi',    subtitle: 'Sahadan yöneticiye hata bildirimi' },
   kullanicilar:     { title: 'Kullanıcı Yönetimi', subtitle: 'Sistem kullanıcıları ve rol atamaları' },
   'proje-ekle':     { title: 'Proje Yönetimi',    subtitle: 'Projeleri görüntüle, ekle ve düzenle' },
@@ -41,43 +44,14 @@ function getHeaderInitials(name) {
   return name.split(/[\s@._-]+/).slice(0, 2).map(p => p[0]?.toUpperCase()).filter(Boolean).join('') || '?'
 }
 
-// proje_yoneticisi artık cross_project=true (birden fazla projeye erişebiliyor) ama header'daki
-// global proje seçici kaldırıldı — Genel/İş Planı/Satın Alma sekmeleri tek-proje odaklı olduğundan
-// scopeProjectId boşken bu küçük seçici devreye girer (yalnızca bu rol için, diğer rollerin
-// "Tüm Projeler" davranışını etkilemez).
-function ProjeSecimGerekli({ projects, onSelect }) {
-  return (
-    <div style={{ padding: '48px 24px', textAlign: 'center' }}>
-      <p style={{ fontSize: 14, color: 'var(--color-muted)', marginBottom: 16 }}>Devam etmek için bir proje seçin</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 360, margin: '0 auto' }}>
-        {projects.map(p => (
-          <button
-            key={p.id}
-            onClick={() => onSelect(p.id)}
-            style={{
-              background: '#fff', border: '1px solid var(--color-border-md)', borderRadius: 10,
-              padding: '12px 16px', fontSize: 14, fontWeight: 600, color: 'var(--color-text)',
-              cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-            }}
-          >
-            {p.name}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 export default function Dashboard() {
   const { user, role, isAdmin, projectId, loading: authLoading, authError, navigation, roleLabel } = useAuth()
-  const { scopeProjectId: contextScopeProjectId, projects: scopeProjects } = useScope()
   // ScopeContext artık manuel override desteklemiyor (header seçicisi kalkınca kasıtlı
   // sadeleştirildi, scopeProjectId yalnızca tek-proje kullanıcıda otomatik çözülüyor).
-  // proje_yoneticisi (cross_project=true, çoklu proje) için bu üç sekmede (genel/is-plani/
-  // satin-alma) hâlâ tek bir proje seçilmesi gerektiğinden, ortak context'e dokunmadan bu
-  // role özel yerel bir seçim state'i tutuyoruz — diğer rollerin "Tüm Projeler" davranışını etkilemez.
-  const [pySelectedProjectId, setPySelectedProjectId] = useState(null)
-  const scopeProjectId = role === 'proje_yoneticisi' ? (contextScopeProjectId || pySelectedProjectId) : contextScopeProjectId
+  // proje_yoneticisi (cross_project=true, çoklu proje) için scopeProjectId boşken
+  // 'genel' sekmesi TabGenel'e aggregate ("Tüm Projeler") modunda geçer (2026-07-21).
+  const { scopeProjectId } = useScope()
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [activeTab,           setActiveTab]           = useState(() => {
     const saved = window.localStorage.getItem('dashboard-active-tab')
@@ -107,9 +81,9 @@ export default function Dashboard() {
     }
     // Kısıtsız roller (tabs: null — admin/koordinator/proje_koordinatoru/muhendis/
     // maliyet_kontrolcu) için 'is-plani' sekmesinin hiç render dalı yok (yalnızca
-    // santiye_sefi/proje_yoneticisi rollerinde var, bkz. dash-content). Paylaşımlı
-    // bir cihazda önceki rolden localStorage'da kalan bu değer boş ekrana yol
-    // açabilir — güvenli varsayılana (genel) düş.
+    // santiye_sefi'de var, bkz. dash-content). Paylaşımlı bir cihazda önceki
+    // rolden localStorage'da kalan bu değer boş ekrana yol açabilir — güvenli
+    // varsayılana (genel) düş.
     setActiveTab(current => (current === 'is-plani' ? 'genel' : current))
   }, [role, navigation])
 
@@ -301,11 +275,6 @@ export default function Dashboard() {
         {activeTab === 'is-plani'     && role === 'santiye_sefi' && (
           <TabIsPlan projectId={projectId} siteChiefView />
         )}
-        {activeTab === 'is-plani'     && role === 'proje_yoneticisi' && (
-          !scopeProjectId && scopeProjects.length > 1
-            ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />
-            : <TabIsPlan projectId={scopeProjectId} />
-        )}
         {activeTab === 'bildirimler'  && (
           <TabBildirimler
             onGoToTicket={goToTicket}
@@ -318,8 +287,9 @@ export default function Dashboard() {
         {/* proje_yoneticisi 2026-07-21'de admin gibi aggregate (scopeProjectId=null → "Tüm
             Projeler") moda geçti — TabGenel/ProjectListView zaten null'ı destekliyor (diğer
             kısıtsız roller de böyle kullanıyor), bu yüzden girişte artık proje seçim ekranı
-            YOK. İş Planı (aşağıda) yapısal olarak tek-proje kaldığından proje seçimi orada. */}
-        {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
+            YOK. */}
+        {activeTab === 'genel'        && role === 'muhasebe' && <MuhasebeGenelOzet onNavigate={handleTabChange} onGoToInvoice={goToInvoice} />}
+        {activeTab === 'genel'        && role !== 'santiye_sefi' && role !== 'muhasebe' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
         {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'     && showProjectDetail  && (
           <ProjeDetay
@@ -345,8 +315,10 @@ export default function Dashboard() {
             openInvoiceId={openInvoiceId}
             onOpenedInvoice={() => setOpenInvoiceId(null)}
             invoiceProjectId={invoiceProjectId}
+            onNavigateTop={handleTabChange}
           />
         )}
+        {activeTab === 'odemeler'     && <TabOdemeler />}
         {activeTab === 'tickets'      && (
           <TabTickets
             selectedDate={selectedDate}
@@ -392,7 +364,6 @@ export default function Dashboard() {
                   reportId={editReportId || undefined}
                   onBack={closeReportModal}
                   onSaved={handleReportSaved}
-                  onGoToTicket={goToTicket}
                 />
               </div>
             </div>

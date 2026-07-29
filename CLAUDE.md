@@ -108,25 +108,50 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   çekmesini sağlar (`TabSatinAlma.jsx`/`ProjeTabSatinAlma.jsx` bu deseni kullanır).
 - Saha ekranları (`SantiyeSefiDashboard.jsx`, `DailyReportForm.jsx`,
   `DailyReportList.jsx`) mobil öncelikli — santiye_sefi rolü telefondan
-  kullanır. `DailyReportForm.jsx` 9 bölümlü liste (Hava/Genel, Personel, Makine,
-  Günün İşleri, İlerleme, Sorunlar, Fotoğraflar, Notlar) + slide-over panel
+  kullanır. `DailyReportForm.jsx` 7 bölümlü liste (Hava/Genel, Personel, Makine,
+  Günün İşleri, İlerleme, Fotoğraflar, Notlar) + slide-over panel
   modelinde (masaüstünde ortalanmış sabit kutu, mobilde bottom-sheet); panel
   içi tablolar dikey kart listesi (`CARD_ROW`), yatay scroll değil. Kendi
   taslak otomatik kaydetme/yükleme sistemi var (`daily_report_drafts` tablosu,
   sahiplik bazlı RLS). "Hava kayıplı gün" alanı (`weather_loss_day`) ve serbest
-  metin makine türü girişi var. Rapor sahibi kendi raporunu silebilir.
+  metin makine türü girişi var (aynı makine türü bir raporda iki kez
+  eklenirse `machinery_logs_report_machine_unique` UNIQUE ihlali oluşur —
+  **bug (29.07.2026'da bulunup düzeltildi):** `DAILY_REPORT_ERROR_RULES`'daki
+  eski `match: ['machinery_logs_status', 'machine']` deseni ANY-eşleşme
+  olduğundan (`toUserMessage`/`translateError`, `some()`) unique-ihlali
+  metnindeki bare "machine" alt-dizesini de yakalayıp kullanıcıya yanlışlıkla
+  "Makine durumu geçersiz. Lütfen listeden seçin." gösteriyordu — gerçek
+  Postgres constraint adlarıyla (`machinery_logs_report_machine_unique`/
+  `machinery_logs_status_check`) eşleşen iki ayrı, spesifik kural eklendi).
+  Rapor sahibi kendi raporunu silebilir.
   "Malzeme Kullanımı" bölümü formda **kasıtlı olarak YOK** (`daily_report_material_usage`
   tablosu kullanımda değil) — **kalıcı karar:** BOM/malzeme kullanımı günlük
   raporun kapsamında değil; geri getirilmesi teklif edilirse önce bu kararı
   hatırlat. "İlerleme Girişi" `project_tasks`'tan (task_id bazlı) beslenir.
-  "Sorunlar" bölümündeki her satır `daily_report_issues`'a `save_daily_report`'un
-  `p_issues`'una id-bazlı upsert ile yazılır (bkz. Trigger zincirleri) — satır
-  otomatik bir ticket'a bağlıysa tıklanabilir bir durum rozeti gösterir, tıklamak
-  Tickets sekmesine geçip o ticket'ı doğrudan açar (`openTicketId` state zinciri,
-  `index.jsx` → `TabTickets` → `TicketListesi`). `daily_report_issues.description`
-  kolonu ayrıca `category`/`closed_at`/`notes` alanlarını `__ISSUE_META__{json}`
-  öneki ile paketler (bu tabloda o kolonlar yok) — round-trip için tabloda
-  olduğu gibi kalır, ama otomatik açılan ticket'a kopyalanırken önek soyulur.
+  **"Sorunlar" bölümü formdan kaldırıldı (2026-07-29, kullanıcı kararı) — kalıcı
+  karar:** artık bir sorun/bloker bildirmek için doğrudan Tickets sekmesinden
+  ticket açılır, günlük rapordan sorun girilmez; geri getirilmesi teklif
+  edilirse önce bu kararı hatırlat. `daily_report_issues` tablosu, `fn_create_ticket_from_daily_report_issue()`
+  trigger'ı ve `save_daily_report`'un `p_issues` parametresi backend'de hâlâ
+  duruyor (geriye dönük uyumluluk — eski raporlardaki satırlar `DailyReportForm.jsx`
+  tarafından sessizce, değiştirilmeden `p_issues`'a geri gönderilip korunuyor;
+  aksi halde RPC'nin id-bazlı silme adımı bunları temizlerdi) ama artık hiçbir
+  UI'dan yeni satır eklenmiyor — fiilen dead code, ayrı bir temizlik migration'ı
+  gerektirir (henüz yapılmadı). Eski raporlardaki geçmiş "Sorunlar" verisi
+  `DailyReportDetail.jsx` (salt okunur detay sayfası) ve Excel/PDF export'ta
+  hâlâ görüntüleniyor, `daily_report_issues.description` kolonu `category`/
+  `closed_at`/`notes` alanlarını `__ISSUE_META__{json}` öneki ile paketler.
+  `daily_reports.notes` kolonu da aynı desende `isg_notes`/`incident_notes`/
+  `description` alanlarını `__REPORT_NOTES_META__{json}` öneki ile paketler
+  (`reportNotesPayload()`, `DailyReportForm.jsx`) — **bug (29.07.2026'da bulunup
+  düzeltildi):** `DailyReportList.jsx`'in "Not" kolonu ve `DailyReportDetail.jsx`'in
+  "Genel Notlar" bloğu bu öneki hiç çözmüyordu, ham `__REPORT_NOTES_META__{...}`
+  JSON'ı kullanıcıya gösteriyordu — ikisi de `decodeStoredMeta()` ile `description`
+  alanını gösterecek şekilde düzeltildi (PDF/Excel export zaten doğru
+  çözüyordu, yalnızca bu iki ekran etkilenmişti). **Ayrıca fark edildi, henüz
+  düzeltilmedi:** `isg_notes`/`incident_notes` alanları hiçbir yerde
+  gösterilmiyor — `DailyReportDetail.jsx` yalnızca paketlenmiş `description`'ı
+  "Genel Notlar" olarak gösteriyor, İSG/olay notları için ayrı bir UI yok.
 - `ProjeDetay.jsx`'in 8 sekmesi: Genel Proje, İş Planı, Satın Alma, Malzeme
   Listesi, Finans, Ticket, Raporlar, Ekip — sekme bazlı rol gizleme yok, her
   role görünür (Finans proje_yoneticisi için salt-okunur, Tickets tam yetkili).
@@ -171,22 +196,37 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   akışındaki "Yönetici" olduğundan bu erişim 2026-07-24'te açıldı (önceden
   yalnızca Genel özeti görürdü). Maliyet Tablosu (bütçe verisi) hâlâ yalnızca
   admin'e özel. Diğer roller yalnızca Genel özeti görür.
-  Menü seviyesindeki `TabFinans.jsx`'te muhasebe hâlâ yalnızca `Faturalar`
-  alt-sekmesini görür (`Genel`/`Onay Kuyruğu`/`Maliyet Tablosu` yok — bütçe
-  verisine erişimi zaten yok, bkz. RPC katmanı). Muhasebenin kendi genel
-  bakışı `TabFinans`'ın İÇİNDE değil, ayrı bir üst-seviye sidebar item'ında:
-  `index.jsx`'teki `genel` sekmesi diğer roller için `TabGenel` render
-  ederken muhasebe için `MuhasebeGenelOzet.jsx`'i render eder (role bazlı
-  dallanma, tab anahtarı aynı — `roles.allowed_tabs/sidebar_items/default_tab`
-  muhasebe için de `genel`'i içerir, girişte oraya düşer). Bütçe/planlanan
-  RPC'lerine hiç dokunmadan, muhasebenin zaten yetkili olduğu iki RPC'den
-  (tüm projeler/durumlar `get_invoices_list`, `satin_alindi`/`fatura_bekliyor`'a
-  daralan `get_satin_alma_overview_all`) istemci tarafında özetlenir:
-  faturalanacak talep sayısı, yönetici onayındaki/reddedilen/bu ay onaylanan
-  fatura sayısı+tutarı, son faturalar listesi. KPI kartına tıklamak
-  `handleTabChange` ile ilgili üst-seviye sekmeye geçer ("Faturalanacak
-  Talepler" → `satin-alma`, diğerleri → `finans`) — hedef sekme içindeki alt
-  sekme/durum filtresi otomatik ayarlanmaz, kullanıcı elle seçer.
+  **Bug (29.07.2026'da bulunup düzeltildi):** 2026-07-24'teki bu genişleme
+  yalnızca component katmanında (`TabFinans.jsx`/`FaturaDetayModal.jsx`/
+  `OnayReddetActions.jsx` içindeki `role==='proje_yoneticisi'` kontrolleri)
+  yapılmıştı — `role_allowed_tabs`/`role_sidebar_items`'a `finans` satırı hiç
+  eklenmemişti, yani proje yöneticisi sidebar'da "Finans"ı hiç görmüyordu ve
+  `index.jsx`'teki `handleTabChange` (`navigation.tabs`'ta olmayan bir sekmeye
+  geçişi sessizce engeller) normal tıklamayı engelliyordu — yalnızca bildirim
+  deep-link'i (`setActiveTab` bu kontrolü bypass eder) ile erişilebiliyordu.
+  `20260729120000_add_finans_nav_for_proje_yoneticisi` migration'ıyla düzeltildi.
+  Menü seviyesindeki `TabFinans.jsx`'te muhasebe **Faturalar**/**Genel** 2
+  alt-sekmesini görür — Faturalar varsayılan/ilk sekme (`Onay Kuyruğu`/
+  `Maliyet Tablosu` yok, bütçe verisine erişimi zaten yok, bkz. RPC katmanı).
+  Muhasebenin kendi genel bakışı `TabFinans`'ın İÇİNDE değil, ayrı bir
+  üst-seviye sidebar item'ında: `index.jsx`'teki `genel` sekmesi diğer roller
+  için `TabGenel` render ederken muhasebe için `MuhasebeGenelOzet.jsx`'i
+  render eder (role bazlı dallanma, tab anahtarı aynı — `roles.allowed_tabs/
+  sidebar_items/default_tab` muhasebe için de `genel`'i içerir, girişte oraya
+  düşer). Bütçe/planlanan RPC'lerine hiç dokunmadan, muhasebenin zaten
+  yetkili olduğu üç RPC'den (tüm projeler/durumlar `get_invoices_list`,
+  `satin_alindi`/`fatura_bekliyor`/`fatura_onay_bekliyor`'a daralan
+  `get_satin_alma_overview_all`, `v_invoice_payment_overview`) istemci
+  tarafında özetlenir: 4 KPI kartı (Faturalanacak Talepler, Yönetici
+  Onayında, **Ödeme Takvimi** — 2026-07-28'e kadar "Ödeme Bekleyen" idi,
+  tıklanınca `finans`'a gitmek yerine artık `OdemeTakvimi.jsx` takvimini
+  doğrudan bu sayfada açıyor —, Vadesi Geçen) + Kur Bilgisi kartı tek satırda;
+  "Bugün Yapılacaklar" panelindeki her satırın kendi `onAction`'ı ilgili
+  faturayı doğrudan açar (`onGoToInvoice`), "Yaklaşan Ödemeler"in linki
+  `odemeler`'e gider. KPI kartına tıklamak (takvim hariç) `handleTabChange`
+  ile ilgili üst-seviye sekmeye geçer ("Faturalanacak Talepler" → `satin-alma`,
+  diğerleri → `finans`) — hedef sekme içindeki alt sekme/durum filtresi
+  otomatik ayarlanmaz, kullanıcı elle seçer.
 
 ### Satın alma akışı
 Durum zinciri: `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
@@ -204,20 +244,31 @@ UI'da bilinçli olarak aynı metni ("Fatura Bekleniyor") gösterir.
 (eşzamanlı ikinci kalem eklemeye karşı da) zorunlu kılınır.
 
 **Proje yöneticisi tedarik adımı:** `onaylandi` ile fatura arasında zorunlu
-bir adım var. `proje_yoneticisi` (artık `cross_project=true`, tüm projelere
-erişir) kendi `ProjeTabSatinAlma.jsx` içindeki **"Tedarik"** alt-sekmesinden
-(`TedarikKuyrugu.jsx`, `canManageProcurement = isAdmin || role==='proje_yoneticisi'`)
-`onaylandi` durumundaki talepleri işler: `supplier_id` + `purchase_date`
-girip doğrudan `purchase_requests` UPDATE eder — DB tetikleyicisi
-(`trg_auto_advance_pr_to_satin_alindi`) statüyü otomatik `satin_alindi`'ye
-ilerletir, status elle set edilmez. İstisna: tedarikçi bulunamazsa "İptal Et"
-(zorunlu gerekçe) statüyü doğrudan `iptal`'e çeker — `satin_alindi`'ye geçmiş
-bir talep artık iptal edilemez. RLS (`pr_update_proje_yoneticisi`) yalnızca
-tedarik alanlarına yazmaya izin verir (title/tutar/requested_by/approved_by
-dokunulamaz). Sert kilit: `trg_guard_invoice_requires_procurement_done`
-talep hâlâ `onaylandi`'nin öncesindeyse fatura insert'ini reddeder — muhasebe
-bu adımı atlayamaz. `TedarikKuyrugu.jsx`'ten proje yöneticisi doğrudan yeni
-talep de açabilir; bu sekme her zaman tüm-projeler modunda çalışır.
+bir adım var. **Dokümantasyon düzeltmesi (29.07.2026'da flow denetiminde fark
+edildi):** bu adım önceden ayrı bir `TedarikKuyrugu.jsx` bileşeninde
+yaşıyordu, ama bu bileşen `02c8af4` commit'iyle (23.07.2026) tamamen
+kaldırıldı — gerçek akış artık `ProjeTabSatinAlma.jsx` → `TabSatinAlmaTalepListesi.jsx`
+(`fixedStatus="onaylandi"`, "Bekleyen" sekmesi) üzerinden yürüyor,
+`canCompleteProcurement = role==='proje_yoneticisi'`. `proje_yoneticisi`
+(`cross_project=true`, tüm projelere erişir) `onaylandi` durumundaki talepler
+için tek-tık **"Tamamlandı"** butonuyla `complete_project_manager_purchase_request`
+RPC'sini çağırır (`supplier_id`/`purchase_date` bu RPC'de hiç toplanmıyor —
+bilinen açık nokta, bkz. "Bilinen açık noktalar"). "İptal Et" tıklanınca satır
+içi bir gerekçe alanı açılır (`rejectDraft` state, `OnayReddetActions.jsx`'in
+"compact" moduyla aynı desen) — **gerekçe girilmeden "İptali Onayla" butonu
+disabled kalır** (bug: 29.07.2026'ya kadar bu alan hiç yoktu, talep notsuz
+sessizce `iptal`'e çekiliyordu; `TalepDetayModal.jsx`'teki eşdeğer "Reddet"
+butonu da aynı şekilde düzeltildi — not alanı önceden yalnızca admin'in
+`onay_bekliyor` reddi için gösteriliyordu). Gerekçe `purchase_requests.notes`'a
+eklenir (mevcut not varsa altına, `\n` ile). RLS (`purchase_requests_update`,
+konsolide tek policy) proje yöneticisinin yalnızca `onaylandi`/`satin_alindi`
+durumundaki taleplere ve yalnızca tedarik alanlarına yazmasına izin verir
+(`fn_purchase_request_procurement_fields_only()` fonksiyonu title/tutar/
+requested_by/approved_by değişmediğini doğrular — eski ayrı
+`pr_update_proje_yoneticisi` policy'si kaldırılıp bu fonksiyona konsolide
+edilmiş). Sert kilit: `trg_guard_invoice_requires_procurement_done` talep
+hâlâ `onaylandi`'nin öncesindeyse fatura insert'ini reddeder — muhasebe bu
+adımı atlayamaz.
 
 **Faturalı / Faturasız kapatma (2026-07-27):** `satin_alindi` durumundaki bir
 talep muhasebe tarafından iki yoldan kapatılabilir — "Fatura Oluştur"
@@ -293,8 +344,17 @@ değişiklik").
   faturaya (kısmi ya da tam) ilk ödeme girilemiyordu, bkz. "Son değişiklik".
 - **İptal (admin-only):** `onaylandı` VEYA `odeme_bekliyor` bir faturayı admin
   `reddedildi`'ye çekebilir (`fn_validate_invoice_status_transition`'da ayrı
-  ayrı izinli) — `cost_allocations` geri alınır, bağlı talep `onaylandi`'ye
-  döner (`sync_purchase_request_from_invoice`/`sync_cost_allocation_from_invoice`).
+  ayrı izinli) — `cost_allocations` geri alınır, bağlı talep `satin_alindi`'ye
+  döner (`sync_purchase_request_from_invoice`/`sync_cost_allocation_from_invoice`,
+  `invoice_id` null'lanır — talep tekrar "Fatura Oluştur" ile faturalanabilir
+  hale gelir, tedarik bilgisi — `supplier_id`/`purchase_date` — korunur, tedarik
+  adımı tekrar yapılmaz). **Bug (29.07.2026'da bulunup düzeltildi):** bu fonksiyon
+  2026-07-21'deki bir rewrite'ta yanlışlıkla talebi `fatura_onay_bekliyor`'da
+  bırakıyordu (muhtemelen INSERT dalıyla kopya-yapıştır hatası) — `reddedildi`
+  nihai olduğundan (aşağıya bkz.) talep bu durumda sonsuza kadar donuk kalıyordu,
+  ne yeniden faturalanabiliyor ne gerçek bir onay bekliyordu. Faturasız ödemenin
+  birebir eşi (`sync_purchase_request_from_financial_transaction`) referans
+  alınarak `satin_alindi`'ye düzeltildi (`20260729130000_fix_purchase_request_revert_on_invoice_rejection`).
   `reddedildi` **nihai** bir durum — ne admin ne muhasebe onu geri açabilir
   (eski `resubmit_rejected_invoice`/`delete_rejected_invoice` RPC'leri bu
   yüzden 2026-07-24'te kaldırıldı; "yanlışlıkla reddedilen bir faturayı
@@ -321,8 +381,9 @@ olay bazlı, `invoice_approvals.reviewed_at`'tan/Ödeme Bekleyen), altında sekm
 "Taslak Kaydet"/"Onaya Gönder", ödeme-takibi switch'i, inline "+ yeni
 tedarikçi") ve `FaturaDetayModal.jsx` (breadcrumb + oluşturan bilgisi, 4 üst
 kart, Fatura Bilgileri, Bağlı Talebin Kalemleri tablosu — `purchase_request_items`'tan,
-faturanın kendi kalem tablosu yok —, Satın Alma Kontrolü kartı, tek adımlı
-Onay Süreci, Ödeme Gir modalı) ayrı dosyalarda, tamamı `var(--color-*)`
+faturanın kendi kalem tablosu yok —, bağlı bir talep varsa Satın Alma Kontrolü
+kartı (yoksa sağ sütun hiç render edilmez, tek sütuna daralır — `invoice-detail-grid-single`),
+Ödeme Gir modalı) ayrı dosyalarda, tamamı `var(--color-*)`
 token'larıyla. Onayla/Düzeltme İste/Reddet UI'ı tek paylaşımlı
 `OnayReddetActions.jsx`'te iki `layout` varyantıyla: `compact` (`OnayKuyrugu.jsx`
 tablo satırı — butona tıklayınca yalnızca o aksiyon için küçük not alanı açılır)
@@ -386,10 +447,21 @@ yeni bir özellik istenirse önce bu notu hatırlat.
 
 ### Ticket oluşturma — genel vs proje bazlı
 `tickets.project_id` nullable — `NULL` "genel" (projeye bağlı olmayan) ticket
-demek. Tek-proje rolleri için `YeniTicketModal.jsx`'te "Genel ticket olarak aç"
-checkbox'ı `project_id`'yi NULL'a düşürür. RLS (`tickets_insert`):
-`created_by = auth.uid() AND has_project_access(project_id)` (`has_project_access(NULL)`
-her zaman true, genel ticket'lar etkilenmez).
+demek. Tek-proje rolleri için `YeniTicketModal.jsx`'teki "Ticket Cinsi"
+dropdown'ında "Genel" seçeneği `project_id`'yi NULL'a düşürür (CLAUDE.md'de
+önceden bir checkbox olarak geçiyordu, gerçek UI bu dropdown — düzeltildi).
+RLS (`tickets_insert`): `created_by = auth.uid() AND has_project_access(project_id)`
+(`has_project_access(NULL)` her zaman true, genel ticket'lar etkilenmez).
+
+**Bug (29.07.2026'da bulunup düzeltildi):** `TicketListesi.jsx`'te santiye_sefi
+filtresi `project_id = authProjectId` uyguluyordu — Postgres'te bu, `project_id
+IS NULL` satırlarını asla eşleştirmez, yani santiye şefinin kendi açtığı genel
+ticket'lar kendi listesinde hiç görünmüyordu. `.or('project_id.eq.<id>,project_id.is.null')`'a
+çevrildi. RLS (`tickets_select`) zaten yalnızca `created_by=auth.uid()` OLAN
+genel ticket'ları döndürüyor (başka bir kullanıcının genel ticket'ı `p.project_id
+= tickets.project_id` NULL karşılaştırmasında eşleşmediği için görünmez) —
+yani bu değişiklik kapsamı genişletmiyor, yalnızca kullanıcının zaten görmeye
+yetkili olduğu kendi genel ticket'larını görünür kılıyor.
 
 ### Roller (4, `roles` tablosunda tanımlı — `select key, display_name, is_manager, cross_project, allowed_tabs, default_tab, sidebar_items from roles`)
 admin, muhasebe, proje_yoneticisi, santiye_sefi.
@@ -404,16 +476,32 @@ daha sıkı, gerçek kısıt FK'dir — eski roller yeniden aktifleştirilirse �
 `has_project_access` her projeye izin verir). `cross_project=true`:
 proje_yoneticisi (tüm projelere erişir, `get_project_scope`/`has_project_access`
 üzerinden). proje_yoneticisi hâlâ bir "ev projesi"ne (`profiles.project_id`)
-atanabilir ama bu yalnızca kozmetik/varsayılan; `genel`/`satin-alma` üst-seviye
-sekmelerinde `ScopeContext`'in otomatik çözemediği çoklu-proje durumunda
-`index.jsx`'teki yerel `pySelectedProjectId` state'i + `ProjeSecimGerekli`
-ekranı devreye girer. `ProjeDetay.jsx`'in iç sekmelerinde proje_yoneticisi
+atanabilir ama bu yalnızca kozmetik/varsayılan; `genel` sekmesinde
+`scopeProjectId` boşken (çoklu proje) `TabGenel` admin gibi aggregate
+("Tüm Projeler") moduna geçer, ayrı bir proje-seçim ekranı yok (2026-07-21).
+**Ölü kod temizliği (29.07.2026):** `index.jsx`'te proje_yoneticisi için
+`'is-plani'`'ye özel bir render dalı ve onu destekleyen `pySelectedProjectId`
+state'i + `ProjeSecimGerekli` bileşeni vardı — `role_allowed_tabs`/
+`role_sidebar_items`'a proje_yoneticisi için hiç `is-plani` eklenmediğinden
+(git geçmişi kontrol edildi: `20260723065156_add_role_navigation_matrix`
+migration'ı PM'i bilinçli olarak `is-plani` olmadan tanımlıyor — Finans
+sidebar bug'ının aksine bu bir regresyon değildi) bu dal fiilen hiç
+tetiklenemiyordu, kaldırıldı. `ProjeDetay.jsx`'in iç sekmelerinde proje_yoneticisi
 Finans'ta Faturalar/Onay Kuyruğu'nu görüp fatura onaylayabilir (bkz. "Satın
 alma akışı" → Fatura onay akışı — 2026-07-24'te Genel-özet-yalnızca'dan
 buraya genişledi, Maliyet Tablosu hâlâ admin-only), Tickets santiye_sefi ile
-aynı tam yetkide. Kullanıcı
-oluşturma ve proje şablonuyla proje ekleme (`isAdmin || role==='proje_yoneticisi'`)
-açık; Düzenle/Şifre/Sil ve Düzenle/Excel export/Sil hâlâ `isAdmin`-only.
+aynı tam yetkide. Kullanıcı oluşturma açık ama Düzenle/Şifre/Sil (`TabKullanicilar.jsx`)
+hâlâ `isAdmin`-only. **Proje yönetimi tarafı farklı:** proje şablonuyla proje
+ekleme YANINDA mevcut bir projeyi Düzenle/Excel export/Sil de admin ile eşit
+(`TabProjeYonetimi.jsx`'teki `canCreateProject = isAdmin || role==='proje_yoneticisi'`
+üçünü de kapsar) — bu önceki bir sürümde yanlışlıkla "hâlâ isAdmin-only"
+olarak dokümante edilmişti, ama `20260723140000_allow_proje_yoneticisi_edit_project_wizard_tables`/
+`20260723140100_allow_proje_yoneticisi_delete_project_cascade` migration'ları
+bunu RLS düzeyinde de (yalnızca UI'da değil) bilinçli olarak açtı — kademeli
+proje silme `invoices`/`purchase_requests`/`agent_reports`/`procurement_item_*`
+tablolarındaki proje yöneticisi DELETE policy'leriyle birlikte tasarlandı
+(2026-07-29'da denetimde bu tutarsızlık fark edilip düzeltildi, bkz. "Son
+değişiklik" — kodun kendi eski yorumu da yanlıştı, güncellendi).
 
 Rol → sekme/sidebar erişimi `roles.allowed_tabs`/`default_tab`/`sidebar_items`
 kolonlarından okunur (bkz. Frontend yapısı) — `src/config/navigation.js` diye
@@ -428,6 +516,34 @@ kaynağı; `risks`/`category_weights.avg_progress`/`overall_pct` tarih-farkında
 (`progress_daily`'i `p_date`'e kadar toplar), `risks` hem manuel hem otomatik
 açık riskleri döner (kategori filtresi frontend'de). `get_satin_alma_overview(_all)`
 — `pending_changes` alanı (bekleyen BOM miktar değişikliği talepleri).
+`get_satin_alma_overview_all_internal`'ın `requests` jsonb'i (`MuhasebeSatinAlma.jsx`'in
+tek veri kaynağı) 2026-07-27'ye kadar yalnızca id/title/status/tarihler/proje
+döndürüyordu — `supplier_id`/`supplier_name`/`estimated_amount_incl_vat`/
+`requester_name`/`description` (`request_note`) ve kalemlerde `unit_price`/
+`total_price` hiç yoktu, bu yüzden Tedarikçi filtre dropdown'ı hep boştu ve
+Onaylanan Tutar hep ₺0 görünüyordu (görünüşte "filtreler çalışmıyor" gibi
+algılandı, aslında filtreleme mantığı doğruydu — filtrelenecek gerçek veri
+yoktu). Bu alanlar eklendi (2026-07-27). `get_satin_alma_overview_all()`
+wrapper'ının muhasebe için daralttığı status listesi 2026-07-28'de
+`fatura_onay_bekliyor`'u da kapsayacak şekilde genişletildi — önceden bir
+talebin faturası oluşturulur oluşturulmaz (durum `satin_alindi`'den
+`fatura_onay_bekliyor`'a geçince) talep `MuhasebeSatinAlma.jsx`'in listesinden
+tamamen düşüyordu, muhasebe kendi oluşturduğu faturanın hangi talebe ait
+olduğunu Satın Alma ekranından takip edemiyordu. Artık bu durumdaki talepler
+listede kalıp **"Onayda"** rozetiyle (mor, `purchase-status.onayda`)
+gösteriliyor, "İşlem" kolonunda "Fatura Oluştur" yerine "Görüntüle" çıkıyor
+(yeni bir fatura açmasının anlamı yok, zaten biri onay bekliyor) — yeni
+veri sızıntısı değil, muhasebe bu faturaları zaten Faturalar sekmesinden
+görebiliyordu. **Bu genişletmenin iki yan etkisi 2026-07-28'de fark edilip
+düzeltildi** (bkz. "Son değişiklik"): (1) `TalepDetayModal.jsx`'in "Onay
+Süreci" adımları `fatura_onay_bekliyor`'u hesaba katmıyordu, "Fatura
+Bekleniyor" adımını hâlâ aktif gösteriyordu (oysa fatura zaten oluşturulmuş,
+tamamlanmış sayılması gerekir — son adım "Fatura Kesildi" aktif olmalı);
+(2) `MuhasebeGenelOzet.jsx`'teki "Faturalanacak Talepler" KPI'ı ve "Bugün
+Yapılacaklar"daki "X satın alma talebi fatura bekliyor" satırı aynı
+`get_satin_alma_overview_all` sonucunu kullandığından `fatura_onay_bekliyor`
+talepleri de sayıp şişiriyordu — bu iki bileşende `pendingRequests`/adım
+mantığı `fatura_onay_bekliyor`'u ayrı ele alacak şekilde güncellendi.
 `get_finans_overview(_all)`, `get_delayed_tasks_scoped`, `get_my_role`,
 `get_my_projects`. Liste/detay RPC'leri: `get_purchase_requests_list` (dual
 mode — `p_project_id` NULL ise menü/tüm-projeler), `get_purchase_request_detail`,
@@ -493,13 +609,31 @@ bildirimlerinde ek olarak "Adım X/2: ..." özeti görür. Bir bildirime tıklam
 ilgili kaydı doğrudan açar (ticket/günlük rapor/satın alma talebi/fatura —
 her biri için `index.jsx`'te ayrı `open*Id` state zinciri); malzeme değişikliği
 bildirimi için tek kayıt modalı yok, ilgili projenin Malzeme Listesi sekmesine
-götürür (`goToProjectTab`).
+götürür (`goToProjectTab`). Her satırda bir silme butonu var (`.bildirim-delete`,
+`notifications` RLS'i zaten `recipient_id=auth.uid()` kendi kaydını silmeye
+izin veriyordu ama 29.07.2026'ya kadar bunu tetikleyecek bir UI yoktu —
+düzeltildi, satır artık `<button>` değil `role="button"` bir `<div>`
+(nested `<button>` geçersiz HTML olurdu), silme butonu `stopPropagation` ile
+satırın kendi `onClick`'ini (kayda gitme) tetiklemeden çalışıyor).
+`NotificationBell.jsx`'e kasıtlı olarak silme eklenmedi (o bileşen bilinçli
+olarak sade kalıyor, tam yönetim tam sayfada).
 
 ### Muhasebe & Finans modülü
 Menü seviyesindeki `TabFinans.jsx` altında (proje-içi `ProjeTabFinans.jsx`'ten
-ayrı, tüm-projeler görünümü) muhasebe rolü için 3 alt-sekme: Genel, Faturalar,
-Raporlar (admin/proje_yöneticisi Genel/Faturalar/Ödeme Takibi/Onay Kuyruğu +
-admin-özel Maliyet Tablosu görür — bkz. "Roller"). **Ödeme Takibi** ve
+ayrı, tüm-projeler görünümü) muhasebe rolü için 2 alt-sekme: **Faturalar**
+(varsayılan/ilk sekme — 2026-07-28'e kadar Genel ilkti, kullanıcı isteğiyle
+sıra değişti, `TABS`/`useState` başlangıcı `isMuhasebe` dallanıyor), Genel
+(admin/proje_yöneticisi Genel/Faturalar/Ödeme Takibi/Onay Kuyruğu +
+admin-özel Maliyet Tablosu görür — bkz. "Roller"). Muhasebenin **Genel**
+sekmesi kendi içinde iki alt-sekmeye bölünür (`genelSection` state,
+`.finans-genel-subtabs` pill toggle — Malzeme Listesi'ndeki Malzeme
+Listesi/Riskler alt-sekme deseniyle aynı fikir): **Genel**
+(`MuhasebeFinansGenel.jsx` — canlı özet) ve **Detay** (`FinansRaporlari.jsx`
+— filtrelenebilir/export edilebilir tarihsel rapor); 2026-07-27'de ikisi tek
+sayfada üst-alt istiflenmişti, 2026-07-28'de kullanıcı isteğiyle gerçek bir
+alt-sekme ayrımına çevrildi (`raporlar` tab key'i zaten yoktu, `genelSection`
+yalnızca bu iki bölüm arasında geçiş yapar, üst-seviye `tab` state'ini
+etkilemez). **Ödeme Takibi** ve
 **Tedarikçiler** muhasebe için `TabFinans.jsx`'te DEĞİL — ayrı, üst-seviye bir
 sidebar öğesi olan **`TabOdemeler.jsx`**'te (`activeTab==='odemeler'`,
 `roles.allowed_tabs`/`sidebar_items`'da yalnızca muhasebe'de var,
@@ -517,8 +651,19 @@ Bu modülün büyük kısmı (Ödeme Takibi, Tedarikçiler, Raporlar, ayrıca mu
 dokümante edilmemişti, başka bir oturum/araçla eklenmiş olmalı (bkz. "Bilinen
 açık noktalar" → migration tracking boşluğu).
 
-- **Faturalar** (`FaturaListesi.jsx`/`FaturaDetayModal.jsx`/`FaturaFormModal.jsx`)
-  — bkz. "Satın alma akışı" → Fatura onay akışı, bu bölüm değişmedi.
+- **Faturalar** (`FaturaListesi.jsx`/`FaturaDetayModal.jsx`) — onay akışı
+  bkz. "Satın alma akışı" → Fatura onay akışı, değişmedi. 2026-07-28'de
+  sadeleştirildi: üstteki 4 KPI kartı (Taslak/Yönetici Onayında/Düzeltme/
+  Onaylanan) kaldırıldı (durum sekmelerindeki sayaçlarla — `Tümü <b>29</b>`
+  vb. — zaten aynı bilgiyi tekrarlıyordu), sekme yazıları kalınlaştırıldı
+  (`font:700`, aktifte `800`). Üst-sağdaki buton eskiden "▤ Faturalanacak
+  Talepler" yazıp aslında boş "Yeni Fatura" formu açıyordu (bkz. eski "Bilinen
+  açık noktalar") — artık **"＋ Fatura / Harcama Ekle"** olarak doğru
+  etiketlenip genelleştirilmiş `FaturaOlusturModal.jsx` sihirbazını açıyor
+  (bkz. aşağıdaki "Fatura/Harcama Ekle sihirbazı" notu). `FaturaFormModal.jsx`
+  artık yalnızca **mevcut** bir faturayı (taslak/düzeltme_bekliyor)
+  düzenlemek için kullanılıyor — yeni fatura/harcama oluşturma bu bileşenden
+  tamamen ayrıldı.
 - **Ödeme Takibi** (`OdemeTakibi.jsx`, muhasebe için `TabOdemeler.jsx` →
   admin/proje_yöneticisi için `TabFinans.jsx` içinden) — hem faturalı
   (`invoices`/`invoice_payments`, `v_invoice_payment_overview` view'ı üzerinden
@@ -526,14 +671,20 @@ açık noktalar" → migration tracking boşluğu).
   (`financial_transactions`/`financial_transaction_payments`) kayıtlarını TEK
   tabloda, `source` alanıyla ayırt ederek listeler — kullanıcı kararıyla
   (2026-07-26) ayrı bir "Finansal İşlemler" üst-sekmesi olarak KALMAYACAK
-  şekilde buraya taşındı. "Faturasız Ödeme Ekle" butonu
-  `FinansalIslemFormModal.jsx`'i açar (basitleştirilmiş: tek "faturasız ödeme"
-  kaydı, eski 6 kategorili `masraf/avans/hakediş/vergi-harç/personel/diğer`
-  dropdown'u ve sonradan-faturayla-eşleştirme özelliği kaldırıldı — DB kolonu
-  `transaction_type` hâlâ var ama sabit `'diger'` yazılıyor); ödeme girişi
-  `FinansalIslemOdemeModal.jsx`. `invoices.status`'un `'ödendi'`,
+  şekilde buraya taşındı. `invoices.status`'un `'ödendi'`,
   `financial_transactions.status`'un `'odendi'` yazması (Türkçe karakter farkı)
   bu ekranda tek bir görüntüleme durumuna (`normalizeStatus`) indirgeniyor.
+  2026-07-28'de sadeleştirildi: gereksiz `<h1>`/açıklama ve 4 KPI stat kartı
+  kaldırıldı; ayrı "＋ Faturasız Ödeme Ekle" butonu (`FinansalIslemFormModal.jsx`
+  açardı) kaldırılıp tek **"＋ Fatura / Harcama Ekle"** butonuna birleştirildi
+  — bu buton da genelleştirilmiş `FaturaOlusturModal.jsx` sihirbazını açar
+  (Faturalı seçilirse `invoices`'a, Faturasız seçilirse `financial_transactions`'a
+  yazar). `FinansalIslemFormModal.jsx` bu birleşmeyle tamamen kullanımdan
+  kalktığı için silindi — bir işleme ödeme *girmek* için hâlâ ayrı
+  `FinansalIslemOdemeModal.jsx` kullanılıyor (bu değişmedi, o bir "ekleme"
+  değil "mevcut kayda ödeme" akışı). "Ödeme Takvimi" ve "Tedarikçiye Ödeme
+  Ekle" butonları aynen kaldı (farklı işlevler — biri görünüm, diğeri
+  toplu-ödeme dağıtımı, "ekle" birleşmesinin kapsamı dışında).
 - **Tedarikçiler** (`TedarikciListesi.jsx`/`TedarikciDetayModal.jsx`) — bakiye/
   geçmiş hem `invoices` hem `financial_transactions`'ı kapsar (`iptal` hariç);
   önceden yalnızca faturalar sayılıyordu, aynı tedarikçiye faturasız yapılan
@@ -541,8 +692,9 @@ açık noktalar" → migration tracking boşluğu).
   toplu ödeme sihirbazı (`TedarikciOdemeModal.jsx`, açık faturalara dağıtım)
   bilinçli olarak hâlâ yalnızca fatura bazlı — faturasız ödemenin kendi tekil
   ödeme girişi `FinansalIslemOdemeModal.jsx` üzerinden yapılır.
-- **Raporlar** (`FinansRaporlari.jsx`) — proje/tedarikçi/dönem bazlı filtrelenebilir
-  rapor + Excel/PDF export. **"Hedef Maliyet" karşılaştırması kasıtlı olarak
+- **Detay** (`FinansRaporlari.jsx`, üst-seviye sekme değil — "Genel"
+  sekmesinin kendi içindeki ikinci alt-sekme, bkz. yukarısı) — proje/tedarikçi/dönem
+  bazlı filtrelenebilir rapor + Excel/PDF export. **"Hedef Maliyet" karşılaştırması kasıtlı olarak
   YOK**: `budget_lines` RLS'i (`budget_lines_select`) yalnızca `admin`/
   `proje_yoneticisi`'ne izinli, muhasebe için bu sorgu sessizce boş dönüyordu
   (2026-07-26 öncesi haliyle "Hedef Maliyet" sütunu muhasebede hep ₺0
@@ -556,16 +708,33 @@ açık noktalar" → migration tracking boşluğu).
   proje_yöneticisi'nin gördüğü `TabGenel`'den ayrı, kendi ad-hoc hesaplamasını
   kullanır (`get_finans_overview` RPC'sine bağlı değil) — bkz. "Frontend
   yapısı" → Proje Finans sekmesi notu.
-- **Fatura oluşturma iki ayrı bileşen, BİLİNÇLİ olarak birleştirilmedi**:
-  `FaturaFormModal.jsx` (Faturalar sekmesinden serbest/bağımsız fatura) ve
-  `FaturaOlusturModal.jsx` (satın alma talebinden tetiklenen, kendi görsel adım
-  sihirbazı — talep bilgisi kartı, "Otomatik Kontroller" listesi, tutar-tolerans
-  uyarısı). İlk bakışta kod tekrarı gibi görünüyor ama ikincisi gerçekte daha
-  zengin, amaca özel bir UX — 2026-07-26'da birleştirme denendi, ikincisinin
-  basit bir forma indirgenmesinin işlevsel kayıp (checks/wizard UX) olacağı
-  görülüp geri alındı. İkisi de aynı temel deseni kullanıyor: `invoices` insert
-  `status='taslak'` ile, ardından `invoice_approvals`'a `step=1 'Yönetici
-  Onayı' 'bekliyor'` insert/upsert.
+- **Fatura/Harcama Ekle sihirbazı — tek, genelleştirilmiş bileşen
+  (2026-07-28):** `FaturaOlusturModal.jsx` (`src/components/satin-alma/`)
+  artık uygulama genelinde "yeni fatura/harcama oluştur" için TEK giriş
+  noktası — Satın Alma'daki (`MuhasebeSatinAlma.jsx`) satır bazlı "Fatura
+  Oluştur", Satın Alma/Faturalar/Ödemeler sayfalarındaki üst "+ Fatura /
+  Harcama Ekle" butonları hepsi bunu açar. 2026-07-26'da bir birleştirme
+  denemesi geri alınmıştı (bkz. eski not) çünkü o zamanki `FaturaFormModal`
+  wizard UX'ini (talep kartı, "Otomatik Kontroller", tutar-tolerans uyarısı)
+  kaybediyordu — bu kez tersi yapıldı: `FaturaOlusturModal`'ın kendisi
+  genelleştirildi, basit forma indirgenmedi. `request` prop'u artık
+  **opsiyonel**: doluysa (satır bazlı tetikleme) proje/talep sabit ve
+  salt-okunur eskisi gibi; boşsa (genel giriş noktaları) sihirbazın en
+  başında editable bir "Proje ve Bağlı Talep" kartı açılır — proje seçilebilir,
+  `status='satin_alindi'` tüm taleplerden (projeye göre filtrelenmiş) opsiyonel
+  bir talep seçilebilir ya da talepsiz "genel harcama" olarak devam edilebilir.
+  "Kayıt Türü" (Faturalı/Faturasız) toggle'ı her iki modda da aynı: Faturalı
+  `invoices`'a `status='taslak'` + gerekirse `invoice_approvals` insert eder
+  (bağlı talep varsa `source='satin_alma'`, yoksa `'manuel'`); Faturasız
+  `financial_transactions`'a (bağlı talep varsa `purchase_request_id`'siyle,
+  yoksa talepsiz) doğrudan yazar, onay adımı yok. **Ödeme takibi artık ayrı
+  bir onay kutusu değil** — ödeme takibi (`requires_payment_tracking`)
+  doğrudan Vade Tarihi alanının doluluğundan türetilir (doluysa takibe
+  alınır, boşsa fatura onaylanınca peşin kapanır); bağlı talep varsa para
+  birimi hâlâ TRY'ye kilitli (talebin `approvedTotal` karşılaştırması TRY),
+  bağlı talep yoksa (genel harcama/fatura) TRY/USD/EUR seçilebilir.
+  `FaturaFormModal.jsx` artık bu akışın DIŞINDA — yalnızca mevcut bir
+  faturayı düzenlemek için kullanılıyor (bkz. "Faturalar" bullet'ı).
 - **`cost_allocations.transaction_id`** (2026-07-26 eklendi) — faturasız
   ödemelerin de "gerçekleşen maliyet"e yansıması için `invoice_id`'nin yanına
   eklenen ikinci, birbirini dışlayan kaynak kolonu (`cost_allocations_source_xor`
@@ -864,13 +1033,6 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   kullanıcı kararıyla wizard tarafı tercih edildi). Gerçek tarayıcıda
   doğrulandı: tedarikçi seçilince buton aktifleşiyor, fatura `taslak` olarak
   kaydediliyor, console hatası yok.
-- **`FaturaListesi.jsx`'teki üst-sağ buton etiketi ile davranışı uyuşmuyor
-  olabilir:** buton "▤ Faturalanacak Talepler" yazıyor ama `onClick`'i
-  `setEditingInvoice(null); setShowForm(true)` — yani gerçekte Satın Alma'daki
-  "Faturalanacak Talepler" kuyruğuna gitmiyor, doğrudan boş "Yeni Fatura"
-  formunu açıyor. Bu görev kapsamında yalnızca fark edildi (test bu davranışı
-  kullanarak `FaturaFormModal`'ı başarıyla açtı), düzeltilmedi/onaylanmadı —
-  kasıtlı bir "hızlı ekle" kısayolu mu yoksa yanlış etiket mi belirsiz.
 - **`tests/procurement-workflow.spec.js` ve birkaç `procurement-*`/`accounting-scope`
   testi eski akışa göre yazılmış, güncellenmedi.** 2026-07-26'da satın
   alma→fatura akışı uçtan uca test edilirken fark edildi: bu spec'ler kaldırılmış
@@ -928,55 +1090,248 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   (`20260726162840`, `20260726163329`). Yerel dosyalar canlı state'i doğru
   yansıtıyor, sadece `schema_migrations` geçmişiyle 1:1 eşleşmiyor.
 
+
+
+
+
 ## Son değişiklik
 
-**27.07.2026 — Satın alma talebi "Fatura Oluştur" adımına "Faturasız" kapatma seçeneği eklendi.**
+**29.07.2026 — Kapsamlı flow denetimi (satın alma/fatura, günlük rapor,
+ticket/bildirim, muhasebe&finans, roller/malzeme listesi/proje yönetimi) 5
+paralel agent'la gerçek tarayıcıda yapıldı; bulunan maddeler sırayla
+düzeltildi: (1) `DailyReportForm.jsx`'teki "Sorunlar" bölümü kalıcı olarak
+kaldırıldı, (2) santiye şefinin kendi genel ticket'larını görememesi,
+(3) bir yanlış alarm (proje yönetimi yetkisi, aslında bug değildi),
+(4) proje yöneticisinin sidebar'da Finans'ı görememesi, (5) fatura
+iptalinde bağlı talebin yanlış duruma dönmesi, (6) günlük rapor "Not"
+alanlarının meta önekini çözmemesi, (7) satın alma Reddet/İptal Et'in
+gerekçe toplamadan sessizce çalışması, (8) günlük raporda makine türü
+tekrarının yanıltıcı hata mesajı vermesi, (9) Tickets sayfasının
+controlled-input console uyarısı, (10) bildirimlerde silme UI'ının
+eksikliği, (11) `ProjeDetay.jsx` sekme geçişinde border console uyarısı,
+(12) `kismen_odendi` faturada yanlış işlem etiketi, (13) admin'in menü/proje-içi
+"Bekleyen" sekmesi görünürlük tutarsızlığı. Denetimde bulunan tüm maddeler
+kapandı. Ardından (14) proje genelinde ölü kod taraması yapıldı, `index.jsx`'te
+proje_yoneticisi için hiç tetiklenemeyen bir "İş Planı" render dalı bulunup
+kaldırıldı.**
 
-Kullanıcı "fatura oluştur ve faturasız gider ekleme kısmının farkını nasıl
-ayırt edicez... satın alma veya herhangi bir gider girilirken faturalı
-faturasız seçeneği mi çıksa" diye sordu. Araştırma: ayrım üst seviyede zaten
-vardı (Fatura = `invoices`, onay akışlı; Faturasız Ödeme = `financial_transactions`,
-Ödeme Takibi'nden muhasebenin direkt girdiği, onaysız kayıt — ikisi de
-`cost_allocations` üzerinden "gerçekleşen maliyet"e yansıyor) ama gerçek gap
-şuydu: `financial_transactions`'ın `purchase_request_id` kolonu yoktu, yani
-satın alma talebi zincirinden geçmiş (onaylanmış+tedarik edilmiş) bir talep,
-tedarikçiden resmi fatura gelmediyse hiçbir zaman kapanamıyordu — tek çıkış
-yolu (uydurma da olsa) bir fatura girmekti. Kullanıcıya bu bulgu + önerilen
-çözüm (satın alma "Fatura Oluştur" adımına Faturalı/Faturasız seçici) soruldu,
-onaylandı.
+**(1) Sorunlar bölümü kaldırma:** `aff8177` commit'inde (23.07.2026) kazayla
+silinen "Sorunlar" bölümü UI'dan erişilemezdi ama arkasında ölü kod (state,
+handler'lar, panel JSX, `SECTION_STATE.issues`) bırakmıştı. Kullanıcı bunun
+kendi kararı olduğunu, artık sorun/bloker için doğrudan Tickets sekmesinin
+kullanılacağını belirtti — `DailyReportForm.jsx`'teki tüm ölü kod (`newIssueRow`/
+`TICKET_STATUS_LABEL`/`PRIORITY_OPTIONS`/`RESOLUTION_OPTIONS`/`updateIssue`/
+`addIssueRow`/`removeIssueRow`/`issueTicketInfo` + panel JSX) silindi,
+`index.jsx`'teki kullanılmayan `onGoToTicket` prop'u kaldırıldı. **Kritik
+korunan davranış:** `issues` state'i tamamen silinmedi — `save_daily_report`
+RPC'si `p_issues`'ta listelenmeyen id'leri siler, bu yüzden eski raporlardaki
+`daily_report_issues` satırları hâlâ yüklenip HİÇBİR değişiklik yapılmadan
+`p_issues`'a geri gönderiliyor (aksi halde eski bir raporu düzenlemek geçmiş
+sorun/ticket linklerini sessizce silerdi). Playwright ile gerçek kayıt
+doğrulandı (7 bölüm, Sorunlar yok, console hatası yok, kayıt başarılı).
 
-Onaylı migration (`20260727120000_purchase_request_faturasiz_closure`):
-`financial_transactions`'a `purchase_request_id` eklendi;
-`fn_guard_financial_transaction_requires_procurement_done` (BEFORE INSERT,
-`fn_guard_invoice_requires_procurement_done`'ın birebir eşi — talep
-`satin_alindi`'de değilse/proje uyuşmuyorsa reddeder);
-`sync_purchase_request_from_financial_transaction` (AFTER INSERT/UPDATE OF
-status, `sync_purchase_request_from_invoice`'un eşi — INSERT'te talebi
-doğrudan `faturasi_kesildi`'ye taşır, çünkü faturasız tarafta yönetici onay
-adımı yok; `iptal` edilirse `satin_alindi`'ye geri döner);
-`financial_transactions_purchase_request_id_key` kısmi unique index'i
-(`WHERE status <> 'iptal'`) bir talebin en fazla bir aktif faturasız kapatma
-kaydı olmasını garanti eder (bkz. "Satın alma akışı" → "Faturalı / Faturasız
-kapatma").
+**(2) Genel ticket görünürlüğü:** `TicketListesi.jsx`'teki santiye_sefi
+filtresi `project_id = authProjectId` uyguluyordu — Postgres'te bu `project_id
+IS NULL` (genel ticket) satırlarını asla eşleştirmediğinden santiye şefi kendi
+açtığı genel ticket'ları kendi listesinde hiç göremiyordu.
+`.or('project_id.eq.<id>,project_id.is.null')`'a çevrildi; RLS zaten yalnızca
+kendi oluşturduğu genel ticket'ları döndürdüğü için kapsam genişlemedi.
+Playwright ile gerçek bir genel ticket oluşturulup listede göründüğü
+doğrulandı.
 
-Frontend: `FaturaOlusturModal.jsx` baştan yazıldı — en üstte "Kayıt Türü"
-seçici (Faturalı/Faturasız), Faturasız seçilince Fatura No/KDV/Para Birimi
-alanları kalkıp yerine Belge Türü (fiş/makbuz/dekont/vb.) geliyor, tutar
-tek alan (KDV kırılımı yok), Açıklama zorunlu hale geliyor, para birimi TRY'ye
-kilitleniyor (talebin kendi tahmini her zaman TRY olduğundan tolerans
-kontrolünün anlamlı kalması için); alt buton tekli "Kaydet ve Talebi Kapat"
-oluyor (taslak/onaya-gönder ayrımı yok, çünkü faturasız tarafta onay adımı
-yok). Faturalı mod (taslak/devam et, USD/EUR + kur, tüm önceki davranış)
-dokunulmadan korundu.
+İkisi için de test verisi/geçici dosyalar temizlendi, lint clean.
 
-Gerçek tarayıcıda 4 rolle (Playwright: şantiye şefi→admin→proje yöneticisi→
-muhasebe) uçtan uca doğrulandı: talep oluştur→onayla→tedarik tamamla→
-"Faturasız" ile kapat → DB'de talep `faturasi_kesildi`, `financial_transactions`
-satırı `purchase_request_id` bağlantısıyla `odeme_bekliyor` durumunda ₺500
-doğru kaydedildi, `cost_allocations`'a otomatik yansıdı (yeni bir maliyet
-mekanizması gerekmedi — mevcut `trg_financial_transaction_cost_allocation`
-zaten kapsıyordu). Lint clean, console hatası yok. Test verisi temizlendi.
-(Test sırasında ayrı `-g` filtreli çalıştırmalar arasında modül-seviyeli
-`Date.now()` marker'ının her seferinde yeniden üretilip test adımları
-arasındaki senkronun bozulması yine yaşandı — bilinen bir kısıt, tüm dosya
-tek seferde çalıştırılınca sorunsuz geçti.)
+**(3) Yanlış alarm — "proje yöneticisi her projeyi düzenleyip silebiliyor"
+bug DEĞİLMİŞ, denetimin kendisi CLAUDE.md'nin bayat bir cümlesine güvenmişti.**
+`TabProjeYonetimi.jsx`'teki `canCreateProject` kontrolünün satır
+aksiyonlarını (Düzenle/Excel export/Sil) da kapsaması önce yetki genişlemesi
+sanılıp `isAdmin`-only'e geri çekildi, ama migration geçmişi kontrol edilince
+(`20260723140000_allow_proje_yoneticisi_edit_project_wizard_tables`,
+`20260723140100_allow_proje_yoneticisi_delete_project_cascade`) bunun
+23.07.2026'da BİLİNÇLİ bir tasarım kararıyla hem RLS hem UI düzeyinde açıldığı
+görüldü — kademeli proje silme, bağlı `invoices`/`purchase_requests`/
+`agent_reports`/`procurement_item_change_requests`/`procurement_item_adjustments`
+kayıtlarını temizleyebilmesi için proje yöneticisine özel DELETE policy'leriyle
+birlikte tasarlanmış. Asıl hata kodun kendi (o migration'dan önce yazılmış,
+güncellenmemiş) yorumu ve CLAUDE.md'nin "Roller" bölümündeki tek cümleydi —
+ikisi de düzeltildi, davranışta hiçbir değişiklik yapılmadı (geri alındı).
+**Ders:** bir "kodun kendi yorumuyla çelişiyor" bulgusu bile migration
+geçmişi kontrol edilmeden düzeltme sinyali sayılmamalı — yorum/dokümantasyon
+migration'dan sonra güncellenmemiş olabilir (bkz. [[feedback_check_migrations_before_new_constraint]]).
+
+**(4) Proje yöneticisi sidebar'da Finans'ı göremiyordu.** 2026-07-24'teki
+"proje yöneticisi Faturalar/Onay Kuyruğu görebilsin" genişlemesi yalnızca
+component katmanında yapılmıştı — `role_allowed_tabs`/`role_sidebar_items`'a
+`finans` satırı hiç eklenmemişti. Sonuç: sidebar'da "Finans" hiç görünmüyordu
+ve `index.jsx`'teki `handleTabChange`, `navigation.tabs`'ta olmayan bir
+sekmeye normal tıklamayla geçişi sessizce engelliyordu — yalnızca bildirim
+deep-link'i (`setActiveTab` bu kontrolü bypass eder) ile erişilebiliyordu.
+`role_allowed_tabs`/`role_sidebar_items`'a proje_yoneticisi+finans satırı
+ekleyen migration (`20260729120000_add_finans_nav_for_proje_yoneticisi`,
+`odemeler`/muhasebe için daha önce yapılan `20260726213920` ile birebir aynı
+desen) onaylanıp uygulandı. Playwright ile proje yöneticisi hesabıyla
+sidebar'dan Finans'a tıklanıp Onay Kuyruğu'nun göründüğü doğrulandı.
+
+**(5) Fatura reddedilince bağlı talep donuk kalıyordu.** `sync_purchase_request_from_invoice`
+2026-07-21'deki bir rewrite'ta (muhtemelen INSERT dalıyla kopya-yapıştır hatası)
+bir fatura `reddedildi`'ye geçince bağlı talebi `onaylandi`/`satin_alindi` yerine
+yanlışlıkla `fatura_onay_bekliyor`'da bırakıyordu — `reddedildi` artık nihai bir
+durum olduğundan (2026-07-24'te resubmit/delete RPC'leri kaldırıldı) talep bu
+durumda sonsuza kadar donuk kalıyordu: ne yeniden faturalanabiliyor ne gerçek
+bir onay bekliyordu. Doğru hedefin `satin_alindi` olduğu, faturasız ödemenin
+birebir eşi (`sync_purchase_request_from_financial_transaction`, iptalde zaten
+`satin_alindi`'ye dönüyor) referans alınarak belirlendi — CLAUDE.md'nin eski
+"onaylandi'ye döner" cümlesi de 2026-07-21'deki tedarik/Tedarik adımı
+eklenmesinden önce yazılmış, bayattı (düzeltildi). Migration
+(`20260729130000_fix_purchase_request_revert_on_invoice_rejection`) onaylanıp
+uygulandı; gerçek fatura onay/red cascade'i (invoice_approvals insert →
+`fn_invoice_approval_submitted` → reddet → `fn_invoice_approval_cascade`) uçtan
+uca SQL ile simüle edilip talebin `satin_alindi`'ye döndüğü, `invoice_id`'nin
+null'landığı doğrulandı; test verisi temizlendi.
+
+Flow denetiminde bulunan tüm kritik maddeler kapandı; ardından orta seviye bir
+madde de düzeltildi: **(6) `DailyReportList.jsx`/`DailyReportDetail.jsx` "Not"
+alanları `__REPORT_NOTES_META__{json}` önekini çözmüyordu.** Kullanıcının
+paylaştığı ekran görüntüsünde bir raporun "Not" hücresinde ham JSON metni
+görünüyordu. `decodeStoredMeta()` PDF/Excel export'ta zaten kullanılıyordu
+ama liste kolonunda ve `DailyReportDetail.jsx`'in "Genel Notlar" bloğunda hiç
+çağrılmıyordu — ikisi de düzeltildi (Detail'e aynı decode fonksiyonu
+eklendi, önceden orada hiç yoktu). Gerçek veriyle (28.07.2026 tarihli, meta
+önekli mevcut bir rapor) Playwright'la hem listede hem detay modalında artık
+"Ek saha notu bulunmuyor." (decoded description) göründüğü, ham önekin hiçbir
+yerde kalmadığı doğrulandı. **Ayrıca fark edildi, bu görev kapsamında
+düzeltilmedi:** `isg_notes`/`incident_notes` alanları hiçbir ekranda hiç
+gösterilmiyor (bkz. "Frontend yapısı" → Saha ekranları notu) — ayrı bir görev
+gerektirir.
+
+**(7) Satın alma "Reddet"/"İptal Et" gerekçesiz, sessizce çalışıyordu.**
+CLAUDE.md tedarik iptalinin "zorunlu gerekçe" gerektirdiğini iddia ediyordu
+ama gerçekte `TabSatinAlmaTalepListesi.jsx`'teki üç buton da (admin'in
+Onayla/Reddet'i, proje yöneticisinin Tamamlandı/İptal Et'i) hiçbir not
+toplamadan tek tıkla anında `purchase_requests.status`'u değiştiriyordu;
+`TalepDetayModal.jsx`'teki eşdeğer not textarea'sı da yalnızca admin'in
+`onay_bekliyor` reddi için render ediliyordu (`canReview` koşulu), proje
+yöneticisinin `onaylandi` iptali için hiç yoktu. İkisi de düzeltildi:
+`TabSatinAlmaTalepListesi.jsx`'e satır-içi bir gerekçe modu eklendi
+(`rejectDraft` state — Reddet/İptal Et tıklanınca buton grubu yerine bir
+metin input'u + "Reddi Onayla"/"İptali Onayla" (gerekçe boşken disabled) +
+"Vazgeç" gösterir, `OnayReddetActions.jsx`'in "compact" moduyla aynı desen);
+`TalepDetayModal.jsx`'teki textarea `canAct`'e genişletildi (hem admin hem PM
+dalı) ve "Reddet" butonu not boşken disabled yapıldı. Gerekçe
+`purchase_requests.notes`'a (mevcut not varsa altına) yazılıyor. Gerçek
+admin (Reddet) ve proje yöneticisi (İptal Et) hesaplarıyla Playwright'la uçtan
+uca doğrulandı: buton gerekçe girilmeden disabled, girilince aktifleşiyor,
+kaydedilen `notes` doğru; test verisi temizlendi. Bu sırada aynı paragraftaki
+bayat `TedarikKuyrugu.jsx`/`pr_update_proje_yoneticisi` referansları da (bu
+bileşen/policy `02c8af4` ile kaldırılmış, güncel karşılıkları
+`TabSatinAlmaTalepListesi.jsx`/`fn_purchase_request_procurement_fields_only()`)
+düzeltildi.
+
+**(8) Günlük raporda aynı makine türü iki kez eklenince yanıltıcı hata
+mesajı gösteriliyordu.** `DailyReportForm.jsx`'teki `DAILY_REPORT_ERROR_RULES`'ta
+`{ match: ['machinery_logs_status', 'machine'], ... }` kuralı `translateError`'ın
+ANY-eşleşme mantığı (`matchers.some(...)`) yüzünden `machinery_logs_report_machine_unique`
+UNIQUE ihlali hata metnindeki bare "machine" alt-dizesini de yakalıyor,
+kullanıcıya gerçek sorunun ("bu makine türü zaten ekli") yerine "Makine durumu
+geçersiz. Lütfen listeden seçin." gösteriyordu. İki kural gerçek Postgres
+constraint adlarıyla (`machinery_logs_report_machine_unique` önce,
+`machinery_logs_status_check` sonra — sıra önemli) eşleşecek şekilde
+yeniden yazıldı. Form birden çok panelli olduğundan gerçek UNIQUE ihlalini
+Playwright'ta tetiklemek kırılgan çıktı (Grammarly benzeri bir tarayıcı
+eklentisinin overlay'i + panel kapatma zamanlaması) — bunun yerine
+`toUserMessage`/`translateError` mantığı gerçek Postgres hata metinleriyle
+(`duplicate key value violates unique constraint "machinery_logs_report_machine_unique"`
+ve `violates check constraint "machinery_logs_status_check"`) doğrudan Node'da
+test edilip her ikisinin de doğru, birbirinden ayrı mesaja eşlendiği
+doğrulandı. Lint clean.
+
+**(9) Tickets sayfası her açılışta React "controlled/uncontrolled input"
+console uyarısı basıyordu.** `TicketListesi.jsx`'teki gizli (`display:'none'`,
+görünürlüğü ayrı bir konu, kaldırılmadı) tarih filtresi input'u
+`useState(null)` ile başlatılan `dateFilter`'i doğrudan `value`'ya
+bağlıyordu — React `value={null}` için bu uyarıyı basar. `useState('')`'e
+çevrildi (filtreleme mantığı `if (dateFilter)` zaten boş string'i de falsy
+saydığından davranış değişmedi). Playwright'la admin hesabıyla Tickets
+sayfası açılıp console'da "value"/"null" içeren hiçbir uyarı kalmadığı
+doğrulandı (yalnızca alakasız, önceden de var olan React Router future-flag
+uyarıları kaldı). Lint clean.
+
+**(10) Bildirimlerde silme UI'ı yoktu — RLS zaten destekliyordu ama ölü
+backend kapasitesiydi.** `TabBildirimler.jsx`'e her satıra bir silme butonu
+eklendi. Satırın kendisi önceden `<button>` idi — içine ikinci bir
+`<button>` nesting geçersiz HTML olacağından satır `role="button"`/`tabIndex`/
+`onKeyDown` (Enter/Boşluk) ile erişilebilir bir `<div>`'e çevrildi, aynı
+`className` korunduğu için görsel hiçbir şey değişmedi. Silme butonu
+`event.stopPropagation()` ile satırın kendi tıklama davranışını (ilgili
+kayda gitme) tetiklemiyor. `NotificationBell.jsx`'e kasıtlı eklenmedi (o
+bileşen bilinçli olarak sade kalıyor). Playwright ile admin hesabıyla gerçek
+bir bildirim silinip listeden kalktığı, satır tıklamasının tetiklenmediği
+(sayfa yönlendirmesi olmadığı) doğrulandı. Bu sırada bu görev boyunca
+oluşturulan test kayıtlarından (silinmiş `purchase_requests`/`tickets`'a
+işaret eden, trigger'ların otomatik oluşturduğu) 10 yetim bildirim de fark
+edilip temizlendi — test cleanup'ının bundan sonra kaynak tablo satırlarıyla
+birlikte oluşan bildirimleri de silmesi gerektiği not edildi. Lint clean.
+
+**(11) `ProjeDetay.jsx` sekme değiştirirken React console uyarısı basıyordu.**
+`tabBtnActive`/`periodBtnActive` stil objeleri `tabBtn`/`periodBtn`'i
+spread edip yalnızca `borderColor` (longhand) override ediyordu, temel
+objede ise `border` (shorthand) tanımlıydı — React aynı elementte
+shorthand+longhand karışımını render'lar arası güncellerken uyarır
+("mixing shorthand and non-shorthand properties... can lead to styling
+bugs"). İkisi de `borderColor` yerine tam `border: '1px solid var(--color-primary)'`
+shorthand'ına çevrildi. Playwright ile admin hesabıyla proje detayında 4
+sekme arası geçiş yapılıp console'da border/borderColor içeren hiçbir uyarı
+kalmadığı doğrulandı. Lint clean.
+
+**(12) `kismen_odendi` faturada "İşlem" kolonu yanlış etiket gösteriyordu.**
+`FaturaListesi.jsx`'teki `islemHucresi()` yalnızca `odeme_bekliyor` için
+"Ödeme Gir" gösteriyordu, `kismen_odendi` bu kontrole girmediğinden alttaki
+genel `else` dalına düşüp "Görüntüle" gösteriyordu — fonksiyonel fark yoktu
+(ikisi de aynı `onOpen`/detay modalını açıyordu), yalnızca etiket
+yanıltıcıydı. Koşula `kismen_odendi` eklendi. Gerçek bir kısmen ödenmiş
+fatura (`AUD-05927745-A`, mevcut demo veri, değiştirilmedi) üzerinde
+Playwright'la "Ödeme Gir" etiketinin göründüğü doğrulandı. Lint clean.
+
+**(13) Admin'in "Bekleyen" sekmesi görünürlüğü menü-seviyesi (`TabSatinAlma.jsx`)
+ile proje-içi (`ProjeTabSatinAlma.jsx`) arasında tutarsızdı.** Git geçmişi
+kontrol edildi: proje-içi görünümdeki `canManageProcurement = isAdmin ||
+role==='proje_yoneticisi'` deseni 2026-07-16'dan (`35605b9`, özelliğin ilk
+eklendiği commit) beri admin'i kapsıyordu; menü-seviyesi sekme 2026-07-22'de
+(`f2075e4`) ayrı yazılırken bu deseni yansıtmayıp yalnızca `role==='proje_yoneticisi'`
+kullanmıştı — bilinçli bir kısıtlama değil, ikinci implementasyonun ilkiyle
+eşleşmeyi unutması. `TabSatinAlma.jsx`'te aynı `canManageProcurement` deseni
+eklenip sekme + içerik koşuluna uygulandı. **Dikkat edilen kritik nokta:**
+`TabSatinAlmaTalepListesi.jsx`'in kendi `canCompleteProcurement = role===
+'proje_yoneticisi'` değişkeni (satır aksiyonlarını gösteren, "Tamamlandı"
+butonu dahil) BİLEREK dokunulmadı — `complete_project_manager_purchase_request`
+RPC'si `get_my_role() <> 'proje_yoneticisi'` kontrolüyle admin'i açıkça
+reddediyor ("Bu işlemi yalnızca proje yöneticisi tamamlayabilir."), bu
+değişkeni admin'e genişletmek admin için tıklanınca hata veren çalışmayan
+bir buton yaratırdı. Yani admin artık "Bekleyen" sekmesini/listesini görebiliyor
+(proje-içi görünümle tutarlı, önceden de öyleydi) ama "Tamamlandı" aksiyonu
+kasıtlı olarak yalnızca proje yöneticisine özel kalıyor — bu RPC katmanında
+zaten var olan, bilinçli bir tasarım kısıtı, denetim kapsamının dışında.
+Playwright ile admin hesabıyla menü-seviyesi "Bekleyenler" → "Bekleyen"
+sekmesine tıklanıp "Bekleyen Talepler" listesinin göründüğü doğrulandı.
+Lint clean.
+
+**(14) Genel ölü kod temizliği.** Kullanıcı bu 13 maddelik denetim/düzeltme
+turunun ardından proje genelinde kalan ölü kod/gereksiz yer olup olmadığının
+kontrol edilmesini istedi. Tam proje `eslint` taraması (0 hata, yalnızca 2
+alakasız önceden var olan uyarı) ve `npm run build` (temiz, yalnızca
+alakasız chunk-size uyarısı) hiçbir unused-var/import sorunu göstermedi.
+Ayrıca `index.jsx`'te `role_allowed_tabs`/`role_sidebar_items`'a
+proje_yoneticisi için hiç `is-plani` eklenmediğinden (git geçmişiyle
+doğrulandı — `20260723065156_add_role_navigation_matrix` migration'ı PM'i
+bilinçli olarak `is-plani` olmadan tanımlıyor, bu bir regresyon değil)
+fiilen hiç tetiklenemeyen bir render dalı (`activeTab==='is-plani' &&
+role==='proje_yoneticisi'`) ve onu destekleyen `pySelectedProjectId` state'i
++ `ProjeSecimGerekli` bileşeni bulunup kaldırıldı; `scopeProjectId`
+hesaplaması sadeleştirildi (artık doğrudan `useScope()`'tan). Playwright ile
+hem proje yöneticisinin (İş Planı sidebar'da/hiçbir yerde görünmüyor, beklenen)
+hem santiye şefinin (İş Planı hâlâ çalışıyor) etkilenmediği doğrulandı, console
+hatası yok. Diğer olası ölü dosyalar (`TedarikKuyrugu.jsx`,
+`FinansalIslemler.jsx`/`FinansalIslemFaturaModal.jsx`/`FinansalIslemFormModal.jsx`)
+kontrol edildi, zaten önceki oturumlarda silinmiş oldukları doğrulandı —
+ek bir şey bulunmadı. Test dosyaları/verisi temizlendi, `dist/` build
+artifact'ı silindi (gitignore'da, commit'e dahil değil).

@@ -676,7 +676,7 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
                         display: 'block', overflow: 'hidden', textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap', maxWidth: 180,
                       }}>
-                        {r.notes || '—'}
+                        {decodeStoredMeta('__REPORT_NOTES_META__', r.notes).description || '—'}
                       </span>
                     </td>
                     <td style={TD}>

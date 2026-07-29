@@ -86,8 +86,8 @@ function ActionRow({ item, onClick }) {
   )
 }
 
-// "Aksiyon Gerektirenler" — muhasebe/yönetici onayı bekleyen fatura sayılarını gösterir, her satır
-// ilgili alt sekmeye (onNavigate) yönlendirir. Altında Son Hareketler listesi kalan alanı doldurur.
+// "Aksiyon Gerektirenler" — yönetici onayı bekleyen fatura sayısını gösterir, satır ilgili
+// alt sekmeye (onNavigate) yönlendirir. Altında Son Hareketler listesi kalan alanı doldurur.
 export default function ProjeTabFinansYanPanel({ actionItems, recentActivity, onNavigate, loading }) {
   const rows = formatActionItems(actionItems)
   const recent = (recentActivity || []).slice(0, 3)

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
+import { withSignedStorageUrls } from '../../utils/storageUrls'
 import { useAuth } from '../../context/AuthContext'
 import { useWeather } from '../../hooks/useWeather'
 import { resolveProjectByAssignedId } from '../../utils/projectResolver'
@@ -45,9 +46,6 @@ const MACHINE_TYPE_ALIASES = {
   'traktör': 'traktör',
   'traktor': 'traktör',
 }
-const PRIORITY_OPTIONS = ['düşük', 'orta', 'yüksek', 'kritik']
-const RESOLUTION_OPTIONS = ['açık', 'devam ediyor', 'çözüldü']
-
 function normalizeWeather(value) {
   const v = String(value || '').toLocaleLowerCase('tr-TR')
   if (v.includes('fırtına') || v.includes('dolu')) return 'fırtınalı'
@@ -75,7 +73,13 @@ function normalizeMachineType(value) {
 
 const DAILY_REPORT_ERROR_RULES = [
   { match: 'general_status', message: 'Genel durum geçersiz. Lütfen listeden seçin.' },
-  { match: ['machinery_logs_status', 'machine'], message: 'Makine durumu geçersiz. Lütfen listeden seçin.' },
+  // Bu iki kural gerçek Postgres constraint adlarıyla eşleşir — sıra önemli:
+  // report_machine_unique (aynı makine türü tekrar eklendi) status_check'ten
+  // (durum dropdown'ında olmayan bir değer) ÖNCE gelmeli, aksi halde eski
+  // gevşek 'machine' alt-dizesi deseni unique ihlalini de yanlışlıkla
+  // "durum geçersiz" olarak gösteriyordu (bkz. CLAUDE.md "Son değişiklik").
+  { match: 'machinery_logs_report_machine_unique', message: 'Bu makine türü bu raporda zaten ekli. Mevcut satırı düzenleyin veya farklı bir tür girin.' },
+  { match: 'machinery_logs_status_check', message: 'Makine durumu geçersiz. Lütfen listeden seçin.' },
   { match: 'weather', message: 'Hava durumu geçersiz. Lütfen listeden seçin.' },
   { match: ['department', 'shift'], message: 'Personel bilgisi geçersiz. Lütfen listeden seçin.' },
   { match: ['duplicate', 'unique'], message: 'Bu tarih için zaten bir rapor var.' },
@@ -93,30 +97,6 @@ function initMachinery() {
 }
 function newMachineryRow() {
   return { machine_type: '', count: 0, status: 'çalışıyor', notes: '' }
-}
-function newIssueRow() {
-  return {
-    id: null,
-    ticket_id: null,
-    topic: '',
-    category: '',
-    priority: 'orta',
-    assigned_to: '',
-    description: '',
-    resolution_status: 'açık',
-    closed_at: '',
-    notes: '',
-  }
-}
-
-// Ticket durumu için kısa TR etiketleri — src/components/tickets/*'daki STATUS
-// haritasıyla aynı anlam, burada yalnızca rozet metni için (bağımlılık eklemeye gerek yok).
-const TICKET_STATUS_LABEL = {
-  gönderildi:   'Açık',
-  açık:         'Açık',
-  işlemde:      'İşlemde',
-  kapatıldı:    'Kapatıldı',
-  iptal_edildi: 'İptal Edildi',
 }
 function newTaskRow() {
   return { description: '' }
@@ -178,7 +158,7 @@ const SECTION_DEFS = [
   { key: 'notes',     label: 'Notlar',               icon: '🗒️', optional: true, hideOptionalLabel: true },
 ]
 
-export default function DailyReportForm({ reportId: initialReportId, onBack, onSaved, className = '', onGoToTicket }) {
+export default function DailyReportForm({ reportId: initialReportId, onBack, onSaved, className = '' }) {
   const { user, projectId } = useAuth()
   const fileInputRef = useRef(null)
 
@@ -228,9 +208,10 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const [photos, setPhotos]             = useState([]) // { file, caption, preview }
   const [existingPhotos, setExistingPhotos] = useState([])
 
-  // Step 5 - Issues
-  const [issues, setIssues] = useState([newIssueRow()])
-  const [issueTicketInfo, setIssueTicketInfo] = useState({}) // ticket_id -> { status, severity }
+  // Sorunlar artık bu formdan girilmiyor (Tickets sekmesi kullanılıyor) — bu state
+  // yalnızca ESKİ raporlardaki daily_report_issues satırlarını save_daily_report'a
+  // değişmeden geri göndermek için tutulur (aksi halde RPC bunları siler, bkz. loadAll).
+  const [issues, setIssues] = useState([])
 
   const [alreadyExists, setAlreadyExists] = useState(false)
   const weatherCity = project?.location?.split('/')?.[0]?.trim() || null
@@ -363,7 +344,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setPlannedTasks(loadedPlanned.length ? loadedPlanned : [newTaskRow()])
 
     // Existing photos
-    setExistingPhotos(detail?.photos || [])
+    setExistingPhotos(await withSignedStorageUrls('saha-fotolari', detail?.photos || []))
 
     // Issues — id/ticket_id KORUNMALI: id geri gönderilmezse save_daily_report
     // bunu yeni sorun sanıp her kayıtta mükerrer ticket açar (bkz. RPC yorumu).
@@ -385,17 +366,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         }
       }))
     } else {
-      setIssues([newIssueRow()])
-    }
-
-    const ticketIds = [...new Set(issueRows.map(i => i.ticket_id).filter(Boolean))]
-    if (ticketIds.length > 0) {
-      const { data: ticketRows } = await supabase.from('tickets').select('id, status, severity').in('id', ticketIds)
-      const map = {}
-      ;(ticketRows || []).forEach(t => { map[t.id] = t })
-      setIssueTicketInfo(map)
-    } else {
-      setIssueTicketInfo({})
+      setIssues([])
     }
   }
 
@@ -422,8 +393,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setPlannedTasks([newTaskRow()])
     setPhotos([])
     setExistingPhotos([])
-    setIssues([newIssueRow()])
-    setIssueTicketInfo({})
+    setIssues([])
     setReportOwnerId(null)
   }
 
@@ -575,13 +545,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       return next.length ? next : [newTaskRow()]
     })
   }
-
-  // Issue helpers
-  function updateIssue(i, field, val) {
-    setIssues(prev => prev.map((row, idx) => idx === i ? { ...row, [field]: val } : row))
-  }
-  function addIssueRow()    { setIssues(prev => [...prev, newIssueRow()]) }
-  function removeIssueRow(i){ setIssues(prev => prev.filter((_, idx) => idx !== i)) }
 
   // Photo helpers
   function handlePhotoSelect(e) {
@@ -997,7 +960,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const filledDoneTasks     = doneTasks.filter(r => String(r.description || '').trim())
   const filledPlannedTasks  = plannedTasks.filter(r => String(r.description || '').trim())
   const filledProgressItems = progressItems.filter(item => Number(todayQty[item.id]) > 0)
-  const filledIssues        = issues.filter(r => String(r.topic || '').trim())
   const totalPhotoCount     = existingPhotos.length + photos.length
 
   const SECTION_STATE = {
@@ -1024,10 +986,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       preview: filledProgressItems.length > 0
         ? `${filledProgressItems.length} kalem güncellendi`
         : (progressItems.length ? 'Henüz girilmedi' : 'Bu projeye iş kalemi tanımlanmamış'),
-    },
-    issues: {
-      complete: filledIssues.length > 0,
-      preview: filledIssues.length > 0 ? `${filledIssues.length} sorun` : 'Sorun yok',
     },
     photos: {
       complete: totalPhotoCount > 0,
@@ -1404,79 +1362,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                 </div>
               )}
 
-              {/* Sorunlar / Blokerlar */}
-              {openSection === 'issues' && (
-                <div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {issues.map((row, i) => (
-                      <div key={i} style={CARD_ROW}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-muted)' }}>Sorun {i + 1}</span>
-                          <button onClick={() => removeIssueRow(i)} style={BTN_REMOVE} title="Sil">×</button>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                          <div>
-                            <label style={LABEL}>Konu</label>
-                            <input type="text" value={row.topic} onChange={e => updateIssue(i, 'topic', e.target.value)} placeholder="Sorun konusu..." style={INPUT} />
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-                            <div>
-                              <label style={LABEL}>Kategori</label>
-                              <input type="text" value={row.category} onChange={e => updateIssue(i, 'category', e.target.value)} placeholder="Kategori..." style={INPUT} />
-                            </div>
-                            <div>
-                              <label style={LABEL}>Öncelik</label>
-                              <select value={row.priority} onChange={e => updateIssue(i, 'priority', e.target.value)} style={INPUT}>
-                                {PRIORITY_OPTIONS.map(p => <option key={p}>{p}</option>)}
-                              </select>
-                            </div>
-                            <div>
-                              <label style={LABEL}>İlgili Kişi</label>
-                              <input type="text" value={row.assigned_to} onChange={e => updateIssue(i, 'assigned_to', e.target.value)} placeholder="İlgili kişi..." style={INPUT} />
-                            </div>
-                          </div>
-                          <div>
-                            <label style={LABEL}>Açıklama</label>
-                            <input type="text" value={row.description} onChange={e => updateIssue(i, 'description', e.target.value)} placeholder="Açıklama..." style={INPUT} />
-                          </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-                            <div>
-                              <label style={LABEL}>Çözüm Durumu</label>
-                              <select value={row.resolution_status} onChange={e => updateIssue(i, 'resolution_status', e.target.value)} style={INPUT}>
-                                {RESOLUTION_OPTIONS.map(r => <option key={r}>{r}</option>)}
-                              </select>
-                            </div>
-                            <div>
-                              <label style={LABEL}>Kapanış Tarihi</label>
-                              <input type="date" value={row.closed_at} onChange={e => updateIssue(i, 'closed_at', e.target.value)} style={INPUT} />
-                            </div>
-                            <div>
-                              <label style={LABEL}>Not</label>
-                              <input type="text" value={row.notes} onChange={e => updateIssue(i, 'notes', e.target.value)} placeholder="Not..." style={INPUT} />
-                            </div>
-                          </div>
-                          {row.ticket_id && (
-                            <button
-                              type="button"
-                              onClick={() => onGoToTicket?.(row.ticket_id)}
-                              style={{
-                                alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6,
-                                background: '#EFF6FF', color: '#185FA5', border: '1px solid #BFDBFE',
-                                borderRadius: 999, padding: '4px 12px', fontSize: 11.5, fontWeight: 600,
-                                cursor: 'pointer', fontFamily: 'inherit',
-                              }}
-                            >
-                              🎫 Ticket açıldı — durum: {TICKET_STATUS_LABEL[issueTicketInfo[row.ticket_id]?.status] || '…'} →
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={addIssueRow} style={{ ...BTN_GHOST, marginTop: 12 }}>+ Sorun Ekle</button>
-                </div>
-              )}
-
               {/* Fotoğraflar */}
               {openSection === 'photos' && (
                 <div>
@@ -1485,10 +1370,10 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
                       <p style={{ fontSize: 11, color: 'var(--color-muted-light)', margin: '0 0 8px' }}>Mevcut fotoğraflar:</p>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
                         {existingPhotos.map(photo => {
-                          const url = supabase.storage.from('saha-fotolari').getPublicUrl(photo.storage_path).data.publicUrl
+                          const url = photo.signed_url
                           return (
                             <div key={photo.id} style={{ position: 'relative' }}>
-                              <img src={url} alt={photo.caption || ''} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--color-border-md)' }} />
+                              {url && <img src={url} alt={photo.caption || ''} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--color-border-md)' }} />}
                               {photo.caption && <p style={{ margin: '4px 0 0', fontSize: 10, color: 'var(--color-muted-light)', textAlign: 'center' }}>{photo.caption}</p>}
                             </div>
                           )

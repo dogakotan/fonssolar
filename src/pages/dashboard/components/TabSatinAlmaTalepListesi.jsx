@@ -125,6 +125,10 @@ export default function TabSatinAlmaTalepListesi({
   const [faturaRequest, setFaturaRequest] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
   const [errorMessage, setErrorMessage] = useState('')
+  // Reddet/İptal Et için satır-içi gerekçe alanı — { id, note } iken o satırda
+  // buton grubu yerine gerekçe input'u + onay/vazgeç gösterilir (OnayReddetActions.jsx
+  // "compact" moduyla aynı desen). Gerekçe boşken gönderim disabled kalır.
+  const [rejectDraft, setRejectDraft] = useState(null)
   const [page, setPage] = useState(0)
 
   const canCreate = role === 'santiye_sefi' || role === 'proje_yoneticisi'
@@ -244,13 +248,18 @@ export default function TabSatinAlmaTalepListesi({
     })
   }
 
-  async function updateStatus(event, id, status) {
+  async function updateStatus(event, id, status, note) {
     event.stopPropagation()
     setActionLoading(id)
     setErrorMessage('')
+    const payload = { status, updated_at: new Date().toISOString() }
+    if (note) {
+      const current = requests.find(r => r.id === id)
+      payload.notes = [current?.notes, note].filter(Boolean).join('\n')
+    }
     let query = supabase
       .from('purchase_requests')
-      .update({ status, updated_at: new Date().toISOString() })
+      .update(payload)
       .eq('id', id)
     if (projectId) query = query.eq('project_id', projectId)
     const { error } = await query
@@ -259,6 +268,7 @@ export default function TabSatinAlmaTalepListesi({
       console.error('purchase_requests status update error:', error)
       setErrorMessage('Durum güncellenemedi.')
     } else {
+      setRejectDraft(null)
       await fetchData()
       onChanged?.()
     }
@@ -332,7 +342,9 @@ export default function TabSatinAlmaTalepListesi({
     ? 'Proje yöneticisinde bekleyen satın alma talebi yok.'
     : onlyPending
       ? 'Onay bekleyen satın alma talebi yok.'
-      : projectId ? 'Bu projeye ait satın alma talebi bulunmuyor.' : 'Hiç satın alma talebi bulunmuyor.'
+      : isMuhasebe
+        ? 'Faturalanacak satın alma talebi yok.'
+        : projectId ? 'Bu projeye ait satın alma talebi bulunmuyor.' : 'Hiç satın alma talebi bulunmuyor.'
 
   const showActions = canApprove || canCompleteProcurement || canInvoice || siteChiefView
   const headers = projectId
@@ -350,7 +362,16 @@ export default function TabSatinAlmaTalepListesi({
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {!onlyPending && !fixedStatus && (
+          {/* Muhasebe'nin verisi zaten satin_alindi/fatura_bekliyor ile sınırlı (ikisi de
+              aynı "Fatura Bekleniyor" etiketini taşıyor) — durum filtresi burada anlamsız,
+              çoğu seçenek hep boş dönerdi. Bunun yerine kapsamı açıklayan sabit bir etiket
+              gösteriliyor. */}
+          {!onlyPending && !fixedStatus && isMuhasebe && (
+            <span style={{ fontSize: 11.5, color: 'var(--color-muted)', fontStyle: 'italic' }}>
+              Yalnızca faturalanacak talepler listelenir
+            </span>
+          )}
+          {!onlyPending && !fixedStatus && !isMuhasebe && (
             <select
               value={statusFilter}
               onChange={event => setStatusFilter(event.target.value)}
@@ -449,23 +470,71 @@ export default function TabSatinAlmaTalepListesi({
                           {actionLoading === request.id ? '…' : 'Talebi Sil'}
                         </button>
                       ) : isPending && canApprove ? (
+                        rejectDraft?.id === request.id ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }} onClick={event => event.stopPropagation()}>
+                            <input
+                              type="text" autoFocus placeholder="Red gerekçesi (zorunlu)"
+                              value={rejectDraft.note}
+                              onChange={event => setRejectDraft(d => ({ ...d, note: event.target.value }))}
+                              style={{ border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontFamily: 'inherit', outline: 'none', width: 140 }}
+                            />
+                            <button
+                              onClick={event => updateStatus(event, request.id, 'reddedildi', rejectDraft.note.trim())}
+                              disabled={actionLoading === request.id || !rejectDraft.note.trim()}
+                              style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 700, cursor: rejectDraft.note.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: rejectDraft.note.trim() ? 1 : 0.6 }}
+                            >
+                              {actionLoading === request.id ? '…' : 'Reddi Onayla'}
+                            </button>
+                            <button
+                              onClick={event => { event.stopPropagation(); setRejectDraft(null) }}
+                              style={{ background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >
+                              Vazgeç
+                            </button>
+                          </div>
+                        ) : (
                         <div style={{ display: 'flex', gap: projectId ? 6 : 5, flexWrap: 'nowrap' }}>
                           <button onClick={event => updateStatus(event, request.id, 'onaylandi')} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                             {actionLoading === request.id ? '…' : 'Onayla'}
                           </button>
-                          <button onClick={event => updateStatus(event, request.id, 'reddedildi')} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                            {actionLoading === request.id ? '…' : 'Reddet'}
+                          <button onClick={event => { event.stopPropagation(); setRejectDraft({ id: request.id, note: '' }) }} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            Reddet
                           </button>
                         </div>
+                        )
                       ) : canCompleteProcurement && isWaitingForProjectManager ? (
+                        rejectDraft?.id === request.id ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }} onClick={event => event.stopPropagation()}>
+                            <input
+                              type="text" autoFocus placeholder="İptal gerekçesi (zorunlu)"
+                              value={rejectDraft.note}
+                              onChange={event => setRejectDraft(d => ({ ...d, note: event.target.value }))}
+                              style={{ border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontFamily: 'inherit', outline: 'none', width: 140 }}
+                            />
+                            <button
+                              onClick={event => updateStatus(event, request.id, 'iptal', rejectDraft.note.trim())}
+                              disabled={actionLoading === request.id || !rejectDraft.note.trim()}
+                              style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 700, cursor: rejectDraft.note.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: rejectDraft.note.trim() ? 1 : 0.6 }}
+                            >
+                              {actionLoading === request.id ? '…' : 'İptali Onayla'}
+                            </button>
+                            <button
+                              onClick={event => { event.stopPropagation(); setRejectDraft(null) }}
+                              style={{ background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >
+                              Vazgeç
+                            </button>
+                          </div>
+                        ) : (
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
                           <button onClick={event => completeProjectManagerRequest(event, request)} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                             {actionLoading === request.id ? '…' : 'Tamamlandı'}
                           </button>
-                          <button onClick={event => updateStatus(event, request.id, 'iptal')} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                            {actionLoading === request.id ? '…' : 'İptal Et'}
+                          <button onClick={event => { event.stopPropagation(); setRejectDraft({ id: request.id, note: '' }) }} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            İptal Et
                           </button>
                         </div>
+                        )
                       ) : canInvoice && isAwaitingInvoice(request) ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
                           <button onClick={event => { event.stopPropagation(); setFaturaRequest(request) }} style={{ background: '#EDE9FE', color: '#5B21B6', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>

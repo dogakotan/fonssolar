@@ -154,7 +154,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   const [severityFilter, setSeverityFilter] = useState('all')          // sub-filter when severity sort active
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [showFilterMenu, setShowFilterMenu] = useState(false)
-  const [dateFilter, setDateFilter]         = useState(null)
+  const [dateFilter, setDateFilter]         = useState('')
   const [showCal, setShowCal]               = useState(false)
   const [calPos, setCalPos]                 = useState({ top: 0, right: 0 })
   const calRef    = useRef(null)
@@ -257,7 +257,9 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     } else if (role === 'mekanik_sef') {
       q = q.in('category', ['mekanik', 'genel'])
     } else if (role === 'santiye_sefi') {
-      if (authProjectId) q = q.eq('project_id', authProjectId)
+      // project_id=X, project_id IS NULL satırlarını (kendi açtığı "Genel" ticket'lar)
+      // asla eşleştirmez — bu yüzden ikisi de or() ile birlikte aranmalı.
+      if (authProjectId) q = q.or(`project_id.eq.${authProjectId},project_id.is.null`)
     } else if (role === 'proje_yoneticisi') {
       // Çoklu projeye erişebiliyor, ProjeDetay'ın o an açık olan projesine göre süzülür
       // (admin dalıyla aynı desen) — sabit authProjectId değil propProjectId kullanılır.

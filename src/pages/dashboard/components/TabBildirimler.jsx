@@ -149,6 +149,12 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
     load()
   }
 
+  async function deleteNotification(event, id) {
+    event.stopPropagation()
+    await supabase.from('notifications').delete().eq('id', id)
+    load()
+  }
+
   async function handleClick(n) {
     if (!n.is_read) await markRead(n.id)
     switch (n.entity_type) {
@@ -249,8 +255,11 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                 return (
                   <div key={n.id}>
                     {showBucket && <div className="bildirim-bucket">{bucket}</div>}
-                    <button
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleClick(n)}
+                      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') handleClick(n) }}
                       data-notification-id={n.id}
                       data-entity-id={n.entity_id || undefined}
                       className={`bildirim-row${!n.is_read ? ' unread' : ''}`}
@@ -272,8 +281,14 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                       <div className="bildirim-meta">
                         {!n.is_read && <span className="bildirim-dot" style={tone ? { background: tone.dot } : undefined} />}
                         <span className="bildirim-time">{timeAgo(n.created_at)}</span>
+                        <button
+                          onClick={event => deleteNotification(event, n.id)}
+                          className="bildirim-delete"
+                          title="Bildirimi sil"
+                          aria-label="Bildirimi sil"
+                        >×</button>
                       </div>
-                    </button>
+                    </div>
                   </div>
                 )
               })}

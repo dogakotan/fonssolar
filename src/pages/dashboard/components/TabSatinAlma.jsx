@@ -5,9 +5,10 @@ import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../../../components/ui/DataStatusBanner'
 import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
+import MuhasebeSatinAlma from './MuhasebeSatinAlma'
 
 export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
-  const { role, isAdmin } = useAuth()
+  const { role, isAdmin, isMuhasebe } = useAuth()
   const [tab, setTab] = useState('talepler')
 
   // Bildirimler'den belirli bir talebe gidilince "Onay Bekleyenler" sekmesinde
@@ -38,13 +39,38 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
 
   const scopedProcurement = projectFilter === 'all' ? procurement : procurement.filter(p => p.project_id === projectFilter)
 
+  // Muhasebe'nin gördüğü tek talep listesi zaten satin_alindi/fatura_bekliyor
+  // kapsamına daraltılmış (get_purchase_requests_list_internal) — "Tüm Talepler"
+  // etiketi bu daralmayı yansıtmıyor, gerçek görevini ("faturalanacak talepler")
+  // anlatan bir başlık kullanılıyor.
+  // ProjeTabSatinAlma.jsx'teki canManageProcurement (isAdmin || proje_yoneticisi)
+  // ile aynı yetki kapsamı — bu sekme 2026-07-22'de menü seviyesinde ayrı
+  // yazılırken admin'i içermeyi unutmuştu (proje-içi görünüm zaten 2026-07-16'dan
+  // beri admin'i kapsıyordu), 29.07.2026'da tutarlılık için düzeltildi.
+  const canManageProcurement = isAdmin || role === 'proje_yoneticisi'
   const TABS = [
-    { key: 'talepler', label: 'Tüm Talepler' },
+    { key: 'talepler', label: isMuhasebe ? 'Faturalanacak Talepler' : 'Tüm Talepler' },
     ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
-    ...(role === 'proje_yoneticisi' ? [{ key: 'tedarik', label: 'Bekleyen' }] : []),
+    ...(canManageProcurement ? [{ key: 'tedarik', label: 'Bekleyen' }] : []),
   ]
 
   const activeProjectId = projectFilter === 'all' ? undefined : projectFilter
+
+  if (isMuhasebe) {
+    return (
+      <div>
+        <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+        <MuhasebeSatinAlma
+          requests={requests}
+          refreshing={refreshing}
+          onRefresh={refresh}
+          projectOptions={projectOptions}
+          projectFilter={projectFilter}
+          onProjectFilter={setProjectFilter}
+        />
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -81,10 +107,11 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
           refreshKey={refreshKey}
           openRequestId={openRequestId}
           onOpenedRequest={onOpenedRequest}
+          listTitle={isMuhasebe ? 'Faturalanacak Talepler' : undefined}
         />
       )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu onChanged={refresh} procurement={scopedProcurement} projectId={activeProjectId} refreshKey={refreshKey} />}
-      {tab === 'tedarik' && role === 'proje_yoneticisi' && (
+      {tab === 'tedarik' && canManageProcurement && (
         <TabSatinAlmaTalepListesi
           onChanged={refresh}
           procurement={scopedProcurement}

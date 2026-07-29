@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { withSignedStorageUrls } from '../../utils/storageUrls'
 import { useAuth } from '../../context/AuthContext'
 import { SEVERITY_META as SEVERITY } from '../../utils/ticketSeverity'
 import { STATUS_META as STATUS, CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
@@ -112,11 +113,7 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
       .select('*')
       .eq('ticket_id', initial.id)
       .order('created_at', { ascending: true })
-    setAttachments(data || [])
-  }
-
-  function attachmentUrl(path) {
-    return supabase.storage.from('ticket-ekleri').getPublicUrl(path).data.publicUrl
+    setAttachments(await withSignedStorageUrls('ticket-ekleri', data || []))
   }
 
   async function deleteAttachment(att) {
@@ -291,9 +288,11 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
                   const canDeleteAttachment = user?.id === att.uploaded_by
                   return (
                     <div key={att.id} style={{ position: 'relative' }}>
-                      <a href={attachmentUrl(att.storage_path)} target="_blank" rel="noreferrer">
+                      <a href={att.signed_url || undefined} target="_blank" rel="noreferrer">
                         {isImage ? (
-                          <img src={attachmentUrl(att.storage_path)} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid #E5E7EB' }} />
+                          att.signed_url
+                            ? <img src={att.signed_url} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid #E5E7EB' }} />
+                            : <div style={{ width: 72, height: 72, borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB' }} />
                         ) : (
                           <div style={{ width: 72, height: 72, borderRadius: 8, border: '1px solid #E5E7EB', background: '#F9FAFB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
                             📄

@@ -7,6 +7,7 @@ import Pager from '../ui/Pager'
 import { TONE, INVOICE_STATUS } from '../ui/StatusBadge'
 import FaturaFormModal from './FaturaFormModal'
 import FaturaDetayModal from './FaturaDetayModal'
+import FaturaOlusturModal from '../satin-alma/FaturaOlusturModal'
 import { toUserMessage } from '../../utils/errors'
 
 const formatCurrency = (amount, currency = 'TRY') =>
@@ -32,22 +33,6 @@ const TABS = [
   { key: 'odeme_bekliyor', label: 'Ödeme Bekleyen' },
   { key: 'ödendi', label: 'Ödendi' },
 ]
-
-const STAT_CARDS = [
-  { key: 'taslak', label: 'Taslak', icon: '▤', tone: 'muted' },
-  { key: 'yönetici_onayında', label: 'Yönetici Onayında', icon: '♙', tone: 'primary' },
-  { key: 'duzeltme_bekliyor', label: 'Düzeltme Bekleyen', icon: '!', tone: 'danger' },
-  { key: 'onaylanan', label: 'Onaylanan', icon: '✓', tone: 'success' },
-]
-
-function StatCard({ meta, data }) {
-  const tone = TONE[meta.tone] || TONE.muted
-  return (
-    <div className="invoice-stat-card" style={{ '--invoice-tone': tone.text, '--invoice-bg': tone.bg }}>
-      <span>{meta.icon}</span><div><small>{meta.label}</small><strong>{data?.count || 0}</strong><em>{formatCurrency(data?.amount)}</em></div>
-    </div>
-  )
-}
 
 // ── Fatura İptal Modal (onaylandı/odeme_bekliyor → reddedildi, admin) ────────
 function FaturaIptalModal({ invoice, onClose, onSaved }) {
@@ -99,7 +84,7 @@ function islemHucresi({ inv, isAdmin, isMuhasebe, canApprove, onEdit, onCancel, 
   if (inv.status === 'duzeltme_bekliyor' && isMuhasebe) {
     return <button onClick={() => onEdit(inv)} style={linkBtn}>Düzenle</button>
   }
-  if (inv.status === 'odeme_bekliyor' && isMuhasebe) {
+  if ((inv.status === 'odeme_bekliyor' || inv.status === 'kismen_odendi') && isMuhasebe) {
     return <button onClick={() => onOpen(inv)} style={linkBtn}>Ödeme Gir</button>
   }
   if (isAdmin && (inv.status === 'onaylandı' || inv.status === 'odeme_bekliyor')) {
@@ -127,6 +112,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState(null)
+  const [showAddInvoice, setShowAddInvoice] = useState(false)
   const [detayFatura, setDetayFatura] = useState(null)
   const [cancelling, setCancelling] = useState(null)
 
@@ -159,11 +145,12 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
     let alive = true
     supabase
       .from('invoices')
-      .select('*, suppliers(name), projects(name), purchase_requests(title)')
+      .select('*, suppliers(name), projects(name), purchase_requests!invoices_purchase_request_id_fkey(title)')
       .eq('id', openInvoiceId)
       .maybeSingle()
-      .then(({ data }) => {
+      .then(({ data, error }) => {
         if (!alive) return
+        if (error) console.error('openInvoiceId fatura fetch error:', error)
         if (data) setDetayFatura(data)
         onOpenedInvoice?.()
       })
@@ -194,13 +181,6 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
     return acc
   }, {})
 
-  const statData = {
-    taslak: { count: invoices.filter(i => i.status === 'taslak').length, amount: invoices.filter(i => i.status === 'taslak').reduce((s, i) => s + Number(i.total_amount || 0), 0) },
-    yönetici_onayında: { count: invoices.filter(i => i.status === 'yönetici_onayında').length, amount: invoices.filter(i => i.status === 'yönetici_onayında').reduce((s, i) => s + Number(i.total_amount || 0), 0) },
-    duzeltme_bekliyor: { count: invoices.filter(i => i.status === 'duzeltme_bekliyor').length, amount: invoices.filter(i => i.status === 'duzeltme_bekliyor').reduce((s, i) => s + Number(i.total_amount || 0), 0) },
-    onaylanan: { count: invoices.filter(i => ['onaylandı', 'odeme_bekliyor', 'kismen_odendi', 'ödendi'].includes(i.status)).length, amount: invoices.filter(i => ['onaylandı', 'odeme_bekliyor', 'kismen_odendi', 'ödendi'].includes(i.status)).reduce((s, i) => s + Number(i.total_amount || 0), 0) },
-  }
-
   function openInvoice(inv) {
     if (inv.status === 'taslak' || inv.status === 'duzeltme_bekliyor') {
       if ((inv.status === 'taslak' && isMuhasebe) || (inv.status === 'duzeltme_bekliyor' && isMuhasebe)) {
@@ -215,14 +195,6 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
   return (
     <>
       <DataStatusBanner error={error} refreshing={loading && invoices.length > 0} onRetry={fetchInvoices} />
-      <div className="invoice-page-heading">
-        <div><span>Finans Operasyonları</span><h1>Faturalar</h1><p>Faturaları ve onay süreçlerini yönetin.</p></div>
-        <button onClick={() => { setEditingInvoice(null); setShowForm(true) }}>▤ Faturalanacak Talepler</button>
-      </div>
-      <div className="invoice-stats-grid">
-        {STAT_CARDS.map(meta => <StatCard key={meta.key} meta={meta} data={statData[meta.key]} />)}
-      </div>
-
       <div className="invoice-tabs">
         {TABS.map(t => (
           <button key={t.key} onClick={() => selectTab(t.key)} className={activeTab === t.key ? 'active' : ''}>
@@ -241,6 +213,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
         </select>
         <button className="invoice-filter-btn">☰ Filtrele</button>
         <button className="invoice-reset-btn" onClick={() => { setSearch(''); setFilterStatus('hepsi'); setFilterCategory('hepsi'); setActiveTab('hepsi'); setPage(0) }}>Temizle</button>
+        <button className="invoice-add-btn" onClick={() => setShowAddInvoice(true)}>＋ Fatura / Harcama Ekle</button>
       </div>
 
       <div className="invoice-list-shell">
@@ -283,6 +256,9 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
       )}
       {cancelling && (
         <FaturaIptalModal invoice={cancelling} onClose={() => setCancelling(null)} onSaved={fetchInvoices} />
+      )}
+      {showAddInvoice && (
+        <FaturaOlusturModal defaultProjectId={projectId || ''} onClose={() => setShowAddInvoice(false)} onSaved={async () => { setShowAddInvoice(false); await fetchInvoices() }} />
       )}
     </>
   )

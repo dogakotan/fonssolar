@@ -43,8 +43,10 @@ const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu.xlsx'
 
 export default function TabProjeYonetimi({ onViewProject }) {
   const { isAdmin, role } = useAuth()
-  // proje_yoneticisi admin ile aynı yetkilere sahip: proje ekleme (Excel şablonu),
-  // Düzenle, Excel export ve Sil (kademeli proje silme dahil) — hepsi bu satıra bağlı.
+  // proje_yoneticisi proje ekleme/Düzenle/Excel export/Sil'de admin ile eşit yetkili —
+  // bilinçli tasarım kararı (20260723140000/20260723140100 migration'ları), kademeli
+  // proje silmenin bağlı invoices/purchase_requests/agent_reports/procurement_item_*
+  // kayıtlarını temizleyebilmesi için RLS düzeyinde de açıldı, yalnızca UI-yüzeyi değil.
   const canCreateProject = isAdmin || role === 'proje_yoneticisi'
   const [view,            setView]            = useState('list')
   const [editProject,     setEditProject]     = useState(null)
@@ -218,9 +220,9 @@ export default function TabProjeYonetimi({ onViewProject }) {
       />
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      {/* Proje oluşturma/import (Şablon İndir/Yeni Proje/Manuel doldur) admin +
-          proje_yoneticisi'ye açık — Düzenle/Excel export/Sil (satır aksiyonları,
-          aşağıda) hâlâ isAdmin-only, kademeli proje silme dahil blast radius yüksek. */}
+      {/* Proje oluşturma/import (Şablon İndir/Yeni Proje/Manuel doldur) ve aşağıdaki
+          satır aksiyonları (Düzenle/Excel export/Sil) ikisi de admin + proje_yoneticisi'ye
+          açık — bkz. canCreateProject tanımındaki not. */}
       {canCreateProject && (
         <div className="card-header">
           <div style={{ flex: 1 }} />

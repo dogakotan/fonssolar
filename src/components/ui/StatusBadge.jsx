@@ -65,12 +65,21 @@ export const TK_SEVERITY = {
   yüksek: { label: 'Yüksek',  tone: 'danger' },
   kritik: { label: 'Kritik',  tone: 'danger' },
 }
+// Tek onaylayıcı (proje yöneticisi/"Yönetici") + taslak/düzeltme/ödeme-takibi
+// akışı (bkz. CLAUDE.md "Satın alma akışı" → Faturalar). 'bekliyor' yalnızca
+// invoices.status'un DEFAULT'u/geçici bir ara değer — kalıcı olarak hiçbir
+// faturada görünmez. 'muhasebe_onayında' hiçbir kod yolunun üretemediği ölü bir
+// değerdi (invoices_status_check'ten de kaldırıldı); burada da yok.
 export const INVOICE_STATUS = {
+  taslak:             { label: 'Taslak',              tone: 'muted' },
   bekliyor:           { label: 'Bekliyor',            tone: 'warning' },
-  muhasebe_onayında:  { label: 'Muhasebe Onayında',   tone: 'primary' },
   yönetici_onayında:  { label: 'Yönetici Onayında',   tone: 'primary' },
+  duzeltme_bekliyor:  { label: 'Düzeltme Bekliyor',   tone: 'danger' },
   onaylandı:          { label: 'Onaylandı',           tone: 'success' },
+  odeme_bekliyor:     { label: 'Ödeme Bekliyor',      tone: 'primary' },
+  kismen_odendi:      { label: 'Kısmen Ödendi',       tone: 'warning' },
   reddedildi:         { label: 'Reddedildi',          tone: 'danger' },
+  ödendi:             { label: 'Ödendi',              tone: 'success' },
 }
 export const PROCUREMENT_CHANGE_STATUS = {
   bekliyor:   { label: 'Onay Bekliyor', tone: 'warning' },

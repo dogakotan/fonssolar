@@ -9,7 +9,7 @@ const PAGER_BTN = {
 export default function Pager({ page, totalPages, onChange, forceShow = false }) {
   if (totalPages <= 1 && !forceShow) return null
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, paddingTop: 10 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, paddingTop: 6 }}>
       <button
         onClick={() => onChange(page - 1)}
         disabled={page === 0}

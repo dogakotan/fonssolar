@@ -77,8 +77,12 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const description = req.description || req.request_note || req.notes || '-'
   const requester = req.requester_name || req.requested_by_name || req.created_by_name || '—'
   const type = requestType(req, items)
+  // fatura_onay_bekliyor'da fatura zaten oluşturulmuş (yalnızca yönetici onayı
+  // bekleniyor) — "Fatura Bekleniyor" adımını hâlâ aktif göstermek yanlış,
+  // o adım tamamlanmış sayılır ve son adım ("Fatura Kesildi") aktif olur.
+  const invoiceCreated = ['fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const invoiceDone = status === 'faturasi_kesildi'
-  const invoiceActive = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(status)
+  const invoiceActive = ['satin_alindi', 'fatura_bekliyor'].includes(status)
   const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const procurementActive = status === 'onaylandi'
   const procurementDone = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
@@ -201,10 +205,11 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                 />
                 <Step
                   active={invoiceActive}
-                  done={invoiceDone}
+                  done={invoiceCreated}
                   label="Fatura Bekleniyor"
                 />
                 <Step
+                  active={status === 'fatura_onay_bekliyor'}
                   done={invoiceDone}
                   label="Fatura Kesildi"
                   last
@@ -215,7 +220,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
             </section>
           </div>
 
-          {type === 'Malzeme' && (
+          {type === 'Malzeme' && !isMuhasebe && (
           <section style={CARD}>
             <h3 style={TITLE}>Malzeme Miktar Kontrol</h3>
             {breakdown.length === 0 ? (
@@ -263,13 +268,13 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
 
           <section style={CARD}>
             <h3 style={TITLE}>Açıklama</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: canReview ? '1fr 1fr' : '1fr', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: canAct ? '1fr 1fr' : '1fr', gap: 10 }}>
               <p style={{ margin: 0, minHeight: 46, maxHeight: 70, overflow: 'hidden', fontSize: 12.5, lineHeight: 1.45, color: '#334155', whiteSpace: 'pre-wrap' }}>{description}</p>
-              {canReview && (
+              {canAct && (
                 <textarea
                   value={note}
                   onChange={event => setNote(event.target.value)}
-                  placeholder="Onay/red notu..."
+                  placeholder={canReview ? 'Onay/red notu... (red için zorunlu)' : 'İptal gerekçesi... (iptal için zorunlu)'}
                   style={{ width: '100%', height: 64, resize: 'none', boxSizing: 'border-box', border: '1px solid #D1D5DB', borderRadius: 8, padding: '8px 10px', fontFamily: 'inherit', fontSize: 12.5, outline: 'none' }}
                 />
               )}
@@ -282,7 +287,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                 <span style={{ color: '#64748B', fontSize: 12.5 }}>
                   {canReview ? 'Yönetici kararını bu talep üzerinden verebilir.' : 'Proje yöneticisi işlemi tamamlayabilir veya talebi reddedebilir.'}
                 </span>
-                <button onClick={() => updateStatus(canReview ? 'reddedildi' : 'iptal')} disabled={saving} style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>Reddet</button>
+                <button onClick={() => updateStatus(canReview ? 'reddedildi' : 'iptal')} disabled={saving || !note.trim()} style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: (saving || !note.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (saving || !note.trim()) ? 0.6 : 1 }}>Reddet</button>
                 <button onClick={() => updateStatus(canReview ? 'onaylandi' : 'satin_alindi')} disabled={saving} style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
                   {saving ? 'Kaydediliyor…' : canReview ? 'Onayla' : 'Tamamlandı'}
                 </button>

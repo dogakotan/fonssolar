@@ -22,11 +22,15 @@ const EMPTY_CPI = { ev: 0, cpi: null }
 const EMPTY_COST_BUCKETS = { buckets: [], totalPlanned: 0, totalActual: 0, totalSapma: 0, totalPct: 0 }
 const EMPTY_QUICK_FACTS = { pendingCount: 0, pendingAmount: 0, overBudgetCount: 0 }
 const EMPTY_ACTION_ITEMS = {
-  muhasebeOnayi: { count: 0, amount: 0 }, yoneticiOnayi: { count: 0, amount: 0 },
+  yoneticiOnayi: { count: 0, amount: 0 },
 }
 
 export default function ProjeTabFinans({ projectId, filterDate }) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, role } = useAuth()
+  // Proje yöneticisi artık fatura onay sürecindeki "Yönetici" — Faturalar/Onay
+  // Kuyruğu'nu görüp aksiyon alabilmesi gerekiyor. Maliyet Tablosu (bütçe verisi)
+  // hâlâ yalnızca admin'e özel.
+  const canApprove = isAdmin || role === 'proje_yoneticisi'
   const [tab, setTab] = useState('genel')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
@@ -73,17 +77,17 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
 
   const tabs = [
     { key: 'genel', label: 'Genel' },
-    ...(isAdmin ? [
+    ...(canApprove ? [
       { key: 'faturalar', label: 'Faturalar' },
       { key: 'onay', label: 'Onay Kuyruğu' },
-      { key: 'maliyet', label: 'Maliyet Tablosu' },
     ] : []),
+    ...(isAdmin ? [{ key: 'maliyet', label: 'Maliyet Tablosu' }] : []),
   ]
 
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      {isAdmin && (
+      {canApprove && (
         <div style={{ display: 'flex', borderBottom: '2px solid #E5E7EB', marginBottom: 20 }}>
           {tabs.map(item => (
             <button
@@ -111,7 +115,7 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
           </div>
           <div className="finans-row2-grid">
             <ProjeTabFinansSidebar curve={curve} dagilim={dagilim} sapma={sapma} cpi={cpi} loading={loading} />
-            <ProjeTabFinansYanPanel actionItems={actionItems} recentActivity={recentActivity} onNavigate={isAdmin ? setTab : undefined} loading={loading} />
+            <ProjeTabFinansYanPanel actionItems={actionItems} recentActivity={recentActivity} onNavigate={canApprove ? setTab : undefined} loading={loading} />
           </div>
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>

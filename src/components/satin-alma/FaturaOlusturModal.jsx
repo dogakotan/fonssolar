@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { getProjects } from '../../api'
 import { toUserMessage as translateError } from '../../utils/errors'
 import { fetchDoviz } from '../../utils/exchangeRates'
 
@@ -15,33 +16,43 @@ const categoryLabel = category => category === 'hizmet' ? 'Hizmet' : category ==
 const errorText = error => translateError(error, { rules: INVOICE_ERROR_RULES, fallback: err => err?.message || 'Kayıt oluşturulamadı.' })
 
 const modeToggleBtn = active => ({
-  flex: 1, padding: '9px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+  padding: '7px 16px', borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
   border: active ? '1px solid var(--color-primary)' : '1px solid var(--color-border-md)',
   background: active ? 'var(--color-primary)' : 'var(--color-surface)',
   color: active ? '#fff' : 'var(--color-text-sub)',
 })
 
-export default function FaturaOlusturModal({ request, onClose, onSaved }) {
+// request verilirse (satın alma listesindeki "Fatura Oluştur" satırı): proje/talep
+// sabit, değiştirilemez — eskisi gibi. request verilmezse ("+ Fatura / Harcama Ekle"
+// genel giriş noktaları — Satın Alma/Faturalar/Ödemeler sayfalarındaki üst buton):
+// proje ve bağlı satın alma talebi (opsiyonel) burada seçilir; talep seçilince
+// aynı sabit kartın bilgileri o talepten türetilir.
+export default function FaturaOlusturModal({ request = null, defaultProjectId = '', onClose, onSaved }) {
   const { user } = useAuth()
+  const isLocked = !!request
   const [mode, setMode] = useState('faturali') // 'faturali' | 'faturasiz'
   const [suppliers, setSuppliers] = useState([])
+  const [projects, setProjects] = useState([])
+  const [pendingRequests, setPendingRequests] = useState([])
+  const [manualProjectId, setManualProjectId] = useState(defaultProjectId)
+  const [selectedRequestId, setSelectedRequestId] = useState('')
   const [saving, setSaving] = useState(null)
   const [err, setErr] = useState('')
   const [addingSupplier, setAddingSupplier] = useState(false)
   const [newSupplierName, setNewSupplierName] = useState('')
   const [supplierSaving, setSupplierSaving] = useState(false)
   const [form, setForm] = useState({
-    supplier_id: request.supplier_id || '',
+    supplier_id: request?.supplier_id || '',
+    beneficiary_name: '',
     invoice_no: '',
     invoice_date: new Date().toISOString().slice(0, 10),
     due_date: '',
-    amount: request.estimated_amount_excl_vat || '',
-    vat_rate: String(request.estimated_vat_rate || 20),
+    amount: request?.estimated_amount_excl_vat || '',
+    vat_rate: String(request?.estimated_vat_rate || 20),
     currency: 'TRY',
-    category: ['malzeme', 'hizmet', 'diger'].includes(request.category) ? request.category : 'diger',
-    description: request.title || '',
+    category: ['malzeme', 'hizmet', 'diger'].includes(request?.category) ? request.category : 'diger',
+    description: request?.title || '',
     document_type: 'belgesiz',
-    requires_payment_tracking: true,
   })
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
@@ -53,32 +64,66 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
     fetchDoviz().then(kurData => { if (alive && kurData) setDoviz({ usd: kurData.usd, eur: kurData.eur, date: kurData.date }) })
     return () => { alive = false }
   }, [])
+  useEffect(() => {
+    if (isLocked) return
+    getProjects().then(({ data }) => setProjects(data || []))
+    supabase
+      .from('purchase_requests')
+      .select('id, title, project_id, supplier_id, category, estimated_amount_excl_vat, estimated_vat_rate, estimated_amount_incl_vat, created_at, projects(name), suppliers(name)')
+      .eq('status', 'satin_alindi')
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setPendingRequests(data || []))
+  }, [isLocked])
+
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
+
+  // Genel giriş noktasında talep seçilince form o talebin tahmini bilgileriyle
+  // dolar — locked moddaki useState başlangıç değerleriyle aynı mantık.
+  function selectRequest(id) {
+    setSelectedRequestId(id)
+    const picked = pendingRequests.find(r => r.id === id)
+    if (!picked) return
+    setManualProjectId(picked.project_id)
+    setForm(current => ({
+      ...current,
+      supplier_id: picked.supplier_id || current.supplier_id,
+      amount: picked.estimated_amount_excl_vat || current.amount,
+      vat_rate: String(picked.estimated_vat_rate || current.vat_rate),
+      category: ['malzeme', 'hizmet', 'diger'].includes(picked.category) ? picked.category : current.category,
+      description: current.description || picked.title,
+    }))
+  }
+
+  const linkedRequest = isLocked
+    ? request
+    : (() => {
+        const picked = pendingRequests.find(r => r.id === selectedRequestId)
+        return picked ? { ...picked, project_name: picked.projects?.name, supplier_name: picked.suppliers?.name } : null
+      })()
+  const effectiveProjectId = linkedRequest?.project_id || manualProjectId
+  const effectiveProjectName = linkedRequest?.project_name || projects.find(p => p.id === effectiveProjectId)?.name || '—'
+  const selectableRequests = manualProjectId ? pendingRequests.filter(r => r.project_id === manualProjectId) : pendingRequests
+
   const selectedSupplier = suppliers.find(supplier => supplier.id === form.supplier_id)
   const amount = Number(form.amount) || 0
   // Faturasız kapatmada KDV kırılımı yok (financial_transactions'ta vat_rate kolonu yok) —
-  // amount ödenen/ödenecek tam tutar sayılır. Para birimi de bilinçli olarak TRY'ye kilitli:
-  // satın alma talebinin kendi tahmini (approvedTotal) her zaman TRY, karşılaştırmanın
-  // anlamlı kalması için bu kapatma yolu da TRY'de tutuluyor.
+  // amount ödenen/ödenecek tam tutar sayılır. Bir talebe bağlıyken para birimi bilinçli
+  // olarak TRY'ye kilitli (talebin approvedTotal karşılaştırması her zaman TRY); bağlı
+  // talep yokken (genel harcama) muhasebe kendi para birimini seçebilir.
   const vat = mode === 'faturali' ? amount * (Number(form.vat_rate) || 0) / 100 : 0
   const total = mode === 'faturali' ? amount + vat : amount
-  const currency = mode === 'faturali' ? form.currency : 'TRY'
+  const currency = mode === 'faturali' ? form.currency : (linkedRequest ? 'TRY' : form.currency)
   const exchangeRate = currency === 'TRY' ? 1 : currency === 'USD' ? doviz.usd : doviz.eur
   const rateReady = exchangeRate != null
   const totalTry = rateReady ? total * exchangeRate : null
-  const approvedTotal = Number(request.estimated_amount_incl_vat) || 0
-  const amountMatches = !approvedTotal || (totalTry != null && Math.abs(totalTry - approvedTotal) < 0.02)
-  const canSaveFaturali = form.invoice_no.trim() && form.invoice_date && form.due_date && amount > 0 && form.supplier_id && rateReady
-  const canSaveFaturasiz = form.invoice_date && amount > 0 && form.supplier_id && form.description.trim()
+  const approvedTotal = Number(linkedRequest?.estimated_amount_incl_vat) || 0
+  const canSaveFaturali = form.invoice_no.trim() && form.invoice_date && amount > 0 && form.supplier_id && !!effectiveProjectId && rateReady
+  const canSaveFaturasiz = form.invoice_date && amount > 0 && (form.supplier_id || form.beneficiary_name.trim()) && form.description.trim() && !!effectiveProjectId
   const canSave = mode === 'faturali' ? canSaveFaturali : canSaveFaturasiz
-  const checks = useMemo(() => [
-    ['Tedarikçi eşleşti', selectedSupplier?.name || 'Tedarikçi seçilmedi', !!selectedSupplier],
-    ['Proje eşleşti', request.project_name || request.project_id || '—', !!request.project_id],
-    ['Genel toplam talep sınırında', `${money(total, currency)}${currency !== 'TRY' && totalTry != null ? ` (~${money(totalTry)})` : ''} ${approvedTotal ? `≤ ${money(approvedTotal)}` : ''}`, !approvedTotal || (totalTry != null && totalTry <= approvedTotal)],
-    mode === 'faturali'
-      ? ['Fatura numarası hazır', form.invoice_no || 'Numara girilmedi', !!form.invoice_no.trim()]
-      : ['Açıklama girildi', form.description || 'Açıklama girilmedi', !!form.description.trim()],
-  ], [selectedSupplier, request.project_name, request.project_id, total, totalTry, approvedTotal, form.invoice_no, form.description, currency, mode])
+  // Vade tarihi girilirse fatura ödeme takibine alınır; girilmezse onaylandığında
+  // doğrudan kapanır (peşin/hemen ödenmiş faturalar için) — ayrı bir manuel
+  // seçenek yerine tek bir alandan türetiliyor.
+  const requiresPaymentTracking = !!form.due_date
 
   async function handleAddSupplier() {
     if (!newSupplierName.trim()) return
@@ -95,11 +140,11 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
   async function insertInvoice() {
     const { data, error } = await supabase.from('invoices').insert({
       supplier_id: form.supplier_id,
-      project_id: request.project_id,
-      purchase_request_id: request.id,
+      project_id: effectiveProjectId,
+      purchase_request_id: linkedRequest?.id || null,
       invoice_no: form.invoice_no.trim(),
       invoice_date: form.invoice_date,
-      due_date: form.due_date,
+      due_date: form.due_date || null,
       amount,
       vat_rate: Number(form.vat_rate),
       currency: form.currency,
@@ -107,31 +152,33 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
       category: form.category,
       description: form.description.trim() || null,
       status: 'taslak',
-      source: 'satin_alma',
+      source: linkedRequest ? 'satin_alma' : 'manuel',
       created_by: user?.id || null,
-      requires_payment_tracking: form.requires_payment_tracking,
+      requires_payment_tracking: requiresPaymentTracking,
     }).select().single()
     if (error) throw error
     return data
   }
 
-  // Faturasız kapatma: financial_transactions'a talep bağlantısıyla (purchase_request_id)
-  // insert edilir — DB tetikleyicisi (trg_financial_transaction_sync_purchase_request)
+  // Faturasız kapatma: financial_transactions'a bağlı talep varsa purchase_request_id
+  // ile insert edilir — DB tetikleyicisi (trg_financial_transaction_sync_purchase_request)
   // talebi doğrudan faturasi_kesildi'ye taşır (invoices'ın aksine burada yönetici onay
-  // adımı yok, muhasebe zaten direkt giriyor). Ödeme girişi normal Ödeme Takibi akışından
-  // devam eder.
+  // adımı yok, muhasebe zaten direkt giriyor). Bağlı talep yoksa (genel harcama) talep
+  // bağlantısı olmadan, projeye maliyet olarak yansıyacak şekilde kaydedilir. Ödeme
+  // girişi normal Ödeme Takibi akışından devam eder.
   async function insertFinancialTransaction() {
     const transactionNo = `FIN-${new Date().getFullYear()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
     const { data, error } = await supabase.from('financial_transactions').insert({
       transaction_no: transactionNo,
       transaction_type: 'diger',
-      supplier_id: form.supplier_id,
-      project_id: request.project_id,
-      purchase_request_id: request.id,
+      supplier_id: form.supplier_id || null,
+      beneficiary_name: form.supplier_id ? null : form.beneficiary_name.trim(),
+      project_id: effectiveProjectId,
+      purchase_request_id: linkedRequest?.id || null,
       transaction_date: form.invoice_date,
       due_date: form.due_date || null,
       amount,
-      currency: 'TRY',
+      currency,
       description: form.description.trim(),
       document_type: form.document_type,
       created_by: user?.id || null,
@@ -186,49 +233,71 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
     }
   }
 
-  const stepLabels = mode === 'faturali'
-    ? ['Talep Bilgileri', 'Fatura Bilgileri', 'Fatura Kalemleri', 'Kontrol ve Gönder']
-    : ['Talep Bilgileri', 'Ödeme Bilgileri', 'Kontrol ve Gönder']
-
   return (
     <div className="invoice-wizard-backdrop">
       <div className="invoice-wizard">
         <header className="invoice-wizard-header">
-          <div><p>Finans / Faturalar / {mode === 'faturali' ? 'Yeni Fatura' : 'Faturasız Kapatma'}</p><h2>{mode === 'faturali' ? 'Yeni Fatura' : 'Faturasız Kapatma'}</h2><span>{requestNo(request)} numaralı talep için {mode === 'faturali' ? 'fatura oluşturun' : 'faturasız kayıt oluşturun'}.</span></div>
+          <div>
+            <p>Finans / Faturalar / {mode === 'faturali' ? 'Yeni Fatura' : 'Faturasız Kapatma'}</p>
+            <h2>{mode === 'faturali' ? 'Yeni Fatura' : 'Faturasız Harcama'}</h2>
+          </div>
           <button onClick={onClose} aria-label="Kapat">×</button>
         </header>
-        <div className="invoice-wizard-steps">
-          {stepLabels.map((label, index) => <div key={label} className={index === 0 ? 'done' : index === 1 ? 'active' : ''}><i>{index === 0 ? '✓' : index + 1}</i><span>{label}</span></div>)}
-        </div>
         <div className="invoice-wizard-content">
           <main>
-            <section className="invoice-wizard-card linked">
-              <header><div><h3>Bağlı Satın Alma Talebi <small>▣</small></h3><p>Bilgiler talep üzerinden getirilmiştir ve değiştirilemez.</p></div></header>
-              <div className="invoice-request-grid">
-                <div><small>Talep No</small><b className="blue">{requestNo(request)}</b></div>
-                <div><small>Proje</small><b>{request.project_name || request.project_id || '—'}</b></div>
-                <div><small>Tedarikçi</small><b>{selectedSupplier?.name || request.supplier_name || '—'}</b></div>
-                <div><small>Onaylanan Tutar</small><b>{money(approvedTotal)}</b></div>
-                <div><small>Tür</small><b>{categoryLabel(request.category)}</b></div>
-              </div>
-            </section>
+            {isLocked ? (
+              <section className="invoice-wizard-card linked">
+                <header><div><h3>Bağlı Satın Alma Talebi <small>▣</small></h3></div></header>
+                <div className="invoice-request-grid">
+                  <div><small>Talep No</small><b className="blue">{requestNo(request)}</b></div>
+                  <div><small>Proje</small><b>{request.project_name || request.project_id || '—'}</b></div>
+                  <div><small>Tedarikçi</small><b>{selectedSupplier?.name || request.supplier_name || '—'}</b></div>
+                  <div><small>Onaylanan Tutar</small><b>{money(approvedTotal)}</b></div>
+                  <div><small>Tür</small><b>{categoryLabel(request.category)}</b></div>
+                </div>
+                <div className="purchase-inline-detail invoice-request-summary">
+                  <div><h4>Talep Özeti</h4><p><span>Talep Eden</span><b>{request.requester_name || request.requested_by_name || '—'}</b></p><p><span>Açıklama</span><b>{request.description || request.title || '—'}</b></p></div>
+                  <div className="purchase-items"><table><thead><tr><th>Ürün</th><th>Açıklama</th><th>Miktar</th><th>Birim Fiyat</th><th>Tutar</th></tr></thead><tbody>{(request.items || []).slice(0, 4).map((item, index) => <tr key={item.id || index}><td>{item.name}</td><td>{item.description || '—'}</td><td>{item.quantity} {item.unit || ''}</td><td>{money(item.unit_price)}</td><td>{money(item.total_price || Number(item.quantity) * Number(item.unit_price))}</td></tr>)}</tbody></table></div>
+                </div>
+              </section>
+            ) : (
+              <section className="invoice-wizard-card linked">
+                <header><div><h3>Proje ve Bağlı Talep <small>▣</small></h3></div></header>
+                <div className="invoice-form-grid two-col">
+                  <label>Proje {!linkedRequest && '*'}
+                    <select value={effectiveProjectId} disabled={!!linkedRequest} onChange={event => setManualProjectId(event.target.value)}>
+                      <option value="">Seçiniz</option>
+                      {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
+                    </select>
+                  </label>
+                  <label>Bağlı Satın Alma Talebi (opsiyonel)
+                    <select value={selectedRequestId} onChange={event => selectRequest(event.target.value)}>
+                      <option value="">Yok — genel harcama</option>
+                      {selectableRequests.map(pr => <option key={pr.id} value={pr.id}>{pr.title} — {pr.projects?.name || '—'}</option>)}
+                    </select>
+                  </label>
+                </div>
+                {linkedRequest && (
+                  <div className="invoice-request-grid" style={{ marginTop: 12 }}>
+                    <div><small>Proje</small><b>{linkedRequest.project_name || '—'}</b></div>
+                    <div><small>Tedarikçi</small><b>{linkedRequest.supplier_name || '—'}</b></div>
+                    <div><small>Onaylanan Tutar</small><b>{money(approvedTotal)}</b></div>
+                    <div><small>Tür</small><b>{categoryLabel(linkedRequest.category)}</b></div>
+                  </div>
+                )}
+              </section>
+            )}
             <section className="invoice-wizard-card">
-              <h3>Kayıt Türü</h3>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" style={modeToggleBtn(mode === 'faturali')} onClick={() => setMode('faturali')}>Faturalı</button>
-                <button type="button" style={modeToggleBtn(mode === 'faturasiz')} onClick={() => setMode('faturasiz')}>Faturasız</button>
+              <div className="invoice-mode-row">
+                <h3>{mode === 'faturali' ? 'Fatura Bilgileri' : 'Ödeme Bilgileri'}</h3>
+                <div className="invoice-mode-toggle">
+                  <button type="button" style={modeToggleBtn(mode === 'faturali')} onClick={() => setMode('faturali')}>Faturalı</button>
+                  <button type="button" style={modeToggleBtn(mode === 'faturasiz')} onClick={() => setMode('faturasiz')}>Faturasız</button>
+                </div>
               </div>
-              {mode === 'faturasiz' && (
-                <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>
-                  Tedarikçiden resmi fatura alınmadı — bu tutar doğrudan gider (faturasız ödeme) olarak kaydedilir ve talep kapatılır.
-                </p>
-              )}
-            </section>
-            <section className="invoice-wizard-card">
-              <h3>{mode === 'faturali' ? 'Fatura Bilgileri' : 'Ödeme Bilgileri'}</h3>
               <div className="invoice-form-grid">
                 <label className="wide">
-                  Tedarikçi *
+                  Tedarikçi{mode === 'faturali' ? ' *' : ''}
                   {!addingSupplier ? (
                     <select value={form.supplier_id} onChange={event => set('supplier_id', event.target.value)}>
                       <option value="">Seçiniz</option>
@@ -254,11 +323,19 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
                     + Yeni tedarikçi
                   </button>
                 )}
+                {mode === 'faturasiz' && !form.supplier_id && (
+                  <label className="wide">Kişi / Kurum<input value={form.beneficiary_name} onChange={event => set('beneficiary_name', event.target.value)} placeholder="Tedarikçi listesinde yoksa yazın" /></label>
+                )}
                 {mode === 'faturali' && (
                   <label>Fatura No *<input value={form.invoice_no} onChange={event => set('invoice_no', event.target.value)} placeholder="FTR-2026-0001" /></label>
                 )}
                 <label>{mode === 'faturali' ? 'Fatura Tarihi *' : 'İşlem Tarihi *'}<input type="date" value={form.invoice_date} onChange={event => set('invoice_date', event.target.value)} /></label>
-                <label>Vade Tarihi{mode === 'faturali' ? ' *' : ''}<input type="date" value={form.due_date} onChange={event => set('due_date', event.target.value)} /></label>
+                <label>Vade Tarihi<input type="date" value={form.due_date} onChange={event => set('due_date', event.target.value)} /></label>
+                {mode === 'faturali' && (
+                  <small style={{ gridColumn: 'span 2', color: 'var(--color-muted)', fontSize: 11 }}>
+                    {form.due_date ? '✓ Vade tarihi girildi — bu fatura ödeme takibine alınacak.' : 'Vade tarihi boş bırakılırsa fatura onaylandığında doğrudan kapanır (peşin ödeme).'}
+                  </small>
+                )}
                 {mode === 'faturali' ? (
                   <label>Para Birimi *
                     <select value={form.currency} onChange={event => set('currency', event.target.value)}>
@@ -273,18 +350,17 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
                     )}
                   </label>
                 ) : (
-                  <label>Belge Türü *<select value={form.document_type} onChange={event => set('document_type', event.target.value)}>{DOCUMENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                )}
-                {mode === 'faturali' && (
                   <>
-                    <label>Fatura Türü *<select><option>Satın Alma</option></select></label>
-                    <label>Gider Türü *<select value={form.category} onChange={event => set('category', event.target.value)}><option value="malzeme">Malzeme</option><option value="hizmet">Hizmet</option><option value="diger">Diğer</option></select></label>
+                    <label>Belge Türü *<select value={form.document_type} onChange={event => set('document_type', event.target.value)}>{DOCUMENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                    {!linkedRequest && (
+                      <label>Para Birimi<select value={form.currency} onChange={event => set('currency', event.target.value)}><option value="TRY">TRY</option><option value="USD">USD</option><option value="EUR">EUR</option></select></label>
+                    )}
                   </>
                 )}
-                <label className="wide">Açıklama{mode === 'faturasiz' ? ' *' : ''}<input value={form.description} onChange={event => set('description', event.target.value)} /></label>
                 {mode === 'faturali' && (
-                  <label className="wide checkbox"><input type="checkbox" checked={form.requires_payment_tracking} onChange={event => set('requires_payment_tracking', event.target.checked)} /> Bu fatura ödeme takibine dahil edilsin</label>
+                  <label>Gider Türü *<select value={form.category} onChange={event => set('category', event.target.value)}><option value="malzeme">Malzeme</option><option value="hizmet">Hizmet</option><option value="diger">Diğer</option></select></label>
                 )}
+                <label className="wide">Açıklama{mode === 'faturasiz' ? ' *' : ''}<input value={form.description} onChange={event => set('description', event.target.value)} /></label>
               </div>
             </section>
             <section className="invoice-wizard-card">
@@ -304,13 +380,8 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
                   {rateReady ? `≈ ${money(totalTry)} (günün kuruyla)` : 'Kur yükleniyor…'}
                 </p>
               )}
-              <p className={`invoice-amount-check ${amountMatches ? 'ok' : 'warn'}`}>{amountMatches ? '✓ Onaylanan talep tutarı ile uyumlu' : `! Talep toplamı ${money(approvedTotal)}, kayıt toplamı ${money(total, currency)}`}</p>
             </section>
           </main>
-          <aside>
-            <section className="invoice-wizard-card invoice-checks"><h3>Otomatik Kontroller</h3>{checks.map(([title, detail, ok]) => <div key={title}><i className={ok ? 'ok' : 'wait'}>{ok ? '✓' : '!'}</i><p><b>{title}</b><span>{detail}</span></p></div>)}</section>
-            <section className="invoice-wizard-card invoice-save-state"><h3>Kaydetme Durumu</h3><b>{mode === 'faturali' ? 'Taslak' : 'Doğrudan Kayıt'}</b><p>{mode === 'faturali' ? 'Henüz yöneticiye gönderilmedi.' : 'Onay adımı yok — kaydedilince talep kapanır.'}</p></section>
-          </aside>
         </div>
         {err && <p className="invoice-wizard-error">{err}</p>}
         <footer className="invoice-wizard-footer">
@@ -321,7 +392,7 @@ export default function FaturaOlusturModal({ request, onClose, onSaved }) {
               <button className="continue" disabled={!canSave || !!saving} onClick={handleSubmit}>{saving === 'submit' ? 'Gönderiliyor…' : 'Devam Et'}</button>
             </>
           ) : (
-            <button className="continue" disabled={!canSave || !!saving} onClick={handleSaveFaturasiz}>{saving === 'faturasiz' ? 'Kaydediliyor…' : 'Kaydet ve Talebi Kapat'}</button>
+            <button className="continue" disabled={!canSave || !!saving} onClick={handleSaveFaturasiz}>{saving === 'faturasiz' ? 'Kaydediliyor…' : linkedRequest ? 'Kaydet ve Talebi Kapat' : 'Kaydet'}</button>
           )}
         </footer>
       </div>

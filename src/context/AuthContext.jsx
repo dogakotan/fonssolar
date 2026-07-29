@@ -76,10 +76,23 @@ export function AuthProvider({ children }) {
       // rol eklendiğinde/rol izinleri değiştiğinde tek yer burasıdır.
       const { data: roleRow, error: roleRowError } = await supabase
         .from('roles')
-        .select('display_name, is_manager, allowed_tabs, default_tab, sidebar_items')
+        .select(`
+          display_name,
+          is_manager,
+          tabs_unrestricted,
+          default_tab,
+          role_allowed_tabs(tab_key, order_index),
+          role_sidebar_items(item_key, order_index)
+        `)
         .eq('key', roleKey)
         .maybeSingle()
       if (roleRowError) throw roleRowError
+      const allowedTabs = [...(roleRow?.role_allowed_tabs || [])]
+        .sort((a, b) => a.order_index - b.order_index)
+        .map(item => item.tab_key)
+      const sidebarItems = [...(roleRow?.role_sidebar_items || [])]
+        .sort((a, b) => a.order_index - b.order_index)
+        .map(item => item.item_key)
 
       const projects = Array.isArray(projectData) ? projectData : []
       const homeProjectId = profileData?.project_id ?? null
@@ -102,9 +115,9 @@ export function AuthProvider({ children }) {
         role_label: roleRow?.display_name || roleKey,
         is_manager: roleRow?.is_manager ?? false,
         navigation: {
-          tabs: roleRow?.allowed_tabs ?? null,
+          tabs: roleRow?.tabs_unrestricted ? null : allowedTabs,
           defaultTab: roleRow?.default_tab ?? null,
-          sidebarItems: roleRow?.sidebar_items ?? [],
+          sidebarItems,
         },
       })
     } catch (err) {
