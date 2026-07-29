@@ -1074,21 +1074,25 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   listesi istiyordu; zaman kısıtı nedeniyle yalnızca `overflow-x:auto` ile
   yatay scroll fallback'i bırakıldı (diğer bazı tablolarla aynı, ama brief'in
   istediği tam kart deneyimi değil).
-- **Migration tracking boşluğu — 20260724150000 ile 20260724170000 arası daha
-  geniş bir aralıkta tekrarlandı.** 2026-07-26'da fark edildi: `financial_transactions`/
-  `financial_transaction_payments` şeması, `v_invoice_payment_overview`
-  security_invoker düzeltmesi, `role_allowed_tabs`/`role_sidebar_items`
-  normalizasyonu, `harden_database_security_and_indexes` gibi birden fazla
-  migration canlıda uygulanmış (tablolar/fonksiyonlar gerçekten var) ama
+- **Migration tracking boşluğu (Supabase tarafı) — hâlâ açık.** 2026-07-26'da
+  fark edildi: `financial_transactions`/`financial_transaction_payments`
+  şeması, `v_invoice_payment_overview` security_invoker düzeltmesi,
+  `role_allowed_tabs`/`role_sidebar_items` normalizasyonu,
+  `harden_database_security_and_indexes` gibi birden fazla migration canlıda
+  uygulanmış (tablolar/fonksiyonlar gerçekten var) ama
   `supabase_migrations.schema_migrations`'ta versiyonları YOK — muhtemelen
   migration tooling atlanıp doğrudan SQL editöründen uygulanmış (yerel dosya
   adlarındaki zaman damgaları da gerçek uygulanan versiyonlarla eşleşmiyor,
   ör. yerel `20260724170000_harden_database_security_and_indexes.sql` iken
-  canlıda aynı isim `20260724133320` altında kayıtlı). Bu görev bunu düzeltmedi
+  canlıda aynı isim `20260724133320` altında kayıtlı). Bu hâlâ düzeltilmedi
   (kapsamı büyük, ayrı bir "migration tracking reconciliation" görevi
-  gerektirir) — yalnızca üstüne yeni, düzgün-tracked migration'lar eklendi
-  (`20260726162840`, `20260726163329`). Yerel dosyalar canlı state'i doğru
-  yansıtıyor, sadece `schema_migrations` geçmişiyle 1:1 eşleşmiyor.
+  gerektirir). **Ayrı, artık kapatılmış bir git-tracking boşluğu vardı — bkz.
+  "Son değişiklik":** bu 16 migration dosyasının kendisi (ve 17 finans/muhasebe
+  bileşen dosyası — `OdemeTakibi.jsx`, `MuhasebeGenelOzet.jsx`, `TabOdemeler.jsx`
+  vb.) önceki oturumlarda diske yazılmış ama hiç `git add` edilmemişti;
+  `supabase/migrations/` altındaki yerel dosyalar artık git'te (Supabase'in
+  kendi `schema_migrations` geçmişiyle 1:1 eşleşmiyor olsa da), commit
+  edilmemiş dosya sorunu 29.07.2026'da giderildi.
 
 
 
@@ -1096,242 +1100,31 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**29.07.2026 — Kapsamlı flow denetimi (satın alma/fatura, günlük rapor,
-ticket/bildirim, muhasebe&finans, roller/malzeme listesi/proje yönetimi) 5
-paralel agent'la gerçek tarayıcıda yapıldı; bulunan maddeler sırayla
-düzeltildi: (1) `DailyReportForm.jsx`'teki "Sorunlar" bölümü kalıcı olarak
-kaldırıldı, (2) santiye şefinin kendi genel ticket'larını görememesi,
-(3) bir yanlış alarm (proje yönetimi yetkisi, aslında bug değildi),
-(4) proje yöneticisinin sidebar'da Finans'ı görememesi, (5) fatura
-iptalinde bağlı talebin yanlış duruma dönmesi, (6) günlük rapor "Not"
-alanlarının meta önekini çözmemesi, (7) satın alma Reddet/İptal Et'in
-gerekçe toplamadan sessizce çalışması, (8) günlük raporda makine türü
-tekrarının yanıltıcı hata mesajı vermesi, (9) Tickets sayfasının
-controlled-input console uyarısı, (10) bildirimlerde silme UI'ının
-eksikliği, (11) `ProjeDetay.jsx` sekme geçişinde border console uyarısı,
-(12) `kismen_odendi` faturada yanlış işlem etiketi, (13) admin'in menü/proje-içi
-"Bekleyen" sekmesi görünürlük tutarsızlığı. Denetimde bulunan tüm maddeler
-kapandı. Ardından (14) proje genelinde ölü kod taraması yapıldı, `index.jsx`'te
-proje_yoneticisi için hiç tetiklenemeyen bir "İş Planı" render dalı bulunup
-kaldırıldı.**
-
-**(1) Sorunlar bölümü kaldırma:** `aff8177` commit'inde (23.07.2026) kazayla
-silinen "Sorunlar" bölümü UI'dan erişilemezdi ama arkasında ölü kod (state,
-handler'lar, panel JSX, `SECTION_STATE.issues`) bırakmıştı. Kullanıcı bunun
-kendi kararı olduğunu, artık sorun/bloker için doğrudan Tickets sekmesinin
-kullanılacağını belirtti — `DailyReportForm.jsx`'teki tüm ölü kod (`newIssueRow`/
-`TICKET_STATUS_LABEL`/`PRIORITY_OPTIONS`/`RESOLUTION_OPTIONS`/`updateIssue`/
-`addIssueRow`/`removeIssueRow`/`issueTicketInfo` + panel JSX) silindi,
-`index.jsx`'teki kullanılmayan `onGoToTicket` prop'u kaldırıldı. **Kritik
-korunan davranış:** `issues` state'i tamamen silinmedi — `save_daily_report`
-RPC'si `p_issues`'ta listelenmeyen id'leri siler, bu yüzden eski raporlardaki
-`daily_report_issues` satırları hâlâ yüklenip HİÇBİR değişiklik yapılmadan
-`p_issues`'a geri gönderiliyor (aksi halde eski bir raporu düzenlemek geçmiş
-sorun/ticket linklerini sessizce silerdi). Playwright ile gerçek kayıt
-doğrulandı (7 bölüm, Sorunlar yok, console hatası yok, kayıt başarılı).
-
-**(2) Genel ticket görünürlüğü:** `TicketListesi.jsx`'teki santiye_sefi
-filtresi `project_id = authProjectId` uyguluyordu — Postgres'te bu `project_id
-IS NULL` (genel ticket) satırlarını asla eşleştirmediğinden santiye şefi kendi
-açtığı genel ticket'ları kendi listesinde hiç göremiyordu.
-`.or('project_id.eq.<id>,project_id.is.null')`'a çevrildi; RLS zaten yalnızca
-kendi oluşturduğu genel ticket'ları döndürdüğü için kapsam genişlemedi.
-Playwright ile gerçek bir genel ticket oluşturulup listede göründüğü
-doğrulandı.
-
-İkisi için de test verisi/geçici dosyalar temizlendi, lint clean.
-
-**(3) Yanlış alarm — "proje yöneticisi her projeyi düzenleyip silebiliyor"
-bug DEĞİLMİŞ, denetimin kendisi CLAUDE.md'nin bayat bir cümlesine güvenmişti.**
-`TabProjeYonetimi.jsx`'teki `canCreateProject` kontrolünün satır
-aksiyonlarını (Düzenle/Excel export/Sil) da kapsaması önce yetki genişlemesi
-sanılıp `isAdmin`-only'e geri çekildi, ama migration geçmişi kontrol edilince
-(`20260723140000_allow_proje_yoneticisi_edit_project_wizard_tables`,
-`20260723140100_allow_proje_yoneticisi_delete_project_cascade`) bunun
-23.07.2026'da BİLİNÇLİ bir tasarım kararıyla hem RLS hem UI düzeyinde açıldığı
-görüldü — kademeli proje silme, bağlı `invoices`/`purchase_requests`/
-`agent_reports`/`procurement_item_change_requests`/`procurement_item_adjustments`
-kayıtlarını temizleyebilmesi için proje yöneticisine özel DELETE policy'leriyle
-birlikte tasarlanmış. Asıl hata kodun kendi (o migration'dan önce yazılmış,
-güncellenmemiş) yorumu ve CLAUDE.md'nin "Roller" bölümündeki tek cümleydi —
-ikisi de düzeltildi, davranışta hiçbir değişiklik yapılmadı (geri alındı).
-**Ders:** bir "kodun kendi yorumuyla çelişiyor" bulgusu bile migration
-geçmişi kontrol edilmeden düzeltme sinyali sayılmamalı — yorum/dokümantasyon
-migration'dan sonra güncellenmemiş olabilir (bkz. [[feedback_check_migrations_before_new_constraint]]).
-
-**(4) Proje yöneticisi sidebar'da Finans'ı göremiyordu.** 2026-07-24'teki
-"proje yöneticisi Faturalar/Onay Kuyruğu görebilsin" genişlemesi yalnızca
-component katmanında yapılmıştı — `role_allowed_tabs`/`role_sidebar_items`'a
-`finans` satırı hiç eklenmemişti. Sonuç: sidebar'da "Finans" hiç görünmüyordu
-ve `index.jsx`'teki `handleTabChange`, `navigation.tabs`'ta olmayan bir
-sekmeye normal tıklamayla geçişi sessizce engelliyordu — yalnızca bildirim
-deep-link'i (`setActiveTab` bu kontrolü bypass eder) ile erişilebiliyordu.
-`role_allowed_tabs`/`role_sidebar_items`'a proje_yoneticisi+finans satırı
-ekleyen migration (`20260729120000_add_finans_nav_for_proje_yoneticisi`,
-`odemeler`/muhasebe için daha önce yapılan `20260726213920` ile birebir aynı
-desen) onaylanıp uygulandı. Playwright ile proje yöneticisi hesabıyla
-sidebar'dan Finans'a tıklanıp Onay Kuyruğu'nun göründüğü doğrulandı.
-
-**(5) Fatura reddedilince bağlı talep donuk kalıyordu.** `sync_purchase_request_from_invoice`
-2026-07-21'deki bir rewrite'ta (muhtemelen INSERT dalıyla kopya-yapıştır hatası)
-bir fatura `reddedildi`'ye geçince bağlı talebi `onaylandi`/`satin_alindi` yerine
-yanlışlıkla `fatura_onay_bekliyor`'da bırakıyordu — `reddedildi` artık nihai bir
-durum olduğundan (2026-07-24'te resubmit/delete RPC'leri kaldırıldı) talep bu
-durumda sonsuza kadar donuk kalıyordu: ne yeniden faturalanabiliyor ne gerçek
-bir onay bekliyordu. Doğru hedefin `satin_alindi` olduğu, faturasız ödemenin
-birebir eşi (`sync_purchase_request_from_financial_transaction`, iptalde zaten
-`satin_alindi`'ye dönüyor) referans alınarak belirlendi — CLAUDE.md'nin eski
-"onaylandi'ye döner" cümlesi de 2026-07-21'deki tedarik/Tedarik adımı
-eklenmesinden önce yazılmış, bayattı (düzeltildi). Migration
-(`20260729130000_fix_purchase_request_revert_on_invoice_rejection`) onaylanıp
-uygulandı; gerçek fatura onay/red cascade'i (invoice_approvals insert →
-`fn_invoice_approval_submitted` → reddet → `fn_invoice_approval_cascade`) uçtan
-uca SQL ile simüle edilip talebin `satin_alindi`'ye döndüğü, `invoice_id`'nin
-null'landığı doğrulandı; test verisi temizlendi.
-
-Flow denetiminde bulunan tüm kritik maddeler kapandı; ardından orta seviye bir
-madde de düzeltildi: **(6) `DailyReportList.jsx`/`DailyReportDetail.jsx` "Not"
-alanları `__REPORT_NOTES_META__{json}` önekini çözmüyordu.** Kullanıcının
-paylaştığı ekran görüntüsünde bir raporun "Not" hücresinde ham JSON metni
-görünüyordu. `decodeStoredMeta()` PDF/Excel export'ta zaten kullanılıyordu
-ama liste kolonunda ve `DailyReportDetail.jsx`'in "Genel Notlar" bloğunda hiç
-çağrılmıyordu — ikisi de düzeltildi (Detail'e aynı decode fonksiyonu
-eklendi, önceden orada hiç yoktu). Gerçek veriyle (28.07.2026 tarihli, meta
-önekli mevcut bir rapor) Playwright'la hem listede hem detay modalında artık
-"Ek saha notu bulunmuyor." (decoded description) göründüğü, ham önekin hiçbir
-yerde kalmadığı doğrulandı. **Ayrıca fark edildi, bu görev kapsamında
-düzeltilmedi:** `isg_notes`/`incident_notes` alanları hiçbir ekranda hiç
-gösterilmiyor (bkz. "Frontend yapısı" → Saha ekranları notu) — ayrı bir görev
-gerektirir.
-
-**(7) Satın alma "Reddet"/"İptal Et" gerekçesiz, sessizce çalışıyordu.**
-CLAUDE.md tedarik iptalinin "zorunlu gerekçe" gerektirdiğini iddia ediyordu
-ama gerçekte `TabSatinAlmaTalepListesi.jsx`'teki üç buton da (admin'in
-Onayla/Reddet'i, proje yöneticisinin Tamamlandı/İptal Et'i) hiçbir not
-toplamadan tek tıkla anında `purchase_requests.status`'u değiştiriyordu;
-`TalepDetayModal.jsx`'teki eşdeğer not textarea'sı da yalnızca admin'in
-`onay_bekliyor` reddi için render ediliyordu (`canReview` koşulu), proje
-yöneticisinin `onaylandi` iptali için hiç yoktu. İkisi de düzeltildi:
-`TabSatinAlmaTalepListesi.jsx`'e satır-içi bir gerekçe modu eklendi
-(`rejectDraft` state — Reddet/İptal Et tıklanınca buton grubu yerine bir
-metin input'u + "Reddi Onayla"/"İptali Onayla" (gerekçe boşken disabled) +
-"Vazgeç" gösterir, `OnayReddetActions.jsx`'in "compact" moduyla aynı desen);
-`TalepDetayModal.jsx`'teki textarea `canAct`'e genişletildi (hem admin hem PM
-dalı) ve "Reddet" butonu not boşken disabled yapıldı. Gerekçe
-`purchase_requests.notes`'a (mevcut not varsa altına) yazılıyor. Gerçek
-admin (Reddet) ve proje yöneticisi (İptal Et) hesaplarıyla Playwright'la uçtan
-uca doğrulandı: buton gerekçe girilmeden disabled, girilince aktifleşiyor,
-kaydedilen `notes` doğru; test verisi temizlendi. Bu sırada aynı paragraftaki
-bayat `TedarikKuyrugu.jsx`/`pr_update_proje_yoneticisi` referansları da (bu
-bileşen/policy `02c8af4` ile kaldırılmış, güncel karşılıkları
-`TabSatinAlmaTalepListesi.jsx`/`fn_purchase_request_procurement_fields_only()`)
-düzeltildi.
-
-**(8) Günlük raporda aynı makine türü iki kez eklenince yanıltıcı hata
-mesajı gösteriliyordu.** `DailyReportForm.jsx`'teki `DAILY_REPORT_ERROR_RULES`'ta
-`{ match: ['machinery_logs_status', 'machine'], ... }` kuralı `translateError`'ın
-ANY-eşleşme mantığı (`matchers.some(...)`) yüzünden `machinery_logs_report_machine_unique`
-UNIQUE ihlali hata metnindeki bare "machine" alt-dizesini de yakalıyor,
-kullanıcıya gerçek sorunun ("bu makine türü zaten ekli") yerine "Makine durumu
-geçersiz. Lütfen listeden seçin." gösteriyordu. İki kural gerçek Postgres
-constraint adlarıyla (`machinery_logs_report_machine_unique` önce,
-`machinery_logs_status_check` sonra — sıra önemli) eşleşecek şekilde
-yeniden yazıldı. Form birden çok panelli olduğundan gerçek UNIQUE ihlalini
-Playwright'ta tetiklemek kırılgan çıktı (Grammarly benzeri bir tarayıcı
-eklentisinin overlay'i + panel kapatma zamanlaması) — bunun yerine
-`toUserMessage`/`translateError` mantığı gerçek Postgres hata metinleriyle
-(`duplicate key value violates unique constraint "machinery_logs_report_machine_unique"`
-ve `violates check constraint "machinery_logs_status_check"`) doğrudan Node'da
-test edilip her ikisinin de doğru, birbirinden ayrı mesaja eşlendiği
-doğrulandı. Lint clean.
-
-**(9) Tickets sayfası her açılışta React "controlled/uncontrolled input"
-console uyarısı basıyordu.** `TicketListesi.jsx`'teki gizli (`display:'none'`,
-görünürlüğü ayrı bir konu, kaldırılmadı) tarih filtresi input'u
-`useState(null)` ile başlatılan `dateFilter`'i doğrudan `value`'ya
-bağlıyordu — React `value={null}` için bu uyarıyı basar. `useState('')`'e
-çevrildi (filtreleme mantığı `if (dateFilter)` zaten boş string'i de falsy
-saydığından davranış değişmedi). Playwright'la admin hesabıyla Tickets
-sayfası açılıp console'da "value"/"null" içeren hiçbir uyarı kalmadığı
-doğrulandı (yalnızca alakasız, önceden de var olan React Router future-flag
-uyarıları kaldı). Lint clean.
-
-**(10) Bildirimlerde silme UI'ı yoktu — RLS zaten destekliyordu ama ölü
-backend kapasitesiydi.** `TabBildirimler.jsx`'e her satıra bir silme butonu
-eklendi. Satırın kendisi önceden `<button>` idi — içine ikinci bir
-`<button>` nesting geçersiz HTML olacağından satır `role="button"`/`tabIndex`/
-`onKeyDown` (Enter/Boşluk) ile erişilebilir bir `<div>`'e çevrildi, aynı
-`className` korunduğu için görsel hiçbir şey değişmedi. Silme butonu
-`event.stopPropagation()` ile satırın kendi tıklama davranışını (ilgili
-kayda gitme) tetiklemiyor. `NotificationBell.jsx`'e kasıtlı eklenmedi (o
-bileşen bilinçli olarak sade kalıyor). Playwright ile admin hesabıyla gerçek
-bir bildirim silinip listeden kalktığı, satır tıklamasının tetiklenmediği
-(sayfa yönlendirmesi olmadığı) doğrulandı. Bu sırada bu görev boyunca
-oluşturulan test kayıtlarından (silinmiş `purchase_requests`/`tickets`'a
-işaret eden, trigger'ların otomatik oluşturduğu) 10 yetim bildirim de fark
-edilip temizlendi — test cleanup'ının bundan sonra kaynak tablo satırlarıyla
-birlikte oluşan bildirimleri de silmesi gerektiği not edildi. Lint clean.
-
-**(11) `ProjeDetay.jsx` sekme değiştirirken React console uyarısı basıyordu.**
-`tabBtnActive`/`periodBtnActive` stil objeleri `tabBtn`/`periodBtn`'i
-spread edip yalnızca `borderColor` (longhand) override ediyordu, temel
-objede ise `border` (shorthand) tanımlıydı — React aynı elementte
-shorthand+longhand karışımını render'lar arası güncellerken uyarır
-("mixing shorthand and non-shorthand properties... can lead to styling
-bugs"). İkisi de `borderColor` yerine tam `border: '1px solid var(--color-primary)'`
-shorthand'ına çevrildi. Playwright ile admin hesabıyla proje detayında 4
-sekme arası geçiş yapılıp console'da border/borderColor içeren hiçbir uyarı
-kalmadığı doğrulandı. Lint clean.
-
-**(12) `kismen_odendi` faturada "İşlem" kolonu yanlış etiket gösteriyordu.**
-`FaturaListesi.jsx`'teki `islemHucresi()` yalnızca `odeme_bekliyor` için
-"Ödeme Gir" gösteriyordu, `kismen_odendi` bu kontrole girmediğinden alttaki
-genel `else` dalına düşüp "Görüntüle" gösteriyordu — fonksiyonel fark yoktu
-(ikisi de aynı `onOpen`/detay modalını açıyordu), yalnızca etiket
-yanıltıcıydı. Koşula `kismen_odendi` eklendi. Gerçek bir kısmen ödenmiş
-fatura (`AUD-05927745-A`, mevcut demo veri, değiştirilmedi) üzerinde
-Playwright'la "Ödeme Gir" etiketinin göründüğü doğrulandı. Lint clean.
-
-**(13) Admin'in "Bekleyen" sekmesi görünürlüğü menü-seviyesi (`TabSatinAlma.jsx`)
-ile proje-içi (`ProjeTabSatinAlma.jsx`) arasında tutarsızdı.** Git geçmişi
-kontrol edildi: proje-içi görünümdeki `canManageProcurement = isAdmin ||
-role==='proje_yoneticisi'` deseni 2026-07-16'dan (`35605b9`, özelliğin ilk
-eklendiği commit) beri admin'i kapsıyordu; menü-seviyesi sekme 2026-07-22'de
-(`f2075e4`) ayrı yazılırken bu deseni yansıtmayıp yalnızca `role==='proje_yoneticisi'`
-kullanmıştı — bilinçli bir kısıtlama değil, ikinci implementasyonun ilkiyle
-eşleşmeyi unutması. `TabSatinAlma.jsx`'te aynı `canManageProcurement` deseni
-eklenip sekme + içerik koşuluna uygulandı. **Dikkat edilen kritik nokta:**
-`TabSatinAlmaTalepListesi.jsx`'in kendi `canCompleteProcurement = role===
-'proje_yoneticisi'` değişkeni (satır aksiyonlarını gösteren, "Tamamlandı"
-butonu dahil) BİLEREK dokunulmadı — `complete_project_manager_purchase_request`
-RPC'si `get_my_role() <> 'proje_yoneticisi'` kontrolüyle admin'i açıkça
-reddediyor ("Bu işlemi yalnızca proje yöneticisi tamamlayabilir."), bu
-değişkeni admin'e genişletmek admin için tıklanınca hata veren çalışmayan
-bir buton yaratırdı. Yani admin artık "Bekleyen" sekmesini/listesini görebiliyor
-(proje-içi görünümle tutarlı, önceden de öyleydi) ama "Tamamlandı" aksiyonu
-kasıtlı olarak yalnızca proje yöneticisine özel kalıyor — bu RPC katmanında
-zaten var olan, bilinçli bir tasarım kısıtı, denetim kapsamının dışında.
-Playwright ile admin hesabıyla menü-seviyesi "Bekleyenler" → "Bekleyen"
-sekmesine tıklanıp "Bekleyen Talepler" listesinin göründüğü doğrulandı.
-Lint clean.
-
-**(14) Genel ölü kod temizliği.** Kullanıcı bu 13 maddelik denetim/düzeltme
-turunun ardından proje genelinde kalan ölü kod/gereksiz yer olup olmadığının
-kontrol edilmesini istedi. Tam proje `eslint` taraması (0 hata, yalnızca 2
-alakasız önceden var olan uyarı) ve `npm run build` (temiz, yalnızca
-alakasız chunk-size uyarısı) hiçbir unused-var/import sorunu göstermedi.
-Ayrıca `index.jsx`'te `role_allowed_tabs`/`role_sidebar_items`'a
-proje_yoneticisi için hiç `is-plani` eklenmediğinden (git geçmişiyle
-doğrulandı — `20260723065156_add_role_navigation_matrix` migration'ı PM'i
-bilinçli olarak `is-plani` olmadan tanımlıyor, bu bir regresyon değil)
-fiilen hiç tetiklenemeyen bir render dalı (`activeTab==='is-plani' &&
-role==='proje_yoneticisi'`) ve onu destekleyen `pySelectedProjectId` state'i
-+ `ProjeSecimGerekli` bileşeni bulunup kaldırıldı; `scopeProjectId`
-hesaplaması sadeleştirildi (artık doğrudan `useScope()`'tan). Playwright ile
-hem proje yöneticisinin (İş Planı sidebar'da/hiçbir yerde görünmüyor, beklenen)
-hem santiye şefinin (İş Planı hâlâ çalışıyor) etkilenmediği doğrulandı, console
-hatası yok. Diğer olası ölü dosyalar (`TedarikKuyrugu.jsx`,
-`FinansalIslemler.jsx`/`FinansalIslemFaturaModal.jsx`/`FinansalIslemFormModal.jsx`)
-kontrol edildi, zaten önceki oturumlarda silinmiş oldukları doğrulandı —
-ek bir şey bulunmadı. Test dosyaları/verisi temizlendi, `dist/` build
-artifact'ı silindi (gitignore'da, commit'e dahil değil).
+**29.07.2026 — Vercel deployment hatası: commit edilmemiş dosyalar yüzünden
+build patlıyordu.** Push sonrası Vercel'de build hatası bildirildi. Kök neden
+araştırması: `git status` üzerinde 17 finans/muhasebe bileşeni
+(`OdemeTakibi.jsx`, `MuhasebeGenelOzet.jsx`, `MuhasebeSatinAlma.jsx`,
+`TabOdemeler.jsx`, `FinansRaporlari.jsx`, `TedarikciListesi.jsx`,
+`OnayReddetActions.jsx` vb. — bkz. commit `0e3381c` için tam liste) ve 16
+migration dosyası (2026-07-23 ile 2026-07-28 arası) **untracked** çıktı —
+önceki oturumlarda diske yazılmış ama hiç `git add` edilmemişlerdi. Zaten
+commit edilmiş `TabFinans.jsx`/`index.jsx` gibi dosyalar bu bileşenleri import
+ediyordu; yerel çalışma dizininde dosyalar diskte olduğu için `npm run build`
+sorunsuz geçiyor, ama Vercel git'ten temiz bir clone çektiği için dosyalar hiç
+yoktu. Doğrulama: `/tmp`'e `git clone --no-local` ile HEAD'in temiz bir
+kopyası çıkarılıp `npm run build` çalıştırıldı — `Could not resolve
+"./components/MuhasebeGenelOzet" from "src/pages/dashboard/index.jsx"`
+hatasıyla aynen tekrarlandı (Vercel'in yaşadığı hatanın birebir aynısı).
+Tüm 17 bileşen + 16 migration dosyası `git add` ile eklenip (`eslint` önce
+temiz olduğu doğrulandı — yalnızca 2 önceden bilinen stil uyarısı, hata yok)
+`0e3381c` commit'iyle eklendi; aynı clean-clone yöntemiyle build'in artık
+başarıyla geçtiği doğrulanıp push edildi. Bu migration dosyalarının kendisi
+zaten canlıda uygulanmış durumdaydı (yeni bir `apply_migration` çağrısı
+YAPILMADI, yalnızca var olan yerel SQL dosyaları git'e eklendi) — Supabase'in
+kendi `schema_migrations` tracking boşluğu (bkz. "Bilinen açık noktalar")
+bundan ayrı, hâlâ çözülmedi. **Ders:** bundan sonra her önemli özellik
+tamamlandığında commit atılırken `git status` çıktısında kalan untracked
+dosya olmadığı MUTLAKA doğrulanmalı — commit edilen dosyanın import ettiği
+her yeni bileşenin de git'e eklendiğinden emin olunmalı, aksi halde yerel
+`npm run build` yanıltıcı şekilde yeşil kalırken canlı deploy (Vercel, temiz
+clone) sessizce kırılabilir.
