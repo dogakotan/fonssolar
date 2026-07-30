@@ -117,7 +117,16 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   sağlar. `isAdmin` KESİNLİKLE `role === 'admin'` olmalı. Kapsam seçici
   (`src/context/ScopeContext.jsx`) yönetici rollerine tek-proje/Tüm Projeler
   geçişi sağlar; header'daki global proje seçici kasıtlı olarak yok — tek
-  projeli kullanıcıda kapsam otomatik çözülür.
+  projeli kullanıcıda kapsam otomatik çözülür. `loading` yalnızca İLK oturum
+  çözümlemesinde `true`'ya çekilir (`hasResolvedOnce` ref) — `supabase.auth.
+  onAuthStateChange` rutin arka plan token yenilemelerinde de tetiklendiğinden,
+  bu guard olmadan HER yenilemede `loading=true` oluyor, `ProtectedRoute.jsx`
+  bunu görüp tüm Dashboard ağacını unmount edip "Yükleniyor…" gösteriyordu —
+  kullanıcı farkında olmadan `activeTab`/proje detayı/form ilerlemesi gibi tüm
+  local state sıfırlanıp varsayılan sekmeye atılıyordu (özellikle uzun süren
+  bir formda, ör. proje sihirbazı, arka planda bir yenileme olursa fark
+  ediliyordu — 2026-07-30'da bulunan bug). Artık sonraki oturum olaylarında
+  profil sessizce arka planda güncelleniyor, `loading` tekrar tetiklenmiyor.
 - Rol → sekme/sidebar erişimi **DB-tabanlı**: `roles.allowed_tabs`
   (NULL = kısıtsız)/`default_tab`/`sidebar_items` kolonlarından okunur,
   `AuthContext` login'de bu satırı çekip `navigation` olarak context'e koyar;
@@ -1144,36 +1153,55 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**30.07.2026 (6) — Alt-sekmeler başka bir menüye geçilince sıfırlanıyordu;
-sistem genelinde localStorage'da kalıcı yapıldı + "Projeler"e dönünce proje
-listesine düşme bug'ı düzeltildi.**
+**30.07.2026 (7) — Sekme/sayfa kalıcılığı görevi 3 katmanda ilerledi: önce
+Finans'a özel düzeltme, sonra sistem geneline yayılan localStorage kalıcılığı,
+en sonunda gerçek kök neden bulundu: `ProtectedRoute` rutin arka plan token
+yenilemelerinde bile TÜM Dashboard'u unmount ediyordu.**
 
 Kullanıcı önce yalnızca menü Finans'ta fark etti ("yandaki sekmeye geçince
-sayfalar defaulta dönüyor"), o tek sayfa için düzeltilip canlıya alındıktan
-sonra "ama her kullanıcıda böyle olmalıydı" diyerek kapsamı sistem geneline
-genişletti — tüm alt-sekmeli sayfalarda aynı davranış istendi. Kök neden
-hepsinde aynıydı: `activeTab` değişince bu bileşenler React tarafından
-unmount/remount ediliyor, local `useState` sıfırlanıyordu. `TabFinans.jsx`,
-`TabSatinAlma.jsx`, `TabOdemeler.jsx`, proje içi `ProjeTabFinans.jsx`/
-`ProjeTabSatinAlma.jsx` ve `ProjeDetay.jsx` (8 sekme + Malzeme Listesi'nin
-Malzeme/Riskler alt-sekmesi) sekme durumunu artık `activeTab`'ın kendisiyle
-aynı desende localStorage'da saklıyor (bkz. "Frontend yapısı" için anahtar
-adları/öncelik sırası). Ayrıca test sırasında `ProjeDetay` için ayrı, daha
-temel bir bug bulundu: `index.jsx`'teki `handleTabChange` sidebar'daki HER
-tıklamada (Projeler'in kendisi dahil) `showProjectDetail`'i sıfırlıyordu —
-bu yüzden bir projenin içindeyken başka bir menüye geçip "Projeler"e geri
-dönmek, o projenin sekmesi kalıcı hale getirilse bile, doğrudan proje
-LİSTESİNE düşürüyordu (ProjeDetay hiç render edilmiyordu). Bu satır
-kaldırıldı — listeye dönmenin açık yolu artık yalnızca `ProjeDetay`'ın kendi
-"← Projelere Dön" butonu.
+sayfalar defaulta dönüyor") — `TabFinans.jsx`'in `tab` state'i localStorage'a
+alınıp düzeltildi, main'e merge edilip Vercel'e deploy edildi. Kullanıcı
+canlıda test edip "hâlâ aynı" dediğinde bunun aslında henüz pushlanmamış bir
+fix olduğu netleşti (önemli ders: canlıda test edilen bir fix mutlaka push +
+merge edilmiş olmalı, yoksa "düzeltme çalışmıyor" gibi görünür). Ardından
+"ama her kullanıcıda böyle olmalıydı" denilince kapsam TÜM alt-sekmeli
+sayfalara genişletildi: `TabSatinAlma.jsx`, `TabOdemeler.jsx`, proje içi
+`ProjeTabFinans.jsx`/`ProjeTabSatinAlma.jsx`, `ProjeDetay.jsx` (8 sekme +
+Malzeme Listesi'nin Malzeme/Riskler alt-sekmesi) — hepsi `activeTab`'ın
+kendisiyle aynı desende localStorage'da kalıcı hale getirildi (menü
+seviyesindekiler düz anahtar, proje-özel olanlar `projectId` ile sonlandırılmış
+anahtar — bkz. "Frontend yapısı"). Bu turda ayrıca `index.jsx`'teki
+`handleTabChange`'in sidebar'daki HER tıklamada (Projeler'in kendisi dahil)
+`showProjectDetail`'i sıfırladığı bulundu — bir projenin içindeyken başka bir
+menüye geçip "Projeler"e dönmek doğrudan proje listesine düşürüyordu; bu satır
+kaldırıldı.
 
-Rol-bazlı sekmelerde (Finans'ın Onay Kuyruğu, Satın Alma'nın Onay Bekleyenler/
-Bekleyen) persisted değer geçerli değilse role'ün varsayılanına düşülüyor;
-proje-özel anahtarlar `projectId` ile sonlandırılıyor ki farklı proje açmak
-başka projenin sekmesini miras almasın; açık deep-link (`initialTab` prop)
-her zaman persisted değerin önüne geçiyor. Menü Finans'taki ilk düzeltme
-önce ayrı commit'lenip main'e merge edilip Vercel'e deploy edildi (kullanıcı
-canlıda test ediyordu, yerelde kalmış bir fix'in "hâlâ aynı" görünmesi bunun
-netleşmesini sağladı) — sonraki sistem-geneli genişletme de aynı şekilde
-Playwright'la (menü Finans, menü Satın Alma, proje içi 8 sekme dahil) admin
-girişiyle uçtan uca doğrulandı.
+Kullanıcı BUNDAN SONRA "hâlâ mesela proje manuel doldururken yan sekmeye
+geçince beni Genel Bakış'a atıyor" deyince gerçek kök neden ortaya çıktı:
+yukarıdaki tüm düzeltmeler doğruydu ama YETERSİZDİ, çünkü sorun aslında daha
+temeldeydi. `AuthContext.jsx`'teki `supabase.auth.onAuthStateChange` yalnızca
+gerçek giriş/çıkışta değil, RUTİN ARKA PLAN TOKEN YENİLEMESİNDE de tetikleniyor
+ve her tetiklendiğinde `setLoading(true)` çağırıyordu; `ProtectedRoute.jsx` da
+`loading===true` iken TÜM Dashboard ağacını unmount edip "Yükleniyor…" ekranı
+gösteriyordu. Bu, `activeTab` dahil TÜM local state'i (localStorage'a
+persist edilenler dahil, çünkü component'in kendisi ve içindeki `useRef` guard
+da sıfırdan yeniden yaratılıyordu) yok edip yeniden mount ediyordu — kısıtlı
+rollerin (`proje_yoneticisi`/`muhasebe`/`santiye_sefi`, hepsinin `default_tab`
+'genel') `[role, navigation]` efekti bu FRESH mount'ta "ilk yükleme" sanıp
+`activeTab`'ı zorla `defaultTab`'a (`genel`) çekiyordu — admin'de `default_tab`
+NULL olduğundan bu spesifik semptom (Genel Bakış'a atılma) admin'de hiç
+görünmüyordu (yalnızca proje detayında listeye düşme gibi daha hafif bir yan
+etkisi vardı). Düzeltme: `AuthContext`'e bir `hasResolvedOnce` ref eklendi —
+`loading` yalnızca İLK oturum çözümlemesinde `true`'ya çekiliyor, sonraki
+oturum olaylarında (rutin yenileme) profil sessizce arka planda güncelleniyor,
+`ProtectedRoute` artık Dashboard'u unmount etmiyor. `index.jsx`'teki
+`[role, navigation]` efektine de savunma amaçlı bir `appliedDefaultTabForRole`
+ref guard'ı eklendi (role gerçekten değişmedikçe tekrar uygulanmasın).
+
+Gerçek `supabase.auth.refreshSession()` çağrısıyla (Vite dev modülünü dynamic
+import ederek aynı singleton client'a erişilip) Playwright'ta uçtan uca
+doğrulandı: hem admin'in açık proje sihirbazı (Adım 1'de) hem proje
+yöneticisinin açık proje detayı (İş Planı sekmesinde), gerçek bir token
+yenilemesinden SONRA da aynı yerde kaldı — öncesinde (fix'siz) proje
+yöneticisi senaryosu "Genel Bakış"a düşüyordu, doğrulanan negatif kontrolle
+teyit edildi.

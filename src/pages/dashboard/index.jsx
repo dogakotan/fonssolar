@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, signOut } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -72,9 +72,22 @@ export default function Dashboard() {
   const [initialReportId,     setInitialReportId]      = useState(null)
   const navigate = useNavigate()
 
-  // Kısıtlı roller → başlangıç sekmesi
+  // Kısıtlı roller → başlangıç sekmesi (yalnızca gerçek bir GİRİŞ/rol
+  // değişiminde — supabase.auth.onAuthStateChange her tetiklendiğinde
+  // (ör. rutin token yenileme) AuthContext'teki fetchProfile() yeni bir
+  // `navigation` nesnesi üretiyor; bu efekt [role, navigation]'a bağlı
+  // olduğundan referans değişince tekrar çalışıp kullanıcıyı o an durduğu
+  // sekmeden farkında olmadan role'ün varsayılan sekmesine (ör. proje_yoneticisi/
+  // muhasebe/santiye_sefi için 'genel') geri atıyordu — özellikle uzun süren
+  // bir formda (proje sihirbazı gibi) arka planda bir token yenilemesi olursa
+  // fark ediliyordu (2026-07-30'da bulunan bug). `appliedForRole` ref'i bunu
+  // yalnızca role GERÇEKTEN değiştiğinde (ilk yükleme/gerçek rol değişimi)
+  // uygulanacak şekilde sınırlıyor.
+  const appliedDefaultTabForRole = useRef(null)
   useEffect(() => {
     if (!role || !navigation) return
+    if (appliedDefaultTabForRole.current === role) return
+    appliedDefaultTabForRole.current = role
     const defaultTab = navigation.defaultTab
     if (defaultTab) {
       setActiveTab(defaultTab)
