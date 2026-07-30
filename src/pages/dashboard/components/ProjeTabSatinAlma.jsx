@@ -13,7 +13,17 @@ import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false, openRequestId, onOpenedRequest }) {
   const { isAdmin, role } = useAuth()
   const canManageProcurement = isAdmin || role === 'proje_yoneticisi'
-  const [tab, setTab] = useState(procurementManagerView ? 'tedarik' : 'talepler')
+  // Sekme seçimi projeye özel olarak localStorage'da kalıcı — aksi halde başka
+  // bir menü öğesine geçip aynı projeye geri dönüldüğünde (ProjeDetay unmount/
+  // remount olduğundan) her seferinde varsayılana dönüyordu (bkz. TabFinans.jsx'teki
+  // aynı desen; anahtar projectId'ye göre ayrıştırılıyor).
+  const defaultTab = procurementManagerView ? 'tedarik' : 'talepler'
+  const [tab, setTab] = useState(() => {
+    try { return window.localStorage.getItem(`proje-satin-alma-active-subtab-${projectId}`) || defaultTab } catch { return defaultTab }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem(`proje-satin-alma-active-subtab-${projectId}`, tab) } catch {}
+  }, [tab, projectId])
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
   // Bildirimler'den belirli bir talebe gidilince (proje yöneticisi görünümü varsayılan olarak
@@ -76,6 +86,13 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
         ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
         ...(canManageProcurement ? [{ key: 'tedarik', label: 'Bekleyen' }] : []),
       ]
+
+  // localStorage'dan gelen sekme farklı bir rolden/görünümden kalmış olabilir —
+  // geçerli değilse varsayılana düş (bkz. TabFinans.jsx'teki aynı desen).
+  useEffect(() => {
+    if (!TABS.some(t => t.key === tab)) setTab(defaultTab)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, canManageProcurement, procurementManagerView])
 
   if (!loading && !authorized) {
     return <UnauthorizedScopeNotice />

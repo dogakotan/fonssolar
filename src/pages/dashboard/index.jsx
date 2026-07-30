@@ -126,7 +126,13 @@ export default function Dashboard() {
       setShowReportModal(true)
       return
     }
-    setShowProjectDetail(false)
+    // "Projeler" sekmesine geri dönüldüğünde en son bakılan projenin detayında
+    // kalınsın diye showProjectDetail burada artık sıfırlanmıyor — listeye
+    // dönmenin açık yolu ProjeDetay'ın kendi "← Projelere Dön" butonu
+    // (onBack={() => setShowProjectDetail(false)}). Öncesinde sidebar'daki
+    // HER tıklama (Projeler'in kendisi dahil) showProjectDetail'i sıfırlıyordu,
+    // bu yüzden başka bir sekmeye gidip Projeler'e geri dönmek her seferinde
+    // proje listesine düşüyordu (2026-07-30'da bulunan bug).
     setActiveTab(tab)
   }
 

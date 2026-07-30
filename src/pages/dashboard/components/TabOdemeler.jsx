@@ -13,7 +13,21 @@ const TABS = [
 // muhasebenin günlük işinin ağırlıklı kısmı bu ikisi olduğundan ayrı bir menü
 // öğesine çıkarıldı (bkz. CLAUDE.md "Muhasebe & Finans modülü").
 export default function TabOdemeler({ initialTab } = {}) {
-  const [tab, setTab] = useState(initialTab && TABS.some(t => t.key === initialTab) ? initialTab : 'odemeler')
+  // Öncelik: açık deep-link (initialTab) > localStorage'da kalıcı son seçim >
+  // varsayılan — başka bir menü öğesine geçip geri dönüldüğünde (bileşen
+  // unmount/remount olduğundan) her seferinde "Ödeme Takibi"ne dönmesin diye
+  // (bkz. TabFinans.jsx'teki aynı desen).
+  const [tab, setTab] = useState(() => {
+    if (initialTab && TABS.some(t => t.key === initialTab)) return initialTab
+    try {
+      const saved = window.localStorage.getItem('odemeler-active-subtab')
+      if (saved && TABS.some(t => t.key === saved)) return saved
+    } catch {}
+    return 'odemeler'
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem('odemeler-active-subtab', tab) } catch {}
+  }, [tab])
   const [projects, setProjects] = useState([])
   const [selectedProjectId, setSelectedProjectId] = useState('')
 

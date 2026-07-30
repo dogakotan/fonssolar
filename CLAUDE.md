@@ -77,7 +77,28 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   içinde `activeTab` state'i (localStorage'da saklanır) ile sekme değiştirilir;
   her "sayfa" bir `Tab*.jsx` bileşenidir (`TabGenel`, `TabFinans`, `TabSatinAlma`,
   `TabTickets`, `TabKullanicilar`, `TabProjeYonetimi`, `TabSantiyeSefi`,
-  `TabIsPlan`, `TabBildirimler`).
+  `TabIsPlan`, `TabBildirimler`). Bu sayfaların KENDİ İÇİNDEKİ alt-sekmeleri
+  (`TabFinans`/`TabSatinAlma`/`TabOdemeler`'in üst sekme çubuğu, `ProjeDetay`'ın
+  8 sekmesi + Malzeme Listesi'nin Malzeme/Riskler alt-sekmesi, proje içi
+  `ProjeTabFinans`/`ProjeTabSatinAlma`) de aynı `activeTab` deseniyle
+  localStorage'da kalıcı (30.07.2026'da eklendi) — bu bileşenler `activeTab`
+  değişince unmount/remount olduğundan (React conditional render), öncesinde
+  başka bir menüye geçip geri dönmek her seferinde varsayılan alt-sekmeye
+  (`genel`/`talepler`/`Genel Proje`) sıfırlıyordu. Menü seviyesindekiler
+  (`finans-active-subtab`, `satin-alma-active-subtab`, `odemeler-active-subtab`)
+  düz bir localStorage anahtarı kullanır; proje-özel olanlar (`proje-detay-active-tab-*`,
+  `proje-detay-malzeme-section-*`, `proje-finans-active-subtab-*`,
+  `proje-satin-alma-active-subtab-*`) `projectId` ile sonlandırılmış anahtar
+  kullanır ki farklı bir proje açmak yanlışlıkla başka projenin sekmesini miras
+  almasın. Açık bir deep-link (`initialTab` prop, ör. bildirimden gelme) her
+  zaman persisted değerin önüne geçer; rol bazlı sekmelerde (Finans'ın Onay
+  Kuyruğu, Satın Alma'nın Onay Bekleyenler/Bekleyen gibi) persisted değer o rol
+  için artık geçerli değilse varsayılana düşülür. Ayrıca `index.jsx`'teki
+  `handleTabChange` öncesinde sidebar'daki HER tıklamada (Projeler'in kendisi
+  dahil) `showProjectDetail`'i sıfırlıyordu — bu yüzden bir projenin
+  içindeyken başka bir menüye geçip "Projeler"e geri dönmek her seferinde
+  proje listesine düşüyordu; bu satır kaldırıldı, listeye dönmenin açık yolu
+  artık yalnızca `ProjeDetay`'ın kendi "← Projelere Dön" butonu.
 - Proje-özel görünümler `src/pages/dashboard/components/ProjeTab*.jsx` altında
   (`ProjeDetay.jsx` seçilen projeyi gösterir); genel/tüm-projeler görünümleri
   ayrı `Tab*.jsx` dosyalarında. Finans/Satın Alma bu ikisi arasında alt
@@ -1123,49 +1144,36 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**30.07.2026 (5) — Excel proje şablonu yükleme: kullanıcının "kabul etmiyor"
-dediği şey aslında zorunlu alan doğrulamasıydı (bug değil), ama araştırma
-sırasında gerçek iki bug bulunup düzeltildi + `import-project-excel`
-kaynağı ilk kez repoya eklendi.**
+**30.07.2026 (6) — Alt-sekmeler başka bir menüye geçilince sıfırlanıyordu;
+sistem genelinde localStorage'da kalıcı yapıldı + "Projeler"e dönünce proje
+listesine düşme bug'ı düzeltildi.**
 
-Kullanıcı "şablon yükleme kısmı exceli kabul etmiyor" dedi. Playwright'la
-admin olarak canlı reprodüksiyon: boş şablon E5/E6 (Proje ID/Proje Adı) boş
-olduğu için `400 "Proje ID ve Proje Adı zorunludur"` ile reddediliyordu —
-kasıtlı bir doğrulama, template'i doldurup yüklemek yeterliydi. Bu netleşince
-kullanıcı ikinci bir sorunu tarif etti: aynı ID'yle ("test-izmir-ges-2026",
-zaten var olan bir test projesi) tekrar yükleme yapınca sistem "Excel
-aktarıldı" diyordu ama **hiçbir yeni proje listede görünmüyordu** — DB
-kontrolüyle doğrulandı: `import-project-excel` ID çakışmasında kullanıcıya
-hiç sormadan sessizce mevcut projeyi güncelliyordu (kullanıcı "duplicate"/test
-kopyası oluşturmak istemişti).
+Kullanıcı önce yalnızca menü Finans'ta fark etti ("yandaki sekmeye geçince
+sayfalar defaulta dönüyor"), o tek sayfa için düzeltilip canlıya alındıktan
+sonra "ama her kullanıcıda böyle olmalıydı" diyerek kapsamı sistem geneline
+genişletti — tüm alt-sekmeli sayfalarda aynı davranış istendi. Kök neden
+hepsinde aynıydı: `activeTab` değişince bu bileşenler React tarafından
+unmount/remount ediliyor, local `useState` sıfırlanıyordu. `TabFinans.jsx`,
+`TabSatinAlma.jsx`, `TabOdemeler.jsx`, proje içi `ProjeTabFinans.jsx`/
+`ProjeTabSatinAlma.jsx` ve `ProjeDetay.jsx` (8 sekme + Malzeme Listesi'nin
+Malzeme/Riskler alt-sekmesi) sekme durumunu artık `activeTab`'ın kendisiyle
+aynı desende localStorage'da saklıyor (bkz. "Frontend yapısı" için anahtar
+adları/öncelik sırası). Ayrıca test sırasında `ProjeDetay` için ayrı, daha
+temel bir bug bulundu: `index.jsx`'teki `handleTabChange` sidebar'daki HER
+tıklamada (Projeler'in kendisi dahil) `showProjectDetail`'i sıfırlıyordu —
+bu yüzden bir projenin içindeyken başka bir menüye geçip "Projeler"e geri
+dönmek, o projenin sekmesi kalıcı hale getirilse bile, doğrudan proje
+LİSTESİNE düşürüyordu (ProjeDetay hiç render edilmiyordu). Bu satır
+kaldırıldı — listeye dönmenin açık yolu artık yalnızca `ProjeDetay`'ın kendi
+"← Projelere Dön" butonu.
 
-Düzeltme (kullanıcı onayıyla, iki seçenek arasından "seçenek sun"u seçti —
-her zaman otomatik kopyalama yerine): `import-project-excel` artık bir
-`mode` parametresi alıyor (`ask`/`update`/`duplicate`). İlk denemede
-(`mode=ask`, varsayılan) ID çakışırsa fonksiyon HİÇBİR ŞEY YAZMADAN
-`409 {conflict, existing_id, existing_name}` döner; `TabProjeYonetimi.jsx`
-bunu yakalayıp "Mevcut projeyi güncelle" / "Yeni bir kopya olarak yükle" /
-"Vazgeç" seçenekli bir modal gösterir. "Kopya" seçilirse ID'ye otomatik
-`-kopya`/`-kopya-2`... eki eklenip gerçek bağımsız bir proje oluşturulur
-(bkz. "Excel şablonu / proje sihirbazı"). Bu tasarım BİLEREK var olan
-"mevcut projeyi Excel'den dışa aktar → düzenle → aynı ID'yle geri yükleyip
-toplu güncelle" akışını bozmuyor — o akış `mode=update` ile aynen çalışmaya
-devam ediyor.
-
-Test sırasında ayrı, önceden var olan bir bug daha bulundu (kullanıcı onayıyla
-aynı oturumda düzeltildi): "Bütçe" sayfasının başlık satırı 5. satırda
-(diğer sayfalarda 4.), ama ortak `rows()` tarayıcısı tüm sayfalarda veriyi
-sabit 5. satırdan başlatıyordu — sonuçta HER yüklemede başlığın kendisi
-("Kategori"/"Kalem Adı"/₺0) geçerli bir bütçe kalemi sanılıp ekleniyordu.
-`rows()`'a bir `startRow` parametresi eklendi (Bütçe için 6, diğerleri
-varsayılan 5). Tüm projelerde bu sahte kalemin başka örneği bulunmadı
-(temiz), test sırasında oluşan tek örnek elle silindi.
-
-Her iki düzeltme de gerçek admin girişiyle Playwright'la uçtan uca doğrulandı
-(çakışma modalı çıkması, "güncelle" aynı projeye yazması, "kopya" yeni bağımsız
-proje oluşturması, düzeltme sonrası Bütçe sahte satırının bir daha
-oluşmaması) — test verileri (`debug-*`/`-kopya` projeleri, sahte bütçe satırı)
-elle temizlendi. `import-project-excel`'in kaynağı (`index.ts`+`mapping.ts`)
-30.07.2026'ya kadar yalnızca Supabase'de deploy ediliydi, yerelde hiç yoktu
-(`export-project-excel`'in aksine) — bu görevle birlikte `supabase/functions/
-import-project-excel/` altına eklenip repoya kaydedildi.
+Rol-bazlı sekmelerde (Finans'ın Onay Kuyruğu, Satın Alma'nın Onay Bekleyenler/
+Bekleyen) persisted değer geçerli değilse role'ün varsayılanına düşülüyor;
+proje-özel anahtarlar `projectId` ile sonlandırılıyor ki farklı proje açmak
+başka projenin sekmesini miras almasın; açık deep-link (`initialTab` prop)
+her zaman persisted değerin önüne geçiyor. Menü Finans'taki ilk düzeltme
+önce ayrı commit'lenip main'e merge edilip Vercel'e deploy edildi (kullanıcı
+canlıda test ediyordu, yerelde kalmış bir fix'in "hâlâ aynı" görünmesi bunun
+netleşmesini sağladı) — sonraki sistem-geneli genişletme de aynı şekilde
+Playwright'la (menü Finans, menü Satın Alma, proje içi 8 sekme dahil) admin
+girişiyle uçtan uca doğrulandı.
