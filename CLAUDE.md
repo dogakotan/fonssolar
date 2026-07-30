@@ -951,11 +951,33 @@ Yönetimi'nden tekrar yüklüyor. 7 sayfa: Proje Bilgileri, İş Kalemleri, Kate
 Ağırlıkları (salt okunur/referans), Riskler (yalnızca mevcut proje güncellemesinde
 okunur, yeni projede parse edilmez), Bütçe, Malzeme Listesi, Kullanım Kılavuzu.
 
-`import-project-excel`/`export-project-excel` edge fonksiyonları (Deno, bu
-repoda değil, Supabase'de deploy edili) bu 7 sayfayı parse eder/üretir;
+`import-project-excel`/`export-project-excel` edge fonksiyonları (Deno,
+Supabase'de deploy edili, kaynakları `supabase/functions/` altında — ikisi de
+artık repoda takip ediliyor, `import-project-excel` 30.07.2026'ya kadar yalnızca
+canlıda deploy edili olup yerel karşılığı yoktu) bu 7 sayfayı parse eder/üretir;
 frontend yalnızca `src/utils/projectExcelBridge.js` üzerinden ince bir köprü.
 Kategori eşleme sabit bir liste değil, Türkçe etiketi `snake_case`'e çevirir;
-risk kategorisi ise sabit 3 değerlik bir sözlük.
+risk kategorisi ise sabit 3 değerlik bir sözlük. Sayfa içi satır taraması
+(`rows()` helper'ı) başlık satırının HEMEN ALTINDAN başlar — İş Kalemleri/
+Riskler/Malzeme Listesi'nde başlık 4. satırda (veri 5'ten başlar) ama Bütçe
+sayfasında başlık 5. satırda (veri 6'dan başlar); bu ikisi ayrı `startRow`
+parametresiyle ayrıştırılmıştır — aynı sabit satırdan başlanırsa Bütçe'nin
+başlık satırının kendisi ("Kategori"/"Kalem Adı"/₺0) geçerli bir kalem sanılıp
+her yüklemede eklenir (30.07.2026'da bulunup düzeltilen bug).
+
+**Proje ID çakışması — "Yeni Proje" akışı (30.07.2026):** `import-project-excel`
+`mode` parametresi alır (`ask`/`update`/`duplicate`). İlk denemede (`mode=ask`,
+frontend'in varsayılanı) Excel'deki Proje ID (E5) zaten bir projeye aitse
+fonksiyon HİÇBİR ŞEY YAZMADAN `409 {conflict:true, existing_id, existing_name}`
+döner; `TabProjeYonetimi.jsx` bunu yakalayıp kullanıcıya bir seçim modalı
+gösterir: **"Mevcut projeyi güncelle"** (`mode=update`, eskisi gibi o projeye
+yazar) veya **"Yeni bir kopya olarak yükle"** (`mode=duplicate` — ID'ye
+otomatik `-kopya`/`-kopya-2`... eki eklenip gerçekten yeni, bağımsız bir proje
+oluşturulur, isim de `(Kopya)` son ekini alır; Riskler sayfası da bu modda
+okunur çünkü kopya aslında dolu bir projenin Excel'i, "yeni/boş proje" değil).
+Öncesinde "Yeni Proje" butonu aynı ID'yle tekrar yüklendiğinde kullanıcıya HİÇ
+sormadan sessizce mevcut projeyi güncelliyordu — kullanıcı yeni bir proje
+oluşturduğunu sanıp listede göremeyince fark edilen bug.
 
 Proje oluşturma/düzenleme sihirbazı (`YeniProjeWizard.jsx`/`ProjeEditWizard.jsx`):
 İş Kalemleri → Kategori Ağırlıkları → Riskler (yalnızca düzenlemede) → Tedarik
@@ -1101,35 +1123,49 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**30.07.2026 (4) — Ayrı "Maliyet Tablosu" sekmesi (hem menü hem proje içi
-Finans'ta) kaldırıldı: "Genel" sekmesindeki "Maliyet Kalemi Özeti" ile aynı
-`costBuckets` verisini tekrar gösteriyordu, kullanıcı kararıyla dead code
-olarak silindi.**
+**30.07.2026 (5) — Excel proje şablonu yükleme: kullanıcının "kabul etmiyor"
+dediği şey aslında zorunlu alan doğrulamasıydı (bug değil), ama araştırma
+sırasında gerçek iki bug bulunup düzeltildi + `import-project-excel`
+kaynağı ilk kez repoya eklendi.**
 
-`TabFinans.jsx` ve `ProjeTabFinans.jsx`'in ikisinde de aynı çifte yapı vardı:
-"Genel" sekmesinde satır genişlet/daralt destekli bir "Maliyet Kalemi Özeti"
-tablosu (`MaliyetOzetTable`) zaten gösteriliyordu, AYRICA admin-only ayrı bir
-"Maliyet Tablosu" sekmesi (`ProjeTabMaliyetTablosu` → `CostBucketTable`,
-filtre+export araç çubuğuyla) aynı `costBuckets` verisini bir kez daha
-gösteriyordu. Kullanıcı bu ikinci sekmeyi (`ProjeTabMaliyetTablosu.jsx`/
-`CostBucketTable.jsx`, ikisi de dosya olarak silindi) gereksiz duplicate
-olarak tanımlayıp kaldırılmasını istedi. Yapılanlar: her iki dosyadan
-`maliyet` tab-key'i, ilgili `tabs`/`TABS` girdisi ve render bloğu kaldırıldı;
-`TabFinans.jsx`'teki "Tüm maliyet tablosunu görüntüle →" linki (artık
-gidecek yer olmadığından) kaldırıldı; artık kullanılmayan `isAdmin`/`role`
-destructure'ları temizlendi; `MaliyetOzetTable.jsx`/`utils/finans.js`/
-`FinansRaporlari.jsx`'teki "Maliyet Tablosu (sekmesi)" referansları "Maliyet
-Kalemi Özeti"ne güncellendi. `npx vite build` ile doğrulandı (temiz build,
-kırık import yok) + admin olarak Playwright'la hem menü Finans hem proje içi
-Finans'ta sekme çubuğunda "Maliyet Tablosu" görünmediği, "Maliyet Kalemi
-Özeti"nin (Genel sekmesinde) hâlâ göründüğü ekran görüntüsüyle doğrulandı.
-Maliyet dökümü artık tek yerde: Finans > Genel > Maliyet Kalemi Özeti (Genel
-Proje sekmesindeki "Maliyet Durumu" kartı ve `MuhasebeFinansGenel.jsx` gibi
-diğer özet kartlar bundan ayrı, değişmedi).
+Kullanıcı "şablon yükleme kısmı exceli kabul etmiyor" dedi. Playwright'la
+admin olarak canlı reprodüksiyon: boş şablon E5/E6 (Proje ID/Proje Adı) boş
+olduğu için `400 "Proje ID ve Proje Adı zorunludur"` ile reddediliyordu —
+kasıtlı bir doğrulama, template'i doldurup yüklemek yeterliydi. Bu netleşince
+kullanıcı ikinci bir sorunu tarif etti: aynı ID'yle ("test-izmir-ges-2026",
+zaten var olan bir test projesi) tekrar yükleme yapınca sistem "Excel
+aktarıldı" diyordu ama **hiçbir yeni proje listede görünmüyordu** — DB
+kontrolüyle doğrulandı: `import-project-excel` ID çakışmasında kullanıcıya
+hiç sormadan sessizce mevcut projeyi güncelliyordu (kullanıcı "duplicate"/test
+kopyası oluşturmak istemişti).
 
-Önceki (3) numaralı giriş ("Frontend iyileştirme" iddia listesi doğrulaması —
-sidebar tooltip + Proje Yönetimi tablosu responsive düzeltmeleri, bildirim
-sayfası/rozet/isTest maddelerinin zaten karşılandığının doğrulanması) ve
-CLAUDE.md'nin o zamanki baştan sona taranıp "Modül → tablo haritası"nın
-39 tablo + 7 view'a güncellenmesi kalıcı olarak ilgili "Sistem mimarisi" alt
-bölümlerine işlendi, burada tekrar edilmiyor (bu bölüm biriktirilmez).
+Düzeltme (kullanıcı onayıyla, iki seçenek arasından "seçenek sun"u seçti —
+her zaman otomatik kopyalama yerine): `import-project-excel` artık bir
+`mode` parametresi alıyor (`ask`/`update`/`duplicate`). İlk denemede
+(`mode=ask`, varsayılan) ID çakışırsa fonksiyon HİÇBİR ŞEY YAZMADAN
+`409 {conflict, existing_id, existing_name}` döner; `TabProjeYonetimi.jsx`
+bunu yakalayıp "Mevcut projeyi güncelle" / "Yeni bir kopya olarak yükle" /
+"Vazgeç" seçenekli bir modal gösterir. "Kopya" seçilirse ID'ye otomatik
+`-kopya`/`-kopya-2`... eki eklenip gerçek bağımsız bir proje oluşturulur
+(bkz. "Excel şablonu / proje sihirbazı"). Bu tasarım BİLEREK var olan
+"mevcut projeyi Excel'den dışa aktar → düzenle → aynı ID'yle geri yükleyip
+toplu güncelle" akışını bozmuyor — o akış `mode=update` ile aynen çalışmaya
+devam ediyor.
+
+Test sırasında ayrı, önceden var olan bir bug daha bulundu (kullanıcı onayıyla
+aynı oturumda düzeltildi): "Bütçe" sayfasının başlık satırı 5. satırda
+(diğer sayfalarda 4.), ama ortak `rows()` tarayıcısı tüm sayfalarda veriyi
+sabit 5. satırdan başlatıyordu — sonuçta HER yüklemede başlığın kendisi
+("Kategori"/"Kalem Adı"/₺0) geçerli bir bütçe kalemi sanılıp ekleniyordu.
+`rows()`'a bir `startRow` parametresi eklendi (Bütçe için 6, diğerleri
+varsayılan 5). Tüm projelerde bu sahte kalemin başka örneği bulunmadı
+(temiz), test sırasında oluşan tek örnek elle silindi.
+
+Her iki düzeltme de gerçek admin girişiyle Playwright'la uçtan uca doğrulandı
+(çakışma modalı çıkması, "güncelle" aynı projeye yazması, "kopya" yeni bağımsız
+proje oluşturması, düzeltme sonrası Bütçe sahte satırının bir daha
+oluşmaması) — test verileri (`debug-*`/`-kopya` projeleri, sahte bütçe satırı)
+elle temizlendi. `import-project-excel`'in kaynağı (`index.ts`+`mapping.ts`)
+30.07.2026'ya kadar yalnızca Supabase'de deploy ediliydi, yerelde hiç yoktu
+(`export-project-excel`'in aksine) — bu görevle birlikte `supabase/functions/
+import-project-excel/` altına eklenip repoya kaydedildi.

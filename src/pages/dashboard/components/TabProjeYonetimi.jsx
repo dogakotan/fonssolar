@@ -58,6 +58,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
 
   const [importState,   setImportState]   = useState('idle')   // 'idle' | 'importing'
   const [importError,   setImportError]   = useState(null)
+  const [importConflict, setImportConflict] = useState(null)   // { file, existingId, existingName } | null
   const fileInputRef = useRef(null)
 
   const [toast, setToast] = useState(null)
@@ -166,14 +167,31 @@ export default function TabProjeYonetimi({ onViewProject }) {
     if (!file) return
     e.target.value = ''
     setImportError(null)
+    await runImport(file, 'ask')
+  }
+
+  // mode='ask' iken Proje ID zaten varsa backend hiçbir şey yazmadan conflict
+  // döner (bkz. projectExcelBridge.js) — kullanıcı "mevcut projeyi güncelle" /
+  // "yeni kopya olarak yükle" seçene kadar hiçbir veri değişmez (2026-07-30'da
+  // bulunan bug: eskiden "Yeni Proje" butonu aynı ID'yle sessizce mevcut
+  // projeyi güncelliyordu, kullanıcı yeni bir proje oluştuğunu sanıyordu).
+  async function runImport(file, mode) {
     setImportState('importing')
     try {
-      const result = await importProjectExcel(file)
+      const result = await importProjectExcel(file, mode)
       setImportState('idle')
-      showToast(`Excel aktarıldı (${result?.project_id || ''})\n${formatImportSummary(result?.summary)}`)
+      setImportConflict(null)
+      const label = result?.duplicated
+        ? `Proje kopyalandı (${result.project_id})`
+        : `Excel aktarıldı (${result?.project_id || ''})`
+      showToast(`${label}\n${formatImportSummary(result?.summary)}`)
       fetchProjects()
     } catch (err) {
       setImportState('idle')
+      if (err.conflict) {
+        setImportConflict({ file, existingId: err.existingId, existingName: err.existingName })
+        return
+      }
       setImportError(err.message)
     }
   }
@@ -384,6 +402,45 @@ export default function TabProjeYonetimi({ onViewProject }) {
           zIndex: 9999, transition: 'all .2s',
         }}>
           {toast.msg}
+        </div>
+      )}
+
+      {/* Proje ID zaten var — kullanıcı "mevcut projeyi güncelle" / "yeni kopya
+          olarak yükle" seçmeden hiçbir veri yazılmaz (bkz. runImport). */}
+      {importConflict && (
+        <div
+          onClick={() => setImportConflict(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.42)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, padding: 24, width: 460, maxWidth: '100%', boxShadow: '0 28px 80px rgba(15,23,42,.24)' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>Bu Proje ID zaten kullanılıyor</h3>
+            <p style={{ margin: '0 0 18px', fontSize: 12.5, color: 'var(--color-muted)' }}>
+              "{importConflict.existingName || importConflict.existingId}" ({importConflict.existingId}) ID'siyle zaten bir proje var. Ne yapmak istersin?
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                onClick={() => runImport(importConflict.file, 'update')}
+                disabled={importState === 'importing'}
+                style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 700, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >
+                Mevcut projeyi güncelle
+              </button>
+              <button
+                onClick={() => runImport(importConflict.file, 'duplicate')}
+                disabled={importState === 'importing'}
+                style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 700, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >
+                Yeni bir kopya olarak yükle
+              </button>
+              <button
+                onClick={() => setImportConflict(null)}
+                disabled={importState === 'importing'}
+                style={{ background: 'transparent', color: 'var(--color-muted)', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >
+                Vazgeç
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
