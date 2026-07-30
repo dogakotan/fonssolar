@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
@@ -8,6 +8,18 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState('')
+  // ProtectedRoute `loading` true iken tüm Dashboard ağacını unmount edip
+  // "Yükleniyor…" ekranı gösteriyor — bu yalnızca İLK oturum çözümlemesinde
+  // doğru. supabase.auth.onAuthStateChange rutin arka plan token
+  // yenilemelerinde de tetikleniyor; bu satır olmadan HER yenilemede
+  // setLoading(true) çağrılıyor, Dashboard'un tüm local state'i (aktif sekme,
+  // proje detayı, form ilerlemesi vb.) sıfırlanıp kullanıcı farkında olmadan
+  // varsayılan sekmeye/sayfaya atılıyordu — özellikle uzun süren bir formda
+  // (proje sihirbazı gibi) arka planda bir yenileme olursa fark ediliyordu
+  // (2026-07-30'da bulunan bug). Bu ref sayesinde `loading` yalnızca ilk
+  // çözümlemede true'ya çekiliyor, sonraki oturum olaylarında profil
+  // sessizce arka planda güncelleniyor.
+  const hasResolvedOnce = useRef(false)
 
   useEffect(() => {
     let active = true
@@ -19,9 +31,12 @@ export function AuthProvider({ children }) {
         setUser(u)
         if (u) {
           setLoading(true)
-          fetchProfile(u)
+          fetchProfile(u).finally(() => { hasResolvedOnce.current = true })
         }
-        else setLoading(false)
+        else {
+          setLoading(false)
+          hasResolvedOnce.current = true
+        }
       })
       .catch(() => {
         if (!active) return
@@ -29,16 +44,21 @@ export function AuthProvider({ children }) {
         setProfile(null)
         setAuthError('Oturum bilgisi okunamadi.')
         setLoading(false)
+        hasResolvedOnce.current = true
       })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       const u = session?.user ?? null
       setUser(u)
       if (u) {
-        setLoading(true)
-        fetchProfile(u)
+        if (!hasResolvedOnce.current) setLoading(true)
+        fetchProfile(u).finally(() => { hasResolvedOnce.current = true })
       }
-      else { setProfile(null); setLoading(false) }
+      else {
+        setProfile(null)
+        setLoading(false)
+        hasResolvedOnce.current = true
+      }
     })
 
     return () => {
