@@ -110,7 +110,7 @@ export default function TedarikciOdemeModal({ rows, supplierMap, projectMap, onC
           </aside>
           <main>
             <section className="supplier-payment-card supplier-allocation">
-              <header><h3>Faturalara Dağıtım</h3><button type="button" onClick={distributeOldest} disabled={!paymentTotal}>En eski vadeden dağıt</button></header>
+              <header><h3>Faturalara Dağıtım</h3><button type="button" onClick={distributeOldest} disabled={!paymentTotal} title={!paymentTotal ? 'Önce toplam ödeme tutarını girin' : undefined}>En eski vadeden dağıt</button></header>
               <div className="supplier-allocation-head"><span>Fatura No / Proje</span><span>Vade Tarihi</span><span>Durum</span><span>Kalan Tutar</span><span>Bu Ödemeden</span></div>
               {invoices.map(invoice => {
                 const selected = Number(allocations[invoice.id]) > 0

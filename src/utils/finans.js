@@ -2,7 +2,7 @@
 // Bu dosyada sadece SAF sunum yardımcıları kalıyor: renk/etiket eşlemesi ve metin biçimlendirme —
 // hiçbiri veriyi sorgulamıyor ya da toplamıyor, sadece RPC'den gelen hazır sayıları görüntüye çeviriyor.
 
-// Hem Harcama Dağılımı hem Maliyet Tablosu/Maliyet Kalemi Özeti AYNI 3 kategoriyi kullanır —
+// Hem Harcama Dağılımı hem Maliyet Kalemi Özeti AYNI 3 kategoriyi kullanır —
 // invoices.category'de birebir gerçek (malzeme/iscilik/diger), tahmini dağıtıma gerek yok.
 export const CATEGORY_META = {
   malzeme: { label: 'Malzeme', color: 'var(--color-primary)' },

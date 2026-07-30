@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
-import Badge from '../../../components/ui/Badge'
+import { StatusDot } from '../../../components/ui/Badge'
 import { INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS, PR_STATUS, TK_STATUS } from '../../../components/ui/StatusBadge'
 import Pager from '../../../components/ui/Pager'
 import { dedupeNotifications, notificationDisplay } from '../../../utils/notifications'
@@ -162,6 +162,8 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
         onGoToTicket?.(n.entity_id)
         break
       case 'daily_report':
+        onOpenReport?.(n.entity_id, n.project_id)
+        break
       case 'daily_report_reminder':
         onOpenReport?.(n.entity_id)
         break
@@ -271,7 +273,7 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                         {display.body && <p className="bildirim-desc">{display.body}</p>}
                         {live && BADGE_MAP[live.kind] && (
                           <p className="bildirim-live">
-                            Güncel durum: <Badge map={BADGE_MAP[live.kind]} value={live.status} />
+                            <StatusDot map={BADGE_MAP[live.kind]} value={live.status} prefix="Güncel durum" />
                           </p>
                         )}
                         {isManager && n.entity_type === 'invoice' && invoiceStepSummary[n.entity_id] && (

@@ -69,6 +69,7 @@ export default function Dashboard() {
   const [openInvoiceId,       setOpenInvoiceId]        = useState(null)
   const [invoiceProjectId,    setInvoiceProjectId]     = useState(null)
   const [initialProjectTab,   setInitialProjectTab]    = useState(null)
+  const [initialReportId,     setInitialReportId]      = useState(null)
   const navigate = useNavigate()
 
   // Kısıtlı roller → başlangıç sekmesi
@@ -105,10 +106,11 @@ export default function Dashboard() {
   // (tek kayıt detay modalı yok, en azından doğru yere götürür). Proje adı bildirimde
   // yok — ProjeDetay zaten kendi projesini RPC'den çekiyor, header'daki kısa süreli
   // başlık için burada ayrıca hızlıca çekilir.
-  function goToProjectTab(id, tab) {
+  function goToProjectTab(id, tab, reportId = null) {
     setSelectedProjectId(id)
     setSelectedProjectName('')
     setInitialProjectTab(tab)
+    setInitialReportId(reportId)
     setShowProjectDetail(true)
     setActiveTab('projeler')
     supabase.from('projects').select('name').eq('id', id).maybeSingle().then(({ data }) => {
@@ -161,10 +163,34 @@ export default function Dashboard() {
 
   // Bildirimler sayfasından bir fatura bildirimine tıklanınca: Finans sekmesine
   // geç, o faturayı doğrudan aç (biliniyorsa proje filtresini de ayarla).
-  function goToInvoice(invoiceId, invoiceProjectId = null) {
+  // santiye_sefi gibi 'finans' sekmesine erişimi olmayan bir talep sahibi bu
+  // bildirimi alabiliyor (trg_notify_invoice_status → v_pr_owner) — o rolde
+  // handleTabChange('finans') sessizce no-op olurdu, bunun yerine erişebildiği
+  // bağlı satın alma talebine yönlendiriyoruz.
+  async function goToInvoice(invoiceId, invoiceProjectId = null) {
+    if (navigation?.tabs && !navigation.tabs.includes('finans')) {
+      const { data } = await supabase.rpc('get_invoice_linked_purchase_request', { p_invoice_id: invoiceId })
+      if (data) goToRequest(data)
+      return
+    }
     setOpenInvoiceId(invoiceId)
     setInvoiceProjectId(invoiceProjectId)
     handleTabChange('finans')
+  }
+
+  // Bildirimler sayfasından bir günlük rapor bildirimine tıklanınca: rapor
+  // sahibi santiye_sefi ise kendi düzenleme modalını aç (mevcut davranış,
+  // hatırlatma bildirimleri de bu yoldan geçer); trg_notify_daily_report yalnızca
+  // admin'i hedeflediğinden ve admin'in kendi düzenleme modalına erişimi
+  // olmadığından (index.jsx'teki showReportModal bloğu role==='santiye_sefi'
+  // ile sınırlı), admin için bunun yerine ilgili projenin Raporlar sekmesini
+  // açıp raporu orada gösteriyoruz.
+  function goToReport(reportId, reportProjectId = null) {
+    if (reportProjectId && (!navigation?.tabs || navigation.tabs.includes('projeler'))) {
+      goToProjectTab(reportProjectId, 'raporlar', reportId)
+      return
+    }
+    openReportModal(reportId)
   }
 
   if (!authLoading && role === null) {
@@ -202,7 +228,12 @@ export default function Dashboard() {
   }
 
   const showingDetail = activeTab === 'projeler' && showProjectDetail
-  const headerTitle = showingDetail ? selectedProjectName : TABS[activeTab].title
+  // "Bekleyenler" yalnızca muhasebe için anlamlı (bu sekmede yalnızca fatura
+  // kesilmeyi bekleyen talepleri görür) — diğer rollerde tam satın alma
+  // talebi listesi olduğundan "Satın Alma" gösterilir (bkz. Sidebar.jsx).
+  const headerTitle = showingDetail
+    ? selectedProjectName
+    : (activeTab === 'satin-alma' && role !== 'muhasebe') ? 'Satın Alma' : TABS[activeTab].title
 
   return (
     <div className="dashboard">
@@ -278,7 +309,7 @@ export default function Dashboard() {
         {activeTab === 'bildirimler'  && (
           <TabBildirimler
             onGoToTicket={goToTicket}
-            onOpenReport={openReportModal}
+            onOpenReport={goToReport}
             onGoToRequest={goToRequest}
             onGoToInvoice={goToInvoice}
             onGoToMalzemeListesi={(projectId) => goToProjectTab(projectId, 'malzeme-listesi')}
@@ -299,6 +330,8 @@ export default function Dashboard() {
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
             initialTab={initialProjectTab}
+            initialReportId={initialReportId}
+            onOpenedReport={() => setInitialReportId(null)}
           />
         )}
         {activeTab === 'satin-alma'   && role === 'santiye_sefi' && (

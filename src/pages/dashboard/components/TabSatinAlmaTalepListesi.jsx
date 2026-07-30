@@ -5,8 +5,7 @@ import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
 import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModal'
 import Pager from '../../../components/ui/Pager'
-import ApprovalStepsHorizontal from '../../../components/ui/ApprovalStepsHorizontal'
-import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice, buildApprovalSteps } from '../../../utils/satinAlma'
+import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tüm Durumlar' },
@@ -76,16 +75,42 @@ const RISK_STATE_META = {
   uygun: { color: 'var(--color-success)', label: 'Uygun' },
 }
 
-function buildSiteChiefSteps(status) {
+// İşlem durumu — tek nokta + kalın metin rozeti (UYGUNLUK kolonundaki RiskBadge
+// ile aynı görsel dil). Süreç adımları zaten TalepDetayModal'da dikey stepper
+// olarak duruyor; listede aynı bilgiyi 5 (site şefinde 3) adımlı yatay bir
+// göstergeyle tekrarlamaya gerek yok — durum filtresindeki etiketlerle birebir
+// aynı metinler kullanılır (STATUS_FILTERS/SITE_CHIEF_STATUS_FILTERS).
+const PROCESS_STATUS_META = {
+  bekliyor:             { color: 'var(--color-primary)', label: 'Talep Oluşturuldu' },
+  onaylandi:            { color: 'var(--color-warning)', label: 'Proje Yöneticisinde' },
+  satin_alindi:         { color: 'var(--color-warning)', label: 'Fatura Bekleniyor' },
+  fatura_bekliyor:      { color: 'var(--color-warning)', label: 'Fatura Bekleniyor' },
+  fatura_onay_bekliyor: { color: 'var(--color-primary)', label: 'Fatura Onayda' },
+  faturasi_kesildi:     { color: 'var(--color-success)', label: 'Fatura Kesildi' },
+  red_edildi:           { color: 'var(--color-danger)',  label: 'Reddedildi' },
+  iptal:                { color: 'var(--color-muted)',   label: 'İptal' },
+}
+
+const SITE_CHIEF_PROCESS_STATUS_META = {
+  bekliyor:             { color: 'var(--color-primary)', label: 'Talep Oluşturuldu' },
+  onaylandi:            { color: 'var(--color-warning)', label: 'İşleme Alındı' },
+  satin_alindi:         { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
+  fatura_bekliyor:      { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
+  fatura_onay_bekliyor: { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
+  faturasi_kesildi:     { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
+  red_edildi:           { color: 'var(--color-danger)',  label: 'İşlem İptal Edildi' },
+  iptal:                { color: 'var(--color-danger)',  label: 'İşlem İptal Edildi' },
+}
+
+function ProcessStatusBadge({ status, isSiteChief }) {
   const normalized = normalizeStatus(status)
-  const isCancelled = ['red_edildi', 'iptal'].includes(normalized)
-  const isProcessing = normalized === 'onaylandi'
-  const isComplete = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(normalized)
-  return [
-    { key: 'created', label: 'Talep Oluşturuldu', done: true },
-    { key: 'processing', label: isCancelled ? 'İşlem İptal Edildi' : 'İşleme Alındı', done: isProcessing || isComplete, active: isProcessing, rejected: isCancelled },
-    { key: 'completed', label: 'İşlem Tamamlandı', done: isComplete },
-  ]
+  const meta = (isSiteChief ? SITE_CHIEF_PROCESS_STATUS_META : PROCESS_STATUS_META)[normalized] || { color: 'var(--color-muted)', label: normalized }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: meta.color, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: meta.color, flexShrink: 0 }} />
+      {meta.label}
+    </span>
+  )
 }
 
 function RiskBadge({ state }) {
@@ -411,7 +436,7 @@ export default function TabSatinAlmaTalepListesi({
       ) : (
         <>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: projectId ? 660 : 760 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: projectId ? 560 : 660 }}>
             <thead>
               <tr>
                 {headers.map(header => (
@@ -456,8 +481,8 @@ export default function TabSatinAlmaTalepListesi({
                         {requestType(request)}
                       </span>
                     </td>
-                    <td style={{ ...TD, minWidth: 300 }}>
-                      <ApprovalStepsHorizontal steps={siteChiefView ? buildSiteChiefSteps(request.status) : buildApprovalSteps(request.status)} />
+                    <td style={{ ...TD, minWidth: 150, whiteSpace: 'nowrap' }}>
+                      <ProcessStatusBadge status={request.status} isSiteChief={siteChiefView} />
                     </td>
                     {showActions && (
                     <td style={{ ...TD, minWidth: projectId ? 180 : 128, whiteSpace: 'nowrap' }}>

@@ -52,21 +52,15 @@ export default function MuhasebeGenelOzet({ onNavigate, onGoToInvoice }) {
   const { data: requestData, refreshing: requestRefreshing, error: requestError, refetch: refetchRequests } =
     useDashboardData('get_satin_alma_overview_all', {})
   const [paymentOverview, setPaymentOverview] = useState([])
-  const [payments, setPayments] = useState([])
   const [paymentLoading, setPaymentLoading] = useState(true)
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
   const [showCalendar, setShowCalendar] = useState(false)
 
   async function fetchPayments() {
     setPaymentLoading(true)
-    const [overviewResult, paymentResult] = await Promise.all([
-      supabase.from('v_invoice_payment_overview').select('*').in('status', ['odeme_bekliyor', 'kismen_odendi', 'ödendi']),
-      supabase.from('invoice_payments').select('id, invoice_id, amount, currency, payment_date, created_at, is_cancelled').eq('is_cancelled', false).order('created_at', { ascending: false }).limit(8),
-    ])
+    const overviewResult = await supabase.from('v_invoice_payment_overview').select('*').in('status', ['odeme_bekliyor', 'kismen_odendi', 'ödendi'])
     if (overviewResult.error) console.error('accounting overview payment fetch error:', overviewResult.error)
-    if (paymentResult.error) console.error('accounting recent payments fetch error:', paymentResult.error)
     setPaymentOverview(overviewResult.data || [])
-    setPayments(paymentResult.data || [])
     setPaymentLoading(false)
   }
 
@@ -92,28 +86,51 @@ export default function MuhasebeGenelOzet({ onNavigate, onGoToInvoice }) {
   const approval = invoices.filter(invoice => invoice.status === 'yönetici_onayında')
   const waiting = paymentOverview.filter(invoice => ['odeme_bekliyor', 'kismen_odendi'].includes(invoice.status))
   const overdue = waiting.filter(invoice => invoice.vade_durumu === 'vadesi_gecti')
-  const upcoming = [...waiting].filter(invoice => invoice.due_date && invoice.vade_durumu !== 'vadesi_gecti').sort((a, b) => a.due_date.localeCompare(b.due_date)).slice(0, 4)
+  const now = new Date()
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const monthEnd = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}-01`
+  const upcoming = waiting
+    .filter(invoice => invoice.due_date && invoice.due_date >= monthStart && invoice.due_date < monthEnd)
+    .sort((a, b) => a.due_date.localeCompare(b.due_date))
   const invoiceMap = Object.fromEntries(invoices.map(invoice => [invoice.id, invoice]))
   const supplierMap = useMemo(() => Object.fromEntries(invoices.filter(invoice => invoice.supplier_id).map(invoice => [invoice.supplier_id, invoice.suppliers?.name])), [invoices])
   const projectMap = useMemo(() => Object.fromEntries(invoices.filter(invoice => invoice.project_id).map(invoice => [invoice.project_id, invoice.projects?.name])), [invoices])
 
-  const tasks = [
-    ...approval.slice(0, 2).map(invoice => ({ id: `approval-${invoice.id}`, tone: 'purple', title: `${invoice.suppliers?.name || invoice.invoice_no || 'Fatura'} yönetici onayında`, subtitle: invoice.invoice_no, action: 'İncele', onAction: () => onGoToInvoice?.(invoice.id, invoice.project_id) })),
-    ...overdue.slice(0, 2).map(invoice => ({ id: `overdue-${invoice.id}`, tone: 'red', title: `${invoice.invoice_no || 'Fatura'} ödemesinin vadesi geçti`, subtitle: `Kalan ${money(invoice.remaining_amount, invoice.currency)}`, action: 'Ödeme Ekle', onAction: () => onGoToInvoice?.(invoice.id, invoice.project_id) })),
-    ...invoices.filter(invoice => invoice.status === 'duzeltme_bekliyor').slice(0, 1).map(invoice => ({ id: `revision-${invoice.id}`, tone: 'orange', title: `${invoice.invoice_no || 'Fatura'} düzeltme bekliyor`, subtitle: invoice.suppliers?.name || 'Fatura kaydı', action: 'Düzenle', onAction: () => onGoToInvoice?.(invoice.id, invoice.project_id) })),
-    ...(pendingRequests.length ? [{ id: 'requests', tone: 'green', title: `${pendingRequests.length} satın alma talebi fatura bekliyor`, subtitle: 'Satın alma süreci tamamlandı', action: 'Talepleri Gör', onAction: () => onNavigate?.('satin-alma') }] : []),
-  ].slice(0, 5)
+  // "Bugün Yapılacaklar" artık doğrudan faturalanmayı bekleyen satın alma
+  // taleplerinin listesi — muhasebenin fatura girmesi gereken kuyruk.
+  const tasks = [...pendingRequests]
+    .sort((a, b) => new Date(b.approved_at || b.updated_at || b.created_at) - new Date(a.approved_at || a.updated_at || a.created_at))
+    .slice(0, 6)
+    .map(request => ({
+      id: `request-${request.id}`,
+      tone: 'orange',
+      title: request.title || 'Satın alma talebi',
+      subtitle: request.project_name || '—',
+      action: 'Fatura Oluştur',
+      onAction: () => onNavigate?.('satin-alma'),
+    }))
 
+  // "Son Hareketler": gelen talep (faturalanacak kuyruğa giren), yönetici
+  // onayında bekleyen faturalar, ödeme bekleyen faturalar — hepsi tek
+  // kronolojik akışta, en son gelme sırasına göre.
   const recent = [
-    ...payments.map(payment => {
-      const invoice = invoiceMap[payment.invoice_id]
-      return { id: `payment-${payment.id}`, icon: '↓', tone: 'green', title: `${money(payment.amount, payment.currency)} ödeme kaydedildi`, subtitle: invoice?.suppliers?.name || invoice?.invoice_no || 'Fatura ödemesi', at: payment.created_at }
-    }),
-    ...invoices.map(invoice => ({
-      id: `invoice-${invoice.id}`, icon: invoice.status === 'onaylandı' ? '✓' : '▤', tone: invoice.status === 'onaylandı' ? 'purple' : 'blue',
-      title: invoice.status === 'onaylandı' ? 'Fatura onaylandı' : 'Fatura oluşturuldu', subtitle: invoice.invoice_no || invoice.suppliers?.name || 'Fatura', at: invoice.created_at || invoice.invoice_date,
+    ...pendingRequests.map(request => ({
+      id: `request-${request.id}`, icon: '⌛', tone: 'orange',
+      title: 'Yeni talep geldi', subtitle: request.title || request.project_name || 'Satın alma talebi',
+      at: request.approved_at || request.updated_at || request.created_at,
     })),
-  ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 6)
+    ...approval.map(invoice => ({
+      id: `approval-${invoice.id}`, icon: '♙', tone: 'purple',
+      title: 'Yönetici onayında', subtitle: invoice.suppliers?.name || invoice.invoice_no || 'Fatura',
+      at: invoice.updated_at || invoice.created_at,
+    })),
+    ...waiting.map(invoice => ({
+      id: `waiting-${invoice.id}`, icon: '▣', tone: 'blue',
+      title: 'Ödeme bekliyor', subtitle: invoiceMap[invoice.id]?.suppliers?.name || invoice.invoice_no || 'Fatura',
+      at: invoiceMap[invoice.id]?.updated_at,
+    })),
+  ].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 8)
 
   const kpis = {
     requests: { count: pendingRequests.length },
@@ -146,8 +163,8 @@ export default function MuhasebeGenelOzet({ onNavigate, onGoToInvoice }) {
         </div>
       </div>
       <div className="accounting-main-grid">
-        <Panel title="Bugün Yapılacaklar" action={<span className="accounting-panel-count">{tasks.length} işlem</span>}>
-          {tasks.length === 0 ? <div className="accounting-empty">Bugün bekleyen işlem yok.</div> : tasks.map(task => (
+        <Panel title="Bugün Yapılacaklar" action={<button className="accounting-header-link" onClick={() => onNavigate?.('satin-alma')}>{pendingRequests.length} bekleyen talep ›</button>}>
+          {tasks.length === 0 ? <div className="accounting-empty">Bekleyen talep yok.</div> : tasks.map(task => (
             <div className="accounting-task-row" key={task.id}>
               <span className={`accounting-dot ${task.tone}`} /><div><b>{task.title}</b><small>{task.subtitle}</small></div>
               <button onClick={task.onAction}>{task.action}</button>
@@ -155,20 +172,27 @@ export default function MuhasebeGenelOzet({ onNavigate, onGoToInvoice }) {
           ))}
         </Panel>
         <Panel title="Yaklaşan Ödemeler" action={<button className="accounting-header-link" onClick={() => onNavigate?.('odemeler')}>Ödeme takibi ›</button>}>
-          {upcoming.length === 0 ? <div className="accounting-empty">Yaklaşan ödeme bulunmuyor.</div> : upcoming.map(invoice => {
+          {upcoming.length === 0 ? <div className="accounting-empty">Bu ay planlı ödeme bulunmuyor.</div> : upcoming.map(invoice => {
             const days = dayDiff(invoice.due_date)
             const source = invoiceMap[invoice.id]
             return <div className="accounting-payment-row" key={invoice.id}>
               <div><b>{source?.suppliers?.name || invoice.invoice_no || 'Fatura'}</b><small>{invoice.invoice_no}</small></div>
               <span>{dateText(invoice.due_date)}</span><strong>{money(invoice.remaining_amount, invoice.currency)}</strong>
-              <em className={days <= 3 ? 'urgent' : days <= 7 ? 'soon' : 'normal'}>{days === 0 ? 'Bugün' : `${days} gün`}</em>
+              <em className={days <= 3 ? 'urgent' : days <= 7 ? 'soon' : 'normal'}>{days === 0 ? 'Bugün' : days < 0 ? `${-days} gün gecikti` : `${days} gün`}</em>
             </div>
           })}
         </Panel>
       </div>
-      <Panel title="Son Hareketler" action={<button className="accounting-header-link" onClick={() => onNavigate?.('finans')}>Tümünü gör ›</button>} className="accounting-recent-panel">
+      <Panel title="Son Hareketler" action={<button className="accounting-header-link" onClick={() => onNavigate?.('bildirimler')}>Bildirimler ›</button>} className="accounting-recent-panel">
         {recent.length === 0 ? <div className="accounting-empty">Henüz finansal hareket yok.</div> : recent.map(item => (
-          <div className="accounting-recent-row" key={item.id}>
+          <div
+            className="accounting-recent-row accounting-recent-row-clickable"
+            key={item.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onNavigate?.('bildirimler')}
+            onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onNavigate?.('bildirimler') } }}
+          >
             <span className={`accounting-activity-icon ${item.tone}`}>{item.icon}</span><b>{item.title}</b><span>{item.subtitle}</span><time>{timeText(item.at)}</time>
           </div>
         ))}

@@ -36,6 +36,8 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
   const [pendingRequests, setPendingRequests] = useState([])
   const [manualProjectId, setManualProjectId] = useState(defaultProjectId)
   const [selectedRequestId, setSelectedRequestId] = useState('')
+  const [requestSearch, setRequestSearch] = useState('')
+  const [showRequestDropdown, setShowRequestDropdown] = useState(false)
   const [saving, setSaving] = useState(null)
   const [err, setErr] = useState('')
   const [addingSupplier, setAddingSupplier] = useState(false)
@@ -103,6 +105,11 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
   const effectiveProjectId = linkedRequest?.project_id || manualProjectId
   const effectiveProjectName = linkedRequest?.project_name || projects.find(p => p.id === effectiveProjectId)?.name || '—'
   const selectableRequests = manualProjectId ? pendingRequests.filter(r => r.project_id === manualProjectId) : pendingRequests
+  const filteredRequests = (() => {
+    const query = requestSearch.trim().toLocaleLowerCase('tr-TR')
+    if (!query) return selectableRequests
+    return selectableRequests.filter(pr => `${pr.title} ${pr.projects?.name || ''}`.toLocaleLowerCase('tr-TR').includes(query))
+  })()
 
   const selectedSupplier = suppliers.find(supplier => supplier.id === form.supplier_id)
   const amount = Number(form.amount) || 0
@@ -270,11 +277,30 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
                       {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
                     </select>
                   </label>
-                  <label>Bağlı Satın Alma Talebi (opsiyonel)
-                    <select value={selectedRequestId} onChange={event => selectRequest(event.target.value)}>
-                      <option value="">Yok — genel harcama</option>
-                      {selectableRequests.map(pr => <option key={pr.id} value={pr.id}>{pr.title} — {pr.projects?.name || '—'}</option>)}
-                    </select>
+                  <label className="request-search-wrap">Bağlı Satın Alma Talebi (opsiyonel)
+                    <input
+                      type="text"
+                      placeholder="Talep ara (başlık, proje)…"
+                      value={linkedRequest ? `${linkedRequest.title} — ${linkedRequest.project_name || '—'}` : requestSearch}
+                      onChange={event => { setRequestSearch(event.target.value); setSelectedRequestId(''); setShowRequestDropdown(true) }}
+                      onFocus={() => setShowRequestDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowRequestDropdown(false), 150)}
+                    />
+                    {linkedRequest && (
+                      <button type="button" className="request-search-clear" onClick={() => { setSelectedRequestId(''); setRequestSearch('') }}>×</button>
+                    )}
+                    {showRequestDropdown && !linkedRequest && (
+                      <div className="request-search-dropdown">
+                        <div className="request-search-option muted" onClick={() => { setSelectedRequestId(''); setRequestSearch(''); setShowRequestDropdown(false) }}>Yok — genel harcama</div>
+                        {filteredRequests.length === 0 ? (
+                          <div className="request-search-empty">Eşleşen talep yok</div>
+                        ) : filteredRequests.map(pr => (
+                          <div key={pr.id} className="request-search-option" onClick={() => { selectRequest(pr.id); setRequestSearch(''); setShowRequestDropdown(false) }}>
+                            <b>{pr.title}</b><small>{pr.projects?.name || '—'}</small>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </label>
                 </div>
                 {linkedRequest && (

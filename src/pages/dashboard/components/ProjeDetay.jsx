@@ -623,7 +623,7 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 }
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab }) {
+export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, initialReportId, onOpenedReport }) {
   const [tab, setTab]                = useState(initialTab || 'genel')
   // Malzeme Listesi/Riskler tek sayfada iki alt-sekme — Genel Proje'deki Riskler
   // kartından "Tümünü Gör" tıklanınca doğrudan Riskler alt-sekmesine düşsün diye.
@@ -1344,7 +1344,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       ) : tab === 'finans' ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'raporlar' ? (
-        <DailyReportList projectId={projectId} title="Günlük Raporlar" showHeader={false} />
+        <DailyReportList
+          projectId={projectId}
+          title="Günlük Raporlar"
+          showHeader={false}
+          openReportId={initialReportId}
+          onOpenedReport={onOpenedReport}
+        />
       ) : tab === 'genel' ? (
         <ProjectOverviewDashboard
           project={project}

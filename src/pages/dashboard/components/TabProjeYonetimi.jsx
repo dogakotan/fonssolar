@@ -296,7 +296,14 @@ export default function TabProjeYonetimi({ onViewProject }) {
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
                   {['Proje Adı', 'ID', 'Konum', 'Durum', 'DC Güç', 'İlerleme', 'Başlangıç', 'Hedef Bitiş', ''].map(h => (
-                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap', borderBottom: '1px solid #e2e8f0' }}>
+                    <th
+                      key={h}
+                      style={{
+                        padding: '8px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 10.5,
+                        textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap', borderBottom: '1px solid #e2e8f0',
+                        ...(h === '' ? { position: 'sticky', right: 0, background: '#f8fafc', boxShadow: '-6px 0 6px -6px rgba(15,23,42,.15)' } : {}),
+                      }}
+                    >
                       {h}
                     </th>
                   ))}
@@ -309,7 +316,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
                   const isExp = exportLoadingId === p.id
                   return (
                     <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9', opacity: isDel ? 0.5 : 1 }}>
-                      <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--color-text)' }}>{p.name}</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--color-text)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.name}>{p.name}</td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-muted)', fontFamily: 'monospace', fontSize: 11 }}>{p.id}</td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)' }}>{p.location || '—'}</td>
                       <td style={{ padding: '8px 10px' }}>
@@ -330,7 +337,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
                       </td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{p.start_date || '—'}</td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{p.target_date || '—'}</td>
-                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', position: 'sticky', right: 0, background: '#fff', boxShadow: '-6px 0 6px -6px rgba(15,23,42,.15)' }}>
                         {canCreateProject && (
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                             <button

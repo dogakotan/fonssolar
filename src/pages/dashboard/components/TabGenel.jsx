@@ -253,7 +253,7 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
   return (
     <>
       <DataStatusBanner error={summaryError} refreshing={summaryRefreshing} onRetry={refetchSummary} />
-      <div className="stats-grid" style={{ marginBottom: '1.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+      <div className="stats-grid genel-kpi-grid">
 
         {/* KPI 1: Proje Özeti */}
         <div className="stat-card" style={{ borderTop: '3px solid #003B8E', cursor: 'pointer' }} onClick={() => onTabChange?.('projeler')}>
@@ -261,11 +261,11 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
           <p className="stat-value">{loading ? '…' : displayProjects.length}</p>
           <p className="stat-note">Toplam Proje</p>
           <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-              <span style={{ color: 'var(--color-muted)' }}>Toplam Güç</span>
-              <strong>{loading ? '…' : `${(displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000).toFixed(2)} MWp`}</strong>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, gap: 6 }}>
+              <span style={{ color: 'var(--color-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Toplam Güç</span>
+              <strong style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{loading ? '…' : `${(displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000).toFixed(2)} MWp`}</strong>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, gap: 6 }}>
               <span style={{ color: 'var(--color-muted)' }}>Kritik Risk</span>
               <strong style={{ color: (criticalTickets ?? 0) > 0 ? '#ef4444' : 'var(--color-text)' }}>
                 {criticalTickets === null ? '…' : criticalTickets} proje
@@ -282,13 +282,13 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
           </p>
           <p className="stat-note">{isProjectManager ? 'Tamamlanmayı bekleyen işlem' : 'Toplam Bütçe'}</p>
           <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, gap: 6 }}>
               <span style={{ color: 'var(--color-muted)' }}>{isProjectManager ? 'Açık Ticket' : 'Gerçekleşen'}</span>
               <strong style={{ color: isProjectManager ? '#ef4444' : '#16a34a' }}>
                 {isProjectManager ? (openTickets ?? '…') : spentAmount === null ? '…' : `${Number(spentAmount).toLocaleString('tr-TR', { maximumFractionDigits: 0 })} ₺`}
               </strong>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, gap: 6 }}>
               <span style={{ color: 'var(--color-muted)' }}>{isProjectManager ? 'Kritik Ticket' : 'Kalan'}</span>
               <strong style={{ color: '#ef4444' }}>
                 {isProjectManager ? (criticalTickets ?? '…') : totalBudget === null || spentAmount === null ? '…' : `${Number(Math.max(0, totalBudget - spentAmount)).toLocaleString('tr-TR', { maximumFractionDigits: 0 })} ₺`}
@@ -341,15 +341,15 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
               </p>
               <p className="stat-note">Toplam bekleyen · tıkla</p>
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, gap: 6 }}>
                   <span style={{ color: 'var(--color-muted)' }}>Satın Alma</span>
                   <strong style={{ color: '#f59e0b' }}>{filteredPurchases ?? '…'}</strong>
                 </div>
-                {!isProjectManager && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                {!isProjectManager && <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, gap: 6 }}>
                   <span style={{ color: 'var(--color-muted)' }}>Fatura</span>
                   <strong style={{ color: '#f59e0b' }}>{pendingInvoices ?? '…'}</strong>
                 </div>}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, gap: 6 }}>
                   <span style={{ color: 'var(--color-muted)' }}>Ticket</span>
                   <strong style={{ color: (openTickets ?? 0) > 0 ? '#ef4444' : '#16a34a' }}>{openTickets ?? '…'}</strong>
                 </div>
@@ -417,16 +417,16 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
               </p>
               <p className="stat-note">{weatherCurrent.label}</p>
               <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, gap: 6 }}>
                   <span style={{ color: 'var(--color-muted)' }}>Rüzgar</span>
                   <strong>{weatherCurrent.wind} km/h</strong>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, gap: 6 }}>
                   <span style={{ color: 'var(--color-muted)' }}>Nem</span>
                   <strong>%{weatherCurrent.humidity}</strong>
                 </div>
                 {weatherTomorrow && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, gap: 6 }}>
                     <span style={{ color: 'var(--color-muted)' }}>Yarın</span>
                     <strong>{weatherTomorrow.emoji} {weatherTomorrow.max}°/{weatherTomorrow.min}°</strong>
                   </div>

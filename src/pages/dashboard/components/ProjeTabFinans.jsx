@@ -9,7 +9,6 @@ import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
 import ProjeTabFinansYanPanel, { KurCard } from './ProjeTabFinansYanPanel'
 import MaliyetOzetTable from './MaliyetOzetTable'
-import ProjeTabMaliyetTablosu from './ProjeTabMaliyetTablosu'
 import FaturaListesi from '../../../components/finans/FaturaListesi'
 import OnayKuyrugu from '../../../components/finans/OnayKuyrugu'
 
@@ -28,8 +27,7 @@ const EMPTY_ACTION_ITEMS = {
 export default function ProjeTabFinans({ projectId, filterDate }) {
   const { isAdmin, role } = useAuth()
   // Proje yöneticisi artık fatura onay sürecindeki "Yönetici" — Faturalar/Onay
-  // Kuyruğu'nu görüp aksiyon alabilmesi gerekiyor. Maliyet Tablosu (bütçe verisi)
-  // hâlâ yalnızca admin'e özel.
+  // Kuyruğu'nu görüp aksiyon alabilmesi gerekiyor.
   const canApprove = isAdmin || role === 'proje_yoneticisi'
   const [tab, setTab] = useState('genel')
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
@@ -81,7 +79,6 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
       { key: 'faturalar', label: 'Faturalar' },
       { key: 'onay', label: 'Onay Kuyruğu' },
     ] : []),
-    ...(isAdmin ? [{ key: 'maliyet', label: 'Maliyet Tablosu' }] : []),
   ]
 
   return (
@@ -128,7 +125,6 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
       </>}
       {tab === 'faturalar' && <FaturaListesi projectId={projectId} />}
       {tab === 'onay' && <OnayKuyrugu projectId={projectId} />}
-      {tab === 'maliyet' && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
     </div>
   )
 }

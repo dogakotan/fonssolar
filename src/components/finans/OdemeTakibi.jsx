@@ -193,7 +193,6 @@ export default function OdemeTakibi({ projectId = null }) {
           <select value={projectFilter} onChange={e => { setProjectFilter(e.target.value); setPage(0) }}><option value="">Tüm Projeler</option>{projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
           <select value={status} onChange={e => { setStatus(e.target.value); setPage(0) }}><option value="hepsi">Tüm Durumlar</option><option value="odeme_bekliyor">Ödeme Bekleyen</option><option value="kismen_odendi">Kısmen Ödendi</option><option value="odendi">Ödendi</option></select>
           <label className="payment-date-filter">Vade Tarihi<input aria-label="Vade başlangıcı" type="date" value={dueStart} onChange={e => setDueStart(e.target.value)} /></label>
-          <button className="payment-filter-button">≡ Filtrele</button>
           <button className="payment-clear-button" onClick={() => { setSearch(''); setStatus('hepsi'); setDueStart(''); setDueEnd(''); setProjectFilter(projectId || ''); setPage(0) }}>Temizle</button>
           <div className="payment-page-actions">
             <button className="payment-calendar-btn" onClick={() => setShowCalendar(true)}>▣ <span>Ödeme Takvimi</span></button>

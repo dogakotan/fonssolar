@@ -12,7 +12,7 @@ export default function TedarikciFormModal({ supplier = null, onClose, onSaved }
   const [taxState, setTaxState] = useState('idle')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [sections, setSections] = useState({ company: true, contact: false, notes: false, checks: true, usage: false })
+  const [sections, setSections] = useState({ company: true, contact: false, notes: false, checks: true })
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
   const toggle = key => setSections(current => ({ ...current, [key]: !current[key] }))
   const requiredComplete = form.name.trim() && form.tax_no.trim() && form.tax_office.trim() && form.contact.trim() && form.phone.trim() && form.email.trim()
@@ -73,8 +73,7 @@ export default function TedarikciFormModal({ supplier = null, onClose, onSaved }
             <section className={sections.notes ? 'section-open' : 'section-closed'}><button type="button" className="supplier-section-toggle" onClick={() => toggle('notes')}><h3>Notlar</h3><span>{sections.notes ? '⌃' : '⌄'}</span></button><div className="supplier-section-body"><label>Notlar<textarea placeholder="Tedarikçiyle ilgili şirket içi not ekleyin..." value={form.notes} onChange={e => set('notes', e.target.value)} /></label></div></section>
           </main>
           <aside>
-            <section className={sections.checks ? 'section-open' : 'section-closed'}><button type="button" className="supplier-section-toggle" onClick={() => toggle('checks')}><h3>Kayıt Kontrolleri</h3><span>{sections.checks ? '⌃' : '⌄'}</span></button><div className="supplier-section-body supplier-form-checks"><p className={taxState === 'available' ? 'ok' : ''}>✓ Vergi numarası benzersiz</p><p className={requiredComplete ? 'ok' : ''}>✓ Zorunlu alanlar tamamlandı</p><p className="info">ⓘ Finansal bakiye bu ekrandan girilmez.<small>Fatura ve ödeme kayıtlarından otomatik oluşur.</small></p></div></section>
-            <section className={sections.usage ? 'section-open' : 'section-closed'}><button type="button" className="supplier-section-toggle" onClick={() => toggle('usage')}><h3>Bu kayıt nerede kullanılacak?</h3><span>{sections.usage ? '⌃' : '⌄'}</span></button><div className="supplier-section-body supplier-form-usage"><p><i>▣</i><span><b>Satın Alma Talepleri</b><small>Tedarikçi, satın alma taleplerinde seçilebilir.</small></span></p><p><i>▤</i><span><b>Faturalar</b><small>Oluşturulacak faturalarda kullanılabilir.</small></span></p><p><i>₺</i><span><b>Ödeme Takibi</b><small>Ödeme kayıtlarında tedarikçi olarak görünür.</small></span></p><p><i>▧</i><span><b>Tedarikçi Raporları</b><small>Rapor ve analizlerde yer alır.</small></span></p></div></section>
+            <section className={sections.checks ? 'section-open' : 'section-closed'}><button type="button" className="supplier-section-toggle" onClick={() => toggle('checks')}><h3>Kayıt Kontrolleri</h3><span>{sections.checks ? '⌃' : '⌄'}</span></button><div className="supplier-section-body supplier-form-checks"><p className={taxState === 'available' ? 'ok' : ''}>✓ Vergi numarası benzersiz</p><p className={requiredComplete ? 'ok' : ''}>✓ Zorunlu alanlar tamamlandı</p></div></section>
           </aside>
         </div>
         {error && <p className="supplier-form-error">{error}</p>}

@@ -1,17 +1,32 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../../context/AuthContext'
 
 export default function Sidebar({ active, onTab, onLogout, isOpen }) {
-  const { navigation } = useAuth()
+  const { navigation, isMuhasebe } = useAuth()
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-collapsed') === 'true' } catch { return false }
   })
+  // İkon-only moddaki nav-item tooltip'i .sidebar'ın kendisi overflow-x:hidden
+  // olduğundan (nav listesinin dikey scroll'u için gerekli) saf CSS ::after ile
+  // kutunun dışına taşamıyor, görünmez kalıyordu — document.body'ye portal'lanan
+  // gerçek bir DOM node'u bu kısıtlamayı by-pass eder.
+  const [tooltip, setTooltip] = useState(null) // { label, top, left } | null
 
   useEffect(() => {
     try { localStorage.setItem('sidebar-collapsed', String(collapsed)) } catch {}
   }, [collapsed])
 
   const showFull = !collapsed || isOpen
+
+  function showTooltip(e, label) {
+    if (showFull) return
+    const r = e.currentTarget.getBoundingClientRect()
+    setTooltip({ label, top: r.top + r.height / 2, left: r.right + 10 })
+  }
+  function hideTooltip() {
+    setTooltip(null)
+  }
 
   const items = [
     {
@@ -52,7 +67,11 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
       ),
     },
     {
-      key: 'satin-alma', label: 'Bekleyenler',
+      // "Bekleyenler" yalnızca muhasebe için — muhasebe bu sekmede yalnızca
+      // fatura kesilmeyi bekleyen (satin_alindi) talepleri görür, diğer
+      // rollerde tam satın alma talebi listesi (tüm durumlar) olduğundan
+      // "Satın Alma" daha doğru.
+      key: 'satin-alma', label: isMuhasebe ? 'Bekleyenler' : 'Satın Alma',
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
@@ -152,14 +171,27 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
             key={item.key}
             className={`nav-item${active === item.key ? ' active' : ''}`}
             onClick={() => onTab(item.key)}
-            data-label={item.label}
             title={item.label}
+            onMouseEnter={e => showTooltip(e, item.label)}
+            onMouseLeave={hideTooltip}
+            onFocus={e => showTooltip(e, item.label)}
+            onBlur={hideTooltip}
           >
             {item.icon}
             {showFull && <span className="nav-label">{item.label}</span>}
           </button>
         ))}
       </nav>
+
+      {tooltip && createPortal(
+        <div
+          className="sidebar-nav-tooltip"
+          style={{ top: tooltip.top, left: tooltip.left }}
+        >
+          {tooltip.label}
+        </div>,
+        document.body
+      )}
 
       <div className="sidebar-bottom">
         <button className="sidebar-logout-btn" onClick={onLogout} title="Çıkış Yap">

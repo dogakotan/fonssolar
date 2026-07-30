@@ -10,7 +10,6 @@ import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
 import ProjeTabFinansYanPanel, { KurCard } from './ProjeTabFinansYanPanel'
 import MaliyetOzetTable from './MaliyetOzetTable'
-import ProjeTabMaliyetTablosu from './ProjeTabMaliyetTablosu'
 import FaturaListesi from '../../../components/finans/FaturaListesi'
 import OnayKuyrugu   from '../../../components/finans/OnayKuyrugu'
 import OdemeTakibi from '../../../components/finans/OdemeTakibi'
@@ -30,7 +29,7 @@ const EMPTY_ACTION_ITEMS = {
 }
 
 export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProjectId, onNavigateTop } = {}) {
-  const { role, isAdmin, isMuhasebe } = useAuth()
+  const { isMuhasebe } = useAuth()
   const [tab, setTab] = useState(() => (isMuhasebe ? 'faturalar' : 'genel'))
   const [genelSection, setGenelSection] = useState('genel') // 'genel' | 'detay' — yalnızca muhasebe Genel sekmesi içi
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
@@ -92,7 +91,6 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
         { key: 'faturalar', label: 'Faturalar' },
         { key: 'odemeler',  label: 'Ödeme Takibi' },
         { key: 'onay',      label: 'Onay Kuyruğu' },
-        ...(isAdmin ? [{ key: 'maliyet', label: 'Maliyet Tablosu' }] : []),
       ]
 
   return (
@@ -156,14 +154,6 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', margin: 0, flex: 1 }}>Maliyet Kalemi Özeti</h3>
-              {isAdmin && (
-                <button onClick={() => setTab('maliyet')} style={{
-                  background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 13, fontWeight: 600,
-                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                }}>
-                  Tüm maliyet tablosunu görüntüle →
-                </button>
-              )}
             </div>
             <div style={{ overflowX: 'auto' }}>
               <MaliyetOzetTable costBuckets={costBuckets} loading={loading} />
@@ -180,7 +170,6 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
       )}
       {tab === 'onay'      && <OnayKuyrugu projectId={selectedProjectId || null} />}
       {tab === 'odemeler'  && <OdemeTakibi projectId={selectedProjectId || null} />}
-      {tab === 'maliyet'   && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
     </div>
   )
 }

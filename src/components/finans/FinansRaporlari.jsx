@@ -10,7 +10,8 @@ const money = value => formatPaymentCurrency(value, 'TRY')
 // Not: "Hedef Maliyet" karşılaştırması bilinçli olarak burada yok — budget_lines
 // muhasebe için RLS'te kapalı (bütçe/planlanan veri yalnızca admin/proje yöneticisine
 // açık, bkz. CLAUDE.md "muhasebe izolasyonu") ve zaten muhasebenin ihtiyacı bu değil.
-// Yönetici hedef/gerçekleşen karşılaştırmasını kendi Maliyet Tablosu sekmesinden görür.
+// Yönetici hedef/gerçekleşen karşılaştırmasını kendi Finans > Genel sekmesindeki
+// Maliyet Kalemi Özeti tablosundan görür.
 export default function FinansRaporlari({ defaultProjectId = '' }) {
   const [invoices, setInvoices] = useState([])
   const [transactions, setTransactions] = useState([])

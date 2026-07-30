@@ -166,7 +166,7 @@ export default function FaturaDetayModal({ invoice, onClose, onChanged }) {
 
   return (
     <div className="invoice-detail-backdrop" style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.42)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
-      <div className="invoice-detail-modal" style={{ background: 'var(--color-surface)', borderRadius: 16, padding: 32, width: 760, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="invoice-detail-modal" style={{ background: 'var(--color-surface)', borderRadius: 16, padding: 32, width: 760, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', overflowX: 'hidden' }}>
         <div className="invoice-detail-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: '0 0 6px', fontSize: 12, color: 'var(--color-muted-light)' }}>

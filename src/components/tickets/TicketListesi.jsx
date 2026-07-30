@@ -5,7 +5,6 @@ import YeniTicketModal from './YeniTicketModal'
 import TicketDetayModal from './TicketDetayModal'
 import SiteChiefTicketDetayModal from './SiteChiefTicketDetayModal'
 import DateNavigator from '../ui/DateNavigator'
-import ApprovalStepsHorizontal from '../ui/ApprovalStepsHorizontal'
 import { SEVERITY_META as SEVERITY, SEVERITY_ORDER, SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
 import { CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
 
@@ -13,15 +12,25 @@ const TH = { height: 24, boxSizing: 'border-box', padding: '0 12px', lineHeight:
 const TD = { height: 64, boxSizing: 'border-box', padding: '0 12px', fontSize: 12.5, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
 
-function buildTicketSteps(status) {
-  const isCancelled = status === 'iptal_edildi'
-  const isProcessing = status === 'işlemde'
-  const isClosed = status === 'kapatıldı'
-  return [
-    { key: 'gonderildi', label: 'Gönderildi', done: true },
-    { key: 'islemde', label: isCancelled ? 'İptal Edildi' : 'İşlemde', done: !isCancelled && (isProcessing || isClosed), active: isProcessing, rejected: isCancelled },
-    { key: 'kapatildi', label: 'Kapatıldı', done: isClosed },
-  ]
+// İşlem durumu — Satın Alma talep listesindeki ProcessStatusBadge (tek nokta +
+// kalın metin rozeti, UYGUNLUK/ACİLİYET kolonlarıyla aynı görsel dil) ile aynı
+// desen — eskiden 3 adımlı yatay bir onay-süreci göstergesiydi (ApprovalStepsHorizontal).
+const TICKET_STATUS_META = {
+  gönderildi:   { color: 'var(--color-primary)', label: 'Gönderildi' },
+  açık:         { color: 'var(--color-primary)', label: 'Gönderildi' },
+  işlemde:      { color: 'var(--color-warning)', label: 'İşlemde' },
+  kapatıldı:    { color: 'var(--color-success)', label: 'Kapatıldı' },
+  iptal_edildi: { color: 'var(--color-danger)',  label: 'İptal Edildi' },
+}
+
+function TicketStatusBadge({ status }) {
+  const meta = TICKET_STATUS_META[status] || { color: 'var(--color-muted)', label: status || '—' }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: meta.color, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: meta.color, flexShrink: 0 }} />
+      {meta.label}
+    </span>
+  )
 }
 
 function actionOwnerText(ticket) {
@@ -548,8 +557,8 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                           {sv.label}
                         </span>
                       </td>
-                      <td style={{ ...TD, minWidth: 220 }}>
-                        <ApprovalStepsHorizontal steps={buildTicketSteps(t.status)} />
+                      <td style={{ ...TD, minWidth: 150 }}>
+                        <TicketStatusBadge status={t.status} />
                       </td>
                       <td style={{ ...TD, minWidth: 150 }} onClick={e => e.stopPropagation()}>
                         {(canProcess || canClose || canCancel || canDelete) ? (
@@ -626,7 +635,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                       {sv.label}
                     </span>
                     <div style={{ flex: '1 1 100%', width: '100%' }}>
-                      <ApprovalStepsHorizontal steps={buildTicketSteps(t.status)} />
+                      <TicketStatusBadge status={t.status} />
                     </div>
                     <span className="tl-card-date">
                       Oluşturulma: {fmtDate(t.created_at)}

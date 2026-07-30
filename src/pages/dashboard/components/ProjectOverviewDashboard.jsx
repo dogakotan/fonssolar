@@ -512,8 +512,11 @@ export default function ProjectOverviewDashboard({
 
   const plannedPct     = calcPlannedAt(tasks, effectiveDate)
   const totalBudget    = budgetLines.reduce((s, b) => s + Number(b.planned_amount || 0), 0)
+  // Kanonik "gerçekleşen maliyet" tanımı (CLAUDE.md): onaylandı/odeme_bekliyor/
+  // kismen_odendi/ödendi — onay anında maliyet gerçekleşmiş sayılır, ödemenin
+  // tamamlanmasını beklemez. Önceden yalnızca onaylandı/ödendi sayılıyordu.
   const spent          = invoices
-    .filter(i => ['onaylandı','onaylandi','ödendi','odendi','paid','approved'].includes((i.status||'').toLowerCase()))
+    .filter(i => ['onaylandı','onaylandi','odeme_bekliyor','kismen_odendi','ödendi','odendi','paid','approved'].includes((i.status||'').toLowerCase()))
     .reduce((s, i) => s + Number(i.total_amount_try ?? i.total_amount ?? i.amount ?? 0), 0)
   const budgetPct      = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0
   const target         = currentProject?.target_date ? new Date(`${currentProject.target_date}T00:00:00`) : null

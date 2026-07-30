@@ -4,12 +4,10 @@ import { durumMeta, CATEGORY_META } from '../../../utils/finans'
 const formatTRY = (amount) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
 
-// Finans > Genel sekmesindeki "Maliyet Kalemi Özeti" — CostBucketTable'ın (Maliyet Tablosu
-// sekmesi) tam filtre/export araç çubuğuna dokunmadan, aynı genişlet/daralt satır
-// davranışını kullanan sade bir özet: Planlanan / Gerçekleşen / Bekleyen / Kalan / Durum,
-// genişletilince altındaki bütçe kalemlerini (yalnızca planlanan tutar — faturalar
-// kalem değil kategori düzeyinde kaydedildiği için gerçekleşen/bekleyen/kalan alt
-// kalem bazında hesaplanamıyor) gösterir.
+// Finans > Genel sekmesindeki "Maliyet Kalemi Özeti" — genişletilince altındaki bütçe
+// kalemlerini (yalnızca planlanan tutar — faturalar kalem değil kategori düzeyinde
+// kaydedildiği için gerçekleşen/bekleyen/kalan alt kalem bazında hesaplanamıyor) gösteren
+// tek maliyet tablosu (Planlanan / Gerçekleşen / Bekleyen / Kalan / Durum).
 export default function MaliyetOzetTable({ costBuckets, loading }) {
   const [expanded, setExpanded] = useState(() => new Set())
   const buckets = (costBuckets?.buckets || []).map(b => ({ ...b, ...CATEGORY_META[b.key] }))

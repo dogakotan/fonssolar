@@ -142,7 +142,7 @@ function buildCalendarDays(monthDate) {
   return Array.from({ length: 42 }, (_, index) => addDays(start, index))
 }
 
-export default function DailyReportList({ onNewReport, onEditReport, projectId: projectIdOverride, title = 'Günlük Raporlarım', showHeader = true }) {
+export default function DailyReportList({ onNewReport, onEditReport, projectId: projectIdOverride, title = 'Günlük Raporlarım', showHeader = true, openReportId = null, onOpenedReport }) {
   const { scopeProjectId, loadingProjects: scopeLoading } = useScope()
   const projectId = projectIdOverride || scopeProjectId
   // "Tüm Projeler" yalnızca kapsam seçicisinden gelen NULL modunda geçerli —
@@ -164,6 +164,15 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
   const calendarDays = useMemo(() => buildCalendarDays(calendarMonth), [calendarMonth])
 
   useEffect(() => { setPage(0) }, [projectId])
+
+  // Bildirimler'den (ör. admin'in "günlük rapor girildi" bildirimi) doğrudan
+  // bir raporun detay modalını açmak için — bkz. index.jsx goToReport().
+  useEffect(() => {
+    if (!openReportId) return
+    setDetailId(openReportId)
+    onOpenedReport?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openReportId])
 
   const { data, loading, refreshing, error, refetch } = useDashboardData(
     'get_daily_reports_list',

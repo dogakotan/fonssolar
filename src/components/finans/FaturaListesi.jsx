@@ -211,7 +211,6 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
         <select value={filterCategory} onChange={e => { setFilterCategory(e.target.value); setPage(0) }}>
           <option value="hepsi">Tüm Fatura Türleri</option><option value="malzeme">Malzeme</option><option value="hizmet">Hizmet</option><option value="diger">Diğer</option>
         </select>
-        <button className="invoice-filter-btn">☰ Filtrele</button>
         <button className="invoice-reset-btn" onClick={() => { setSearch(''); setFilterStatus('hepsi'); setFilterCategory('hepsi'); setActiveTab('hepsi'); setPage(0) }}>Temizle</button>
         <button className="invoice-add-btn" onClick={() => setShowAddInvoice(true)}>＋ Fatura / Harcama Ekle</button>
       </div>
