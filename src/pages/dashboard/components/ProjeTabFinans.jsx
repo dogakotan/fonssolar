@@ -29,7 +29,17 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   // Proje yöneticisi artık fatura onay sürecindeki "Yönetici" — Faturalar/Onay
   // Kuyruğu'nu görüp aksiyon alabilmesi gerekiyor.
   const canApprove = isAdmin || role === 'proje_yoneticisi'
-  const [tab, setTab] = useState('genel')
+  // Sekme seçimi projeye özel olarak localStorage'da kalıcı — aksi halde başka
+  // bir menü öğesine geçip aynı projeye geri dönüldüğünde (ProjeDetay unmount/
+  // remount olduğundan) her seferinde "Genel"e dönüyordu (bkz. TabFinans.jsx'teki
+  // aynı desen; burada anahtar projectId'ye göre ayrıştırılıyor ki farklı bir
+  // proje açmak yanlışlıkla başka projenin sekmesini miras almasın).
+  const [tab, setTab] = useState(() => {
+    try { return window.localStorage.getItem(`proje-finans-active-subtab-${projectId}`) || 'genel' } catch { return 'genel' }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem(`proje-finans-active-subtab-${projectId}`, tab) } catch {}
+  }, [tab, projectId])
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
   const asOfDate = filterDate || new Date().toISOString().split('T')[0]
@@ -80,6 +90,13 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
       { key: 'onay', label: 'Onay Kuyruğu' },
     ] : []),
   ]
+
+  // localStorage'dan gelen sekme farklı bir rolden kalmış olabilir — geçerli
+  // değilse varsayılana düş (bkz. TabFinans.jsx'teki aynı desen).
+  useEffect(() => {
+    if (!tabs.some(t => t.key === tab)) setTab('genel')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canApprove])
 
   return (
     <div>

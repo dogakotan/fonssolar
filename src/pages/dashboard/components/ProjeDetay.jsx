@@ -624,10 +624,28 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
 export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, initialReportId, onOpenedReport }) {
-  const [tab, setTab]                = useState(initialTab || 'genel')
+  // Öncelik: açık deep-link (initialTab, ör. bildirimden gelme) > projeye özel
+  // localStorage'da kalıcı son seçim > "Genel Proje" — aksi halde başka bir menü
+  // öğesine geçip aynı projeye geri dönüldüğünde (bileşen unmount/remount
+  // olduğundan) her seferinde "Genel Proje"ye dönüyordu (bkz. TabFinans.jsx'teki
+  // aynı desen; anahtar projectId'ye göre ayrıştırılıyor ki farklı bir proje
+  // açmak yanlışlıkla başka projenin sekmesini miras almasın).
+  const [tab, setTab] = useState(() => {
+    if (initialTab) return initialTab
+    try { return window.localStorage.getItem(`proje-detay-active-tab-${projectId}`) || 'genel' } catch { return 'genel' }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem(`proje-detay-active-tab-${projectId}`, tab) } catch {}
+  }, [tab, projectId])
   // Malzeme Listesi/Riskler tek sayfada iki alt-sekme — Genel Proje'deki Riskler
   // kartından "Tümünü Gör" tıklanınca doğrudan Riskler alt-sekmesine düşsün diye.
-  const [malzemeSection, setMalzemeSection] = useState('malzeme')
+  // Aynı nedenle (unmount/remount) bu da projeye özel kalıcı.
+  const [malzemeSection, setMalzemeSection] = useState(() => {
+    try { return window.localStorage.getItem(`proje-detay-malzeme-section-${projectId}`) || 'malzeme' } catch { return 'malzeme' }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem(`proje-detay-malzeme-section-${projectId}`, malzemeSection) } catch {}
+  }, [malzemeSection, projectId])
   const goToTab = tabKey => {
     if (tabKey === 'riskler') { setMalzemeSection('riskler'); setTab('malzeme-listesi') }
     else setTab(tabKey)

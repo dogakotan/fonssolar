@@ -9,7 +9,15 @@ import MuhasebeSatinAlma from './MuhasebeSatinAlma'
 
 export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
   const { role, isAdmin, isMuhasebe } = useAuth()
-  const [tab, setTab] = useState('talepler')
+  // Sekme seçimi localStorage'da kalıcı — aksi halde başka bir menü öğesine
+  // geçip Satın Alma'ya geri dönüldüğünde (bileşen unmount/remount olduğundan)
+  // her seferinde "Talepler"e dönüyordu (bkz. TabFinans.jsx'teki aynı desen).
+  const [tab, setTab] = useState(() => {
+    try { return window.localStorage.getItem('satin-alma-active-subtab') || 'talepler' } catch { return 'talepler' }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem('satin-alma-active-subtab', tab) } catch {}
+  }, [tab])
 
   // Bildirimler'den belirli bir talebe gidilince "Onay Bekleyenler" sekmesinde
   // kalınmış olabilir — talep detayının render edildiği "Talepler" sekmesine zorla geç.
@@ -53,6 +61,13 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
     ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
     ...(canManageProcurement ? [{ key: 'tedarik', label: 'Bekleyen' }] : []),
   ]
+
+  // localStorage'dan gelen sekme farklı bir rolden kalmış olabilir — geçerli değilse
+  // varsayılana düş (bkz. TabFinans.jsx'teki aynı desen).
+  useEffect(() => {
+    if (!TABS.some(t => t.key === tab)) setTab('talepler')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, canManageProcurement])
 
   const activeProjectId = projectFilter === 'all' ? undefined : projectFilter
 
