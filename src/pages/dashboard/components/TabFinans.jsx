@@ -30,7 +30,17 @@ const EMPTY_ACTION_ITEMS = {
 
 export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProjectId, onNavigateTop } = {}) {
   const { isMuhasebe } = useAuth()
-  const [tab, setTab] = useState(() => (isMuhasebe ? 'faturalar' : 'genel'))
+  // Sekme seçimi localStorage'da kalıcı — aksi halde başka bir menü öğesine
+  // geçip Finans'a geri dönüldüğünde (bileşen unmount/remount olduğundan)
+  // her seferinde varsayılan sekmeye dönüyordu (bkz. sidebar'daki 'dashboard-active-tab'
+  // deseniyle aynı fikir).
+  const [tab, setTab] = useState(() => {
+    try { return window.localStorage.getItem('finans-active-subtab') || (isMuhasebe ? 'faturalar' : 'genel') }
+    catch { return isMuhasebe ? 'faturalar' : 'genel' }
+  })
+  useEffect(() => {
+    try { window.localStorage.setItem('finans-active-subtab', tab) } catch {}
+  }, [tab])
   const [genelSection, setGenelSection] = useState('genel') // 'genel' | 'detay' — yalnızca muhasebe Genel sekmesi içi
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
   const [projects, setProjects] = useState([])
@@ -92,6 +102,14 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
         { key: 'odemeler',  label: 'Ödeme Takibi' },
         { key: 'onay',      label: 'Onay Kuyruğu' },
       ]
+
+  // localStorage'dan gelen sekme farklı bir rolden kalmış olabilir (ör. muhasebe
+  // 'onay' persiste etmişken sonra proje_yoneticisi aynı tarayıcıda giriş yaptı) —
+  // geçerli değilse role'ün varsayılanına düş.
+  useEffect(() => {
+    if (!TABS.some(t => t.key === tab)) setTab(isMuhasebe ? 'faturalar' : 'genel')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMuhasebe])
 
   return (
     <div>
