@@ -28,11 +28,13 @@ function fileDate() {
 
 // jsPDF'in yerleşik 'helvetica' fontu Türkçe ş/ğ/ı/İ karakterlerini render edemiyor
 // (WinAnsi/Latin-1 kodlamasında yoklar) — Unicode TTF (Roboto, SIL OFL 1.1) gömülüyor.
-// Ayrı dosyadan dinamik import ediliyor ki bu ~650KB'lık font, PDF üretilmeyen
-// sayfalarda ana bundle'a dahil olmasın (yalnızca tıklanınca yüklensin).
+// Font ayrı bir statik dosyadan yalnızca PDF istendiğinde indirilir. Böylece
+// ~650KB Base64 veri JavaScript chunk'ına girmez ve tarayıcı tarafından ayrı cache'lenir.
 async function registerUnicodeFont(doc) {
-  const { ROBOTO_REGULAR_BASE64 } = await import('../assets/fonts/robotoBase64.js')
-  doc.addFileToVFS('Roboto-Regular.ttf', ROBOTO_REGULAR_BASE64)
+  const response = await fetch('/fonts/roboto-regular.base64.txt')
+  if (!response.ok) throw new Error('PDF yazı tipi yüklenemedi.')
+  const robotoRegularBase64 = await response.text()
+  doc.addFileToVFS('Roboto-Regular.ttf', robotoRegularBase64.trim())
   for (const style of ['normal', 'bold', 'italic', 'bolditalic']) {
     doc.addFont('Roboto-Regular.ttf', 'Roboto', style)
   }

@@ -5,23 +5,38 @@ import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
 import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModal'
 import Pager from '../../../components/ui/Pager'
-import Badge, { PR_STATUS } from '../../../components/ui/StatusBadge'
 import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tüm Durumlar' },
-  { value: 'bekliyor', label: 'Onay Bekleyen' },
+  { value: 'bekliyor', label: 'Talep Oluşturuldu' },
   { value: 'onaylandi', label: 'Proje Yöneticisinde' },
-  { value: 'fatura_sureci', label: 'Fatura Süreci' },
-  { value: 'faturasi_kesildi', label: 'Tamamlandı' },
+  { value: 'satin_alindi', label: 'Fatura Bekleniyor' },
+  { value: 'fatura_onay_bekliyor', label: 'Fatura Onayda' },
+  { value: 'faturasi_kesildi', label: 'Fatura Kesildi' },
   { value: 'red_edildi', label: 'Reddedildi' },
   { value: 'iptal', label: 'İptal' },
 ]
 
-const INVOICE_FLOW_STATUSES = new Set(['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'])
+const PROJECT_MANAGER_STATUS_FILTERS = [
+  { value: 'all', label: 'Tüm Durumlar' },
+  { value: 'bekliyor', label: 'Talep Oluşturuldu' },
+  { value: 'onaylandi', label: 'Proje Yöneticisinde' },
+  { value: 'invoice_waiting', label: 'Fatura Bekleniyor' },
+  { value: 'faturasi_kesildi', label: 'Fatura Kesildi' },
+  { value: 'red_edildi', label: 'Reddedildi' },
+  { value: 'iptal', label: 'İptal' },
+]
+
+const SITE_CHIEF_STATUS_FILTERS = [
+  { value: 'all', label: 'Tüm Durumlar' },
+  { value: 'created', label: 'Talep Oluşturuldu' },
+  { value: 'processing', label: 'İşleme Alındı' },
+  { value: 'completed', label: 'İşlem Tamamlandı' },
+]
 
 const PAGE_SIZE = 10
-const ROW_HEIGHT = 44
+const ROW_HEIGHT = 64
 const HEADER_HEIGHT = 24
 const EMPTY_MAP = new Map()
 
@@ -60,6 +75,44 @@ const RISK_STATE_META = {
   uygun: { color: 'var(--color-success)', label: 'Uygun' },
 }
 
+// İşlem durumu — tek nokta + kalın metin rozeti (UYGUNLUK kolonundaki RiskBadge
+// ile aynı görsel dil). Süreç adımları zaten TalepDetayModal'da dikey stepper
+// olarak duruyor; listede aynı bilgiyi 5 (site şefinde 3) adımlı yatay bir
+// göstergeyle tekrarlamaya gerek yok — durum filtresindeki etiketlerle birebir
+// aynı metinler kullanılır (STATUS_FILTERS/SITE_CHIEF_STATUS_FILTERS).
+const PROCESS_STATUS_META = {
+  bekliyor:             { color: 'var(--color-primary)', label: 'Talep Oluşturuldu' },
+  onaylandi:            { color: 'var(--color-warning)', label: 'Proje Yöneticisinde' },
+  satin_alindi:         { color: 'var(--color-warning)', label: 'Fatura Bekleniyor' },
+  fatura_bekliyor:      { color: 'var(--color-warning)', label: 'Fatura Bekleniyor' },
+  fatura_onay_bekliyor: { color: 'var(--color-primary)', label: 'Fatura Onayda' },
+  faturasi_kesildi:     { color: 'var(--color-success)', label: 'Fatura Kesildi' },
+  red_edildi:           { color: 'var(--color-danger)',  label: 'Reddedildi' },
+  iptal:                { color: 'var(--color-muted)',   label: 'İptal' },
+}
+
+const SITE_CHIEF_PROCESS_STATUS_META = {
+  bekliyor:             { color: 'var(--color-primary)', label: 'Talep Oluşturuldu' },
+  onaylandi:            { color: 'var(--color-warning)', label: 'İşleme Alındı' },
+  satin_alindi:         { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
+  fatura_bekliyor:      { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
+  fatura_onay_bekliyor: { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
+  faturasi_kesildi:     { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
+  red_edildi:           { color: 'var(--color-danger)',  label: 'İşlem İptal Edildi' },
+  iptal:                { color: 'var(--color-danger)',  label: 'İşlem İptal Edildi' },
+}
+
+function ProcessStatusBadge({ status, isSiteChief }) {
+  const normalized = normalizeStatus(status)
+  const meta = (isSiteChief ? SITE_CHIEF_PROCESS_STATUS_META : PROCESS_STATUS_META)[normalized] || { color: 'var(--color-muted)', label: normalized }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: meta.color, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 7, height: 7, borderRadius: '50%', background: meta.color, flexShrink: 0 }} />
+      {meta.label}
+    </span>
+  )
+}
+
 function RiskBadge({ state }) {
   const meta = RISK_STATE_META[state] || RISK_STATE_META.uygun
   return (
@@ -73,7 +126,19 @@ function RiskBadge({ state }) {
 // projectId yoksa (menü modu): tüm projelerin talepleri, PROJE kolonu, malzeme planı proje
 // bazlı gruplanır (groupByProjectId). projectId doluysa (proje modu): yalnız o proje
 // (filterDate'e kadar), siteChiefView ile kendi taleplerine süzme, malzeme planı tek Map state.
-export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = false, procurement, projectId, filterDate, refreshKey, siteChiefView = false, openRequestId, onOpenedRequest }) {
+export default function TabSatinAlmaTalepListesi({
+  onChanged,
+  onlyPending = false,
+  fixedStatus = null,
+  listTitle,
+  procurement,
+  projectId,
+  filterDate,
+  refreshKey,
+  siteChiefView = false,
+  openRequestId,
+  onOpenedRequest,
+}) {
   const { user, role, isAdmin, isMuhasebe } = useAuth()
   const [requests, setRequests] = useState([])
   const [materialPlan, setMaterialPlan] = useState(new Map())
@@ -85,14 +150,22 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
   const [faturaRequest, setFaturaRequest] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
   const [errorMessage, setErrorMessage] = useState('')
+  // Reddet/İptal Et için satır-içi gerekçe alanı — { id, note } iken o satırda
+  // buton grubu yerine gerekçe input'u + onay/vazgeç gösterilir (OnayReddetActions.jsx
+  // "compact" moduyla aynı desen). Gerekçe boşken gönderim disabled kalır.
+  const [rejectDraft, setRejectDraft] = useState(null)
   const [page, setPage] = useState(0)
 
-  const canCreate = !isAdmin && role !== 'muhasebe'
+  const canCreate = role === 'santiye_sefi' || role === 'proje_yoneticisi'
   const canInvoice = isMuhasebe
   const canApprove = isAdmin
+  const canCompleteProcurement = role === 'proje_yoneticisi'
 
+  // fetchData kapsam değerleri değiştiğinde çalışır; render-başına oluşan
+  // fonksiyonun kendisini dependency yapmak tekrar çağrı döngüsüne neden olur.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [projectId, filterDate, onlyPending, refreshKey])
-  useEffect(() => { setPage(0) }, [statusFilter, onlyPending, projectId, refreshKey])
+  useEffect(() => { setPage(0) }, [statusFilter, fixedStatus, onlyPending, projectId, refreshKey])
 
   // Dışarıdan (Bildirimler sayfasından) belirli bir talebe doğrudan gitme —
   // mevcut filtrelerden bağımsız, tek talebi id ile çekip açar (TicketListesi'nin
@@ -106,7 +179,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
       onOpenedRequest?.()
     })
     return () => { alive = false }
-  }, [openRequestId])
+  }, [openRequestId, onOpenedRequest])
 
   // Üst bileşen (ProjeTabSatinAlma) procurement_items'i zaten tek bir RPC ile getirdiyse
   // burada aynı tabloyu ikinci kez sorgulamak yerine o veriden malzeme planını hesaplıyoruz.
@@ -200,13 +273,18 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
     })
   }
 
-  async function updateStatus(event, id, status) {
+  async function updateStatus(event, id, status, note) {
     event.stopPropagation()
     setActionLoading(id)
     setErrorMessage('')
+    const payload = { status, updated_at: new Date().toISOString() }
+    if (note) {
+      const current = requests.find(r => r.id === id)
+      payload.notes = [current?.notes, note].filter(Boolean).join('\n')
+    }
     let query = supabase
       .from('purchase_requests')
-      .update({ status, updated_at: new Date().toISOString() })
+      .update(payload)
       .eq('id', id)
     if (projectId) query = query.eq('project_id', projectId)
     const { error } = await query
@@ -214,6 +292,47 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
     if (error) {
       console.error('purchase_requests status update error:', error)
       setErrorMessage('Durum güncellenemedi.')
+    } else {
+      setRejectDraft(null)
+      await fetchData()
+      onChanged?.()
+    }
+    setActionLoading(null)
+  }
+
+  async function completeProjectManagerRequest(event, request) {
+    event.stopPropagation()
+    setActionLoading(request.id)
+    setErrorMessage('')
+
+    const { error } = await supabase.rpc('complete_project_manager_purchase_request', {
+      p_request_id: request.id,
+    })
+
+    if (error) {
+      console.error('project manager purchase completion error:', error)
+      setErrorMessage(error.message || 'Talep tamamlanamadı.')
+    } else {
+      await fetchData()
+      onChanged?.()
+    }
+    setActionLoading(null)
+  }
+
+  async function deleteOwnPendingRequest(event, request) {
+    event.stopPropagation()
+    if (!window.confirm('Bu satın alma talebi silinecek. Onaylıyor musunuz?')) return
+    setActionLoading(request.id)
+    setErrorMessage('')
+    const { error } = await supabase
+      .from('purchase_requests')
+      .delete()
+      .eq('id', request.id)
+      .eq('requested_by', user.id)
+
+    if (error) {
+      console.error('purchase request delete error:', error)
+      setErrorMessage('Talep silinemedi. Yalnızca henüz onaylanmamış kendi talebinizi silebilirsiniz.')
     } else {
       await fetchData()
       onChanged?.()
@@ -225,42 +344,70 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
     // Şantiye şefi görünümünde sadece kendi oluşturduğu talepler listelenir — proje
     // içindeki diğer kişilerin (yönetici vb.) talepleri gösterilmez.
     if (siteChiefView && request.requested_by !== user?.id) return false
+    const normalized = normalizeStatus(request.status)
+    if (fixedStatus) return normalized === fixedStatus
     if (onlyPending) return true
     if (statusFilter === 'all') return true
-    const normalized = normalizeStatus(request.status)
-    if (statusFilter === 'fatura_sureci') return INVOICE_FLOW_STATUSES.has(normalized)
+    if (siteChiefView) {
+      if (statusFilter === 'created') return normalized === 'bekliyor'
+      if (statusFilter === 'processing') return normalized === 'onaylandi'
+      if (statusFilter === 'completed') return ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(normalized)
+      return true
+    }
+    if (role === 'proje_yoneticisi' && statusFilter === 'invoice_waiting') {
+      return ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(normalized)
+    }
     return normalized === statusFilter
   })
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages - 1)
   const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
-  const emptyText = onlyPending
-    ? 'Onay bekleyen satın alma talebi yok.'
-    : projectId ? 'Bu projeye ait satın alma talebi bulunmuyor.' : 'Hiç satın alma talebi bulunmuyor.'
+  const emptyText = fixedStatus === 'onaylandi'
+    ? 'Proje yöneticisinde bekleyen satın alma talebi yok.'
+    : onlyPending
+      ? 'Onay bekleyen satın alma talebi yok.'
+      : isMuhasebe
+        ? 'Faturalanacak satın alma talebi yok.'
+        : projectId ? 'Bu projeye ait satın alma talebi bulunmuyor.' : 'Hiç satın alma talebi bulunmuyor.'
 
+  const showActions = canApprove || canCompleteProcurement || canInvoice || siteChiefView
   const headers = projectId
-    ? ['TALEP', 'OLUŞTURAN', 'UYGUNLUK', 'KATEGORİ', 'İŞLEM']
-    : ['TALEP', 'PROJE', 'OLUŞTURAN', 'UYGUNLUK', 'KATEGORİ', 'İŞLEM']
+    ? ['TALEP', 'OLUŞTURAN', 'UYGUNLUK', 'KATEGORİ', 'İŞLEM DURUMU', ...(showActions ? ['İŞLEM'] : [])]
+    : ['TALEP', 'PROJE', 'OLUŞTURAN', 'UYGUNLUK', 'KATEGORİ', 'İŞLEM DURUMU', ...(showActions ? ['İŞLEM'] : [])]
 
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text)', margin: 0 }}>
-          {onlyPending ? 'Onay Bekleyenler' : 'Tüm Satın Alma Talepleri'}
+          {listTitle || (onlyPending ? 'Onay Bekleyenler' : 'Tüm Satın Alma Talepleri')}
         </h3>
         <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 7 }}>
           {filtered.length} talep
         </span>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          {!onlyPending && (
+          {/* Muhasebe'nin verisi zaten satin_alindi/fatura_bekliyor ile sınırlı (ikisi de
+              aynı "Fatura Bekleniyor" etiketini taşıyor) — durum filtresi burada anlamsız,
+              çoğu seçenek hep boş dönerdi. Bunun yerine kapsamı açıklayan sabit bir etiket
+              gösteriliyor. */}
+          {!onlyPending && !fixedStatus && isMuhasebe && (
+            <span style={{ fontSize: 11.5, color: 'var(--color-muted)', fontStyle: 'italic' }}>
+              Yalnızca faturalanacak talepler listelenir
+            </span>
+          )}
+          {!onlyPending && !fixedStatus && !isMuhasebe && (
             <select
               value={statusFilter}
               onChange={event => setStatusFilter(event.target.value)}
               style={{ border: '1px solid var(--color-border-md)', borderRadius: 7, padding: '5px 28px 5px 10px', fontSize: 12, color: 'var(--color-text-sub)', background: 'var(--color-surface)', cursor: 'pointer', fontFamily: 'inherit', outline: 'none' }}
             >
-              {STATUS_FILTERS.map(({ value, label }) => (
+              {(siteChiefView
+                ? SITE_CHIEF_STATUS_FILTERS
+                : role === 'proje_yoneticisi'
+                  ? PROJECT_MANAGER_STATUS_FILTERS
+                  : STATUS_FILTERS
+              ).map(({ value, label }) => (
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
@@ -270,7 +417,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
               onClick={() => setShowNew(true)}
               style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}
             >
-              + Yeni Talep
+              + Yeni Satın Alma Talebi
             </button>
           )}
         </div>
@@ -289,7 +436,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
       ) : (
         <>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: projectId ? 760 : 860 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: projectId ? 560 : 660 }}>
             <thead>
               <tr>
                 {headers.map(header => (
@@ -299,7 +446,9 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
             </thead>
             <tbody>
               {pageRows.map(request => {
-                const isPending = normalizeStatus(request.status) === 'bekliyor'
+                const normalizedStatus = normalizeStatus(request.status)
+                const isPending = normalizedStatus === 'bekliyor'
+                const isWaitingForProjectManager = normalizedStatus === 'onaylandi'
                 const rowMaterialPlan = projectId ? materialPlan : (materialPlanByProject.get(request.project_id) || EMPTY_MAP)
                 const rowRequestedTotals = projectId ? requestedTotals : (requestedTotalsByProject.get(request.project_id) || EMPTY_MAP)
                 const risk = riskState(request.items || [], rowMaterialPlan, rowRequestedTotals, request.category || requestType(request).toLocaleLowerCase('tr-TR'))
@@ -311,7 +460,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                     onMouseEnter={event => { event.currentTarget.style.background = 'var(--color-bg)' }}
                     onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
                   >
-                    <td style={{ ...TD, minWidth: projectId ? 280 : 260 }}>
+                    <td style={{ ...TD, minWidth: projectId ? 240 : 220 }}>
                       <div style={{ display: 'grid', gap: 5 }}>
                         <strong style={{ color: 'var(--color-text)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={materialTitle(request)}>{materialTitle(request)}</strong>
                         <span style={{ color: 'var(--color-primary)', fontSize: 11, fontWeight: 800 }}>{requestNo(request)}</span>
@@ -320,7 +469,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                     {!projectId && (
                       <td style={{ ...TD, color: 'var(--color-text-sub)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={request.project_name || ''}>{request.project_name || '—'}</td>
                     )}
-                    <td style={{ ...TD, minWidth: 150 }}>
+                    <td style={{ ...TD, minWidth: 130 }}>
                       <div style={{ display: 'grid', gap: 4 }}>
                         <strong style={{ color: 'var(--color-text-sub)', fontSize: 12.5 }}>{requesterName(request)}</strong>
                         <span style={{ color: 'var(--color-muted)', fontSize: 11 }}>{fmtDate(request.request_date || request.created_at)}</span>
@@ -332,18 +481,85 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                         {requestType(request)}
                       </span>
                     </td>
+                    <td style={{ ...TD, minWidth: 150, whiteSpace: 'nowrap' }}>
+                      <ProcessStatusBadge status={request.status} isSiteChief={siteChiefView} />
+                    </td>
+                    {showActions && (
                     <td style={{ ...TD, minWidth: projectId ? 180 : 128, whiteSpace: 'nowrap' }}>
-                      {isPending && canApprove ? (
+                      {siteChiefView && isPending && request.requested_by === user?.id ? (
+                        <button
+                          onClick={event => deleteOwnPendingRequest(event, request)}
+                          disabled={actionLoading === request.id}
+                          style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, padding: '5px 10px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                        >
+                          {actionLoading === request.id ? '…' : 'Talebi Sil'}
+                        </button>
+                      ) : isPending && canApprove ? (
+                        rejectDraft?.id === request.id ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }} onClick={event => event.stopPropagation()}>
+                            <input
+                              type="text" autoFocus placeholder="Red gerekçesi (zorunlu)"
+                              value={rejectDraft.note}
+                              onChange={event => setRejectDraft(d => ({ ...d, note: event.target.value }))}
+                              style={{ border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontFamily: 'inherit', outline: 'none', width: 140 }}
+                            />
+                            <button
+                              onClick={event => updateStatus(event, request.id, 'reddedildi', rejectDraft.note.trim())}
+                              disabled={actionLoading === request.id || !rejectDraft.note.trim()}
+                              style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 700, cursor: rejectDraft.note.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: rejectDraft.note.trim() ? 1 : 0.6 }}
+                            >
+                              {actionLoading === request.id ? '…' : 'Reddi Onayla'}
+                            </button>
+                            <button
+                              onClick={event => { event.stopPropagation(); setRejectDraft(null) }}
+                              style={{ background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >
+                              Vazgeç
+                            </button>
+                          </div>
+                        ) : (
                         <div style={{ display: 'flex', gap: projectId ? 6 : 5, flexWrap: 'nowrap' }}>
                           <button onClick={event => updateStatus(event, request.id, 'onaylandi')} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                             {actionLoading === request.id ? '…' : 'Onayla'}
                           </button>
-                          <button onClick={event => updateStatus(event, request.id, 'reddedildi')} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                            {actionLoading === request.id ? '…' : 'Reddet'}
+                          <button onClick={event => { event.stopPropagation(); setRejectDraft({ id: request.id, note: '' }) }} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            Reddet
                           </button>
                         </div>
-                      ) : isPending ? (
-                        <Badge map={PR_STATUS} value={request.status} />
+                        )
+                      ) : canCompleteProcurement && isWaitingForProjectManager ? (
+                        rejectDraft?.id === request.id ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }} onClick={event => event.stopPropagation()}>
+                            <input
+                              type="text" autoFocus placeholder="İptal gerekçesi (zorunlu)"
+                              value={rejectDraft.note}
+                              onChange={event => setRejectDraft(d => ({ ...d, note: event.target.value }))}
+                              style={{ border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontFamily: 'inherit', outline: 'none', width: 140 }}
+                            />
+                            <button
+                              onClick={event => updateStatus(event, request.id, 'iptal', rejectDraft.note.trim())}
+                              disabled={actionLoading === request.id || !rejectDraft.note.trim()}
+                              style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 700, cursor: rejectDraft.note.trim() ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: rejectDraft.note.trim() ? 1 : 0.6 }}
+                            >
+                              {actionLoading === request.id ? '…' : 'İptali Onayla'}
+                            </button>
+                            <button
+                              onClick={event => { event.stopPropagation(); setRejectDraft(null) }}
+                              style={{ background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >
+                              Vazgeç
+                            </button>
+                          </div>
+                        ) : (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
+                          <button onClick={event => completeProjectManagerRequest(event, request)} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            {actionLoading === request.id ? '…' : 'Tamamlandı'}
+                          </button>
+                          <button onClick={event => { event.stopPropagation(); setRejectDraft({ id: request.id, note: '' }) }} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                            İptal Et
+                          </button>
+                        </div>
+                        )
                       ) : canInvoice && isAwaitingInvoice(request) ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
                           <button onClick={event => { event.stopPropagation(); setFaturaRequest(request) }} style={{ background: '#EDE9FE', color: '#5B21B6', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -351,9 +567,10 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
                           </button>
                         </div>
                       ) : (
-                        <Badge map={PR_STATUS} value={request.status} />
+                        <span style={{ color: 'var(--color-muted-light)' }}>—</span>
                       )}
                     </td>
+                    )}
                   </tr>
                 )
               })}
@@ -376,6 +593,7 @@ export default function TabSatinAlmaTalepListesi({ onChanged, onlyPending = fals
       {selected && (
         <TalepDetayModal
           request={selected}
+          siteChiefView={siteChiefView}
           materialPlan={projectId ? materialPlan : (materialPlanByProject.get(selected.project_id) || EMPTY_MAP)}
           requestedTotals={projectId ? requestedTotals : (requestedTotalsByProject.get(selected.project_id) || EMPTY_MAP)}
           onClose={() => { setSelected(null); fetchData(); onChanged?.() }}

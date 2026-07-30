@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { withSignedStorageUrls } from '../../../utils/storageUrls'
 import { useWeather } from '../../../hooks/useWeather'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { normalizeStatus, statusLabel } from '../../../utils/satinAlma'
+import { SEVERITY_META } from '../../../utils/ticketSeverity'
 import { PROJECT_STATUS_META } from '../../../utils/projectStatus'
 import { TONE, DAILY_REPORT_STATUS } from '../../../components/ui/StatusBadge'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
+import Pager from '../../../components/ui/Pager'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -36,15 +39,13 @@ const TASK_CATEGORY_LABEL = {
   kosk_trafo:     'Köşk Trafo',
 }
 
-// SEV_BORDER'la (aşağıda) tutarlı 4 ayrı ton — 'orta' önceden 'yüksek' ile aynı 'amber'
-// rengi kullanıyordu, SEV_BORDER'daki gri (#94a3b8) ile çelişiyordu, ayrım kayboluyordu.
-const RISK_BADGE = {
-  kritik: 'red',
-  yüksek: 'amber',
-  yuksek: 'amber',
-  orta: 'gray',
-  düşük: 'blue',
-  dusuk: 'blue',
+const RISK_SEVERITY_LABEL = {
+  kritik: 'Kritik',
+  yüksek: 'Yüksek',
+  yuksek: 'Yüksek',
+  orta: 'Orta',
+  düşük: 'Düşük',
+  dusuk: 'Düşük',
 }
 
 const RISK_CATEGORY_LABEL = {
@@ -58,16 +59,31 @@ const RISK_RULE_LABEL = {
   malzeme_fazla_talep: 'Malzeme Fazla Talebi',
 }
 
-const PURCHASE_STATUS_BADGE = {
-  bekliyor: 'blue',
-  onaylandi: 'amber',
-  red_edildi: 'red',
-  satin_alindi: 'green',
-  fatura_bekliyor: 'gray',
-  fatura_onay_bekliyor: 'amber',
-  faturasi_kesildi: 'green',
-  iptal: 'red',
+const TICKET_SEV_DOT = {
+  kritik: '#dc2626',
+  yüksek: '#ea580c',
+  orta: '#d97706',
+  düşük: '#64748b',
 }
+
+// normalizeStatus()'un döndürdüğü kanonik durum kümesi üzerinden ton eşleme —
+// PR_STATUS (StatusBadge.jsx) ham DB enum'larını (reddedildi) kullanıyor,
+// normalizeStatus ise kendi kısaltılmış kümesini (red_edildi) döndürüyor;
+// ikisini doğrudan karıştırmak "red_edildi" anahtarının PR_STATUS'ta hiç
+// bulunmamasına ve sessizce gri/muted'e düşmesine yol açıyordu.
+const PURCHASE_STATUS_TONE = {
+  bekliyor: 'primary',
+  onaylandi: 'warning',
+  red_edildi: 'danger',
+  satin_alindi: 'warning',
+  fatura_bekliyor: 'warning',
+  fatura_onay_bekliyor: 'primary',
+  faturasi_kesildi: 'success',
+  iptal: 'muted',
+}
+
+const RISK_PAGE_SIZE = 4
+const TICKET_PAGE_SIZE = 4
 
 const WEATHER_META = {
   'açık': { label: 'Açık', emoji: '☀️' },
@@ -265,8 +281,18 @@ function LinkButton({ children, onClick }) {
   )
 }
 
-function getStatusBadge(status) {
-  return PURCHASE_STATUS_BADGE[normalizeStatus(status)] || 'gray'
+function getStatusDotColor(status) {
+  const tone = PURCHASE_STATUS_TONE[normalizeStatus(status)] || 'muted'
+  return TONE[tone].text
+}
+
+function DotBadge({ color, label }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color, fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      {label}
+    </span>
+  )
 }
 
 function normalizePurchase(pr) {
@@ -278,17 +304,8 @@ function normalizePurchase(pr) {
   }
 }
 
-function getAutoRiskSeverity(risk, todayText) {
-  if (risk.rule_code === 'malzeme_fazla_talep') return 'yüksek'
-  if (risk.rule_code !== 'gorev_gecikmesi') return (risk.severity || 'orta').toLowerCase()
-
-  const riskDate = risk.due_date || risk.target_date || risk.planned_end || risk.created_at
-  if (!riskDate) return 'orta'
-
-  const today = new Date(`${todayText}T00:00:00`)
-  const due = new Date(`${String(riskDate).slice(0, 10)}T00:00:00`)
-  const overdueDays = Math.max(0, Math.floor((today - due) / 86400000))
-  return overdueDays >= 7 ? 'kritik' : 'orta'
+function getAutoRiskSeverity(risk) {
+  return String(risk.severity || 'orta').toLocaleLowerCase('tr-TR')
 }
 
 function ProjectWeatherCard({ location, lostDays, reportWeather }) {
@@ -375,6 +392,8 @@ export default function ProjectOverviewDashboard({
   const [sitePhotoReport, setSitePhotoReport] = useState(null)
   const [sitePhotosLoading, setSitePhotosLoading] = useState(false)
   const [photoLightbox, setPhotoLightbox] = useState(null)
+  const [riskPage, setRiskPage]           = useState(0)
+  const [ticketPage, setTicketPage]       = useState(0)
 
   // Haftalık → o haftanın son günü, Aylık → o ayın son günü, Günlük → filterDate
   const effectiveDate = useMemo(() => {
@@ -392,6 +411,10 @@ export default function ProjectOverviewDashboard({
     return filterDate
   }, [filterDate, reportPeriod])
 
+  useEffect(() => {
+    setRiskPage(0)
+  }, [projectId, effectiveDate])
+
   const { data: byDateData, loading, refreshing, error, refetch } = useDashboardData(
     'get_project_by_date',
     { p_project_id: projectId, p_date: effectiveDate },
@@ -399,7 +422,7 @@ export default function ProjectOverviewDashboard({
   )
   const authorized = byDateData?.authorized ?? true
   useRealtimeRefresh(
-    ['daily_reports', { table: 'progress_daily', filterColumn: null }, 'project_tasks', 'tickets', 'purchase_requests', 'invoices'],
+    ['daily_reports', { table: 'progress_daily', filterColumn: null }, 'project_tasks', 'project_risks', 'tickets', 'purchase_requests', 'invoices'],
     refetch,
     { enabled: !!projectId, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
   )
@@ -451,7 +474,7 @@ export default function ProjectOverviewDashboard({
         .order('created_at', { ascending: false })
 
       if (!alive) return
-      setSitePhotos(photos || [])
+      setSitePhotos(await withSignedStorageUrls('saha-fotolari', photos || []))
       setSitePhotosLoading(false)
     }
 
@@ -489,9 +512,12 @@ export default function ProjectOverviewDashboard({
 
   const plannedPct     = calcPlannedAt(tasks, effectiveDate)
   const totalBudget    = budgetLines.reduce((s, b) => s + Number(b.planned_amount || 0), 0)
+  // Kanonik "gerçekleşen maliyet" tanımı (CLAUDE.md): onaylandı/odeme_bekliyor/
+  // kismen_odendi/ödendi — onay anında maliyet gerçekleşmiş sayılır, ödemenin
+  // tamamlanmasını beklemez. Önceden yalnızca onaylandı/ödendi sayılıyordu.
   const spent          = invoices
-    .filter(i => ['onaylandı','onaylandi','ödendi','odendi','paid','approved'].includes((i.status||'').toLowerCase()))
-    .reduce((s, i) => s + Number(i.total_amount || i.amount || 0), 0)
+    .filter(i => ['onaylandı','onaylandi','odeme_bekliyor','kismen_odendi','ödendi','odendi','paid','approved'].includes((i.status||'').toLowerCase()))
+    .reduce((s, i) => s + Number(i.total_amount_try ?? i.total_amount ?? i.amount ?? 0), 0)
   const budgetPct      = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0
   const target         = currentProject?.target_date ? new Date(`${currentProject.target_date}T00:00:00`) : null
   const selected       = new Date(`${effectiveDate}T00:00:00`)
@@ -517,8 +543,19 @@ export default function ProjectOverviewDashboard({
     weight: Number(cw.weight_pct || 0),
   }))
   const openRisks = risks.filter(r => r.source === 'otomatik')
+  const riskTotalPages = Math.max(1, Math.ceil(openRisks.length / RISK_PAGE_SIZE))
+  const safeRiskPage = Math.min(riskPage, riskTotalPages - 1)
+  const visibleRisks = openRisks.slice(
+    safeRiskPage * RISK_PAGE_SIZE,
+    (safeRiskPage + 1) * RISK_PAGE_SIZE,
+  )
+  const ticketTotalPages = Math.max(1, Math.ceil(tickets.length / TICKET_PAGE_SIZE))
+  const safeTicketPage = Math.min(ticketPage, ticketTotalPages - 1)
+  const visibleTickets = tickets.slice(
+    safeTicketPage * TICKET_PAGE_SIZE,
+    (safeTicketPage + 1) * TICKET_PAGE_SIZE,
+  )
   const todayLabel = new Date().toLocaleDateString('tr-TR', { month: 'short', year: '2-digit' })
-  const sitePhotoUrl = path => supabase.storage.from('saha-fotolari').getPublicUrl(path).data.publicUrl
 
   if (loading) {
     return (
@@ -700,13 +737,13 @@ export default function ProjectOverviewDashboard({
 
         <div className="card project-mini-card project-purchase-card">
           <div className="project-card-title">
-            <h3>Malzeme Kalemleri / Satın Alma</h3>
+            <h3>Satın Alma</h3>
             <LinkButton onClick={() => onGoTab?.('satin-alma')}>Tüm Satın Almalar</LinkButton>
           </div>
           {purchaseRows.length ? purchaseRows.slice(0, 5).map((row, idx) => (
             <div className="project-list-row" key={`${row.material}-${idx}`}>
               <strong>{row.material}</strong>
-              <span className={`badge ${getStatusBadge(row.status)}`}>{row.statusLabel}</span>
+              <DotBadge color={getStatusDotColor(row.status)} label={row.statusLabel} />
               <small>{fmtDate(row.delivery)}</small>
             </div>
           )) : <p className="project-empty">Satın alma kaydı yok.</p>}
@@ -724,7 +761,9 @@ export default function ProjectOverviewDashboard({
                 {fmtMoney(spent)} ₺ <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-muted)' }}>/ {totalBudget ? `${fmtMoney(totalBudget)} ₺` : '—'}</span>
               </p>
             </div>
-            <span className={`badge ${budgetPct > 90 ? 'red' : 'blue'}`} style={{ fontSize: 12, flexShrink: 0 }}>%{budgetPct}</span>
+            <span style={{ flexShrink: 0 }}>
+              <DotBadge color={budgetPct > 90 ? '#dc2626' : '#185FA5'} label={`%${budgetPct}`} />
+            </span>
           </div>
           <div style={{ marginTop: 8 }}>
             <MiniProgress value={budgetPct} color={budgetPct > 90 ? '#ef4444' : '#185FA5'} />
@@ -759,28 +798,33 @@ export default function ProjectOverviewDashboard({
           {tickets.length === 0
             ? <p className="project-empty">Açık ticket bulunmuyor.</p>
             : (
-              <div className="project-ticket-list">
-                {tickets.slice(0, 5).map(ticket => (
-                  <div key={ticket.id} style={{
-                    padding: '8px 10px', background: '#f8fafc',
-                    borderRadius: 8, border: '1px solid #e2e8f0',
-                    borderLeft: `3px solid ${ticket.severity === 'kritik' ? '#ef4444' : ticket.severity === 'yüksek' ? '#f59e0b' : '#94a3b8'}`,
-                    flexShrink: 0,
-                  }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {ticket.title}
+              <>
+                <div className="project-ticket-list">
+                  {visibleTickets.map(ticket => {
+                    const severityKey = String(ticket.severity || '').toLocaleLowerCase('tr-TR')
+                    const severity = SEVERITY_META[severityKey]
+                    return (
+                    <div key={ticket.id} style={{
+                      padding: '8px 10px', background: '#f8fafc',
+                      borderRadius: 8, border: '1px solid #e2e8f0',
+                      borderLeft: `3px solid ${severity?.color || '#94a3b8'}`,
+                      flexShrink: 0,
+                    }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ticket.title}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                        <DotBadge color={TICKET_SEV_DOT[severityKey] || '#64748b'} label={severity?.label || '—'} />
+                        <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
+                          {new Date(ticket.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                      <span className={`badge ${ticket.severity === 'kritik' ? 'red' : ticket.severity === 'yüksek' ? 'amber' : 'gray'}`} style={{ fontSize: 9 }}>
-                        {ticket.severity || '—'}
-                      </span>
-                      <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
-                        {new Date(ticket.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    )
+                  })}
+                </div>
+                <Pager page={safeTicketPage} totalPages={ticketTotalPages} onChange={setTicketPage} />
+              </>
             )
           }
         </div>
@@ -789,44 +833,46 @@ export default function ProjectOverviewDashboard({
         <div className="card project-mini-card project-risk-card">
           <div className="project-card-title">
             <h3>Riskler</h3>
+            <LinkButton onClick={() => onGoTab?.('riskler')}>Tümünü Gör</LinkButton>
           </div>
           {openRisks.length === 0 ? (
             <p className="project-empty">Açık risk bulunmuyor.</p>
           ) : (
-            <div className="project-risk-list">
-              {openRisks.map(risk => {
-                const severity = getAutoRiskSeverity(risk, effectiveDate)
-                const target = risk.rule_code === 'gorev_gecikmesi' ? 'gantt'
-                  : risk.rule_code === 'malzeme_fazla_talep' ? 'satin-alma'
-                  : null
-                return (
-                  <div
-                    key={risk.id}
-                    onClick={target ? () => onGoTab?.(target) : undefined}
-                    style={{
-                      padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0',
-                      borderLeft: `3px solid ${SEV_BORDER[severity] || '#94a3b8'}`,
-                      cursor: target ? 'pointer' : 'default', flexShrink: 0,
-                    }}
-                  >
-                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {risk.title}
+            <>
+              <div className="project-risk-list">
+                {visibleRisks.map(risk => {
+                  const severity = getAutoRiskSeverity(risk)
+                  const target = risk.rule_code === 'gorev_gecikmesi' ? 'gantt'
+                    : risk.rule_code === 'malzeme_fazla_talep' ? 'satin-alma'
+                    : null
+                  return (
+                    <div
+                      key={risk.id}
+                      onClick={target ? () => onGoTab?.(target) : undefined}
+                      style={{
+                        padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0',
+                        borderLeft: `3px solid ${SEV_BORDER[severity] || '#94a3b8'}`,
+                        cursor: target ? 'pointer' : 'default', flexShrink: 0,
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {risk.title}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                        <DotBadge color={SEV_BORDER[severity] || '#94a3b8'} label={RISK_SEVERITY_LABEL[severity] || severity} />
+                        <span style={{ fontSize: 9, color: '#475569', background: '#eef2f7', padding: '1px 6px', borderRadius: 999 }}>
+                          {RISK_CATEGORY_LABEL[risk.category] || 'Diğer'}
+                        </span>
+                        <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
+                          {RISK_RULE_LABEL[risk.rule_code] || 'Otomatik tespit'}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-                      <span className={`badge ${RISK_BADGE[severity] || 'gray'}`} style={{ fontSize: 9 }}>
-                        {severity}
-                      </span>
-                      <span style={{ fontSize: 9, color: '#475569', background: '#eef2f7', padding: '1px 6px', borderRadius: 999 }}>
-                        {RISK_CATEGORY_LABEL[risk.category] || 'Diğer'}
-                      </span>
-                      <span style={{ fontSize: 9, color: 'var(--color-muted)' }}>
-                        {RISK_RULE_LABEL[risk.rule_code] || 'Otomatik tespit'}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+                  )
+                })}
+              </div>
+              <Pager page={safeRiskPage} totalPages={riskTotalPages} onChange={setRiskPage} forceShow />
+            </>
           )}
         </div>
 
@@ -844,7 +890,7 @@ export default function ProjectOverviewDashboard({
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginTop: 8 }}>
             {sitePhotos.slice(0, 12).map(photo => {
-              const url = sitePhotoUrl(photo.storage_path)
+              const url = photo.signed_url
               return (
                 <button
                   key={photo.id}

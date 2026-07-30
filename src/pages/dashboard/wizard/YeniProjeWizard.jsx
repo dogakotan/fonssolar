@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import WizardStepper            from './WizardStepper'
 import Adim1ProjeBilgileri      from './Adim1ProjeBilgileri'
 import Adim2IsKalemleri         from './Adim2IsKalemleri'
+import Adim3KategoriAgirliklari from './Adim3KategoriAgirliklari'
 import Adim5Tedarik             from './Adim5Tedarik'
 import Adim6Butce               from './Adim6Butce'
 import Adim8Tamamlandi          from './Adim8Tamamlandi'
@@ -10,13 +11,14 @@ import Adim8Tamamlandi          from './Adim8Tamamlandi'
 // verisi olmadığı için ne otomatik risk motoru bir şey üretebilir ne de manuel risk
 // girişi anlamlı olur. Risk girişi yalnızca proje düzenleme akışında (ProjeEditWizard.jsx)
 // var — bkz. CLAUDE.md "Kritik yol ve otomatik risk motoru".
-const STEP_LABELS = ['Proje Bilgileri', 'İş Kalemleri', 'Tedarik', 'Bütçe', 'Tamamlandı']
+const STEP_LABELS = ['Proje Bilgileri', 'İş Kalemleri', 'Kategori Ağırlıkları', 'Tedarik', 'Bütçe', 'Tamamlandı']
 // Adim8Tamamlandi.jsx'in varsayılan STEPS'i (Riskler dahil 6 adımlık) burada
-// geçerli değil — kendi 5 adımlık numaralandırmamızı geçiyoruz.
+// geçerli değil — kendi 6 adımlık numaralandırmamızı geçiyoruz.
 const SUMMARY_STEPS = [
   { step: 2, table: 'project_tasks',     label: 'İş Kalemleri' },
-  { step: 3, table: 'procurement_items', label: 'Tedarik' },
-  { step: 4, table: 'budget_lines',      label: 'Bütçe' },
+  { step: 3, rpc: 'save_project_category_weights', label: 'Kategori Ağırlıkları' },
+  { step: 4, rpc: 'set_project_procurement_completed', label: 'Tedarik ve Teslimat' },
+  { step: 5, table: 'budget_lines',      label: 'Bütçe' },
 ]
 
 export default function YeniProjeWizard({ onSuccess, onViewProject }) {
@@ -26,7 +28,7 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
 
   const projectId = stepsResult[1]?.id ?? null
   const completedSteps = Object.keys(stepsResult).map(Number)
-  const availableUntil = projectId ? 5 : 1
+  const availableUntil = projectId ? 6 : 1
 
   const goNext = () => setStep(s => s + 1)
   const goBack = () => setStep(s => s - 1)
@@ -34,16 +36,16 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
   function handleStepDone(stepNo, result) {
     setStepsResult(r => ({ ...r, [stepNo]: result }))
     if (actionRef.current === 'save') {
-      setStep(5)
+      setStep(6)
     } else if (actionRef.current === 'next') {
-      setStep(current => Math.min(5, Math.max(current + 1, stepNo + 1)))
+      setStep(current => Math.min(6, Math.max(current + 1, stepNo + 1)))
     }
   }
 
   function submitCurrentStep(action = 'next') {
     actionRef.current = action
     if (step === 1) document.querySelector('[data-wizard-form="project"]')?.requestSubmit()
-    else if (step < 5) document.querySelector('[data-wizard-submit="next"]')?.click()
+    else if (step < 6) document.querySelector('[data-wizard-submit="next"]')?.click()
     else document.querySelector('[data-wizard-submit="save"]')?.click()
   }
 
@@ -65,7 +67,7 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
           >
             İptal
           </button>
-          {step < 5 && (
+          {step < 6 && (
             <button
               type="button"
               onClick={() => submitCurrentStep('save')}
@@ -79,7 +81,7 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
             onClick={() => submitCurrentStep('next')}
             style={{ padding: '0.5rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
           >
-            {step === 5 ? 'Kaydet' : 'Devam →'}
+            {step === 6 ? 'Kaydet' : 'Devam →'}
           </button>
         </div>
       </div>
@@ -101,15 +103,16 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
           />
         )}
         {step === 3 && (
-          <Adim5Tedarik
+          <Adim3KategoriAgirliklari
             projectId={projectId}
+            taskRows={stepsResult[2]?.rows}
             result={stepsResult[3]}
             onDone={r => handleStepDone(3, r)}
             onBack={goBack}
           />
         )}
         {step === 4 && (
-          <Adim6Butce
+          <Adim5Tedarik
             projectId={projectId}
             result={stepsResult[4]}
             onDone={r => handleStepDone(4, r)}
@@ -117,6 +120,14 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
           />
         )}
         {step === 5 && (
+          <Adim6Butce
+            projectId={projectId}
+            result={stepsResult[5]}
+            onDone={r => handleStepDone(5, r)}
+            onBack={goBack}
+          />
+        )}
+        {step === 6 && (
           <Adim8Tamamlandi
             stepsResult={stepsResult}
             projectType={stepsResult[1]?.project_type ?? null}
@@ -130,4 +141,3 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
     </div>
   )
 }
-

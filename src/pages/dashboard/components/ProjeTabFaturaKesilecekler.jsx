@@ -3,7 +3,6 @@ import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import { toUserMessage as translateError } from '../../../utils/errors'
 import Pager from '../../../components/ui/Pager'
-import Badge, { PR_STATUS } from '../../../components/ui/StatusBadge'
 
 const PAGE_SIZE = 10
 const ROW_HEIGHT = 44
@@ -235,36 +234,44 @@ function BekleyenDegisikliklerPanel({ items, onReviewed }) {
   )
 }
 
-function MalzemeGecmisiModal({ row, requests, onClose }) {
-  const [changes, setChanges] = useState([])
-  const [adjustments, setAdjustments] = useState([])
+function MalzemeGecmisiModal({ row, projectId, onClose }) {
+  const [timeline, setTimeline] = useState([])
   const [loading, setLoading] = useState(true)
   const [historyError, setHistoryError] = useState('')
 
   useEffect(() => {
     let alive = true
     Promise.all([
-      supabase.from('procurement_item_change_requests').select('*').eq('procurement_item_id', row.id).order('requested_at', { ascending: false }),
-      supabase.from('procurement_item_adjustments').select('*').eq('procurement_item_id', row.id).order('created_at', { ascending: false }),
-    ]).then(([changeRes, adjustmentRes]) => {
+      // Yalnızca onaylanmış (dolayısıyla stok durumunu gerçekten değiştirmiş) talepler —
+      // reddedilenler burada gösterilmez, hiçbir şeyi değiştirmediler.
+      supabase.from('procurement_item_change_requests').select('*').eq('procurement_item_id', row.id).eq('status', 'onaylandi'),
+      // Bu kalem onaylı bir "yeni malzeme ekleme" talebiyle oluşturulmuş olabilir — o talep
+      // procurement_item_id'yi hiç taşımaz (kalem henüz yokken açıldı), bu yüzden proje +
+      // malzeme adı eşleşmesiyle ayrıca aranıyor (bu projede aynı isimde kalem tekrar
+      // eklenmez, çünkü procurement_items için bir silme akışı yok).
+      supabase.from('procurement_item_change_requests').select('*')
+        .is('procurement_item_id', null).eq('status', 'onaylandi').eq('project_id', projectId)
+        .ilike('new_equipment', row.material),
+      // reversed_at dolu olan bir aşım geri alınmış demektir, artık geçerli bir stok
+      // değişikliği değil — listeden hariç tutulur.
+      supabase.from('procurement_item_adjustments').select('*').eq('procurement_item_id', row.id).is('reversed_at', null),
+    ]).then(([changeRes, addRes, adjustmentRes]) => {
       if (!alive) return
       if (changeRes.error) console.error('material change history error:', changeRes.error)
+      if (addRes.error) console.error('material add-request history error:', addRes.error)
       if (adjustmentRes.error) console.error('material adjustment history error:', adjustmentRes.error)
-      if (changeRes.error || adjustmentRes.error) setHistoryError('Geçmişin bir bölümü yüklenemedi. Lütfen tekrar deneyin.')
-      setChanges(changeRes.data || [])
-      setAdjustments(adjustmentRes.data || [])
+      if (changeRes.error || addRes.error || adjustmentRes.error) setHistoryError('Geçmişin bir bölümü yüklenemedi. Lütfen tekrar deneyin.')
+      const changeEvents = [...(changeRes.data || []), ...(addRes.data || [])]
+        .map(change => ({ kind: 'change', date: change.requested_at, data: change }))
+      const adjustmentEvents = (adjustmentRes.data || [])
+        .map(adjustment => ({ kind: 'adjustment', date: adjustment.created_at, data: adjustment }))
+      const merged = [...changeEvents, ...adjustmentEvents]
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+      setTimeline(merged)
       setLoading(false)
     })
     return () => { alive = false }
-  }, [row.id])
-
-  const requestById = new Map((requests || []).map(request => [request.id, request]))
-  const statusMeta = status => ({
-    bekliyor: ['Bekliyor', '#92400E', '#FEF3C7'],
-    onaylandı: ['Onaylandı', '#065F46', '#D1FAE5'],
-    onaylandi: ['Onaylandı', '#065F46', '#D1FAE5'],
-    reddedildi: ['Reddedildi', '#991B1B', '#FEE2E2'],
-  })[status] || [String(status || '—').replace(/_/g, ' '), '#475569', '#F1F5F9']
+  }, [row.id, row.material, projectId])
 
   return (
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1100, padding: 18, background: 'rgba(15, 23, 42, .42)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -293,34 +300,29 @@ function MalzemeGecmisiModal({ row, requests, onClose }) {
         {loading ? <p style={{ color: '#64748B', fontSize: 13 }}>Geçmiş yükleniyor…</p> : (
           <>
             {historyError && <p style={{ margin: '0 0 12px', padding: '8px 10px', borderRadius: 8, background: '#FEF2F2', color: '#991B1B', fontSize: 12 }}>{historyError}</p>}
-            <h4 style={{ margin: '0 0 9px', fontSize: 13, color: '#334155' }}>Miktar Değişiklikleri</h4>
-            {changes.length === 0 ? <p style={{ margin: '0 0 18px', color: '#94A3B8', fontSize: 12.5 }}>Manuel değişiklik kaydı yok.</p> : changes.map(change => {
-              const [label, color, bg] = statusMeta(change.status)
-              return <div key={change.id} style={{ border: '1px solid #E2E8F0', borderRadius: 9, padding: '10px 12px', marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-                  <strong style={{ fontSize: 13 }}>{formatQty(change.old_planned_qty)} → {formatQty(change.new_planned_qty)} {row.unit}</strong>
-                  <span style={{ color, background: bg, borderRadius: 20, padding: '2px 8px', fontSize: 11, fontWeight: 700 }}>{label}</span>
+            <h4 style={{ margin: '0 0 9px', fontSize: 13, color: '#334155' }}>Değişiklik Geçmişi</h4>
+            {timeline.length === 0 ? <p style={{ margin: 0, color: '#94A3B8', fontSize: 12.5 }}>Bu kalem için stok değişikliği kaydı yok.</p> : timeline.map(event => {
+              if (event.kind === 'adjustment') {
+                const adjustment = event.data
+                return (
+                  <div key={`adj-${adjustment.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid #F1F5F9', fontSize: 12.5 }}>
+                    <span style={{ color: '#64748B' }}>{adjustment.created_at ? new Date(adjustment.created_at).toLocaleDateString('tr-TR') : '—'}</span>
+                    <strong style={{ color: '#166534' }}>+{formatQty(adjustment.delta_qty)} {row.unit}</strong>
+                  </div>
+                )
+              }
+              const change = event.data
+              const isAdd = change.procurement_item_id === null
+              return (
+                <div key={`chg-${change.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid #F1F5F9', fontSize: 12.5 }}>
+                  <span style={{ color: '#64748B' }}>{change.requested_at ? new Date(change.requested_at).toLocaleDateString('tr-TR') : '—'}</span>
+                  <strong style={{ color: '#166534' }}>
+                    {isAdd
+                      ? <>Yeni malzeme: {formatQty(change.new_planned_qty)} {row.unit}</>
+                      : <>{formatQty(change.old_planned_qty)} → {formatQty(change.new_planned_qty)} {row.unit}</>}
+                  </strong>
                 </div>
-                <p style={{ margin: '5px 0 0', color: '#64748B', fontSize: 12 }}>{change.note || 'Gerekçe girilmedi'} · {change.requested_at ? new Date(change.requested_at).toLocaleString('tr-TR') : '—'}</p>
-                {change.review_note && <p style={{ margin: '3px 0 0', color: '#475569', fontSize: 12 }}>Onay notu: {change.review_note}</p>}
-              </div>
-            })}
-
-            <h4 style={{ margin: '18px 0 9px', fontSize: 13, color: '#334155' }}>Fazla Satın Alma / Stok Eklemeleri</h4>
-            {adjustments.length === 0 ? <p style={{ margin: 0, color: '#94A3B8', fontSize: 12.5 }}>Onaylı fazla satın alma kaydı yok.</p> : adjustments.map(adjustment => {
-              const request = requestById.get(adjustment.purchase_request_id)
-              const reversed = !!adjustment.reversed_at
-              return <div key={adjustment.id} style={{ border: `1px solid ${reversed ? '#FECACA' : '#86EFAC'}`, background: reversed ? '#FFF7F7' : '#F0FDF4', borderRadius: 9, padding: '10px 12px', marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
-                  <strong style={{ color: reversed ? '#991B1B' : '#166534', fontSize: 13 }}>+{formatQty(adjustment.delta_qty)} {row.unit}</strong>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: reversed ? '#991B1B' : '#166534' }}>{reversed ? 'Geri alındı' : 'Onaylandı ve listeye eklendi'}</span>
-                </div>
-                <p style={{ margin: '5px 0 0', color: '#475569', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span>{request?.title || request?.material_name || 'Bağlı satın alma talebi'}</span>
-                  {request?.status && <Badge map={PR_STATUS} value={request.status} />}
-                </p>
-                <p style={{ margin: '3px 0 0', color: '#64748B', fontSize: 11.5 }}>{adjustment.created_at ? new Date(adjustment.created_at).toLocaleString('tr-TR') : '—'}</p>
-              </div>
+              )
             })}
           </>
         )}
@@ -329,21 +331,37 @@ function MalzemeGecmisiModal({ row, requests, onClose }) {
   )
 }
 
-export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], loading, pendingChanges = [], onPendingChanged, projectId }) {
+export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pendingChanges = [], onPendingChanged, projectId }) {
   const { isAdmin, role } = useAuth()
   const [page, setPage] = useState(0)
   const [editingRow, setEditingRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [showNewMaterial, setShowNewMaterial] = useState(false)
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
-  const safePage = Math.min(page, totalPages - 1)
-  const pageRows = rows.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
   const canRequest = isAdmin || role === 'proje_yoneticisi'
   const canReview = isAdmin
   const pending = canRequest ? pendingChanges : []
 
-  useEffect(() => { setPage(0) }, [rows.length])
+  // Onaya gönderilmiş yeni malzeme talepleri henüz gerçek bir procurement_items satırı
+  // değil — ayrı bir kutuda gizli kalmasın diye listeye "Bekliyor" rozetli sanal bir satır
+  // olarak eklenir, miktar değişikliği taleplerinin satır-içi rozetiyle tutarlı görünür.
+  const pendingNewRows = pending.filter(item => item.is_new).map(item => ({
+    id: `pending-new-${item.id}`,
+    material: item.equipment || 'Yeni malzeme',
+    unit: item.unit || '',
+    planned: Number(item.new_planned_qty || 0),
+    sent: 0,
+    required: Number(item.new_planned_qty || 0),
+    addedQty: 0,
+    addedViaCount: 0,
+    isPendingNew: true,
+  }))
+  const allRows = [...pendingNewRows, ...rows]
+  const totalPagesAll = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE))
+  const safePageAll = Math.min(page, totalPagesAll - 1)
+  const pageRowsAll = allRows.slice(safePageAll * PAGE_SIZE, safePageAll * PAGE_SIZE + PAGE_SIZE)
+
+  useEffect(() => { setPage(0) }, [allRows.length])
 
   const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
 
@@ -355,7 +373,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', margin: 0 }}>Malzeme Listesi</h3>
           <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20 }}>
-            {rows.length} kalem
+            {allRows.length} kalem
           </span>
           {canRequest && (
             <button onClick={() => setShowNewMaterial(true)} style={{ marginLeft: 'auto', background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
@@ -366,7 +384,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
 
         {loading ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>Yükleniyor…</div>
-        ) : rows.length === 0 ? (
+        ) : allRows.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>
             Bu projeye ait malzeme listesi henüz eklenmemiş.
           </div>
@@ -376,13 +394,25 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
               <thead>
                 <tr>
-                  {['MALZEME', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN', ...(canRequest ? ['İŞLEM'] : [])].map(h => (
-                    <th key={h} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1, boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)' }}>{h}</th>
+                  {['MALZEME', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN', ...(canRequest ? ['İŞLEM'] : []), ''].map((h, i) => (
+                    <th key={h || `col-${i}`} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1, boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)', width: h ? undefined : 28 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {pageRows.map(row => {
+                {pageRowsAll.map(row => {
+                  if (row.isPendingNew) {
+                    return (
+                      <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border)', background: '#FFFBEB' }}>
+                        <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text)' }}>{row.material}</td>
+                        <td style={TD} colSpan={canRequest ? 5 : 4}>
+                          <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                            Yeni Malzeme — Onay Bekliyor: {formatQty(row.planned)} {row.unit}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  }
                   const pendingChange = pendingByItemId.get(row.id)
                   return (
                   <tr key={row.id || row.material} onClick={() => setDetailRow(row)} style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}>
@@ -404,7 +434,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
                         )}
                         {pendingChange && (
                           <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                            Onay bekliyor: {formatQty(pendingChange.old_planned_qty)} → {formatQty(pendingChange.new_planned_qty)}
+                            Miktar Artışı — Onay Bekliyor: {formatQty(pendingChange.old_planned_qty)} → {formatQty(pendingChange.new_planned_qty)} {row.unit}
                           </span>
                         )}
                       </div>
@@ -430,6 +460,18 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
                         </button>
                       </td>
                     )}
+                    <td style={{ ...TD, textAlign: 'center' }}>
+                      {row.hasHistory && (
+                        <span
+                          title="Bu kalemde değişiklik geçmişi var — detay için tıklayın"
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 17, height: 17, borderRadius: '50%', background: '#dc2626',
+                            color: '#fff', fontSize: 11, fontWeight: 800, lineHeight: 1,
+                          }}
+                        >!</span>
+                      )}
+                    </td>
                   </tr>
                   )
                 })}
@@ -437,7 +479,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
             </table>
           </div>
           <div style={{ padding: '4px 14px 12px' }}>
-            <Pager page={safePage} totalPages={totalPages} onChange={setPage} />
+            <Pager page={safePageAll} totalPages={totalPagesAll} onChange={setPage} />
           </div>
           </>
         )}
@@ -450,7 +492,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], requests = [], l
           onSaved={onPendingChanged}
         />
       )}
-      {detailRow && <MalzemeGecmisiModal row={detailRow} requests={requests} onClose={() => setDetailRow(null)} />}
+      {detailRow && <MalzemeGecmisiModal row={detailRow} projectId={projectId} onClose={() => setDetailRow(null)} />}
       {showNewMaterial && (
         <YeniMalzemeEkleModal
           projectId={projectId}

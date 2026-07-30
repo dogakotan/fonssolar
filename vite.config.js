@@ -47,6 +47,8 @@ export default defineConfig({
           'vendor-supabase': ['@supabase/supabase-js'],
           'vendor-xlsx':     ['xlsx'],
           'vendor-pdf':      ['jspdf', 'jspdf-autotable'],
+          'vendor-charts':   ['recharts'],
+          'vendor-zip':      ['fflate'],
         },
       },
     },

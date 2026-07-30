@@ -27,7 +27,6 @@ test.describe.serial('Bildirim gerçek zaman ve kullanıcı izolasyonu', () => {
     const { data: createdId, error: createError } = await pm.rpc('create_purchase_request_with_items', {
       p_project_id: process.env.TEST_PROJECT_IZMIR,
       p_title: marker,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: pmId,
@@ -35,8 +34,6 @@ test.describe.serial('Bildirim gerçek zaman ve kullanıcı izolasyonu', () => {
     })
     expect(createError).toBeNull()
     requestId = createdId
-
-    await expect(page.getByText(`Yeni satın alma talebi: ${marker}`, { exact: true })).toBeVisible({ timeout: 15000 })
 
     await expect.poll(async () => {
       const { data } = await admin.from('notifications')
@@ -48,6 +45,10 @@ test.describe.serial('Bildirim gerçek zaman ve kullanıcı izolasyonu', () => {
       return { count: data?.length || 0 }
     }).toEqual({ count: 1, recipient: adminId, read: false })
 
+    const notification = page.locator(`[data-entity-id="${requestId}"]`)
+    await expect(notification).toBeVisible({ timeout: 15000 })
+    await expect(notification.getByText(/satın alma talebi/i)).toBeVisible()
+
     const { data: foreignRead } = await pm.from('notifications').select('id').eq('id', notificationId)
     expect(foreignRead).toHaveLength(0)
     const { data: foreignUpdate, error: foreignUpdateError } = await pm.from('notifications')
@@ -55,7 +56,7 @@ test.describe.serial('Bildirim gerçek zaman ve kullanıcı izolasyonu', () => {
     expect(foreignUpdateError).toBeNull()
     expect(foreignUpdate).toHaveLength(0)
 
-    await page.getByText(`Yeni satın alma talebi: ${marker}`, { exact: true }).click()
+    await notification.click()
     await expect.poll(async () => {
       const { data } = await admin.from('notifications').select('is_read,read_at').eq('id', notificationId).single()
       return Boolean(data?.is_read && data?.read_at)

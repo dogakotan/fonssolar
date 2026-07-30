@@ -45,6 +45,8 @@ export function ScopeProvider({ children }) {
   return <ScopeContext.Provider value={value}>{children}</ScopeContext.Provider>
 }
 
+// Provider ve ona ait hook tek modülde tutulur; dar kapsamı Fast Refresh istisnası.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useScope() {
   return useContext(ScopeContext)
 }

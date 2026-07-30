@@ -1,28 +1,16 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
-import Badge, { INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS } from '../../../components/ui/StatusBadge'
+import { StatusDot } from '../../../components/ui/Badge'
+import { INVOICE_STATUS, PROCUREMENT_CHANGE_STATUS, PR_STATUS, TK_STATUS } from '../../../components/ui/StatusBadge'
 import Pager from '../../../components/ui/Pager'
-import ApprovalStepsHorizontal from '../../../components/ui/ApprovalStepsHorizontal'
-import { buildApprovalSteps } from '../../../utils/satinAlma'
-import { MANAGER_ROLES } from '../../../config/navigation'
+import { dedupeNotifications, notificationDisplay } from '../../../utils/notifications'
 
 const BADGE_MAP = {
+  purchase_request: PR_STATUS,
+  ticket: TK_STATUS,
   invoice: INVOICE_STATUS,
   procurement_item_change_request: PROCUREMENT_CHANGE_STATUS,
-}
-
-// Ticket'ın basit 3 adımlı süreci — iptal_edildi ayrı bir "reddedildi" dalı olarak gösterilir.
-// TicketDetayModal.jsx'e dokunulmuyor, bu yalnızca bildirim satırına özel kompakt bir özet.
-function buildTicketSteps(status) {
-  const isCancelled = status === 'iptal_edildi'
-  const isProcessing = status === 'işlemde'
-  const isClosed = status === 'kapatıldı'
-  return [
-    { key: 'gonderildi', label: 'Gönderildi', done: true },
-    { key: 'islemde', label: isCancelled ? 'İptal Edildi' : 'İşlemde', done: !isCancelled && (isProcessing || isClosed), active: isProcessing, rejected: isCancelled },
-    { key: 'kapatildi', label: 'Kapatıldı', done: isClosed },
-  ]
 }
 
 // Bildirim tipine göre ikon/etiket — filtre çipleri ve satır ikonu için ortak kaynak.
@@ -69,8 +57,7 @@ function reminderTone(n) {
 }
 
 export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToRequest, onGoToInvoice, onGoToMalzemeListesi }) {
-  const { user, role } = useAuth()
-  const isManager = MANAGER_ROLES.includes(role)
+  const { user, isManager } = useAuth()
   const [items, setItems] = useState([])
   const [liveStatus, setLiveStatus] = useState({})
   const [invoiceStepSummary, setInvoiceStepSummary] = useState({})
@@ -86,16 +73,17 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
       .select('id, project_id, entity_type, entity_id, event_type, title, body, is_read, created_at')
       .order('created_at', { ascending: false })
       .limit(200)
-    setItems(data || [])
+    const uniqueItems = dedupeNotifications(data || [])
+    setItems(uniqueItems)
     setLoading(false)
 
     // Satın alma talebi / ticket / fatura / malzeme miktarı değişikliği bildirimleri için canlı
     // durum ayrıca çekilir — bildirim metni oluşturulduğu andaki durumu dondurur, süreç
     // ilerlediğinde güncellenmez.
-    const prIds = [...new Set((data || []).filter(n => n.entity_type === 'purchase_request').map(n => n.entity_id))]
-    const tkIds = [...new Set((data || []).filter(n => n.entity_type === 'ticket').map(n => n.entity_id))]
-    const invIds = [...new Set((data || []).filter(n => n.entity_type === 'invoice').map(n => n.entity_id))]
-    const pcrIds = [...new Set((data || []).filter(n => n.entity_type === 'procurement_item_change_request').map(n => n.entity_id))]
+    const prIds = [...new Set(uniqueItems.filter(n => n.entity_type === 'purchase_request').map(n => n.entity_id))]
+    const tkIds = [...new Set(uniqueItems.filter(n => n.entity_type === 'ticket').map(n => n.entity_id))]
+    const invIds = [...new Set(uniqueItems.filter(n => n.entity_type === 'invoice').map(n => n.entity_id))]
+    const pcrIds = [...new Set(uniqueItems.filter(n => n.entity_type === 'procurement_item_change_request').map(n => n.entity_id))]
     const [prRes, tkRes, invRes, pcrRes] = await Promise.all([
       prIds.length ? supabase.from('purchase_requests').select('id, status').in('id', prIds) : Promise.resolve({ data: [] }),
       tkIds.length ? supabase.from('tickets').select('id, status').in('id', tkIds) : Promise.resolve({ data: [] }),
@@ -161,6 +149,12 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
     load()
   }
 
+  async function deleteNotification(event, id) {
+    event.stopPropagation()
+    await supabase.from('notifications').delete().eq('id', id)
+    load()
+  }
+
   async function handleClick(n) {
     if (!n.is_read) await markRead(n.id)
     switch (n.entity_type) {
@@ -168,6 +162,8 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
         onGoToTicket?.(n.entity_id)
         break
       case 'daily_report':
+        onOpenReport?.(n.entity_id, n.project_id)
+        break
       case 'daily_report_reminder':
         onOpenReport?.(n.entity_id)
         break
@@ -253,6 +249,7 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
               {pageItems.map(n => {
                 const tone = reminderTone(n)
                 const live = liveStatus[n.entity_id]
+                const display = notificationDisplay(n, live)
                 const meta = ENTITY_META[n.entity_type] || DEFAULT_META
                 const bucket = dateBucket(n.created_at)
                 const showBucket = bucket !== lastBucket
@@ -260,24 +257,23 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                 return (
                   <div key={n.id}>
                     {showBucket && <div className="bildirim-bucket">{bucket}</div>}
-                    <button
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleClick(n)}
+                      onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') handleClick(n) }}
+                      data-notification-id={n.id}
+                      data-entity-id={n.entity_id || undefined}
                       className={`bildirim-row${!n.is_read ? ' unread' : ''}`}
                       style={tone ? { background: tone.bg } : undefined}
                     >
                       <span className="bildirim-icon" aria-hidden="true">{meta.icon}</span>
                       <div className="bildirim-body">
-                        <p className="bildirim-title">{n.title}</p>
-                        {n.body && <p className="bildirim-desc">{n.body}</p>}
-                        {live && live.kind === 'purchase_request' && (
-                          <ApprovalStepsHorizontal steps={buildApprovalSteps(live.status)} />
-                        )}
-                        {live && live.kind === 'ticket' && (
-                          <ApprovalStepsHorizontal steps={buildTicketSteps(live.status)} />
-                        )}
-                        {live && live.kind !== 'purchase_request' && live.kind !== 'ticket' && (
+                        <p className="bildirim-title">{display.title}</p>
+                        {display.body && <p className="bildirim-desc">{display.body}</p>}
+                        {live && BADGE_MAP[live.kind] && (
                           <p className="bildirim-live">
-                            Şu an: <Badge map={BADGE_MAP[live.kind]} value={live.status} />
+                            <StatusDot map={BADGE_MAP[live.kind]} value={live.status} prefix="Güncel durum" />
                           </p>
                         )}
                         {isManager && n.entity_type === 'invoice' && invoiceStepSummary[n.entity_id] && (
@@ -287,8 +283,14 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
                       <div className="bildirim-meta">
                         {!n.is_read && <span className="bildirim-dot" style={tone ? { background: tone.dot } : undefined} />}
                         <span className="bildirim-time">{timeAgo(n.created_at)}</span>
+                        <button
+                          onClick={event => deleteNotification(event, n.id)}
+                          className="bildirim-delete"
+                          title="Bildirimi sil"
+                          aria-label="Bildirimi sil"
+                        >×</button>
                       </div>
-                    </button>
+                    </div>
                   </div>
                 )
               })}

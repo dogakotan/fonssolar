@@ -31,7 +31,6 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     const { data: createdId, error: createError } = await pm.rpc('create_purchase_request_with_items', {
       p_project_id: foreignProjectId,
       p_title: marker,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: pmId,
@@ -42,8 +41,20 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
   })
 
   test.afterAll(async () => {
-    if (invoiceId) await admin.from('invoices').delete().eq('id', invoiceId)
-    if (requestId) await admin.from('purchase_requests').delete().eq('id', requestId)
+    const entityIds = [requestId, invoiceId].filter(Boolean)
+    if (entityIds.length) {
+      await Promise.all([admin, muhasebe, santiye, pm].map(client =>
+        client.from('notifications').delete().in('entity_id', entityIds)
+      ))
+    }
+    if (invoiceId) {
+      const { error } = await admin.from('invoices').delete().eq('id', invoiceId)
+      expect(error).toBeNull()
+    }
+    if (requestId) {
+      const { error } = await admin.from('purchase_requests').delete().eq('id', requestId)
+      expect(error).toBeNull()
+    }
   })
 
   test('şantiye şefi başka projeyi listeleyemez, okuyamaz, yazamaz ve export edemez', async () => {
@@ -68,7 +79,6 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     const { error: foreignCreateError } = await santiye.rpc('create_purchase_request_with_items', {
       p_project_id: foreignProjectId,
       p_title: `${marker}_FORBIDDEN`,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: siteId,
@@ -89,10 +99,63 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     expect(exportResponse.status).toBe(403)
   })
 
+  test('cross-project proje yöneticisi projects tablosunu doğrudan tüm kapsamıyla okuyabilir', async () => {
+    const { data: projectRows, error } = await pm.from('projects').select('id')
+
+    expect(error).toBeNull()
+    expect(projectRows.map(project => project.id)).toEqual(
+      expect.arrayContaining([siteProjectId, foreignProjectId]),
+    )
+  })
+
+  test('tedarik ve teslimat tamamlandı onayını yalnızca proje yöneticisi verebilir', async () => {
+    const { data: initial, error: initialError } = await pm.from('projects')
+      .select('procurement_completed,procurement_completed_at,procurement_completed_by')
+      .eq('id', foreignProjectId)
+      .single()
+    expect(initialError).toBeNull()
+    expect(initial.procurement_completed).toBe(false)
+
+    const { error: adminError } = await admin.rpc('set_project_procurement_completed', {
+      p_project_id: foreignProjectId,
+      p_completed: true,
+    })
+    expect(adminError?.message).toContain('yalnızca proje yöneticisi')
+
+    const { error: siteError } = await santiye.rpc('set_project_procurement_completed', {
+      p_project_id: foreignProjectId,
+      p_completed: true,
+    })
+    expect(siteError?.message).toContain('yalnızca proje yöneticisi')
+
+    const { error: completeError } = await pm.rpc('set_project_procurement_completed', {
+      p_project_id: foreignProjectId,
+      p_completed: true,
+    })
+    expect(completeError).toBeNull()
+
+    const { data: completed, error: readError } = await pm.from('projects')
+      .select('procurement_completed,procurement_completed_at,procurement_completed_by')
+      .eq('id', foreignProjectId)
+      .single()
+    expect(readError).toBeNull()
+    expect(completed).toMatchObject({
+      procurement_completed: true,
+      procurement_completed_by: pmId,
+    })
+    expect(completed.procurement_completed_at).toBeTruthy()
+
+    const { error: restoreError } = await pm.rpc('set_project_procurement_completed', {
+      p_project_id: foreignProjectId,
+      p_completed: false,
+    })
+    expect(restoreError).toBeNull()
+  })
+
   test('oturumsuz kullanıcı hassas yazma RPC’lerini çağıramaz', async () => {
     const attempts = await Promise.all([
       anon.rpc('create_purchase_request_with_items', {
-        p_project_id: siteProjectId, p_title: marker, p_urgency: 'normal', p_category: 'diger',
+        p_project_id: siteProjectId, p_title: marker, p_category: 'diger',
         p_request_note: marker, p_requested_by: siteId,
         p_items: [{ name: marker, quantity: 1, unit: 'Adet', bom_item_id: null }],
       }),
@@ -105,6 +168,8 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
       }),
       anon.rpc('resubmit_rejected_invoice', { p_invoice_id: '00000000-0000-0000-0000-000000000000' }),
       anon.rpc('delete_rejected_invoice', { p_invoice_id: '00000000-0000-0000-0000-000000000000' }),
+      anon.rpc('set_project_procurement_completed', { p_project_id: siteProjectId, p_completed: true }),
+      anon.rpc('complete_project_manager_purchase_request', { p_request_id: requestId }),
     ])
     for (const result of attempts) expect(result.error).toBeTruthy()
   })
@@ -113,9 +178,43 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     expect((await admin.from('purchase_requests').update({
       status: 'onaylandi', approved_by: adminId, approved_at: new Date().toISOString(),
     }).eq('id', requestId)).error).toBeNull()
-    expect((await pm.from('purchase_requests').update({
-      supplier_id: supplierId, purchase_date: new Date().toISOString().slice(0, 10), purchased_by: pmId,
-    }).eq('id', requestId)).error).toBeNull()
+
+    const adminCompletion = await admin.rpc('complete_project_manager_purchase_request', {
+      p_request_id: requestId,
+    })
+    expect(adminCompletion.error?.message).toContain('yalnızca proje yöneticisi')
+
+    const siteCompletion = await santiye.rpc('complete_project_manager_purchase_request', {
+      p_request_id: requestId,
+    })
+    expect(siteCompletion.error?.message).toContain('yalnızca proje yöneticisi')
+
+    const pmCompletion = await pm.rpc('complete_project_manager_purchase_request', {
+      p_request_id: requestId,
+    })
+    expect(pmCompletion.error).toBeNull()
+    expect(pmCompletion.data).toMatchObject({
+      request_id: requestId,
+      project_id: foreignProjectId,
+      status: 'satin_alindi',
+    })
+
+    const duplicateCompletion = await pm.rpc('complete_project_manager_purchase_request', {
+      p_request_id: requestId,
+    })
+    expect(duplicateCompletion.error?.message).toContain('proje yöneticisinde bekleyen')
+
+    const { data: completedRequest, error: completedRequestError } = await admin
+      .from('purchase_requests')
+      .select('status,purchase_date,purchased_by')
+      .eq('id', requestId)
+      .single()
+    expect(completedRequestError).toBeNull()
+    expect(completedRequest).toMatchObject({
+      status: 'satin_alindi',
+      purchased_by: pmId,
+    })
+    expect(completedRequest.purchase_date).toBeTruthy()
 
     const { data: invoice, error: invoiceError } = await muhasebe.from('invoices').insert({
       project_id: foreignProjectId,

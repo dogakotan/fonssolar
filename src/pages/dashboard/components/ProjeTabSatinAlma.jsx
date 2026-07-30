@@ -9,9 +9,8 @@ import ProjeTabSatinAlmaStats from './ProjeTabSatinAlmaStats'
 import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
 import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
-import TedarikKuyrugu from './TedarikKuyrugu'
 
-export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false, projects, openRequestId, onOpenedRequest }) {
+export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false, openRequestId, onOpenedRequest }) {
   const { isAdmin, role } = useAuth()
   const canManageProcurement = isAdmin || role === 'proje_yoneticisi'
   const [tab, setTab] = useState(procurementManagerView ? 'tedarik' : 'talepler')
@@ -70,12 +69,12 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
 
   const TABS = procurementManagerView
     ? [
-        { key: 'tedarik', label: 'Onay Kuyruğu' },
+        { key: 'tedarik', label: 'Bekleyen' },
       ]
     : [
         { key: 'talepler', label: 'Talepler' },
         ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
-        ...(canManageProcurement ? [{ key: 'tedarik', label: 'Proje Yöneticisinde' }] : []),
+        ...(canManageProcurement ? [{ key: 'tedarik', label: 'Bekleyen' }] : []),
       ]
 
   if (!loading && !authorized) {
@@ -88,10 +87,15 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
       {!siteChiefView && !procurementManagerView && (
         <div className="sa-overview-grid">
           <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
-          <ProjeTabSatinAlmaSidebar tedarik={tedarik} dagilim={dagilim} doviz={doviz} />
+          <ProjeTabSatinAlmaSidebar
+            tedarik={tedarik}
+            dagilim={dagilim}
+            doviz={doviz}
+            hideMaterialTotal={role === 'proje_yoneticisi'}
+          />
         </div>
       )}
-      {!procurementManagerView && <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
+      {!siteChiefView && !procurementManagerView && <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             background: 'none', border: 'none', padding: '10px 22px',
@@ -118,7 +122,17 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
         />
       )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
-      {tab === 'tedarik' && canManageProcurement && <TedarikKuyrugu projectId={projectId} refreshKey={refreshKey} projects={projects} onChanged={refresh} />}
+      {tab === 'tedarik' && canManageProcurement && (
+        <TabSatinAlmaTalepListesi
+          projectId={projectId}
+          filterDate={filterDate}
+          onChanged={refresh}
+          procurement={procurement}
+          refreshKey={refreshKey}
+          fixedStatus="onaylandi"
+          listTitle="Bekleyen Talepler"
+        />
+      )}
     </div>
   )
 }

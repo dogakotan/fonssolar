@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase'
 import WizardStepper            from './WizardStepper'
 import Adim1ProjeBilgileri      from './Adim1ProjeBilgileri'
 import Adim2IsKalemleri         from './Adim2IsKalemleri'
+import Adim3KategoriAgirliklari from './Adim3KategoriAgirliklari'
 import Adim4Riskler             from './Adim4Riskler'
 import Adim5Tedarik             from './Adim5Tedarik'
 import Adim6Butce               from './Adim6Butce'
@@ -10,10 +11,11 @@ import Adim8Tamamlandi          from './Adim8Tamamlandi'
 
 const TABLE_MAP = {
   2: 'project_tasks',
-  3: 'project_risks',
-  4: 'procurement_items',
-  5: 'budget_lines',
+  4: 'project_risks',
+  6: 'budget_lines',
 }
+
+const STEP_LABELS = ['Proje Bilgileri', 'İş Kalemleri', 'Kategori Ağırlıkları', 'Riskler', 'Tedarik', 'Bütçe', 'Tamamlandı']
 
 export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
   const projectId = project.id
@@ -58,6 +60,18 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
         }
         const { error } = await supabase.from('projects').update(payload).eq('id', projectId)
         if (error) throw error
+      } else if (stepNo === 3 && !result.skipped) {
+        const { error } = await supabase.rpc('save_project_category_weights', {
+          p_project_id: projectId,
+          p_weights: result.rows,
+        })
+        if (error) throw error
+      } else if (stepNo === 5 && result.completed) {
+        const { error } = await supabase.rpc('set_project_procurement_completed', {
+          p_project_id: projectId,
+          p_completed: true,
+        })
+        if (error) throw error
       } else {
         const table = TABLE_MAP[stepNo]
         if (table && !result.skipped && result.rows?.length) {
@@ -89,7 +103,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
   function submitCurrentStep(action = 'next') {
     actionRef.current = action
     if (step === 1) document.querySelector('[data-wizard-form="project"]')?.requestSubmit()
-    else if (step < 6) document.querySelector('[data-wizard-submit="next"]')?.click()
+    else if (step < 7) document.querySelector('[data-wizard-submit="next"]')?.click()
     else document.querySelector('[data-wizard-submit="save"]')?.click()
   }
 
@@ -98,12 +112,12 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
   return (
     <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
       <div className="card" style={{ width: 210, flexShrink: 0, overflow: 'hidden' }}>
-        <WizardStepper current={step} completedSteps={Object.keys(stepsResult).map(Number)} availableUntil={6} onSelect={setStep} />
+        <WizardStepper current={step} completedSteps={Object.keys(stepsResult).map(Number)} availableUntil={7} onSelect={setStep} labels={STEP_LABELS} />
         <div style={{ padding: '0.875rem', borderTop: '1px solid var(--color-border-md)', display: 'grid', gap: '0.5rem' }}>
           <button type="button" onClick={onSuccess} style={{ ...btnBase, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)' }}>
             İptal
           </button>
-          {step < 6 && (
+          {step < 7 && (
             <button
               type="button"
               onClick={() => submitCurrentStep('save')}
@@ -118,7 +132,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             onClick={() => submitCurrentStep('next')}
             style={{ ...btnBase, background: 'var(--color-primary)', color: '#fff' }}
           >
-            {step === 6 ? 'Kaydet' : 'Devam →'}
+            {step === 7 ? 'Kaydet' : 'Devam →'}
           </button>
 
           {toast && (
@@ -158,8 +172,9 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
           />
         )}
         {step === 3 && (
-          <Adim4Riskler
+          <Adim3KategoriAgirliklari
             projectId={projectId}
+            taskRows={stepsResult[2]?.rows}
             result={stepsResult[3]}
             mode="edit"
             onDone={r => handleStepDone(3, r)}
@@ -167,7 +182,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
           />
         )}
         {step === 4 && (
-          <Adim5Tedarik
+          <Adim4Riskler
             projectId={projectId}
             result={stepsResult[4]}
             mode="edit"
@@ -176,7 +191,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
           />
         )}
         {step === 5 && (
-          <Adim6Butce
+          <Adim5Tedarik
             projectId={projectId}
             result={stepsResult[5]}
             mode="edit"
@@ -185,6 +200,15 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
           />
         )}
         {step === 6 && (
+          <Adim6Butce
+            projectId={projectId}
+            result={stepsResult[6]}
+            mode="edit"
+            onDone={r => handleStepDone(6, r)}
+            onBack={goBack}
+          />
+        )}
+        {step === 7 && (
           <Adim8Tamamlandi
             stepsResult={stepsResult}
             projectType={stepsResult[1]?.project_type ?? project.project_type ?? null}

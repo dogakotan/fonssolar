@@ -24,8 +24,10 @@ test('proje Excel export bütçe özetini ve dinamik ağırlık toplamını üre
   const workbook = XLSX.read(await response.arrayBuffer(), { type: 'array' })
   const budget = workbook.Sheets.Bütçe
   const weights = workbook.Sheets['Kategori Ağırlıkları']
+  const risks = workbook.Sheets.Riskler
   expect(budget).toBeTruthy()
   expect(weights).toBeTruthy()
+  expect(risks).toBeTruthy()
 
   expect(budget.G4.v).toBe('KATEGORİ REHBERİ')
   expect(budget.J4.v).toBe('BÜTÇE ÖZETİ (OTOMATİK)')
@@ -38,4 +40,10 @@ test('proje Excel export bütçe özetini ve dinamik ağırlık toplamını üre
   expect(totalIndex).toBeGreaterThan(4)
   const totalRow = totalIndex + 1
   expect(weights[`B${totalRow}`].f).toBe(`SUM(B5:B${totalRow - 1})`)
+
+  const riskRows = XLSX.utils.sheet_to_json(risks, { header: 1, defval: null })
+  const automaticRisk = riskRows.find(row => String(row[1] || '').startsWith('Görev gecikti:'))
+  expect(automaticRisk).toBeTruthy()
+  expect(['orta', 'yüksek', 'kritik']).toContain(automaticRisk[6])
+  expect(automaticRisk[5]).toBeNull()
 })

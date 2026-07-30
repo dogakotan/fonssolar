@@ -44,7 +44,7 @@ export default function Login() {
     setResetErr('')
     try {
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: getAuthRedirectUrl('/dashboard'),
+        redirectTo: getAuthRedirectUrl('/hesap-olustur'),
       })
       if (resetError) throw resetError
       setResetSent(true)

@@ -23,7 +23,7 @@ export const normalizeStatus = (status) => {
 }
 
 export const statusLabel = (status) => ({
-  bekliyor: 'Bekliyor',
+  bekliyor: 'Talep Oluşturuldu',
   // StatusBadge.jsx'in PR_STATUS'üyle aynı sebep: "Onaylandı" sıradaki adımı değil geçmişi
   // anlatıyordu, kullanıcı talebin şu an kimin elinde olduğunu görmek istiyor.
   onaylandi: 'Proje Yöneticisinde',
@@ -34,8 +34,8 @@ export const statusLabel = (status) => ({
   // StatusBadge.jsx'teki PR_STATUS'la aynı sebep: fatura_onay_bekliyor pratikte hiç
   // üretilmiyor bile olsa, aynı akışın iki farklı görünen ismi olmasın diye eşitlendi.
   fatura_bekliyor: 'Fatura Bekleniyor',
-  fatura_onay_bekliyor: 'Fatura Bekleniyor',
-  faturasi_kesildi: 'Faturası Kesildi',
+  fatura_onay_bekliyor: 'Fatura Onayda',
+  faturasi_kesildi: 'Fatura Kesildi',
   iptal: 'İptal Edildi',
 })[normalizeStatus(status)] || String(status || 'Durum yok').replace(/_/g, ' ')
 
@@ -43,31 +43,9 @@ export const statusLabel = (status) => ({
 // faturası kesilmedi mi? -> "Faturası Kesilecekler" kuyruğunda görünmeli ve Fatura Oluştur
 // aksiyonu gösterilmeli. "onaylandi" durumu artık YETERLİ DEĞİL — DB (trg_guard_invoice_
 // requires_procurement_done) da bu durumda fatura eklemeyi reddediyor, proje yöneticisi
-// önce Tedarik Kuyruğu'nda tedarikçi + satın alma tarihini girip talebi satin_alindi'ye
-// otomatik ilerletmeli.
+// önce "Proje Yöneticisinde" aşamasını tamamlayıp talebi satin_alindi'ye ilerletmeli.
 export function isAwaitingInvoice(request) {
   return !request.invoice_id && normalizeStatus(request.status) === 'satin_alindi'
-}
-
-// TalepDetayModal.jsx'in dikey "Onay Süreci" stepper'ıyla birebir aynı 5 adım/karar mantığı —
-// bildirimler sayfasındaki yatay özet burada tekilleştirildi (tarih/tedarikçi detayı olmadan,
-// yalnızca adım durumu — kompakt bildirim satırına sığması için).
-export function buildApprovalSteps(status) {
-  const s = normalizeStatus(status)
-  const isRejected = s === 'red_edildi'
-  const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(s)
-  const procurementActive = s === 'onaylandi'
-  const procurementDone = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(s)
-  const invoiceActive = ['fatura_bekliyor', 'fatura_onay_bekliyor'].includes(s)
-  const invoiceDone = s === 'faturasi_kesildi'
-
-  return [
-    { key: 'talep', label: 'Talep Oluşturuldu', done: true },
-    { key: 'onay', label: isRejected ? 'Onay Reddedildi' : 'Yönetici Onayı', done: approvalDone, active: s === 'bekliyor', rejected: isRejected },
-    { key: 'tedarik', label: 'Tedarikçi / Satın Alma', done: procurementDone, active: procurementActive },
-    { key: 'fatura_bekliyor', label: 'Fatura Bekleniyor', done: invoiceDone, active: invoiceActive },
-    { key: 'fatura_kesildi', label: 'Fatura Kesildi', done: invoiceDone },
-  ]
 }
 
 // Malzeme fiilen satın alınıp projeye ulaştı mı? (fatura süreci bundan sonra, bağımsız ilerler)
@@ -147,6 +125,7 @@ export function buildMaterialListRows(materials, requests) {
       required: Math.max(0, planned - sent),
       addedQty: toNumber(material.added_qty),
       addedViaCount: Number(material.added_via_count || 0),
+      hasHistory: !!material.has_history,
     }
   })
 }
@@ -209,19 +188,4 @@ export function groupByProjectId(rows) {
     groups.get(projectId).rows.push(row)
   })
   return groups
-}
-
-// Her proje için classifyMaterials'i ayrı çağırıp {total, ok, excess} toplamlarını döner.
-// Asla projeler arası düzleştirilmiş (flatten) bir malzeme haritası kullanmaz.
-export function aggregateMaterialsAcrossProjects(materialsByProject, requestsByProject) {
-  const totals = { total: 0, ok: 0, excess: 0, missing: 0 }
-  requestsByProject.forEach((group, projectId) => {
-    const materials = materialsByProject.get(projectId)?.rows || []
-    const result = classifyMaterials(materials, group.rows)
-    totals.total += result.total
-    totals.ok += result.ok
-    totals.excess += result.excess
-    totals.missing += result.missing
-  })
-  return totals
 }

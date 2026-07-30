@@ -9,11 +9,30 @@ async function friendlyError(error, fallback) {
   return new Error(serverMessage || error.message || fallback)
 }
 
-export async function importProjectExcel(file) {
+// mode: 'ask' (varsayılan, ilk deneme) | 'update' (kullanıcı "mevcut projeyi
+// güncelle" dedi) | 'duplicate' (kullanıcı "yeni kopya olarak yükle" dedi).
+// Proje ID zaten varken 'ask' ile çağrılırsa backend hiçbir şey yazmadan 409
+// + {conflict:true} döner — burada bunu ayrı bir hata tipine çeviriyoruz ki
+// çağıran taraf kullanıcıya seçim sorabilsin (bkz. TabProjeYonetimi.jsx).
+export async function importProjectExcel(file, mode = 'ask') {
   const formData = new FormData()
   formData.append('file', file)
+  formData.append('mode', mode)
   const { data, error } = await supabase.functions.invoke('import-project-excel', { body: formData })
-  if (error) throw await friendlyError(error, 'Excel içeri aktarılamadı')
+  if (error) {
+    if (error?.context?.status === 409) {
+      let body = null
+      try { body = await error.context?.json() } catch { /* body already consumed or not JSON */ }
+      if (body?.conflict) {
+        const conflictError = new Error(`Bu Proje ID zaten kullanılıyor: ${body.existing_name || body.existing_id}`)
+        conflictError.conflict = true
+        conflictError.existingId = body.existing_id
+        conflictError.existingName = body.existing_name
+        throw conflictError
+      }
+    }
+    throw await friendlyError(error, 'Excel içeri aktarılamadı')
+  }
   return data
 }
 

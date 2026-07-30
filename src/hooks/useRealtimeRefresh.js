@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
 const DEBOUNCE_MS = 2000
@@ -19,8 +19,6 @@ const POLL_MS = 60000
 // project_id=eq.<id>) sunucu tarafında ek daraltma yapılır — RLS zaten koruma
 // sağlıyor, bu yalnızca gürültüyü azaltan bir optimizasyon.
 export function useRealtimeRefresh(tables, refetch, { enabled = true, filter } = {}) {
-  const [status, setStatus] = useState('connecting') // 'connecting' | 'live' | 'offline'
-  const [lastUpdated, setLastUpdated] = useState(null)
   const refetchRef = useRef(refetch)
   refetchRef.current = refetch
   const tablesKey = JSON.stringify(tables || [])
@@ -36,7 +34,6 @@ export function useRealtimeRefresh(tables, refetch, { enabled = true, filter } =
 
     function fireRefetch() {
       refetchRef.current()
-      setLastUpdated(new Date())
     }
 
     function scheduleRefetch() {
@@ -67,10 +64,8 @@ export function useRealtimeRefresh(tables, refetch, { enabled = true, filter } =
     channel.subscribe(subStatus => {
       if (!alive) return
       if (subStatus === 'SUBSCRIBED') {
-        setStatus('live')
         stopPolling()
       } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT' || subStatus === 'CLOSED') {
-        setStatus('offline')
         startPolling()
       }
     })
@@ -81,7 +76,8 @@ export function useRealtimeRefresh(tables, refetch, { enabled = true, filter } =
       stopPolling()
       supabase.removeChannel(channel)
     }
+  // tablesKey/filterKey, nesne ve dizi prop'larının kararlı semantik karşılığıdır;
+  // ham referansları eklemek her render'da kanalı gereksiz yere yeniden kurar.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tablesKey, filterKey, enabled])
-
-  return { status, lastUpdated }
 }

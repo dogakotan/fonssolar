@@ -1,7 +1,9 @@
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useDashboardData } from '../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
+import { withSignedStorageUrls } from '../utils/storageUrls'
 
 const PRIORITY_COLORS = {
   kritik: { bg: '#FEE2E2', color: '#991B1B' },
@@ -17,6 +19,16 @@ const RESOLUTION_COLORS = {
 const DEPT_LABELS = { idari: 'İdari', mekanik: 'Mekanik', elektrik: 'Elektrik', yevmiyeci: 'Yevmiyeci' }
 const DEPARTMENTS = ['idari', 'mekanik', 'elektrik', 'yevmiyeci']
 
+function decodeStoredMeta(prefix, value) {
+  const text = String(value || '')
+  if (!text.startsWith(prefix)) return { description: text }
+  try {
+    return JSON.parse(text.slice(prefix.length)) || { description: '' }
+  } catch {
+    return { description: text }
+  }
+}
+
 function Badge({ text, style }) {
   return (
     <span style={{
@@ -24,6 +36,17 @@ function Badge({ text, style }) {
       textTransform: 'uppercase', letterSpacing: '0.4px', ...style,
     }}>{text}</span>
   )
+}
+
+function aggregateProgressRows(rows) {
+  const grouped = new Map()
+  ;(rows || []).forEach(row => {
+    if (!row.task_id) return
+    const current = grouped.get(row.task_id) || { ...row, qty_added: 0 }
+    current.qty_added += Number(row.qty_added || 0)
+    grouped.set(row.task_id, current)
+  })
+  return [...grouped.values()]
 }
 
 export default function DailyReportDetail({ reportId, onClose, onEdit }) {
@@ -36,9 +59,10 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
   const report     = data?.report     || null
   const personnel  = data?.personnel  || []
   const machinery  = data?.machinery  || []
-  const progress   = data?.progress   || []
+  const progress   = aggregateProgressRows(data?.progress || [])
   const materials  = data?.materials  || []
-  const photos     = data?.photos     || []
+  const photos     = useMemo(() => data?.photos || [], [data?.photos])
+  const [signedPhotos, setSignedPhotos] = useState([])
   const issues     = data?.issues     || []
 
   useRealtimeRefresh(
@@ -49,6 +73,14 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
       filter: report?.project_id ? { column: 'project_id', value: report.project_id } : undefined,
     }
   )
+
+  useEffect(() => {
+    let active = true
+    withSignedStorageUrls('saha-fotolari', photos).then(rows => {
+      if (active) setSignedPhotos(rows)
+    })
+    return () => { active = false }
+  }, [photos])
 
   if (!reportId) return null
 
@@ -115,10 +147,10 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
                   <InfoCard label="Toplam Personel" value={`${report.worker_count || 0} kişi`} />
                   {report.weather_note && <InfoCard label="Hava Notu" value={report.weather_note} />}
                 </div>
-                {report.notes && (
+                {report.notes && decodeStoredMeta('__REPORT_NOTES_META__', report.notes).description && (
                   <div style={{ marginTop: 12, background: '#F9FAFB', borderRadius: 8, padding: '12px 14px' }}>
                     <p style={{ margin: '0 0 4px', fontSize: 11, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase' }}>Genel Notlar</p>
-                    <p style={{ margin: 0, fontSize: 13, color: '#111827', lineHeight: 1.6 }}>{report.notes}</p>
+                    <p style={{ margin: 0, fontSize: 13, color: '#111827', lineHeight: 1.6 }}>{decodeStoredMeta('__REPORT_NOTES_META__', report.notes).description}</p>
                   </div>
                 )}
               </section>
@@ -261,24 +293,24 @@ export default function DailyReportDetail({ reportId, onClose, onEdit }) {
               )}
 
               {/* 6. Fotoğraflar */}
-              {photos.length > 0 && (
+              {signedPhotos.length > 0 && (
                 <section>
-                  <p style={SEC_TITLE}>Saha Fotoğrafları ({photos.length})</p>
+                  <p style={SEC_TITLE}>Saha Fotoğrafları ({signedPhotos.length})</p>
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
                     gap: 10,
                   }}>
-                    {photos.map(photo => {
-                      const url = supabase.storage.from('saha-fotolari').getPublicUrl(photo.storage_path).data.publicUrl
+                    {signedPhotos.map(photo => {
+                      const url = photo.signed_url
                       return (
                         <div key={photo.id}>
-                          <img
+                          {url && <img
                             src={url}
                             alt={photo.caption || ''}
                             style={{ width: '100%', height: 110, objectFit: 'cover', borderRadius: 8, border: '1px solid #E5E7EB', cursor: 'pointer' }}
                             onClick={() => window.open(url, '_blank')}
-                          />
+                          />}
                           {photo.caption && (
                             <p style={{ margin: '4px 0 0', fontSize: 11, color: '#6B7280', textAlign: 'center', lineHeight: 1.3 }}>
                               {photo.caption}

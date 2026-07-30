@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
 import { getProjects } from '../../../api'
-import TicketStats  from '../../../components/tickets/TicketStats'
 import TicketListesi from '../../../components/tickets/TicketListesi'
 
 export default function TabTickets({ openTicketId, onOpenedTicket } = {}) {
@@ -35,7 +34,6 @@ export default function TabTickets({ openTicketId, onOpenedTicket } = {}) {
           {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
       )}
-      <TicketStats refreshKey={refreshKey} />
       <TicketListesi
         onNewTicket={refresh}
         refreshKey={refreshKey}

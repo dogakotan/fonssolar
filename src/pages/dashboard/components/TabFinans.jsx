@@ -10,9 +10,11 @@ import ProjeTabFinansOzet from './ProjeTabFinansOzet'
 import ProjeTabFinansSidebar, { BudgetUsageCard } from './ProjeTabFinansSidebar'
 import ProjeTabFinansYanPanel, { KurCard } from './ProjeTabFinansYanPanel'
 import MaliyetOzetTable from './MaliyetOzetTable'
-import ProjeTabMaliyetTablosu from './ProjeTabMaliyetTablosu'
 import FaturaListesi from '../../../components/finans/FaturaListesi'
 import OnayKuyrugu   from '../../../components/finans/OnayKuyrugu'
+import OdemeTakibi from '../../../components/finans/OdemeTakibi'
+import MuhasebeFinansGenel from './MuhasebeFinansGenel'
+import FinansRaporlari from '../../../components/finans/FinansRaporlari'
 
 const EMPTY_KPI = {
   pendingCount: 0, pendingAmount: 0, totalPlanned: 0, totalActual: 0,
@@ -23,12 +25,13 @@ const EMPTY_CPI = { ev: 0, cpi: null }
 const EMPTY_COST_BUCKETS = { buckets: [], totalPlanned: 0, totalActual: 0, totalSapma: 0, totalPct: 0 }
 const EMPTY_QUICK_FACTS = { pendingCount: 0, pendingAmount: 0, overBudgetCount: 0 }
 const EMPTY_ACTION_ITEMS = {
-  muhasebeOnayi: { count: 0, amount: 0 }, yoneticiOnayi: { count: 0, amount: 0 },
+  yoneticiOnayi: { count: 0, amount: 0 },
 }
 
-export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProjectId } = {}) {
-  const { role, isAdmin, isMuhasebe } = useAuth()
-  const [tab, setTab] = useState(role === 'muhasebe' ? 'faturalar' : 'genel')
+export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProjectId, onNavigateTop } = {}) {
+  const { isMuhasebe } = useAuth()
+  const [tab, setTab] = useState(() => (isMuhasebe ? 'faturalar' : 'genel'))
+  const [genelSection, setGenelSection] = useState('genel') // 'genel' | 'detay' — yalnızca muhasebe Genel sekmesi içi
   const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
   const [projects, setProjects] = useState([])
   const [selectedProjectId, setSelectedProjectId] = useState('')
@@ -46,10 +49,6 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
     setTab('faturalar')
     if (invoiceProjectId) setSelectedProjectId(invoiceProjectId)
   }, [openInvoiceId, invoiceProjectId])
-
-  useEffect(() => {
-    if (isMuhasebe) setTab('faturalar')
-  }, [isMuhasebe])
 
   // Proje filtresi boşken (varsayılan) tüm projeler; bir proje seçilince tek-proje RPC'sine
   // geçilir — ikisi de aynı şekli döndürür (bkz. get_finans_overview_all). Muhasebe'nin ayrı
@@ -83,13 +82,15 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
   const dagilim = buildDagilimItems(overview?.dagilim)
   const recentActivity = formatRecentActivity(overview?.recentActivity)
 
+  // Ödeme Takibi/Tedarikçiler muhasebe için artık burada değil — ayrı, üst-seviye
+  // "Ödemeler" menü öğesine taşındı (bkz. CLAUDE.md "Muhasebe & Finans modülü").
   const TABS = isMuhasebe
-    ? [{ key: 'faturalar', label: 'Faturalar' }]
+    ? [{ key: 'faturalar', label: 'Faturalar' }, { key: 'genel', label: 'Genel' }]
     : [
         { key: 'genel',     label: 'Genel' },
         { key: 'faturalar', label: 'Faturalar' },
+        { key: 'odemeler',  label: 'Ödeme Takibi' },
         { key: 'onay',      label: 'Onay Kuyruğu' },
-        ...(isAdmin ? [{ key: 'maliyet', label: 'Maliyet Tablosu' }] : []),
       ]
 
   return (
@@ -124,7 +125,22 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
         </select>
       </div>
 
-      {tab === 'genel' && (
+      {tab === 'genel' && isMuhasebe && (
+        <>
+          <div className="finans-genel-subtabs">
+            <button className={genelSection === 'genel' ? 'active' : ''} onClick={() => setGenelSection('genel')}>Genel</button>
+            <button className={genelSection === 'detay' ? 'active' : ''} onClick={() => setGenelSection('detay')}>Detay</button>
+          </div>
+          {genelSection === 'genel' && (
+            <MuhasebeFinansGenel
+              onNavigate={key => (key === 'odemeler' ? onNavigateTop?.('odemeler') : setTab(key))}
+              projectId={selectedProjectId}
+            />
+          )}
+          {genelSection === 'detay' && <FinansRaporlari defaultProjectId={selectedProjectId} />}
+        </>
+      )}
+      {tab === 'genel' && !isMuhasebe && (
         <>
           <div className="finans-panel-grid">
             <ProjeTabFinansOzet kpi={kpi} quickFacts={quickFacts} loading={loading} />
@@ -138,14 +154,6 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--color-text)', margin: 0, flex: 1 }}>Maliyet Kalemi Özeti</h3>
-              {isAdmin && (
-                <button onClick={() => setTab('maliyet')} style={{
-                  background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 13, fontWeight: 600,
-                  cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
-                }}>
-                  Tüm maliyet tablosunu görüntüle →
-                </button>
-              )}
             </div>
             <div style={{ overflowX: 'auto' }}>
               <MaliyetOzetTable costBuckets={costBuckets} loading={loading} />
@@ -161,7 +169,7 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
         />
       )}
       {tab === 'onay'      && <OnayKuyrugu projectId={selectedProjectId || null} />}
-      {tab === 'maliyet'   && <ProjeTabMaliyetTablosu costBuckets={costBuckets} loading={loading} />}
+      {tab === 'odemeler'  && <OdemeTakibi projectId={selectedProjectId || null} />}
     </div>
   )
 }

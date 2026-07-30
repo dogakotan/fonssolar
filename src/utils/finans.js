@@ -2,7 +2,7 @@
 // Bu dosyada sadece SAF sunum yardımcıları kalıyor: renk/etiket eşlemesi ve metin biçimlendirme —
 // hiçbiri veriyi sorgulamıyor ya da toplamıyor, sadece RPC'den gelen hazır sayıları görüntüye çeviriyor.
 
-// Hem Harcama Dağılımı hem Maliyet Tablosu/Maliyet Kalemi Özeti AYNI 3 kategoriyi kullanır —
+// Hem Harcama Dağılımı hem Maliyet Kalemi Özeti AYNI 3 kategoriyi kullanır —
 // invoices.category'de birebir gerçek (malzeme/iscilik/diger), tahmini dağıtıma gerek yok.
 export const CATEGORY_META = {
   malzeme: { label: 'Malzeme', color: 'var(--color-primary)' },
@@ -35,10 +35,12 @@ export function remainingDaysLabel(remainingDays) {
 }
 
 const STATUS_ACTIVITY = {
+  taslak:              { verb: 'taslak olarak kaydedildi', color: 'var(--color-muted)' },
   bekliyor:            { verb: 'yüklendi',          color: 'var(--color-muted)' },
-  muhasebe_onayında:   { verb: 'muhasebe onayında', color: 'var(--color-warning)' },
   yönetici_onayında:   { verb: 'yönetici onayında', color: 'var(--color-warning)' },
+  duzeltme_bekliyor:   { verb: 'düzeltme bekliyor', color: 'var(--color-danger)' },
   onaylandı:           { verb: 'onaylandı',         color: 'var(--color-success)' },
+  odeme_bekliyor:      { verb: 'ödeme bekliyor',    color: 'var(--color-primary)' },
   ödendi:              { verb: 'ödendi',            color: 'var(--color-primary)' },
   reddedildi:          { verb: 'reddedildi',        color: 'var(--color-danger)' },
 }
@@ -50,10 +52,11 @@ export function formatRecentActivity(recentActivity = []) {
   return recentActivity.map(i => {
     const meta = STATUS_ACTIVITY[i.status] || { verb: i.status || 'güncellendi', color: 'var(--color-muted)' }
     const amount = Number(i.total_amount ?? i.amount) || 0
+    const amountText = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: i.currency || 'TRY', maximumFractionDigits: 0 }).format(amount)
     return {
       id: i.id,
       title: `Fatura ${meta.verb}`,
-      subtitle: `${CATEGORY_META[i.category]?.label || 'Diğer'} · ${amount.toLocaleString('tr-TR', { maximumFractionDigits: 0 })} ₺`,
+      subtitle: `${CATEGORY_META[i.category]?.label || 'Diğer'} · ${amountText}`,
       color: meta.color,
       date: i.created_at || i.invoice_date,
     }
@@ -72,15 +75,13 @@ export function maliyetDurumu(sapmaPct) {
 
 // RPC'nin actionItems nesnesini "Aksiyon Gerektirenler" kartının satırlarına çevirir.
 // targetTab: tıklanınca ProjeTabFinans.jsx'in hangi alt sekmeye geçeceğini belirtir.
+// Not: eski iki-adımlı onay zincirindeki "Muhasebe Onayı" adımı kaldırıldığından
+// (invoices artık doğrudan 'yönetici_onayında'ya düşüyor, bkz. create_invoice_approval_chain)
+// buradaki tek satır yönetici onayı — muhasebeOnayi alanı her zaman 0 döndüğü için kaldırıldı.
 export function formatActionItems(actionItems) {
   const ai = actionItems || {}
   const fmt = (n) => Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 })
   return [
-    {
-      key: 'muhasebe', label: 'Muhasebe onayı bekliyor', count: ai.muhasebeOnayi?.count || 0,
-      description: `${ai.muhasebeOnayi?.count || 0} fatura · ₺${fmt(ai.muhasebeOnayi?.amount)}`,
-      color: 'var(--color-warning)', targetTab: 'onay',
-    },
     {
       key: 'yonetici', label: 'Yönetici onayı bekliyor', count: ai.yoneticiOnayi?.count || 0,
       description: `${ai.yoneticiOnayi?.count || 0} fatura · ₺${fmt(ai.yoneticiOnayi?.amount)}`,

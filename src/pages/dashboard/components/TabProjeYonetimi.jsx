@@ -19,24 +19,34 @@ const STATUS_LABEL = {
 
 const STATUS_COLOR = PROJECT_STATUS_META
 
+// procurement_item_change_requests/adjustments ve daily_report_material_usage,
+// procurement_items'a NO ACTION ile bağlı — o yüzden procurement_items'tan ÖNCE
+// silinmeleri gerekiyor, aksi halde proje silme FK ihlaliyle patlar.
 const SUB_TABLES = [
   'project_tasks',
   'project_risks',
+  'procurement_item_change_requests',
+  'procurement_item_adjustments',
+  'daily_report_material_usage',
   'procurement_items',
   'budget_lines',
 ]
 
+// quality_inspections kalite kontrol modülüyle birlikte DB'den tamamen kaldırıldı
+// (bkz. CLAUDE.md) — burada hâlâ referans edilmesi proje silmeyi herkes için
+// (admin dahil) "tablo bulunamadı" hatasıyla kırıyordu.
 const PROJECT_DELETE_TABLES = [
-  'agent_reports', 'quality_inspections',
+  'agent_reports',
 ]
 
 const PROJECT_TEMPLATE_FILE = 'fons-solar-proje-sablonu.xlsx'
 
 export default function TabProjeYonetimi({ onViewProject }) {
   const { isAdmin, role } = useAuth()
-  // proje_yoneticisi Excel şablonuyla proje ekleyebilir (import-project-excel
-  // edge function'ı da bunu sunucu tarafında izin veriyor) — Düzenle/Excel
-  // export/Sil hâlâ isAdmin-only (kademeli proje silme dahil, blast radius yüksek).
+  // proje_yoneticisi proje ekleme/Düzenle/Excel export/Sil'de admin ile eşit yetkili —
+  // bilinçli tasarım kararı (20260723140000/20260723140100 migration'ları), kademeli
+  // proje silmenin bağlı invoices/purchase_requests/agent_reports/procurement_item_*
+  // kayıtlarını temizleyebilmesi için RLS düzeyinde de açıldı, yalnızca UI-yüzeyi değil.
   const canCreateProject = isAdmin || role === 'proje_yoneticisi'
   const [view,            setView]            = useState('list')
   const [editProject,     setEditProject]     = useState(null)
@@ -48,6 +58,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
 
   const [importState,   setImportState]   = useState('idle')   // 'idle' | 'importing'
   const [importError,   setImportError]   = useState(null)
+  const [importConflict, setImportConflict] = useState(null)   // { file, existingId, existingName } | null
   const fileInputRef = useRef(null)
 
   const [toast, setToast] = useState(null)
@@ -156,14 +167,31 @@ export default function TabProjeYonetimi({ onViewProject }) {
     if (!file) return
     e.target.value = ''
     setImportError(null)
+    await runImport(file, 'ask')
+  }
+
+  // mode='ask' iken Proje ID zaten varsa backend hiçbir şey yazmadan conflict
+  // döner (bkz. projectExcelBridge.js) — kullanıcı "mevcut projeyi güncelle" /
+  // "yeni kopya olarak yükle" seçene kadar hiçbir veri değişmez (2026-07-30'da
+  // bulunan bug: eskiden "Yeni Proje" butonu aynı ID'yle sessizce mevcut
+  // projeyi güncelliyordu, kullanıcı yeni bir proje oluştuğunu sanıyordu).
+  async function runImport(file, mode) {
     setImportState('importing')
     try {
-      const result = await importProjectExcel(file)
+      const result = await importProjectExcel(file, mode)
       setImportState('idle')
-      showToast(`Excel aktarıldı (${result?.project_id || ''})\n${formatImportSummary(result?.summary)}`)
+      setImportConflict(null)
+      const label = result?.duplicated
+        ? `Proje kopyalandı (${result.project_id})`
+        : `Excel aktarıldı (${result?.project_id || ''})`
+      showToast(`${label}\n${formatImportSummary(result?.summary)}`)
       fetchProjects()
     } catch (err) {
       setImportState('idle')
+      if (err.conflict) {
+        setImportConflict({ file, existingId: err.existingId, existingName: err.existingName })
+        return
+      }
       setImportError(err.message)
     }
   }
@@ -210,9 +238,9 @@ export default function TabProjeYonetimi({ onViewProject }) {
       />
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
-      {/* Proje oluşturma/import (Şablon İndir/Yeni Proje/Manuel doldur) admin +
-          proje_yoneticisi'ye açık — Düzenle/Excel export/Sil (satır aksiyonları,
-          aşağıda) hâlâ isAdmin-only, kademeli proje silme dahil blast radius yüksek. */}
+      {/* Proje oluşturma/import (Şablon İndir/Yeni Proje/Manuel doldur) ve aşağıdaki
+          satır aksiyonları (Düzenle/Excel export/Sil) ikisi de admin + proje_yoneticisi'ye
+          açık — bkz. canCreateProject tanımındaki not. */}
       {canCreateProject && (
         <div className="card-header">
           <div style={{ flex: 1 }} />
@@ -286,7 +314,14 @@ export default function TabProjeYonetimi({ onViewProject }) {
               <thead>
                 <tr style={{ background: '#f8fafc' }}>
                   {['Proje Adı', 'ID', 'Konum', 'Durum', 'DC Güç', 'İlerleme', 'Başlangıç', 'Hedef Bitiş', ''].map(h => (
-                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap', borderBottom: '1px solid #e2e8f0' }}>
+                    <th
+                      key={h}
+                      style={{
+                        padding: '8px 10px', textAlign: 'left', color: '#64748b', fontWeight: 600, fontSize: 10.5,
+                        textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap', borderBottom: '1px solid #e2e8f0',
+                        ...(h === '' ? { position: 'sticky', right: 0, background: '#f8fafc', boxShadow: '-6px 0 6px -6px rgba(15,23,42,.15)' } : {}),
+                      }}
+                    >
                       {h}
                     </th>
                   ))}
@@ -299,7 +334,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
                   const isExp = exportLoadingId === p.id
                   return (
                     <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9', opacity: isDel ? 0.5 : 1 }}>
-                      <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--color-text)' }}>{p.name}</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 600, color: 'var(--color-text)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={p.name}>{p.name}</td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-muted)', fontFamily: 'monospace', fontSize: 11 }}>{p.id}</td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)' }}>{p.location || '—'}</td>
                       <td style={{ padding: '8px 10px' }}>
@@ -320,8 +355,8 @@ export default function TabProjeYonetimi({ onViewProject }) {
                       </td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{p.start_date || '—'}</td>
                       <td style={{ padding: '8px 10px', color: 'var(--color-text-sub)', whiteSpace: 'nowrap' }}>{p.target_date || '—'}</td>
-                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                        {isAdmin && (
+                      <td style={{ padding: '8px 10px', whiteSpace: 'nowrap', position: 'sticky', right: 0, background: '#fff', boxShadow: '-6px 0 6px -6px rgba(15,23,42,.15)' }}>
+                        {canCreateProject && (
                           <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                             <button
                               onClick={() => { setEditProject(p); setView('edit') }}
@@ -367,6 +402,45 @@ export default function TabProjeYonetimi({ onViewProject }) {
           zIndex: 9999, transition: 'all .2s',
         }}>
           {toast.msg}
+        </div>
+      )}
+
+      {/* Proje ID zaten var — kullanıcı "mevcut projeyi güncelle" / "yeni kopya
+          olarak yükle" seçmeden hiçbir veri yazılmaz (bkz. runImport). */}
+      {importConflict && (
+        <div
+          onClick={() => setImportConflict(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.42)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--color-surface)', borderRadius: 16, padding: 24, width: 460, maxWidth: '100%', boxShadow: '0 28px 80px rgba(15,23,42,.24)' }}>
+            <h3 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 700, color: 'var(--color-text)' }}>Bu Proje ID zaten kullanılıyor</h3>
+            <p style={{ margin: '0 0 18px', fontSize: 12.5, color: 'var(--color-muted)' }}>
+              "{importConflict.existingName || importConflict.existingId}" ({importConflict.existingId}) ID'siyle zaten bir proje var. Ne yapmak istersin?
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button
+                onClick={() => runImport(importConflict.file, 'update')}
+                disabled={importState === 'importing'}
+                style={{ background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 700, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >
+                Mevcut projeyi güncelle
+              </button>
+              <button
+                onClick={() => runImport(importConflict.file, 'duplicate')}
+                disabled={importState === 'importing'}
+                style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 700, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >
+                Yeni bir kopya olarak yükle
+              </button>
+              <button
+                onClick={() => setImportConflict(null)}
+                disabled={importState === 'importing'}
+                style={{ background: 'transparent', color: 'var(--color-muted)', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+              >
+                Vazgeç
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -24,8 +24,8 @@ export const PR_STATUS = {
   // sırada olduğu önemli değil, ikisi de aynı metni göstermeli — aksi halde aynı durum
   // için iki farklı yazı görünüyormuş gibi kafa karıştırıyor.
   fatura_bekliyor:      { label: 'Fatura Bekleniyor',    tone: 'warning' },
-  fatura_onay_bekliyor: { label: 'Fatura Bekleniyor',    tone: 'warning' },
-  faturasi_kesildi:     { label: 'Faturası Kesildi',      tone: 'primary' },
+  fatura_onay_bekliyor: { label: 'Fatura Onayda',         tone: 'primary' },
+  faturasi_kesildi:     { label: 'Fatura Kesildi',        tone: 'success' },
   // satin_alindi = proje yöneticisi tedarikçi/teslimatı girdi, fatura HENÜZ oluşturulmadı —
   // bu durumun TEK anlamı "muhasebe fatura kesmeli" (invoice oluşunca durum hemen
   // fatura_onay_bekliyor'a atlıyor, satin_alindi asla "bitti" anlamına gelmiyor). Önceden
@@ -35,15 +35,25 @@ export const PR_STATUS = {
   reddedildi:           { label: 'Reddedildi',            tone: 'danger' },
   iptal:                { label: 'İptal',                 tone: 'muted' },
 }
-export const PR_URGENCY = {
-  normal:   { label: 'Normal',    tone: 'muted' },
-  acil:     { label: 'Acil',      tone: 'warning' },
-  çok_acil: { label: 'Çok Acil', tone: 'danger' },
+
+export const SITE_CHIEF_PR_STATUS = {
+  talep_olusturuldu:    { label: 'Talep Oluşturuldu',  tone: 'primary' },
+  fiyat_girildi:        { label: 'Talep Oluşturuldu',  tone: 'primary' },
+  onay_bekliyor:        { label: 'Talep Oluşturuldu',  tone: 'primary' },
+  bekliyor:             { label: 'Talep Oluşturuldu',  tone: 'primary' },
+  onaylandi:            { label: 'İşleme Alındı',      tone: 'warning' },
+  satin_alindi:         { label: 'İşlem Tamamlandı',   tone: 'success' },
+  fatura_bekliyor:      { label: 'İşlem Tamamlandı',   tone: 'success' },
+  fatura_onay_bekliyor: { label: 'İşlem Tamamlandı',   tone: 'success' },
+  faturasi_kesildi:     { label: 'İşlem Tamamlandı',   tone: 'success' },
+  reddedildi:           { label: 'İşlem İptal Edildi', tone: 'danger' },
+  red_edildi:           { label: 'İşlem İptal Edildi', tone: 'danger' },
+  iptal:                { label: 'İşlem İptal Edildi', tone: 'muted' },
 }
 // tickets_status_check (DB) 5 değere izin verir — bu harita önceden yalnızca 4'ünü tanıyordu
 // (iptal_edildi eksikti), iptal edilmiş bir ticket ham enum metnine düşüyordu.
 export const TK_STATUS = {
-  gönderildi:   { label: 'Gönderildi',   tone: 'primary' },
+  gönderildi:   { label: 'Açık',         tone: 'primary' },
   açık:         { label: 'Açık',         tone: 'primary' },
   işlemde:      { label: 'İşlemde',      tone: 'warning' },
   kapatıldı:    { label: 'Kapatıldı',    tone: 'success' },
@@ -55,12 +65,21 @@ export const TK_SEVERITY = {
   yüksek: { label: 'Yüksek',  tone: 'danger' },
   kritik: { label: 'Kritik',  tone: 'danger' },
 }
+// Tek onaylayıcı (proje yöneticisi/"Yönetici") + taslak/düzeltme/ödeme-takibi
+// akışı (bkz. CLAUDE.md "Satın alma akışı" → Faturalar). 'bekliyor' yalnızca
+// invoices.status'un DEFAULT'u/geçici bir ara değer — kalıcı olarak hiçbir
+// faturada görünmez. 'muhasebe_onayında' hiçbir kod yolunun üretemediği ölü bir
+// değerdi (invoices_status_check'ten de kaldırıldı); burada da yok.
 export const INVOICE_STATUS = {
+  taslak:             { label: 'Taslak',              tone: 'muted' },
   bekliyor:           { label: 'Bekliyor',            tone: 'warning' },
-  muhasebe_onayında:  { label: 'Muhasebe Onayında',   tone: 'primary' },
   yönetici_onayında:  { label: 'Yönetici Onayında',   tone: 'primary' },
+  duzeltme_bekliyor:  { label: 'Düzeltme Bekliyor',   tone: 'danger' },
   onaylandı:          { label: 'Onaylandı',           tone: 'success' },
+  odeme_bekliyor:     { label: 'Ödeme Bekliyor',      tone: 'primary' },
+  kismen_odendi:      { label: 'Kısmen Ödendi',       tone: 'warning' },
   reddedildi:         { label: 'Reddedildi',          tone: 'danger' },
+  ödendi:             { label: 'Ödendi',              tone: 'success' },
 }
 export const PROCUREMENT_CHANGE_STATUS = {
   bekliyor:   { label: 'Onay Bekliyor', tone: 'warning' },
@@ -71,15 +90,4 @@ export const DAILY_REPORT_STATUS = {
   normal: { label: 'Normal', tone: 'success' },
   dikkat: { label: 'Dikkat', tone: 'warning' },
   kritik: { label: 'Kritik', tone: 'danger' },
-}
-
-export default function Badge({ map, value }) {
-  const entry = map[value] || { label: value || '—', tone: 'muted' }
-  const tone = TONE[entry.tone] || TONE.muted
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-      background: tone.bg, color: tone.text, whiteSpace: 'nowrap', flexShrink: 0,
-    }}>{entry.label}</span>
-  )
 }

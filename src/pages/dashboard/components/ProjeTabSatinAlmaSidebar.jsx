@@ -7,15 +7,17 @@ const formatKur = (value) =>
     ? new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value) + ' ₺'
     : '—'
 
-function ColumnChart({ total, totalLabel, items }) {
+function ColumnChart({ total, totalLabel, items, hideTotal = false }) {
   const maxBarHeight = 76
 
   return (
     <div className="sa-column-chart">
-      <div className="sa-chart-total">
-        <span>Toplam</span>
-        <strong>{total} <small>{totalLabel}</small></strong>
-      </div>
+      {!hideTotal && (
+        <div className="sa-chart-total">
+          <span>Toplam</span>
+          <strong>{total} <small>{totalLabel}</small></strong>
+        </div>
+      )}
       <div className="sa-column-bars">
         {items.map(item => {
           const pct = percent(item.value, total)
@@ -62,7 +64,7 @@ function RequestTypeChart({ dagilim }) {
   )
 }
 
-export default function ProjeTabSatinAlmaSidebar({ tedarik, dagilim, doviz }) {
+export default function ProjeTabSatinAlmaSidebar({ tedarik, dagilim, doviz, hideMaterialTotal = false }) {
   const tedarikItems = [
     { label: 'Uygun', value: tedarik.ok, color: 'var(--color-success)' },
     { label: 'Riskli', value: tedarik.excess, color: 'var(--color-danger)' },
@@ -73,12 +75,18 @@ export default function ProjeTabSatinAlmaSidebar({ tedarik, dagilim, doviz }) {
     <>
       <section className="sa-panel-card">
         <p className="sa-eyebrow">Malzeme Tedarik</p>
-        <ColumnChart total={tedarik.total} totalLabel="talep" items={tedarikItems} />
+        <ColumnChart total={tedarik.total} totalLabel="talep" items={tedarikItems} hideTotal={hideMaterialTotal} />
+        <p style={{ margin: '8px 0 0', fontSize: 10.5, color: 'var(--color-muted)', lineHeight: 1.4 }}>
+          Bu dağılım yalnızca şu an onay bekleyen {tedarik.total} talebin malzeme durumuna göre hesaplanmıştır.
+        </p>
       </section>
 
       <section className="sa-panel-card">
         <p className="sa-eyebrow">Talep Dağılımı</p>
         <RequestTypeChart dagilim={dagilim} />
+        <p style={{ margin: '8px 0 0', fontSize: 10.5, color: 'var(--color-muted)', lineHeight: 1.4 }}>
+          Bu dağılım toplam {dagilim.malzeme + dagilim.hizmet + dagilim.diger} talep sayısından hesaplanmıştır.
+        </p>
       </section>
 
       <section className="sa-panel-card sa-currency-card">

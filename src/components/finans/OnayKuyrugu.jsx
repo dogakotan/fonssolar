@@ -1,6 +1,7 @@
 import { useState, useEffect, Fragment } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import OnayReddetActions from './OnayReddetActions'
 
 const formatCurrency = (amount) =>
   new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
@@ -62,59 +63,7 @@ function DetailPanel({ inv }) {
   )
 }
 
-function ActionButtons({ inv, onAction, actionLoading }) {
-  const [showReject, setShowReject] = useState(false)
-  const [note, setNote] = useState('')
-  const busy = actionLoading === inv.id
-
-  if (showReject) {
-    return (
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input
-          type="text"
-          placeholder="Red gerekçesi (opsiyonel)"
-          value={note}
-          onChange={e => setNote(e.target.value)}
-          style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontFamily: 'inherit', outline: 'none', width: 180 }}
-        />
-        <button
-          onClick={() => { onAction(inv.id, 'reddedildi', note); setShowReject(false); setNote('') }}
-          disabled={busy}
-          style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-        >
-          {busy ? '…' : 'Reddi Onayla'}
-        </button>
-        <button
-          onClick={() => { setShowReject(false); setNote('') }}
-          style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-        >
-          İptal
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ display: 'flex', gap: 6 }}>
-      <button
-        onClick={() => onAction(inv.id, 'onaylandı')}
-        disabled={busy}
-        style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-      >
-        {busy ? '…' : '✓ Onayla'}
-      </button>
-      <button
-        onClick={() => setShowReject(true)}
-        disabled={busy}
-        style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '5px 14px', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}
-      >
-        ✗ Reddet
-      </button>
-    </div>
-  )
-}
-
-function InvoiceTable({ invoices, onAction, actionLoading, readonly }) {
+function InvoiceTable({ invoices, onActionDone, readonly }) {
   const [expanded, setExpanded] = useState(null)
 
   const toggle = (id) => setExpanded(e => e === id ? null : id)
@@ -183,7 +132,7 @@ function InvoiceTable({ invoices, onAction, actionLoading, readonly }) {
                       {statusMeta(inv.status).label}
                     </span>
                   ) : (
-                    <ActionButtons inv={inv} onAction={onAction} actionLoading={actionLoading} />
+                    <OnayReddetActions invoiceId={inv.id} onDone={onActionDone} />
                   )}
                 </td>
               </tr>
@@ -212,14 +161,18 @@ function Section({ title, badge, badgeBg, badgeColor, children }) {
   )
 }
 
-// Yalnız aktif olarak onay bekleyen faturaları gösterir.
+// Yalnız aktif olarak onay bekleyen faturaları gösterir. Onaylayıcı ("Yönetici")
+// artık proje_yoneticisi — admin yalnızca gözetim/acil durum için aynı yetkiye sahip.
 export default function OnayKuyrugu({ projectId = null }) {
-  const { isAdmin, user } = useAuth()
+  const { isAdmin, role } = useAuth()
+  const canApprove = isAdmin || role === 'proje_yoneticisi'
   const [yoneticiKuyrugu, setYoneticiKuyrugu] = useState([])
   const [loading,         setLoading]         = useState(true)
-  const [actionLoading,   setActionLoading]   = useState(null)
 
-  useEffect(() => { fetchData() }, [projectId, isAdmin])
+  // Kuyruk proje ve rol kapsamı değişince yenilenir; render-başına oluşan
+  // fetchData referansı dependency yapılırsa gereksiz istek döngüsü oluşur.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchData() }, [projectId, canApprove])
 
   async function fetchData() {
     setLoading(true)
@@ -237,29 +190,6 @@ export default function OnayKuyrugu({ projectId = null }) {
     setLoading(false)
   }
 
-  // invoices.status güncellemesi tamamen fn_invoice_approval_cascade trigger'ına bırakılır —
-  // burada ayrıca yazmak trigger'la çakışıp onu ezerdi (bkz. DB-WF-001).
-  // step numarası artık sabit değil: yeni faturalarda tek adım (step=1) "Yönetici Onayı",
-  // eski (2026-07-20 öncesi oluşturulmuş) faturalarda step=2 "Yönetici Onayı" olabiliyor —
-  // hangisi olursa olsun o an bekleyen (status='bekliyor') satır hedeflenir.
-  async function handleAction(invoiceId, action, note) {
-    setActionLoading(invoiceId)
-
-    await supabase
-      .from('invoice_approvals')
-      .update({
-        status: action,
-        note: note || null,
-        reviewed_at: new Date().toISOString(),
-        reviewer_id: user.id,
-      })
-      .eq('invoice_id', invoiceId)
-      .eq('status', 'bekliyor')
-
-    setActionLoading(null)
-    fetchData()
-  }
-
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
       <p style={{ color: '#6B7280', fontSize: 14 }}>Yükleniyor…</p>
@@ -270,17 +200,16 @@ export default function OnayKuyrugu({ projectId = null }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
       <Section
-        title={isAdmin ? (projectId ? 'Fatura Onay Bekleyenler' : 'Yönetici Onay Kuyruğu') : 'Yönetici Onayında'}
+        title={canApprove ? (projectId ? 'Fatura Onay Bekleyenler' : 'Yönetici Onay Kuyruğu') : 'Yönetici Onayında'}
         badge={`${yoneticiKuyrugu.length} fatura`}
         badgeBg="#EFF6FF" badgeColor="#185FA5"
       >
         {yoneticiKuyrugu.length === 0
-          ? <EmptyState text={isAdmin ? 'Onay bekleyen fatura yok' : 'Yönetici onayında fatura yok'} />
+          ? <EmptyState text={canApprove ? 'Onay bekleyen fatura yok' : 'Yönetici onayında fatura yok'} />
           : <InvoiceTable
               invoices={yoneticiKuyrugu}
-              onAction={handleAction}
-              actionLoading={actionLoading}
-              readonly={!isAdmin}
+              onActionDone={fetchData}
+              readonly={!canApprove}
             />
         }
       </Section>

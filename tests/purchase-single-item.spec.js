@@ -23,7 +23,6 @@ test.describe.serial('Satın alma talebi tek kalem kuralı', () => {
     const { data, error } = await pm.rpc('create_purchase_request_with_items', {
       p_project_id: projectId,
       p_title: title,
-      p_urgency: 'normal',
       p_category: 'malzeme',
       p_request_note: marker,
       p_requested_by: pmId,
@@ -43,7 +42,6 @@ test.describe.serial('Satın alma talebi tek kalem kuralı', () => {
     const { data: requestId, error } = await pm.rpc('create_purchase_request_with_items', {
       p_project_id: projectId,
       p_title: `${marker}_NORMAL`,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: pmId,
@@ -66,7 +64,6 @@ test.describe.serial('Satın alma talebi tek kalem kuralı', () => {
     const { data: request, error } = await pm.from('purchase_requests').insert({
       project_id: projectId,
       title: `${marker}_CONCURRENT`,
-      urgency: 'normal',
       category: 'diger',
       request_note: marker,
       status: 'talep_olusturuldu',

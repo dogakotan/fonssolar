@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { dedupeNotifications, notificationDisplay } from '../../utils/notifications'
 
 const ENTITY_TAB = {
   purchase_request: 'satin-alma',
@@ -44,8 +45,9 @@ export default function NotificationBell({ onNavigate }) {
       .select('id, project_id, entity_type, entity_id, event_type, title, body, is_read, created_at')
       .order('created_at', { ascending: false })
       .limit(30)
-    setItems(data || [])
-    setUnread((data || []).filter(n => !n.is_read).length)
+    const uniqueItems = dedupeNotifications(data || [])
+    setItems(uniqueItems)
+    setUnread(uniqueItems.filter(n => !n.is_read).length)
   }
 
   useEffect(() => {
@@ -147,6 +149,7 @@ export default function NotificationBell({ onNavigate }) {
           ) : (
             items.map(n => {
               const tone = reminderTone(n)
+              const display = notificationDisplay(n)
               return (
               <button
                 key={n.id}
@@ -163,8 +166,8 @@ export default function NotificationBell({ onNavigate }) {
                     <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone ? tone.dot : 'var(--color-primary)', marginTop: 5, flexShrink: 0 }} />
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--color-text)' }}>{n.title}</p>
-                    {n.body && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{n.body}</p>}
+                    <p style={{ margin: 0, fontSize: 12.5, fontWeight: 600, color: 'var(--color-text)' }}>{display.title}</p>
+                    {display.body && <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{display.body}</p>}
                     <p style={{ margin: '4px 0 0', fontSize: 10.5, color: '#94a3b8' }}>{timeAgo(n.created_at)}</p>
                   </div>
                 </div>

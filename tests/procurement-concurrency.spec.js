@@ -12,7 +12,6 @@ test.describe.serial('Satın alma eşzamanlılık ve idempotency', () => {
     const { data, error } = await pm.rpc('create_purchase_request_with_items', {
       p_project_id: projectId,
       p_title: `${marker}_${suffix}`,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: pmId,

@@ -53,7 +53,6 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     const { data: pmRequestId, error: createError } = await projeYoneticisi.rpc('create_purchase_request_with_items', {
       p_project_id: selectedProject.id,
       p_title: `${marker} PM`,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: pmId,
@@ -75,7 +74,6 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     const { error: missingProjectError } = await projeYoneticisi.rpc('create_purchase_request_with_items', {
       p_project_id: null,
       p_title: `${marker} PM NULL`,
-      p_urgency: 'normal',
       p_category: 'diger',
       p_request_note: marker,
       p_requested_by: pmId,
@@ -89,7 +87,6 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     const { data: createdId, error: createError } = await santiye.rpc('create_purchase_request_with_items', {
       p_project_id: projectId,
       p_title: `${marker} Malzeme`,
-      p_urgency: 'normal',
       p_category: 'malzeme',
       p_request_note: marker,
       p_requested_by: (await santiye.auth.getUser()).data.user.id,
@@ -277,7 +274,7 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     const deleteMarker = `${marker}_DELETE`
 
     const { data: deleteRequestId, error: createError } = await santiye.rpc('create_purchase_request_with_items', {
-      p_project_id: projectId, p_title: deleteMarker, p_urgency: 'normal', p_category: 'diger',
+      p_project_id: projectId, p_title: deleteMarker, p_category: 'diger',
       p_request_note: deleteMarker, p_requested_by: siteUserId,
       p_items: [{ name: 'Test diğer talep', quantity: 1, unit: 'Adet', bom_item_id: null }],
     })
@@ -329,7 +326,7 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     const cancelMarker = `${marker}_APPROVED_CANCEL`
 
     const { data: cancelRequestId, error: createError } = await santiye.rpc('create_purchase_request_with_items', {
-      p_project_id: projectId, p_title: cancelMarker, p_urgency: 'normal', p_category: 'diger',
+      p_project_id: projectId, p_title: cancelMarker, p_category: 'diger',
       p_request_note: cancelMarker, p_requested_by: siteUserId,
       p_items: [{ name: 'Onaylı fatura iptal testi', quantity: 1, unit: 'Adet', bom_item_id: null }],
     })

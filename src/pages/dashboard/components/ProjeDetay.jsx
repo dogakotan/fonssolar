@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { unzipSync, strFromU8, strToU8 } from 'fflate'
-import { exportGunlukRaporPdf, exportGunlukRaporExcel } from '../../../utils/exportUtils'
+import {
+  exportGunlukRaporPdf,
+  exportGunlukRaporExcel,
+  exportPeriodReportPdf,
+  exportPeriodReportExcel,
+} from '../../../utils/exportUtils'
 import TicketListesi from '../../../components/tickets/TicketListesi'
 import ProjeTabSatinAlma from './ProjeTabSatinAlma'
 import ProjeTabMalzemeListesi from './ProjeTabMalzemeListesi'
@@ -22,7 +27,7 @@ import {
 } from '../../../utils/excelUtils'
 import { exportProjectExcelBlob, downloadBlob } from '../../../utils/projectExcelBridge'
 
-const PDF_SERVICE_ENDPOINT = import.meta.env.VITE_PDF_SERVICE_URL || 'http://127.0.0.1:8002/generate-pdf'
+const PDF_SERVICE_ENDPOINT = import.meta.env.VITE_PDF_SERVICE_URL || '/generate-pdf'
 
 // ── Periyot yardımcıları ──────────────────────────────────────────────────────
 const PERIODS = [
@@ -82,6 +87,9 @@ function EkipListesi({ projectId }) {
     setLoading(false)
   }
 
+  // Ekip listesi yalnız proje değişince yüklenmelidir; render-başına oluşan load
+  // referansını dependency yapmak tekrar sorgu döngüsü yaratır.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (projectId) load() }, [projectId])
 
   async function openModal() {
@@ -363,7 +371,7 @@ const tabBtn = {
 }
 const tabBtnActive = {
   ...tabBtn, background: 'var(--color-primary)', color: '#fff',
-  borderColor: 'var(--color-primary)', fontWeight: 600,
+  border: '1px solid var(--color-primary)', fontWeight: 600,
 }
 const periodBtn = {
   padding: '5px 14px', borderRadius: 20, border: '1px solid var(--color-border)',
@@ -372,7 +380,7 @@ const periodBtn = {
 }
 const periodBtnActive = {
   ...periodBtn, background: 'var(--color-primary)', color: '#fff',
-  borderColor: 'var(--color-primary)',
+  border: '1px solid var(--color-primary)',
 }
 const periodNavBtn = {
   padding: '2px 8px', borderRadius: 6, border: '1px solid var(--color-border)',
@@ -615,8 +623,15 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 }
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab }) {
+export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, initialReportId, onOpenedReport }) {
   const [tab, setTab]                = useState(initialTab || 'genel')
+  // Malzeme Listesi/Riskler tek sayfada iki alt-sekme — Genel Proje'deki Riskler
+  // kartından "Tümünü Gör" tıklanınca doğrudan Riskler alt-sekmesine düşsün diye.
+  const [malzemeSection, setMalzemeSection] = useState('malzeme')
+  const goToTab = tabKey => {
+    if (tabKey === 'riskler') { setMalzemeSection('riskler'); setTab('malzeme-listesi') }
+    else setTab(tabKey)
+  }
   const [project, setProject]        = useState(null)
   const [wps, setWPs]                = useState([])
   const [progressSummary, setProgressSummary] = useState(null)
@@ -792,7 +807,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     const machinery = machineryRes.data || []
     const progressItems = progressItemsRes.data || []
     const progressDaily = progressDailyRes.data || []
-    const progressByItem = new Map(progressDaily.map(row => [row.task_id, row]))
+    const progressByItem = new Map()
+    progressDaily.forEach(row => {
+      const current = progressByItem.get(row.task_id) || { ...row, qty_added: 0, notes: [] }
+      current.qty_added += Number(row.qty_added || 0)
+      if (row.note) current.notes.push(row.note)
+      progressByItem.set(row.task_id, current)
+    })
     const creatorName = creatorRes.data?.full_name || creatorRes.data?.email || ''
 
     let xml = strFromU8(files['xl/worksheets/sheet1.xml'])
@@ -872,7 +893,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       put(`H${row}`, cumulative || '')
       put(`I${row}`, pct)
       put(`J${row}`, dailyProgressStatus(Math.round(pct * 100)))
-      put(`K${row}`, daily?.note || daily?.notes || item.notes || '')
+      put(`K${row}`, daily?.notes?.join(' · ') || daily?.note || item.notes || '')
     })
 
     const materialUsage = materialUsageRes.data || []
@@ -894,7 +915,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       put(`C${row}`, purchase.title || purchase.material_name || purchase.description || '')
       put(`E${row}`, purchase.quantity || '')
       put(`F${row}`, purchase.unit || '')
-      put(`G${row}`, purchase.priority || purchase.urgency || '')
       put(`H${row}`, purchase.supplier || '')
       put(`J${row}`, purchase.status || '')
       put(`K${row}`, formatExcelDate(purchase.required_date || purchase.delivery_date || purchase.created_at))
@@ -968,7 +988,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       try {
         await exportSelectedDailyReportPDF()
       } catch (error) {
-        alert(`PDF oluşturulamadı: ${error.message}\n\nPDF servisi çalışıyor mu? → pdf-service/start.bat`)
+        alert(`PDF oluşturulamadı: ${error.message}\n\nPython PDF servisi başlatılamadı.`)
       }
       return
     }
@@ -1073,10 +1093,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       const projMeta = { name: project?.name || projectName, capacityKwp: project?.capacity_kwp, progress: project?.progress }
 
       if (type === 'pdf') {
-        const { exportPeriodReportPdf } = await import('../../../utils/exportUtils')
         await exportPeriodReportPdf(projMeta, periodLabel, periodRangeLabel, periodData)
       } else {
-        const { exportPeriodReportExcel } = await import('../../../utils/exportUtils')
         exportPeriodReportExcel(projMeta, periodLabel, periodRangeLabel, periodData)
       }
       return
@@ -1160,20 +1178,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
         {/* ── Sağ grup: Tarih Navigasyon + Dışa Aktar ── */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <button
-            type="button"
-            onClick={handleProjectExcelExport}
-            disabled={projectExcelLoading}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px', background: '#fff', color: '#15803d',
-              border: '1px solid #16a34a', borderRadius: 8, fontSize: 13,
-              fontWeight: 600, cursor: projectExcelLoading ? 'not-allowed' : 'pointer',
-              fontFamily: 'inherit', whiteSpace: 'nowrap', opacity: projectExcelLoading ? 0.65 : 1,
-            }}
-          >
-            {projectExcelLoading ? 'Excel hazırlanıyor…' : 'Proje Excelini İndir'}
-          </button>
           <div ref={calendarRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button onClick={() => setShowCalendar(v => !v)} style={calendarBtn} title="Takvim">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1240,25 +1244,24 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
             )}
           </div>
 
-          {/* Dışa Aktar — İş Planı sade görünümünde gizli */}
-          {!['tickets', 'satin-alma', 'malzeme-listesi', 'finans', 'gantt', 'raporlar'].includes(tab) && (
+          {/* Proje Exceli tüm sekmelerden aynı Dışa Aktar menüsünde erişilebilir. */}
             <div ref={exportRef} style={{ position: 'relative' }}>
               <button
                 onClick={() => setShowExportMenu(v => !v)}
-                disabled={!wps.length}
+                disabled={projectExcelLoading}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   padding: '7px 14px',
                   background: '#fff',
-                  color: !wps.length ? '#9ca3af' : 'var(--color-text)',
+                  color: projectExcelLoading ? '#9ca3af' : 'var(--color-text)',
                   border: '1px solid var(--color-border)',
                   borderRadius: 8,
                   fontSize: 13, fontWeight: 500,
-                  cursor: !wps.length ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
+                  cursor: projectExcelLoading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
                   transition: 'background 0.15s',
                   whiteSpace: 'nowrap',
                 }}
-                onMouseEnter={e => { if (wps.length) e.currentTarget.style.background = '#f8fafc' }}
+                onMouseEnter={e => { if (!projectExcelLoading) e.currentTarget.style.background = '#f8fafc' }}
                 onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1279,6 +1282,15 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
                   borderRadius: 10, boxShadow: '0 4px 24px rgba(0,0,0,.10)',
                   padding: '0.875rem', minWidth: 220,
                 }}>
+                  <button
+                    type="button"
+                    onClick={() => { setShowExportMenu(false); handleProjectExcelExport() }}
+                    disabled={projectExcelLoading}
+                    style={{ width: '100%', textAlign: 'left', padding: '9px 10px', marginBottom: 10, background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', borderRadius: 7, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    {projectExcelLoading ? 'Excel hazırlanıyor…' : 'Proje Excelini İndir'}
+                  </button>
+                  {!['tickets', 'satin-alma', 'malzeme-listesi', 'finans', 'gantt', 'raporlar'].includes(tab) && <>
                   <div style={{ marginBottom: '0.625rem', padding: '6px 10px', background: '#FEF3C7', borderRadius: 6, fontSize: 11, color: '#92400E', fontWeight: 600 }}>
                     {getPeriodLabel(filterDate, filterMode)} raporu
                   </div>
@@ -1305,10 +1317,10 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
                       </button>
                     ))}
                   </div>
+                  </>}
                 </div>
               )}
             </div>
-          )}
         </div>
       </div>
 
@@ -1322,11 +1334,23 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       ) : tab === 'satin-alma' ? (
         <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
       ) : tab === 'malzeme-listesi' ? (
-        <ProjeTabMalzemeListesi projectId={projectId} filterDate={filterDate} />
+        <ProjeTabMalzemeListesi
+          projectId={projectId}
+          filterDate={filterDate}
+          activeSection={malzemeSection}
+          onSectionChange={setMalzemeSection}
+          onGoTab={setTab}
+        />
       ) : tab === 'finans' ? (
         <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
       ) : tab === 'raporlar' ? (
-        <DailyReportList projectId={projectId} title="Günlük Raporlar" showHeader={false} />
+        <DailyReportList
+          projectId={projectId}
+          title="Günlük Raporlar"
+          showHeader={false}
+          openReportId={initialReportId}
+          onOpenedReport={onOpenedReport}
+        />
       ) : tab === 'genel' ? (
         <ProjectOverviewDashboard
           project={project}
@@ -1334,7 +1358,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           tasks={wps}
           filterDate={filterDate}
           reportPeriod={filterMode === 'haftalik' ? 'weekly' : filterMode === 'aylik' ? 'monthly' : 'daily'}
-          onGoTab={setTab}
+          onGoTab={goToTab}
           progressSummary={progressSummary}
         />
       ) : (

@@ -5,10 +5,12 @@ import { useAuth } from '../../context/AuthContext'
 import { useScope } from '../../context/ScopeContext'
 import Sidebar from '../../components/layouts/Sidebar'
 import TabGenel from './components/TabGenel'
+import MuhasebeGenelOzet from './components/MuhasebeGenelOzet'
 import TabProjeler from './components/TabProjeler'
 import TabSatinAlma from './components/TabSatinAlma'
 import ProjeTabSatinAlma from './components/ProjeTabSatinAlma'
 import TabFinans from './components/TabFinans'
+import TabOdemeler from './components/TabOdemeler'
 import TabTickets from './components/TabTickets'
 import TabSantiyeSefi from './components/TabSantiyeSefi'
 import TabKullanicilar from './components/TabKullanicilar'
@@ -20,14 +22,14 @@ import FloatingAgent from '../../components/agent/FloatingAgent'
 import NotificationBell from '../../components/ui/NotificationBell'
 import DailyReportForm from '../../components/daily-report/DailyReportForm'
 import DailyReportList from '../DailyReportList'
-import { NAVIGATION, ROLE_LABEL, FIELD_SPECIALIST_ROLES } from '../../config/navigation'
 import './Dashboard.css'
 
 const TABS = {
   genel:            { title: 'Genel Bakış',      subtitle: 'Proje özeti ve aktif görevler' },
   projeler:         { title: 'Projeler',          subtitle: 'Tüm GES projeleri' },
-  'satin-alma':     { title: 'Satın Alma',        subtitle: 'Tedarik talepleri ve siparişler' },
+  'satin-alma':     { title: 'Bekleyenler',       subtitle: 'Tedarik talepleri ve siparişler' },
   finans:           { title: 'Finans',            subtitle: 'Fatura yönetimi ve maliyet takibi' },
+  odemeler:         { title: 'Ödemeler',          subtitle: 'Ödeme takibi ve tedarikçi bakiyeleri' },
   tickets:          { title: 'Ticket Sistemi',    subtitle: 'Sahadan yöneticiye hata bildirimi' },
   kullanicilar:     { title: 'Kullanıcı Yönetimi', subtitle: 'Sistem kullanıcıları ve rol atamaları' },
   'proje-ekle':     { title: 'Proje Yönetimi',    subtitle: 'Projeleri görüntüle, ekle ve düzenle' },
@@ -42,43 +44,14 @@ function getHeaderInitials(name) {
   return name.split(/[\s@._-]+/).slice(0, 2).map(p => p[0]?.toUpperCase()).filter(Boolean).join('') || '?'
 }
 
-// proje_yoneticisi artık cross_project=true (birden fazla projeye erişebiliyor) ama header'daki
-// global proje seçici kaldırıldı — Genel/İş Planı/Satın Alma sekmeleri tek-proje odaklı olduğundan
-// scopeProjectId boşken bu küçük seçici devreye girer (yalnızca bu rol için, diğer rollerin
-// "Tüm Projeler" davranışını etkilemez).
-function ProjeSecimGerekli({ projects, onSelect }) {
-  return (
-    <div style={{ padding: '48px 24px', textAlign: 'center' }}>
-      <p style={{ fontSize: 14, color: 'var(--color-muted)', marginBottom: 16 }}>Devam etmek için bir proje seçin</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 360, margin: '0 auto' }}>
-        {projects.map(p => (
-          <button
-            key={p.id}
-            onClick={() => onSelect(p.id)}
-            style={{
-              background: '#fff', border: '1px solid var(--color-border-md)', borderRadius: 10,
-              padding: '12px 16px', fontSize: 14, fontWeight: 600, color: 'var(--color-text)',
-              cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left',
-            }}
-          >
-            {p.name}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 export default function Dashboard() {
-  const { user, role, isAdmin, projectId, loading: authLoading, authError } = useAuth()
-  const { scopeProjectId: contextScopeProjectId, projects: scopeProjects } = useScope()
+  const { user, role, isAdmin, projectId, loading: authLoading, authError, navigation, roleLabel } = useAuth()
   // ScopeContext artık manuel override desteklemiyor (header seçicisi kalkınca kasıtlı
   // sadeleştirildi, scopeProjectId yalnızca tek-proje kullanıcıda otomatik çözülüyor).
-  // proje_yoneticisi (cross_project=true, çoklu proje) için bu üç sekmede (genel/is-plani/
-  // satin-alma) hâlâ tek bir proje seçilmesi gerektiğinden, ortak context'e dokunmadan bu
-  // role özel yerel bir seçim state'i tutuyoruz — diğer rollerin "Tüm Projeler" davranışını etkilemez.
-  const [pySelectedProjectId, setPySelectedProjectId] = useState(null)
-  const scopeProjectId = role === 'proje_yoneticisi' ? (contextScopeProjectId || pySelectedProjectId) : contextScopeProjectId
+  // proje_yoneticisi (cross_project=true, çoklu proje) için scopeProjectId boşken
+  // 'genel' sekmesi TabGenel'e aggregate ("Tüm Projeler") modunda geçer (2026-07-21).
+  const { scopeProjectId } = useScope()
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [activeTab,           setActiveTab]           = useState(() => {
     const saved = window.localStorage.getItem('dashboard-active-tab')
@@ -96,23 +69,24 @@ export default function Dashboard() {
   const [openInvoiceId,       setOpenInvoiceId]        = useState(null)
   const [invoiceProjectId,    setInvoiceProjectId]     = useState(null)
   const [initialProjectTab,   setInitialProjectTab]    = useState(null)
+  const [initialReportId,     setInitialReportId]      = useState(null)
   const navigate = useNavigate()
 
   // Kısıtlı roller → başlangıç sekmesi
   useEffect(() => {
-    if (!role) return
-    const defaultTab = NAVIGATION[role]?.defaultTab
+    if (!role || !navigation) return
+    const defaultTab = navigation.defaultTab
     if (defaultTab) {
       setActiveTab(defaultTab)
       return
     }
     // Kısıtsız roller (tabs: null — admin/koordinator/proje_koordinatoru/muhendis/
     // maliyet_kontrolcu) için 'is-plani' sekmesinin hiç render dalı yok (yalnızca
-    // santiye_sefi/proje_yoneticisi/saha uzmanı rollerinde var, bkz. dash-content).
-    // Paylaşımlı bir cihazda önceki rolden localStorage'da kalan bu değer boş ekrana
-    // yol açabilir — güvenli varsayılana (genel) düş.
+    // santiye_sefi'de var, bkz. dash-content). Paylaşımlı bir cihazda önceki
+    // rolden localStorage'da kalan bu değer boş ekrana yol açabilir — güvenli
+    // varsayılana (genel) düş.
     setActiveTab(current => (current === 'is-plani' ? 'genel' : current))
-  }, [role])
+  }, [role, navigation])
 
   useEffect(() => {
     window.localStorage.setItem('dashboard-active-tab', activeTab)
@@ -132,10 +106,11 @@ export default function Dashboard() {
   // (tek kayıt detay modalı yok, en azından doğru yere götürür). Proje adı bildirimde
   // yok — ProjeDetay zaten kendi projesini RPC'den çekiyor, header'daki kısa süreli
   // başlık için burada ayrıca hızlıca çekilir.
-  function goToProjectTab(id, tab) {
+  function goToProjectTab(id, tab, reportId = null) {
     setSelectedProjectId(id)
     setSelectedProjectName('')
     setInitialProjectTab(tab)
+    setInitialReportId(reportId)
     setShowProjectDetail(true)
     setActiveTab('projeler')
     supabase.from('projects').select('name').eq('id', id).maybeSingle().then(({ data }) => {
@@ -144,7 +119,7 @@ export default function Dashboard() {
   }
 
   function handleTabChange(tab) {
-    const allowed = NAVIGATION[role]?.tabs
+    const allowed = navigation?.tabs
     if (allowed && !allowed.includes(tab)) return
     if (role === 'santiye_sefi' && tab === 'daily-report') {
       setEditReportId(null)
@@ -188,10 +163,34 @@ export default function Dashboard() {
 
   // Bildirimler sayfasından bir fatura bildirimine tıklanınca: Finans sekmesine
   // geç, o faturayı doğrudan aç (biliniyorsa proje filtresini de ayarla).
-  function goToInvoice(invoiceId, invoiceProjectId = null) {
+  // santiye_sefi gibi 'finans' sekmesine erişimi olmayan bir talep sahibi bu
+  // bildirimi alabiliyor (trg_notify_invoice_status → v_pr_owner) — o rolde
+  // handleTabChange('finans') sessizce no-op olurdu, bunun yerine erişebildiği
+  // bağlı satın alma talebine yönlendiriyoruz.
+  async function goToInvoice(invoiceId, invoiceProjectId = null) {
+    if (navigation?.tabs && !navigation.tabs.includes('finans')) {
+      const { data } = await supabase.rpc('get_invoice_linked_purchase_request', { p_invoice_id: invoiceId })
+      if (data) goToRequest(data)
+      return
+    }
     setOpenInvoiceId(invoiceId)
     setInvoiceProjectId(invoiceProjectId)
     handleTabChange('finans')
+  }
+
+  // Bildirimler sayfasından bir günlük rapor bildirimine tıklanınca: rapor
+  // sahibi santiye_sefi ise kendi düzenleme modalını aç (mevcut davranış,
+  // hatırlatma bildirimleri de bu yoldan geçer); trg_notify_daily_report yalnızca
+  // admin'i hedeflediğinden ve admin'in kendi düzenleme modalına erişimi
+  // olmadığından (index.jsx'teki showReportModal bloğu role==='santiye_sefi'
+  // ile sınırlı), admin için bunun yerine ilgili projenin Raporlar sekmesini
+  // açıp raporu orada gösteriyoruz.
+  function goToReport(reportId, reportProjectId = null) {
+    if (reportProjectId && (!navigation?.tabs || navigation.tabs.includes('projeler'))) {
+      goToProjectTab(reportProjectId, 'raporlar', reportId)
+      return
+    }
+    openReportModal(reportId)
   }
 
   if (!authLoading && role === null) {
@@ -229,7 +228,12 @@ export default function Dashboard() {
   }
 
   const showingDetail = activeTab === 'projeler' && showProjectDetail
-  const headerTitle = showingDetail ? selectedProjectName : TABS[activeTab].title
+  // "Bekleyenler" yalnızca muhasebe için anlamlı (bu sekmede yalnızca fatura
+  // kesilmeyi bekleyen talepleri görür) — diğer rollerde tam satın alma
+  // talebi listesi olduğundan "Satın Alma" gösterilir (bkz. Sidebar.jsx).
+  const headerTitle = showingDetail
+    ? selectedProjectName
+    : (activeTab === 'satin-alma' && role !== 'muhasebe') ? 'Satın Alma' : TABS[activeTab].title
 
   return (
     <div className="dashboard">
@@ -276,7 +280,7 @@ export default function Dashboard() {
                   {user?.email?.split('@')[0] || 'Kullanıcı'}
                 </p>
                 <p style={{ margin: 0, fontSize: 12, color: 'var(--color-muted)', whiteSpace: 'nowrap' }}>
-                  {ROLE_LABEL[role] || '—'}
+                  {roleLabel || '—'}
                 </p>
               </div>
             </div>
@@ -302,18 +306,10 @@ export default function Dashboard() {
         {activeTab === 'is-plani'     && role === 'santiye_sefi' && (
           <TabIsPlan projectId={projectId} siteChiefView />
         )}
-        {activeTab === 'is-plani'     && role === 'proje_yoneticisi' && (
-          !scopeProjectId && scopeProjects.length > 1
-            ? <ProjeSecimGerekli projects={scopeProjects} onSelect={setPySelectedProjectId} />
-            : <TabIsPlan projectId={scopeProjectId} />
-        )}
-        {activeTab === 'is-plani'     && FIELD_SPECIALIST_ROLES.includes(role) && (
-          <TabIsPlan projectId={projectId} />
-        )}
         {activeTab === 'bildirimler'  && (
           <TabBildirimler
             onGoToTicket={goToTicket}
-            onOpenReport={openReportModal}
+            onOpenReport={goToReport}
             onGoToRequest={goToRequest}
             onGoToInvoice={goToInvoice}
             onGoToMalzemeListesi={(projectId) => goToProjectTab(projectId, 'malzeme-listesi')}
@@ -322,8 +318,9 @@ export default function Dashboard() {
         {/* proje_yoneticisi 2026-07-21'de admin gibi aggregate (scopeProjectId=null → "Tüm
             Projeler") moda geçti — TabGenel/ProjectListView zaten null'ı destekliyor (diğer
             kısıtsız roller de böyle kullanıyor), bu yüzden girişte artık proje seçim ekranı
-            YOK. İş Planı (aşağıda) yapısal olarak tek-proje kaldığından proje seçimi orada. */}
-        {activeTab === 'genel'        && role !== 'santiye_sefi' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
+            YOK. */}
+        {activeTab === 'genel'        && role === 'muhasebe' && <MuhasebeGenelOzet onNavigate={handleTabChange} onGoToInvoice={goToInvoice} />}
+        {activeTab === 'genel'        && role !== 'santiye_sefi' && role !== 'muhasebe' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
         {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'     && showProjectDetail  && (
           <ProjeDetay
@@ -333,18 +330,15 @@ export default function Dashboard() {
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
             initialTab={initialProjectTab}
+            initialReportId={initialReportId}
+            onOpenedReport={() => setInitialReportId(null)}
           />
         )}
         {activeTab === 'satin-alma'   && role === 'santiye_sefi' && (
           <ProjeTabSatinAlma projectId={projectId} siteChiefView openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
         )}
         {activeTab === 'satin-alma'   && role === 'proje_yoneticisi' && (
-          // scopeProjectId boşsa (çok projeli proje yöneticisi) tek proje seçimine
-          // zorlamıyoruz — TedarikKuyrugu bu durumda admin gibi erişebildiği TÜM
-          // projelerin tedarik kuyruğunu aggregate gösterir (RLS has_project_access
-          // ile sınırlar). genel/is-plani sekmelerindeki tekli proje seçimi ayrı,
-          // buna dokunulmadı.
-          <ProjeTabSatinAlma projectId={null} procurementManagerView projects={scopeProjects} openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
+          <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
         )}
         {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && (
           <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
@@ -354,8 +348,10 @@ export default function Dashboard() {
             openInvoiceId={openInvoiceId}
             onOpenedInvoice={() => setOpenInvoiceId(null)}
             invoiceProjectId={invoiceProjectId}
+            onNavigateTop={handleTabChange}
           />
         )}
+        {activeTab === 'odemeler'     && <TabOdemeler />}
         {activeTab === 'tickets'      && (
           <TabTickets
             selectedDate={selectedDate}
@@ -401,7 +397,6 @@ export default function Dashboard() {
                   reportId={editReportId || undefined}
                   onBack={closeReportModal}
                   onSaved={handleReportSaved}
-                  onGoToTicket={goToTicket}
                 />
               </div>
             </div>
