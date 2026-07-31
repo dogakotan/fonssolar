@@ -79,10 +79,6 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   const dagilim = buildDagilimItems(overview?.dagilim)
   const recentActivity = formatRecentActivity(overview?.recentActivity)
 
-  if (!loading && !authorized) {
-    return <UnauthorizedScopeNotice />
-  }
-
   const tabs = [
     { key: 'genel', label: 'Genel' },
     ...(canApprove ? [
@@ -92,11 +88,17 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   ]
 
   // localStorage'dan gelen sekme farklı bir rolden kalmış olabilir — geçerli
-  // değilse varsayılana düş (bkz. TabFinans.jsx'teki aynı desen).
+  // değilse varsayılana düş (bkz. TabFinans.jsx'teki aynı desen). Erken
+  // return'den (aşağıdaki authorized kontrolü) ÖNCE çağrılmalı — aksi halde
+  // Hooks kuralı ihlal edilir (react-hooks/rules-of-hooks).
   useEffect(() => {
     if (!tabs.some(t => t.key === tab)) setTab('genel')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canApprove])
+
+  if (!loading && !authorized) {
+    return <UnauthorizedScopeNotice />
+  }
 
   return (
     <div>
