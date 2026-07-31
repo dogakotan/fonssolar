@@ -6,6 +6,7 @@ import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
 import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModal'
 import Pager from '../../../components/ui/Pager'
 import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
+import { requestNo } from '../../../utils/purchaseRequestNo'
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tüm Durumlar' },
@@ -52,13 +53,6 @@ function materialTitle(request) {
 
 function requesterName(request) {
   return request.requester_name || request.requested_by_name || request.created_by_name || '—'
-}
-
-function requestNo(request) {
-  if (request.request_no || request.code) return request.request_no || request.code
-  const year = request.created_at ? new Date(request.created_at).getFullYear() : new Date().getFullYear()
-  const suffix = String(request.id || '').replace(/-/g, '').slice(-3).toUpperCase() || '001'
-  return `SAT-${year}-${suffix}`
 }
 
 function requestType(request) {

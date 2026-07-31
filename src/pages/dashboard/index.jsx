@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase, signOut } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useScope } from '../../context/ScopeContext'
@@ -52,25 +52,34 @@ export default function Dashboard() {
   // proje_yoneticisi (cross_project=true, çoklu proje) için scopeProjectId boşken
   // 'genel' sekmesi TabGenel'e aggregate ("Tüm Projeler") modunda geçer (2026-07-21).
   const { scopeProjectId } = useScope()
+  const location = useLocation()
+  const navigate = useNavigate()
+  // URL /dashboard/:tab(/:projectId(/:projectTab)) şeklinde parse edilir — tek bir
+  // wildcard route (/dashboard/*) kullanılıyor (Dashboard bileşeni her navigasyonda
+  // yeniden mount OLMASIN diye, ayrı <Route> girdileri olsaydı React bunları farklı
+  // ağaç konumu sayıp remount edebilirdi). Adres çubuğunun geçerli görünümü
+  // yansıtması + yenilemede/geri-ileri'de korunması için tek doğruluk kaynağı bu.
+  const pathSegments = location.pathname.replace(/^\/dashboard\/?/, '').split('/').filter(Boolean)
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [activeTab,           setActiveTab]           = useState(() => {
+    const urlTab = pathSegments[0]
+    if (urlTab && TABS[urlTab]) return urlTab
     const saved = window.localStorage.getItem('dashboard-active-tab')
     return saved && TABS[saved] ? saved : 'genel'
   })
   const [editReportId, setEditReportId] = useState(null)
   const [showReportModal, setShowReportModal] = useState(false)
   const [reportViewKey, setReportViewKey] = useState(0)
-  const [selectedProjectId,   setSelectedProjectId]   = useState(null)
+  const [selectedProjectId,   setSelectedProjectId]   = useState(() => (pathSegments[0] === 'projeler' ? pathSegments[1] || null : null))
   const [selectedProjectName, setSelectedProjectName] = useState('')
-  const [showProjectDetail,   setShowProjectDetail]   = useState(false)
+  const [showProjectDetail,   setShowProjectDetail]   = useState(() => pathSegments[0] === 'projeler' && !!pathSegments[1])
   const [selectedDate,        setSelectedDate]        = useState(null)
   const [openTicketId,        setOpenTicketId]        = useState(null)
   const [openRequestId,       setOpenRequestId]        = useState(null)
   const [openInvoiceId,       setOpenInvoiceId]        = useState(null)
   const [invoiceProjectId,    setInvoiceProjectId]     = useState(null)
-  const [initialProjectTab,   setInitialProjectTab]    = useState(null)
+  const [initialProjectTab,   setInitialProjectTab]    = useState(() => (pathSegments[0] === 'projeler' ? pathSegments[2] || null : null))
   const [initialReportId,     setInitialReportId]      = useState(null)
-  const navigate = useNavigate()
 
   // Kısıtlı roller → başlangıç sekmesi (yalnızca gerçek bir GİRİŞ/rol
   // değişiminde — supabase.auth.onAuthStateChange her tetiklendiğinde
@@ -88,30 +97,55 @@ export default function Dashboard() {
     if (!role || !navigation) return
     if (appliedDefaultTabForRole.current === role) return
     appliedDefaultTabForRole.current = role
-    const defaultTab = navigation.defaultTab
-    if (defaultTab) {
-      setActiveTab(defaultTab)
-      return
-    }
-    // Kısıtsız roller (tabs: null — admin/koordinator/proje_koordinatoru/muhendis/
-    // maliyet_kontrolcu) için 'is-plani' sekmesinin hiç render dalı yok (yalnızca
-    // santiye_sefi'de var, bkz. dash-content). Paylaşımlı bir cihazda önceki
-    // rolden localStorage'da kalan bu değer boş ekrana yol açabilir — güvenli
-    // varsayılana (genel) düş.
-    setActiveTab(current => (current === 'is-plani' ? 'genel' : current))
+    const allowed = navigation.tabs
+    const urlTab = pathSegments[0]
+    const urlTabValid = urlTab && TABS[urlTab] && (!allowed || allowed.includes(urlTab)) && !(urlTab === 'is-plani' && role !== 'santiye_sefi')
+    // Adres çubuğu zaten geçerli/izinli bir sekme gösteriyorsa (bookmark/yenileme)
+    // role varsayılanıyla ezme — yalnızca URL boş/geçersiz/izinsizse varsayılana git.
+    if (urlTabValid) return
+    const defaultTab = navigation.defaultTab || 'genel'
+    navigate(`/dashboard/${defaultTab}`, { replace: true })
   }, [role, navigation])
+
+  // Adres çubuğu tek doğruluk kaynağı — her navigasyonda (geri/ileri tuşları,
+  // navigate() çağrıları, doğrudan URL girişi) buradan activeTab/proje
+  // detayı state'i yeniden türetilir. handleTabChange/handleSelectProject
+  // vb. artık state'i doğrudan set ETMEZ, navigate() çağırır; state güncellemesi
+  // bu efekt üzerinden gerçekleşir (React Router'ın push/replace + browser
+  // geri/ileri'si aynı koddan geçsin diye tek yol).
+  useEffect(() => {
+    const [tabSeg, projSeg, projTabSeg] = pathSegments
+    const allowed = navigation?.tabs
+    const nextTab = tabSeg && TABS[tabSeg] && (!allowed || allowed.includes(tabSeg)) ? tabSeg : null
+    if (!nextTab) return
+    setActiveTab(nextTab)
+    if (nextTab === 'projeler' && projSeg) {
+      setSelectedProjectId(projSeg)
+      setShowProjectDetail(true)
+      setInitialProjectTab(projTabSeg || null)
+    } else if (nextTab === 'projeler') {
+      setShowProjectDetail(false)
+      setInitialProjectTab(null)
+    }
+  }, [location.pathname, navigation])
 
   useEffect(() => {
     window.localStorage.setItem('dashboard-active-tab', activeTab)
   }, [activeTab])
 
+  // URL'den (bookmark/yenileme/geri-ileri) gelen bir proje id'sinin başlık adı
+  // henüz bilinmez — handleSelectProject tıklamadan geleni optimistik set eder,
+  // bu efekt her durumda gerçek adla teyit/düzeltir.
+  useEffect(() => {
+    if (!selectedProjectId) return
+    supabase.from('projects').select('name').eq('id', selectedProjectId).maybeSingle().then(({ data }) => {
+      if (data?.name) setSelectedProjectName(data.name)
+    })
+  }, [selectedProjectId])
 
   function handleSelectProject(id, name) {
-    setSelectedProjectId(id)
     setSelectedProjectName(name)
-    setInitialProjectTab(null)
-    setShowProjectDetail(true)
-    setActiveTab('projeler')
+    navigate(`/dashboard/projeler/${id}`)
   }
 
   // Bildirimler'den bir malzeme miktarı değişikliği bildirimine tıklanınca: ilgili
@@ -120,15 +154,8 @@ export default function Dashboard() {
   // yok — ProjeDetay zaten kendi projesini RPC'den çekiyor, header'daki kısa süreli
   // başlık için burada ayrıca hızlıca çekilir.
   function goToProjectTab(id, tab, reportId = null) {
-    setSelectedProjectId(id)
-    setSelectedProjectName('')
-    setInitialProjectTab(tab)
     setInitialReportId(reportId)
-    setShowProjectDetail(true)
-    setActiveTab('projeler')
-    supabase.from('projects').select('name').eq('id', id).maybeSingle().then(({ data }) => {
-      if (data?.name) setSelectedProjectName(data.name)
-    })
+    navigate(`/dashboard/projeler/${id}/${tab}`)
   }
 
   function handleTabChange(tab) {
@@ -140,13 +167,18 @@ export default function Dashboard() {
       return
     }
     // "Projeler" sekmesine geri dönüldüğünde en son bakılan projenin detayında
-    // kalınsın diye showProjectDetail burada artık sıfırlanmıyor — listeye
-    // dönmenin açık yolu ProjeDetay'ın kendi "← Projelere Dön" butonu
-    // (onBack={() => setShowProjectDetail(false)}). Öncesinde sidebar'daki
+    // kalınsın diye — hâlâ bir proje detayı açıksa aynı projenin (son alt-sekmesiyle
+    // birlikte) URL'sine dönülür, bomboş listeye düşülmez. Listeye dönmenin açık yolu
+    // ProjeDetay'ın kendi "← Projelere Dön" butonu (onBack={() => navigate('/dashboard/projeler')}).
+    // Öncesinde sidebar'daki
     // HER tıklama (Projeler'in kendisi dahil) showProjectDetail'i sıfırlıyordu,
     // bu yüzden başka bir sekmeye gidip Projeler'e geri dönmek her seferinde
     // proje listesine düşüyordu (2026-07-30'da bulunan bug).
-    setActiveTab(tab)
+    if (tab === 'projeler' && showProjectDetail && selectedProjectId) {
+      navigate(`/dashboard/projeler/${selectedProjectId}${initialProjectTab ? `/${initialProjectTab}` : ''}`)
+      return
+    }
+    navigate(`/dashboard/${tab}`)
   }
 
   function openReportModal(id = null) {
@@ -345,10 +377,11 @@ export default function Dashboard() {
           <ProjeDetay
             projectId={selectedProjectId}
             projectName={selectedProjectName}
-            onBack={() => setShowProjectDetail(false)}
+            onBack={() => navigate('/dashboard/projeler')}
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
             initialTab={initialProjectTab}
+            onTabChange={(tab) => navigate(`/dashboard/projeler/${selectedProjectId}/${tab}`, { replace: true })}
             initialReportId={initialReportId}
             onOpenedReport={() => setInitialReportId(null)}
           />
@@ -382,10 +415,8 @@ export default function Dashboard() {
         {activeTab === 'proje-ekle'  && (isAdmin || role === 'proje_yoneticisi') && (
           <TabProjeYonetimi
             onViewProject={(id, name) => {
-              setSelectedProjectId(id)
               setSelectedProjectName(name)
-              setShowProjectDetail(true)
-              setActiveTab('projeler')
+              navigate(`/dashboard/projeler/${id}`)
             }}
           />
         )}

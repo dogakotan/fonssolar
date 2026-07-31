@@ -4,6 +4,7 @@ import { withSignedStorageUrls } from '../../utils/storageUrls'
 import { useAuth } from '../../context/AuthContext'
 import { SEVERITY_META as SEVERITY } from '../../utils/ticketSeverity'
 import { STATUS_META as STATUS, CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
+import { fetchProfileNames } from '../../utils/profileNames'
 
 const CARD = { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: 14, minWidth: 0 }
 const TITLE = { margin: '0 0 10px', fontSize: 13, fontWeight: 800, color: '#0F172A' }
@@ -78,20 +79,12 @@ export default function TicketDetayModal({ ticket: initial, onClose, onUpdated }
     try {
       const { data } = await supabase
         .from('tickets')
-        .select('*, projects(name), creator:profiles!tickets_created_by_fkey(full_name)')
+        .select('*, projects(name)')
         .eq('id', initial.id)
         .single()
       if (data) {
-        let updater = null
-        if (data.updated_by) {
-          const { data: updaterProfile } = await supabase
-            .from('profiles')
-            .select('full_name')
-            .eq('id', data.updated_by)
-            .maybeSingle()
-          updater = updaterProfile
-        }
-        setTicket({ ...data, updater })
+        const byId = await fetchProfileNames([data.created_by, data.updated_by])
+        setTicket({ ...data, creator: byId.get(data.created_by) || null, updater: byId.get(data.updated_by) || null })
       }
     } finally {
       setLoadingTicket(false)

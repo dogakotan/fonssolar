@@ -5,11 +5,11 @@ import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
 import Pager from '../../../components/ui/Pager'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../../../components/ui/DataStatusBanner'
+import { requestNo } from '../../../utils/purchaseRequestNo'
 
 const PAGE_SIZE = 8
 const money = value => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(Number(value) || 0)
 const dateText = value => value ? new Date(value).toLocaleDateString('tr-TR') : '—'
-const requestNo = request => request.request_no || request.code || `SAT-${new Date(request.created_at || Date.now()).getFullYear()}-${String(request.id || '').replaceAll('-', '').slice(-4).toUpperCase()}`
 const requestAmount = request => Number(request.approved_amount ?? request.estimated_amount_incl_vat ?? request.total_amount ?? request.estimated_amount ?? 0)
 const requestType = request => request.category === 'hizmet' ? 'Hizmet' : request.category === 'diger' ? 'Diğer' : 'Malzeme'
 const supplierName = request => request.supplier_name || request.supplier?.name || request.suppliers?.name || '—'

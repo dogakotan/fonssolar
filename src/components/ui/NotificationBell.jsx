@@ -40,13 +40,19 @@ export default function NotificationBell({ onNavigate }) {
 
   async function load() {
     if (!user?.id) return
+    // Rozet sayısı önceden yalnızca en son 30 kayıt üzerinden hesaplanıyordu —
+    // toplam bildirim sayısı 30'u aştığında (ör. yoğun bir muhasebe hesabı)
+    // gerçek okunmamış sayısından (Bildirimler sayfasının kendi sayımı, aynı
+    // dedupeNotifications mantığıyla ama limit(200) kullanıyor) düşük çıkıyordu.
+    // Aynı üst sınır (200) + aynı dedup burada da kullanılıyor ki iki sayı hep
+    // eşleşsin; açılır listede yalnızca ilk 30'u gösteriyoruz (kasıtlı sade).
     const { data } = await supabase
       .from('notifications')
       .select('id, project_id, entity_type, entity_id, event_type, title, body, is_read, created_at')
       .order('created_at', { ascending: false })
-      .limit(30)
+      .limit(200)
     const uniqueItems = dedupeNotifications(data || [])
-    setItems(uniqueItems)
+    setItems(uniqueItems.slice(0, 30))
     setUnread(uniqueItems.filter(n => !n.is_read).length)
   }
 

@@ -23,7 +23,7 @@ export default function AppRouter() {
       <Route path="/login"      element={<Login />} />
       <Route path="/hesap-olustur" element={<HesapOlustur />} />
       <Route path="/yetkisiz"   element={<YetkisizPage />} />
-      <Route path="/dashboard"  element={<ProtectedRoute><ScopeProvider><Suspense fallback={<DashboardFallback />}><Dashboard /></Suspense></ScopeProvider></ProtectedRoute>} />
+      <Route path="/dashboard/*" element={<ProtectedRoute><ScopeProvider><Suspense fallback={<DashboardFallback />}><Dashboard /></Suspense></ScopeProvider></ProtectedRoute>} />
       <Route path="*"           element={<Navigate to="/login" replace />} />
     </Routes>
   )

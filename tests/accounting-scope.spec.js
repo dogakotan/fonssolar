@@ -37,7 +37,11 @@ test.describe('Muhasebe rol kapsamı', () => {
     expect(purchaseList.data.requests.every(row => ['satin_alindi', 'fatura_bekliyor'].includes(row.status))).toBe(true)
 
     expect(rawRequests.error).toBeNull()
-    expect(rawRequests.data.every(row => ['satin_alindi', 'fatura_bekliyor'].includes(row.status))).toBe(true)
+    // fatura_onay_bekliyor/faturasi_kesildi 31.07.2026'da eklendi — muhasebe
+    // kendi oluşturduğu bir faturanın bağlı olduğu talebi, fatura talebi
+    // faturalandıktan SONRA da (onaylanana kadar) görebilmeli, aksi halde
+    // FaturaDetayModal'ın "Bağlı Talep" alanı kayboluyordu (bkz. CLAUDE.md).
+    expect(rawRequests.data.every(row => ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(row.status))).toBe(true)
     expect(procurementItems.data).toHaveLength(0)
     expect(budgetLines.data).toHaveLength(0)
     expect(costAllocations.data).toHaveLength(0)

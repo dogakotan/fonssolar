@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { riskBreakdownForItems, normalizeStatus, isAwaitingInvoice } from '../../utils/satinAlma'
+import { requestNo } from '../../utils/purchaseRequestNo'
 import FaturaOlusturModal from './FaturaOlusturModal'
 
 const fmtQty = (value) =>
@@ -14,13 +15,6 @@ const CARD = { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10
 const TITLE = { margin: '0 0 10px', fontSize: 13, fontWeight: 800, color: '#0F172A' }
 const LABEL = { margin: 0, fontSize: 11, color: '#64748B' }
 const VALUE = { margin: '3px 0 0', fontSize: 13, fontWeight: 700, color: '#0F172A' }
-
-function requestNo(req) {
-  if (req.request_no || req.code) return req.request_no || req.code
-  const year = req.created_at ? new Date(req.created_at).getFullYear() : new Date().getFullYear()
-  const suffix = String(req.id || '').replace(/-/g, '').slice(-3).toUpperCase() || '001'
-  return `SAT-${year}-${suffix}`
-}
 
 function requestType(req, items) {
   if (req.category === 'malzeme') return 'Malzeme'
@@ -121,7 +115,12 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
     const combinedNote = [req.notes, note].filter(Boolean).join('\n')
     if (combinedNote) payload.notes = combinedNote
 
-    const expectedStatus = canReview ? 'bekliyor' : 'onaylandi'
+    // canReview yalnızca normalize edilmiş status==='bekliyor' iken true olur, ki bu
+    // gerçek DB değeri talep_olusturuldu/fiyat_girildi/onay_bekliyor'dan biri anlamına
+    // gelir (bkz. utils/satinAlma.js normalizeStatus) — 'bekliyor' DB'de asla yazılmaz
+    // (purchase_requests_status_check bunu reddeder), bu yüzden ham req.status'u
+    // iyimser-kilit ön-koşulu olarak kullanıyoruz.
+    const expectedStatus = canReview ? req.status : 'onaylandi'
     const { data: updatedRequest, error } = await supabase
       .from('purchase_requests')
       .update(payload)

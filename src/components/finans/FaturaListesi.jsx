@@ -24,6 +24,10 @@ function statusMeta(status) {
 
 const PAGE_SIZE = 10
 
+// invoices_status_check'teki 8 durumun tamamı burada birer sekme olarak
+// karşılığını bulmalı — aksi halde "Tümü" sekmesindeki toplam, durum
+// sekmelerinin toplamına eşit olmaz (kismen_odendi/reddedildi eksikti,
+// bu iki durumdaki faturalar hiçbir sekmede sayılmıyordu).
 const TABS = [
   { key: 'hepsi', label: 'Tümü' },
   { key: 'taslak', label: 'Taslak' },
@@ -31,7 +35,9 @@ const TABS = [
   { key: 'duzeltme_bekliyor', label: 'Düzeltme' },
   { key: 'onaylandı', label: 'Onaylanan' },
   { key: 'odeme_bekliyor', label: 'Ödeme Bekleyen' },
+  { key: 'kismen_odendi', label: 'Kısmen Ödendi' },
   { key: 'ödendi', label: 'Ödendi' },
+  { key: 'reddedildi', label: 'Reddedildi' },
 ]
 
 // ── Fatura İptal Modal (onaylandı/odeme_bekliyor → reddedildi, admin) ────────

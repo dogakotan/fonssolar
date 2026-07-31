@@ -16,7 +16,10 @@ export async function loginUi(page, email, password) {
   await page.getByPlaceholder('E-posta adresinizi giriniz').fill(email)
   await page.getByPlaceholder('Şifrenizi giriniz').fill(password)
   await page.getByRole('button', { name: 'Giriş Yap' }).click()
-  await page.waitForURL('**/dashboard', { timeout: 15000 })
+  // Girişten sonra artık /dashboard'da kalınmıyor — rol varsayılan sekmesine
+  // (ör. /dashboard/genel) yönlendiriliyor (bkz. CLAUDE.md "Frontend yapısı" →
+  // routing notu).
+  await page.waitForURL('**/dashboard/**', { timeout: 15000 })
 }
 
 // "73.182.750 ₺" / "₺73.182.750" gibi yerelleştirilmiş para metinlerinden

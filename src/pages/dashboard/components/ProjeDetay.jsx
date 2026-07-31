@@ -623,8 +623,8 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 }
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, initialReportId, onOpenedReport }) {
-  // Öncelik: açık deep-link (initialTab, ör. bildirimden gelme) > projeye özel
+export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, onTabChange, initialReportId, onOpenedReport }) {
+  // Öncelik: açık deep-link (initialTab, ör. bildirimden gelme/URL) > projeye özel
   // localStorage'da kalıcı son seçim > "Genel Proje" — aksi halde başka bir menü
   // öğesine geçip aynı projeye geri dönüldüğünde (bileşen unmount/remount
   // olduğundan) her seferinde "Genel Proje"ye dönüyordu (bkz. TabFinans.jsx'teki
@@ -637,6 +637,22 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   useEffect(() => {
     try { window.localStorage.setItem(`proje-detay-active-tab-${projectId}`, tab) } catch {}
   }, [tab, projectId])
+  // onTabChange'i ref'te tutuyoruz — Dashboard her render'da yeni bir inline
+  // fonksiyon geçiyor, bunu doğrudan effect dependency'sine koymak effect'in
+  // her render'da yeniden tetiklenmesine yol açardı.
+  const onTabChangeRef = useRef(onTabChange)
+  onTabChangeRef.current = onTabChange
+  useEffect(() => {
+    onTabChangeRef.current?.(tab)
+  }, [tab])
+  // Bileşen aynı proje için mount kalırken (ör. bir bildirimden gelen deep-link
+  // veya tarayıcı geri/ileri tuşu URL'deki alt-sekmeyi değiştirdiğinde) initialTab
+  // prop'u değişebilir — useState initializer bunu yalnızca İLK mount'ta okur,
+  // bu efekt sonraki değişiklikleri de yakalar.
+  useEffect(() => {
+    if (initialTab && initialTab !== tab) setTab(initialTab)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTab])
   // Malzeme Listesi/Riskler tek sayfada iki alt-sekme — Genel Proje'deki Riskler
   // kartından "Tümünü Gör" tıklanınca doğrudan Riskler alt-sekmesine düşsün diye.
   // Aynı nedenle (unmount/remount) bu da projeye özel kalıcı.
