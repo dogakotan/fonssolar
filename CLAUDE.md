@@ -837,8 +837,15 @@ açık noktalar" → migration tracking boşluğu).
   kaynak `cost_allocations_source_xor` CHECK'iyle birbirini dışlar.
   `purchase_requests.invoice_id`'ye her yazma `trg_guard_purchase_request_invoice_id`
   ile gerçek `invoices` durumundan yeniden hesaplanır; `invoices.purchase_request_id`
-  üzerinde `WHERE status <> 'reddedildi'` kısmi UNIQUE index'i bir talebin tek
-  aktif faturası olmasını garanti eder.
+  üzerinde `WHERE status <> 'reddedildi'` kısmi UNIQUE index'i (`invoices_active_purchase_request_id_unique`)
+  bir talebin tek aktif faturası olmasını garanti eder — **2026-07-21'deki
+  `harden_purchase_invoice_singleton_and_stage_guard` migration'ı bunu yanlışlıkla
+  koşulsuz bir index'e (`invoices_purchase_request_id_unique`) çevirmişti**, bu da
+  reddedilen HER faturanın bağlı talebi kalıcı olarak faturalanamaz hale
+  getiriyordu (talep otomatik `satin_alindi`'ye dönüyor ama ikinci fatura denemesi
+  "duplicate key" ile başarısız oluyordu) — 2026-07-31'de gerçek RPC zinciriyle
+  uçtan uca test edilirken bulunup düzeltildi
+  (`20260731082255_restore_partial_active_invoice_per_purchase_request_unique_index`).
   `invoices_status_check`: `taslak`/`yönetici_onayında`/`duzeltme_bekliyor`/
   `onaylandı`/`odeme_bekliyor`/`kismen_odendi`/`ödendi`/`reddedildi` (8 değer,
   `kismen_odendi` 2026-07-24'te `invoice_payment_tracking_partial_payments`
@@ -1103,17 +1110,24 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   tablosu, RLS zaten proje yöneticisine açık). `FaturaOlusturModal.jsx`'teki
   tedarikçi seçici hâlâ aynı şekilde çalışıyor (fatura kendi `supplier_id`'sini
   ayrıca alır) — bu ikisi birbirini geçersiz kılmaz, ikinci bir fırsat.
-- **`tests/procurement-workflow.spec.js` ve birkaç `procurement-*`/`accounting-scope`
-  testi eski akışa göre yazılmış, güncellenmedi.** 2026-07-26'da satın
-  alma→fatura akışı uçtan uca test edilirken fark edildi: bu spec'ler kaldırılmış
-  RPC'leri (`resubmit_rejected_invoice`/`delete_rejected_invoice`), eski
-  `invoices.status='bekliyor'` insert'ini (artık `invoices_status_check`'te yok,
-  akış `taslak`'tan başlıyor) ve proje yöneticisinin Finans'ta Faturalar/Onay
-  Kuyruğu'nu görmediği eski dar erişimi varsayıyor — hepsi 2026-07-24'teki
-  tek-onaylayıcı geçişi ve erişim genişletmesiyle geçersiz kaldı. Bu görev
-  kapsamında düzeltilmedi (ayrı bir "test suite'i güncel akışa taşı" görevi
-  gerektirir), yalnızca fark edilip not düşüldü — bu spec'lerin başarısızlığını
-  yeni bir regresyon sanma.
+  **Kalan tutarsızlık:** `TalepDetayModal.jsx`'in kendi "Tamamlandı" butonu
+  (proje detayı içinden talep açılıp tamamlanan yol) bu tedarikçi seçiciyi
+  içermiyor, hâlâ eski tek-parametreli `updateStatus('satin_alindi')` çağrısını
+  yapıyor — RPC'nin `p_supplier_id` varsayılanı `NULL` olduğundan hata vermiyor
+  ama o yoldan tamamlanan taleplerde tedarikçi hâlâ boş kalıyor.
+- **Eski `procurement-*`/`accounting-scope`/`faz-e` testleri — DÜZELTİLDİ (2026-07-31).**
+  `tests/procurement-workflow.spec.js`, `procurement-security.spec.js`,
+  `procurement-two-initiators.spec.js`, `procurement-role-acceptance.spec.js`,
+  `procurement-concurrency.spec.js`, `accounting-scope.spec.js`, `faz-e.spec.js`
+  (B/C testleri) 2026-07-24'teki tek-onaylayıcı geçişinden ve erişim
+  genişletmesinden önce yazılmıştı — kaldırılmış RPC'leri (`resubmit_rejected_invoice`/
+  `delete_rejected_invoice`), eski `invoices.status='bekliyor'` insert'ini (invoice
+  insert'inin `invoice_approvals` satırını otomatik oluşturduğu varsayımı — artık
+  oluşturmuyor, "Onaya Gönder" ayrı bir adım), proje yöneticisinin Finans'ta
+  Faturalar/Onay Kuyruğu'nu görmediği eski dar erişimi, ve silinmiş
+  `ApprovalStepsHorizontal.jsx`'in CSS class'ını varsayıyorlardı. Hepsi güncel
+  akışa göre yeniden yazıldı, artık hepsi geçiyor. Bu tarama sırasında gerçek bir
+  **production bug** da bulundu ve düzeltildi (aşağıya bkz.).
 - **Tedarik/teslimat Faz 2 — henüz yapılmadı.** Proje sihirbazındaki tedarik
   adımı bilinçli olarak Faz 1'e (yalnız proje_yoneticisi "Tamamladım" onayı)
   sadeleştirildi. Tedarikçi, sipariş/teslimat tarihi, eksik/hasarlı teslimat
@@ -1203,8 +1217,47 @@ sınırlama, CLAUDE.md'de not düşüldü).
 
 `complete_project_manager_purchase_request` RPC'sine opsiyonel `p_supplier_id`
 parametresi eklendi (`20260731070917_complete_project_manager_purchase_request_add_supplier`)
-— proje yöneticisinin "Tamamlandı" butonu artık `supplier_id`'yi de yazabiliyor.
-Kullanıcı kararıyla **opsiyonel** tutuldu (zorunlu değil): buton artık
-`rejectDraft`'la aynı satır-içi desende bir tedarikçi `<select>`i açıyor,
-"Tedarikçisiz devam et" ile boş geçilebiliyor — tek-tık hızlı akış tamamen
-bozulmadı.
+— proje yöneticisinin `TabSatinAlmaTalepListesi.jsx`'teki "Tamamlandı" butonu
+artık `supplier_id`'yi de yazabiliyor. Kullanıcı kararıyla **opsiyonel** tutuldu
+(zorunlu değil): buton artık `rejectDraft`'la aynı satır-içi desende bir
+tedarikçi `<select>`i açıyor, "Tedarikçisiz devam et" ile boş geçilebiliyor —
+tek-tık hızlı akış tamamen bozulmadı. Bu değişiklik `CREATE OR REPLACE FUNCTION`
+ile parametre eklerken bilinen bir tuzağa (bu projede daha önce de yaşanmış,
+bkz. `drop_old_create_purchase_request_overload`/`drop_stale_single_arg_recompute_auto_risks_overload`)
+tekrar düştü — imza değişince eski tek-parametreli fonksiyon YANINA ikinci bir
+overload olarak eklendi, `p_supplier_id` vermeden RPC çağrısı "belirsiz
+fonksiyon" hatası verdi; ayrı bir migration'la (`20260731074705`) eski overload
+`DROP FUNCTION` ile kaldırıldı. **Bilinen tutarsızlık:** `TalepDetayModal.jsx`'in
+KENDİ "Tamamlandı" butonu (dosya-lokal `updateStatus()`) bu tedarikçi seçiciyi
+içermiyor, hâlâ eski tek parametreli çağrıyı yapıyor (RPC varsayılan `NULL` ile
+geriye dönük uyumlu olduğundan hata vermiyor, ama o yoldan tamamlanan taleplerde
+tedarikçi hâlâ boş kalıyor) — fark edilirse bu notu hatırlat.
+
+Ardından kullanıcı "sırayla" kalan açık noktalara geçmemi istedi: **eski
+Playwright testlerini güncel akışa taşıma** görevi sırasında `procurement-workflow.spec.js`
+başta olmak üzere 7 dosya (`procurement-workflow`, `procurement-security`,
+`procurement-two-initiators`, `procurement-role-acceptance`, `procurement-concurrency`,
+`accounting-scope`, `faz-e` B/C) baştan sona güncel akışa göre yeniden yazıldı —
+hepsi artık geçiyor. Bu geçişte tekrar eden kalıp: eski testler invoice INSERT'inin
+`invoice_approvals` satırını otomatik oluşturduğunu varsayıyordu (artık
+oluşturmuyor, "Onaya Gönder" ayrı bir INSERT adımı gerektiriyor) ve kaldırılmış
+`resubmit_rejected_invoice`/`delete_rejected_invoice` RPC'lerini çağırıyordu.
+
+Bu taramada gerçek bir **production bug** bulundu: 21.07.2026'daki bir "hardening"
+migration'ı `invoices.purchase_request_id` üzerindeki kısmi unique index'i
+(yalnızca aktif/reddedilmemiş faturalarda tekillik) yanlışlıkla koşulsuz hale
+getirmişti — sonucu, reddedilen HER faturanın bağlı talebi KALICI olarak bir
+daha faturalanamıyordu (talep otomatik `satin_alindi`'ye dönüyor ama ikinci
+fatura denemesi "duplicate key" hatasıyla başarısız oluyordu). Onayla birlikte
+düzeltildi (`20260731082255`, bkz. "Satın alma akışı" → Fatura onay akışı).
+Ayrıca `.env.test`'te bugün eklenen 5 yeni test hesabının şifrelerinde (`#`
+karakteri içeren) bir **dotenv bug'ı** bulundu — dotenv `#`'ı yorum satırı
+başlangıcı sayıp şifreyi kırpıyordu (`DogaDogan#2026` → `DogaDogan` okunuyordu);
+tüm bu değerler çift tırnağa alınarak düzeltildi. Son olarak, `procurement-concurrency.spec.js`'teki
+bir bildirim testinin "0 bildirim" hatası da ayrı bir gerçek mekanik ortaya
+çıkardı (bug değil, kasıtlı tasarım): `notifications_recipient_entity_unique`
+(`recipient_id, entity_type, entity_id`) tek satır garantisi event_type'tan
+BAĞIMSIZ — aynı alıcı aynı entity için sonradan farklı bir olay (ör. reddedilme)
+alırsa önceki bildirimi (ör. oluşturma) YERİNDE günceller/ezer; testin "1
+created bildirimi" kontrolü bu yüzden sonraki durum değişikliklerinden ÖNCE
+yapılmalı.

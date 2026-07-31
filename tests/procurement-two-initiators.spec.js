@@ -43,6 +43,8 @@ test.describe.serial('Şantiye şefi ve proje yöneticisi satın alma akışlar�
     expect((await pm.from('purchase_requests').select('status').eq('id', requestId).single()).data.status).toBe('satin_alindi')
   }
 
+  // taslak'tan başlar — 'bekliyor' artık invoices_status_check'te yok (akış
+  // taslak'tan başlıyor, bkz. CLAUDE.md "Fatura onay akışı").
   async function createInvoice(requestId, projectId, suffix, category = 'diger') {
     const { data, error } = await muhasebe.from('invoices').insert({
       project_id: projectId,
@@ -55,12 +57,22 @@ test.describe.serial('Şantiye şefi ve proje yöneticisi satın alma akışlar�
       category,
       description: marker,
       source: 'satin_alma',
-      status: 'bekliyor',
+      status: 'taslak',
       created_by: muhasebeId,
     }).select('id').single()
     expect(error).toBeNull()
     invoiceIds.push(data.id)
     return data.id
+  }
+
+  // "Onaya Gönder" — invoice_approvals'a step=1 satırı INSERT edilir,
+  // fn_invoice_approval_submitted bunu invoices.status='yönetici_onayında'ya
+  // çekip proje yöneticisine bildirim atar.
+  async function submitInvoiceForApproval(invoiceId) {
+    const { error } = await muhasebe.from('invoice_approvals').insert({
+      invoice_id: invoiceId, step: 1, step_label: 'Yönetici Onayı', status: 'bekliyor',
+    })
+    expect(error).toBeNull()
   }
 
   async function expectNotification(client, entityId) {
@@ -101,7 +113,7 @@ test.describe.serial('Şantiye şefi ve proje yöneticisi satın alma akışlar�
     }
   })
 
-  test('şantiye şefi: red edilen fatura düzenlenir, yeniden gönderilir ve onaylanır', async () => {
+  test('şantiye şefi: düzeltme istenen fatura düzenlenir, yeniden gönderilir ve onaylanır', async () => {
     const requestId = await createRequest(santiye, santiyeId, siteProjectId, 'SITE_FULL', 'malzeme')
     await expectNotification(admin, requestId)
     await approveRequest(requestId)
@@ -110,18 +122,27 @@ test.describe.serial('Şantiye şefi ve proje yöneticisi satın alma akışlar�
     await expectNotification(muhasebe, requestId)
 
     const invoiceId = await createInvoice(requestId, siteProjectId, 'SITE_INV', 'malzeme')
-    await expectNotification(admin, invoiceId)
     expect((await admin.from('purchase_requests').select('status,invoice_id').eq('id', requestId).single()).data)
       .toMatchObject({ status: 'fatura_onay_bekliyor', invoice_id: invoiceId })
 
-    expect((await admin.from('invoice_approvals').update({
-      status: 'reddedildi', reviewer_id: adminId, reviewed_at: new Date().toISOString(), note: marker,
+    // Onaya Gönder — tek onaylayıcı proje yöneticisine bildirim gider (admin'e değil).
+    await submitInvoiceForApproval(invoiceId)
+    await expectNotification(pm, invoiceId)
+    expect((await muhasebe.from('invoices').select('status').eq('id', invoiceId).single()).data.status).toBe('yönetici_onayında')
+
+    // Yönetici düzeltme ister — reddetmek NİHAİ olduğundan (geri açılamaz), bir faturayı
+    // düzenleyip yeniden göndermenin tek yolu bu (bkz. CLAUDE.md "Fatura onay akışı").
+    expect((await pm.from('invoice_approvals').update({
+      status: 'duzeltme_istendi', reviewer_id: pmId, reviewed_at: new Date().toISOString(), note: marker,
     }).eq('invoice_id', invoiceId).eq('status', 'bekliyor')).error).toBeNull()
-    expect((await muhasebe.from('invoices').select('status').eq('id', invoiceId).single()).data.status).toBe('reddedildi')
+    expect((await muhasebe.from('invoices').select('status').eq('id', invoiceId).single()).data.status).toBe('duzeltme_bekliyor')
     await expectNotification(muhasebe, invoiceId)
 
+    // Muhasebe düzenler, AYNI approval satırını 'bekliyor'a çekerek yeniden gönderir
+    // (yeni bir invoice_approvals satırı AÇILMAZ).
     expect((await muhasebe.from('invoices').update({ amount: 90, invoice_no: `${marker}_SITE_REV` }).eq('id', invoiceId)).error).toBeNull()
-    expect((await muhasebe.rpc('resubmit_rejected_invoice', { p_invoice_id: invoiceId })).error).toBeNull()
+    expect((await muhasebe.from('invoice_approvals').update({ status: 'bekliyor', note: null })
+      .eq('invoice_id', invoiceId).eq('status', 'duzeltme_istendi')).error).toBeNull()
     expect((await admin.from('invoices').select('status').eq('id', invoiceId).single()).data.status).toBe('yönetici_onayında')
 
     expect((await admin.from('invoice_approvals').update({
@@ -131,7 +152,7 @@ test.describe.serial('Şantiye şefi ve proje yöneticisi satın alma akışlar�
     expect((await admin.from('cost_allocations').select('id').eq('invoice_id', invoiceId).single()).data).toBeTruthy()
   })
 
-  test('proje yöneticisi: farklı proje, fatura reddi ve muhasebe silme/iptal', async () => {
+  test('proje yöneticisi: farklı proje, fatura reddi sonrası talep otomatik satın alındıya döner ve yeniden faturalanabilir', async () => {
     const requestId = await createRequest(pm, pmId, alternateProjectId, 'PM_FULL')
     expect((await pm.from('purchase_requests').select('project_id,status').eq('id', requestId).single()).data)
       .toMatchObject({ project_id: alternateProjectId, status: 'talep_olusturuldu' })
@@ -142,16 +163,26 @@ test.describe.serial('Şantiye şefi ve proje yöneticisi satın alma akışlar�
     await expectNotification(muhasebe, requestId)
 
     const invoiceId = await createInvoice(requestId, alternateProjectId, 'PM_INV')
-    await expectNotification(admin, invoiceId)
+    await submitInvoiceForApproval(invoiceId)
+    await expectNotification(pm, invoiceId)
+
     expect((await admin.from('invoice_approvals').update({
       status: 'reddedildi', reviewer_id: adminId, reviewed_at: new Date().toISOString(), note: marker,
     }).eq('invoice_id', invoiceId).eq('status', 'bekliyor')).error).toBeNull()
     await expectNotification(muhasebe, invoiceId)
-    expect((await muhasebe.rpc('delete_rejected_invoice', { p_invoice_id: invoiceId })).error).toBeNull()
 
-    expect((await admin.from('invoices').select('id').eq('id', invoiceId).maybeSingle()).data).toBeNull()
+    // Reddedilen fatura NİHAİ bir durumdadır — silinmez/yeniden gönderilmez (eski
+    // resubmit_rejected_invoice/delete_rejected_invoice RPC'leri bu yüzden kaldırıldı).
+    // Ama sync_purchase_request_from_invoice aynı UPDATE'te talebi otomatik olarak
+    // satin_alindi'ye döndürüp invoice_id'yi null'lar — "fatura kurtarma": muhasebe
+    // aynı talep için doğrudan YENİ bir fatura oluşturabilir.
+    expect((await admin.from('invoices').select('status').eq('id', invoiceId).single()).data.status).toBe('reddedildi')
     expect((await admin.from('purchase_requests').select('status,invoice_id').eq('id', requestId).single()).data)
       .toMatchObject({ status: 'satin_alindi', invoice_id: null })
+
+    const secondInvoiceId = await createInvoice(requestId, alternateProjectId, 'PM_INV_RETRY')
+    expect((await admin.from('purchase_requests').select('status,invoice_id').eq('id', requestId).single()).data)
+      .toMatchObject({ status: 'fatura_onay_bekliyor', invoice_id: secondInvoiceId })
   })
 
   for (const actor of ['santiye', 'pm']) {

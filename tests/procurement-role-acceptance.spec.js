@@ -31,15 +31,19 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
     await expect.poll(() => projectSelect.locator('option').count()).toBeGreaterThan(1)
   })
 
-  test('proje yöneticisi proje Excelini görür, proje finansında yalnız genel özeti görür', async ({ page }) => {
+  // 2026-07-24'teki erişim genişletmesinden beri proje yöneticisi proje içi Finans'ta
+  // admin ile eşit — Genel/Faturalar/Onay Kuyruğu'nun tümünü görüp fatura onaylayabilir
+  // (bkz. CLAUDE.md "Satın alma akışı" → Fatura onay akışı, canApprove = isAdmin ||
+  // role==='proje_yoneticisi'). Bu test öncesinde erişim genişletilmeden önce yazılmıştı.
+  test('proje yöneticisi proje Excelini görür, proje finansında Faturalar/Onay Kuyruğu\'nu da görür', async ({ page }) => {
     await loginUi(page, process.env.TEST_PROJEYONETICISI_EMAIL, process.env.TEST_PROJEYONETICISI_PASSWORD)
     await openMenu(page, 'Projeler')
     await page.getByText('Ege Enerji İzmir GES TEST', { exact: true }).first().click()
     await page.getByRole('button', { name: /Dışa Aktar/ }).click()
     await expect(page.getByRole('button', { name: 'Proje Excelini İndir', exact: true })).toBeVisible()
     await page.getByRole('main').getByRole('button', { name: 'Finans', exact: true }).click()
-    await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toBeVisible()
     await expect(page.getByText('Maliyet Kalemi Özeti', { exact: true })).toBeVisible()
   })
 
@@ -106,12 +110,13 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
         return data?.status
       }).toBe('satin_alindi')
 
+      // İŞLEM DURUMU kolonu artık ApprovalStepsHorizontal (silindi, 30.07.2026) değil,
+      // UYGUNLUK kolonundaki RiskBadge ile aynı görsel dilde tek nokta+kalın-metin rozeti
+      // (ProcessStatusBadge, dosya-lokal) — durum filtresindeki etiketle birebir aynı metin.
       await page.getByRole('button', { name: 'Talepler', exact: true }).click()
       const invoiceWaitingRow = page.getByRole('row').filter({ hasText: marker })
       await expect(invoiceWaitingRow).toBeVisible()
-      await expect(
-        invoiceWaitingRow.locator('.approval-steps-h-label.active').filter({ hasText: 'Fatura Bekleniyor' }),
-      ).toBeVisible()
+      await expect(invoiceWaitingRow.getByText('Fatura Bekleniyor', { exact: true })).toBeVisible()
     } finally {
       if (requestId) {
         await admin.from('notifications').delete().eq('entity_id', requestId)
@@ -195,14 +200,21 @@ test.describe.serial('Fatura iptali yönetici ve muhasebe ekran akışı', () =>
     requestId = createdId
     expect((await admin.from('purchase_requests').update({ status: 'onaylandi', approved_by: adminId, approved_at: new Date().toISOString() }).eq('id', requestId)).error).toBeNull()
     expect((await pm.from('purchase_requests').update({ supplier_id: supplierId, purchase_date: new Date().toISOString().slice(0, 10), purchased_by: pmId }).eq('id', requestId)).error).toBeNull()
+    // taslak'tan başlar — 'bekliyor' artık invoices_status_check'te yok (akış
+    // taslak'tan başlıyor, bkz. CLAUDE.md "Fatura onay akışı").
     const { data: invoice, error: invoiceError } = await muhasebe.from('invoices').insert({
       project_id: projectId, purchase_request_id: requestId, supplier_id: supplierId,
       invoice_no: marker, invoice_date: new Date().toISOString().slice(0, 10), amount: 100,
       vat_rate: 20, category: 'diger', description: marker, source: 'satin_alma',
-      status: 'bekliyor', created_by: muhasebeId,
+      status: 'taslak', created_by: muhasebeId,
     }).select('id').single()
     expect(invoiceError).toBeNull()
     invoiceId = invoice.id
+    // Onaya Gönder — invoice_approvals'a step=1 satırı INSERT edilir (invoice insert'i
+    // bunu artık otomatik oluşturmuyor, bkz. fn_invoice_approval_submitted).
+    expect((await muhasebe.from('invoice_approvals').insert({
+      invoice_id: invoiceId, step: 1, step_label: 'Yönetici Onayı', status: 'bekliyor',
+    })).error).toBeNull()
     expect((await admin.from('invoice_approvals').update({
       status: 'onaylandı', reviewer_id: adminId, reviewed_at: new Date().toISOString(),
     }).eq('invoice_id', invoiceId).eq('status', 'bekliyor')).error).toBeNull()
@@ -224,13 +236,29 @@ test.describe.serial('Fatura iptali yönetici ve muhasebe ekran akışı', () =>
     await expect.poll(async () => (await admin.from('invoices').select('status').eq('id', invoiceId).single()).data.status).toBe('reddedildi')
   })
 
-  test('muhasebe iptal edilen faturada yalnız düzenle/yeniden gönder veya sil görür', async ({ page }) => {
+  // Reddedilen/iptal edilen bir fatura NİHAİ bir durumdadır — düzenlenip yeniden
+  // gönderilemez, silinemez (eski "Düzenle ve Yeniden Gönder"/"Faturayı Sil" UI'ı ve
+  // resubmit_rejected_invoice/delete_rejected_invoice RPC'leri 2026-07-24'teki tek-
+  // onaylayıcı geçişiyle kaldırıldı, bkz. CLAUDE.md "Fatura onay akışı"). Muhasebe
+  // artık iptal edilen bir faturada yalnızca salt-okunur görüntüleme yetkisine sahip
+  // (FaturaListesi.jsx'teki islemHucresi() 'reddedildi' için hiçbir özel dal içermiyor,
+  // varsayılan "Görüntüle" butonuna düşer).
+  test('muhasebe iptal edilen faturada yalnız görüntüleme yetkisi görür', async ({ page }) => {
     await loginUi(page, process.env.TEST_MUHASEBE_EMAIL, process.env.TEST_MUHASEBE_PASSWORD)
     await openMenu(page, 'Finans')
-    await page.getByText(marker, { exact: true }).first().click()
-    await expect(page.getByText('Yönetici bu onaylı faturayı iptal etti.', { exact: false })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Düzenle ve Yeniden Gönder', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Faturayı Sil', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Faturayı İptal Et', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Faturalar', exact: true }).click()
+
+    const row = page.locator('tr', { hasText: marker })
+    await expect(row.getByRole('button', { name: 'Görüntüle', exact: true })).toBeVisible()
+    await expect(row.getByRole('button', { name: 'Düzenle', exact: true })).toHaveCount(0)
+    await expect(row.getByRole('button', { name: 'Düzenle / Gönder', exact: true })).toHaveCount(0)
+    await expect(row.getByRole('button', { name: 'İptal Et', exact: true })).toHaveCount(0)
+
+    await row.click()
+    const modal = page.locator('.invoice-detail-modal')
+    await expect(modal.getByText('Reddedildi', { exact: true }).first()).toBeVisible()
+    await expect(modal.getByRole('button', { name: 'Faturayı İptal Et', exact: true })).toHaveCount(0)
+    await expect(modal.getByRole('button', { name: 'Düzenle ve Yeniden Gönder', exact: true })).toHaveCount(0)
+    await expect(modal.getByRole('button', { name: 'Faturayı Sil', exact: true })).toHaveCount(0)
   })
 })

@@ -52,9 +52,15 @@ test.describe('Muhasebe rol kapsamı', () => {
   test('arayüzde yalnız muhasebe sekmeleri görünür', async ({ page }) => {
     await loginUi(page, process.env.TEST_MUHASEBE_EMAIL, process.env.TEST_MUHASEBE_PASSWORD)
 
-    await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Genel', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toHaveCount(0)
+    // "Maliyet Tablosu" sidebar öğesi tamamen kaldırıldı (kullanıcı kararı) — hiçbir
+    // role görünmemeli, giriş ekranından (muhasebenin kendi Genel Bakış'ı) bile kontrol edilebilir.
     await expect(page.getByText('Maliyet Tablosu', { exact: true })).toHaveCount(0)
+
+    // Muhasebe menü Finans'a girince Faturalar (varsayılan) + Genel 2 alt-sekmesini
+    // görür; Onay Kuyruğu (proje_yöneticisi/admin'e özel) görmez.
+    await page.getByText('Finans', { exact: true }).first().click()
+    await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Genel', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toHaveCount(0)
   })
 })
