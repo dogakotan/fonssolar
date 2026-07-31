@@ -1078,14 +1078,19 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
-- **Tedarikçi bakiyesi/Finans Raporları çoklu para birimini karıştırabilir
-  (2026-07-27'de USD/EUR fatura desteğiyle ortaya çıktı).** `TedarikciListesi.jsx`/
-  `TedarikciDetayModal.jsx` (bakiye toplamı) ve `FinansRaporlari.jsx` (proje/
-  kategori toplamları) hâlâ `record.total_amount`'ı ham topluyor — bir USD/EUR
-  fatura bu ekranlara girerse toplam sessizce farklı para birimlerini karıştırır.
-  Tam düzeltmesi (ödeme tarihindeki kur farkını da hesaba katan `paid_amount`/
-  `remaining_amount` TRY karşılıkları) kapsam dışı bırakıldı — bkz. "Çoklu para
-  birimi desteği". Fark edilirse önce bu notu hatırlat.
+- **Tedarikçi bakiyesi/Finans Raporları — kısmi düzeltildi (2026-07-31), tam
+  çözüm hâlâ açık.** `v_invoice_payment_overview` view'ına `total_amount_try`
+  eklendi (`20260731065903_add_total_amount_try_to_invoice_payment_overview`),
+  `TedarikciListesi.jsx`/`TedarikciDetayModal.jsx` (bakiye toplamı) ve
+  `FinansRaporlari.jsx` (proje/kategori toplamları) artık `total_amount_try ??
+  total_amount` kullanıyor — "toplam faturalanan" figürü artık TRY/USD/EUR
+  karışmıyor. **Ama `paid_amount`/`remaining_amount` kullanıcı kararıyla
+  kapsam dışı bırakıldı** — bunlar hâlâ faturanın kendi para biriminde
+  (ödeme tarihindeki kur farkını hesaba katmıyor), yani aynı ekranlardaki
+  "Ödenen"/"Kalan" toplamları bir tedarikçinin USD ve TRY faturaları
+  karışıksa hâlâ yanlış olabilir. Tam çözüm (ödeme anındaki kuru saklayıp
+  `paid_amount`'ı da TRY'ye çevirmek) ayrı, daha büyük bir görev — bkz.
+  "Çoklu para birimi desteği". Fark edilirse önce bu notu hatırlat.
 - **`complete_project_manager_purchase_request` RPC'si (proje yöneticisinin
   "Tamamlandı" butonu, tedarik adımı) `supplier_id`'ye hiç dokunmuyor**
   (yalnızca `purchase_date`/`purchased_by` yazıyor) — tek-tık akışta tedarikçi
@@ -1153,55 +1158,40 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**30.07.2026 (7) — Sekme/sayfa kalıcılığı görevi 3 katmanda ilerledi: önce
-Finans'a özel düzeltme, sonra sistem geneline yayılan localStorage kalıcılığı,
-en sonunda gerçek kök neden bulundu: `ProtectedRoute` rutin arka plan token
-yenilemelerinde bile TÜM Dashboard'u unmount ediyordu.**
+**31.07.2026 — Yeni kullanıcı hesapları (2 proje_yoneticisi + 2 admin) + ölü
+kod/hook bug temizliği + tedarikçi/finans raporlarındaki çoklu para birimi
+karışıklığının kısmi düzeltmesi.**
 
-Kullanıcı önce yalnızca menü Finans'ta fark etti ("yandaki sekmeye geçince
-sayfalar defaulta dönüyor") — `TabFinans.jsx`'in `tab` state'i localStorage'a
-alınıp düzeltildi, main'e merge edilip Vercel'e deploy edildi. Kullanıcı
-canlıda test edip "hâlâ aynı" dediğinde bunun aslında henüz pushlanmamış bir
-fix olduğu netleşti (önemli ders: canlıda test edilen bir fix mutlaka push +
-merge edilmiş olmalı, yoksa "düzeltme çalışmıyor" gibi görünür). Ardından
-"ama her kullanıcıda böyle olmalıydı" denilince kapsam TÜM alt-sekmeli
-sayfalara genişletildi: `TabSatinAlma.jsx`, `TabOdemeler.jsx`, proje içi
-`ProjeTabFinans.jsx`/`ProjeTabSatinAlma.jsx`, `ProjeDetay.jsx` (8 sekme +
-Malzeme Listesi'nin Malzeme/Riskler alt-sekmesi) — hepsi `activeTab`'ın
-kendisiyle aynı desende localStorage'da kalıcı hale getirildi (menü
-seviyesindekiler düz anahtar, proje-özel olanlar `projectId` ile sonlandırılmış
-anahtar — bkz. "Frontend yapısı"). Bu turda ayrıca `index.jsx`'teki
-`handleTabChange`'in sidebar'daki HER tıklamada (Projeler'in kendisi dahil)
-`showProjectDetail`'i sıfırladığı bulundu — bir projenin içindeyken başka bir
-menüye geçip "Projeler"e dönmek doğrudan proje listesine düşürüyordu; bu satır
-kaldırıldı.
+`create-user` edge function'ı çağırabilmek için gerçek bir admin oturum
+token'ı gerekiyor (ve service_role anahtarına bu ortamdan erişim yok, kasıtlı
+olarak) — bu yüzden 4 yeni hesap (Berk Sürücü/proje_yoneticisi, Bayram
+Demir/proje_yoneticisi, Osman Karadoğan/admin, Cem Aslan/admin) doğrudan SQL
+ile oluşturuldu: `auth.users` + `auth.identities` insert edilip (`extensions.crypt`/
+`pgcrypto` ile bcrypt hash), mevcut `on_auth_user_created` trigger'ı (`handle_new_user()`)
+`raw_user_meta_data.role_key`'den `profiles` satırını otomatik oluşturdu. Aynı
+yöntemle mevcut muhasebe hesabının (Doğa Doğan) şifresi de isim bazlı
+sıfırlandı. Tüm şifreler `.env.test`'e yazıldı, sohbete hiç yazılmadı (bkz.
+`feedback_no_secrets_in_chat` memory).
 
-Kullanıcı BUNDAN SONRA "hâlâ mesela proje manuel doldururken yan sekmeye
-geçince beni Genel Bakış'a atıyor" deyince gerçek kök neden ortaya çıktı:
-yukarıdaki tüm düzeltmeler doğruydu ama YETERSİZDİ, çünkü sorun aslında daha
-temeldeydi. `AuthContext.jsx`'teki `supabase.auth.onAuthStateChange` yalnızca
-gerçek giriş/çıkışta değil, RUTİN ARKA PLAN TOKEN YENİLEMESİNDE de tetikleniyor
-ve her tetiklendiğinde `setLoading(true)` çağırıyordu; `ProtectedRoute.jsx` da
-`loading===true` iken TÜM Dashboard ağacını unmount edip "Yükleniyor…" ekranı
-gösteriyordu. Bu, `activeTab` dahil TÜM local state'i (localStorage'a
-persist edilenler dahil, çünkü component'in kendisi ve içindeki `useRef` guard
-da sıfırdan yeniden yaratılıyordu) yok edip yeniden mount ediyordu — kısıtlı
-rollerin (`proje_yoneticisi`/`muhasebe`/`santiye_sefi`, hepsinin `default_tab`
-'genel') `[role, navigation]` efekti bu FRESH mount'ta "ilk yükleme" sanıp
-`activeTab`'ı zorla `defaultTab`'a (`genel`) çekiyordu — admin'de `default_tab`
-NULL olduğundan bu spesifik semptom (Genel Bakış'a atılma) admin'de hiç
-görünmüyordu (yalnızca proje detayında listeye düşme gibi daha hafif bir yan
-etkisi vardı). Düzeltme: `AuthContext`'e bir `hasResolvedOnce` ref eklendi —
-`loading` yalnızca İLK oturum çözümlemesinde `true`'ya çekiliyor, sonraki
-oturum olaylarında (rutin yenileme) profil sessizce arka planda güncelleniyor,
-`ProtectedRoute` artık Dashboard'u unmount etmiyor. `index.jsx`'teki
-`[role, navigation]` efektine de savunma amaçlı bir `appliedDefaultTabForRole`
-ref guard'ı eklendi (role gerçekten değişmedikçe tekrar uygulanmasın).
+Ölü kod taraması (`src/` altında import edilmeyen dosya/fonksiyon taraması —
+önceki hijyen turları zaten kapsamlı olduğundan tek gerçek bulgu):
+`src/utils/ticketStatus.js`'teki hiçbir yerden kullanılmayan `STATUS_TABS`
+export'u kaldırıldı. Aynı geçişte ESLint gerçek bir Hooks kuralı ihlali
+buldu: `ProjeTabFinans.jsx`'te `useEffect` erken `return`'den (authorized
+kontrolü) SONRA tanımlıydı — `authorized` durumu render arasında değişirse
+"hooks sayısı tutmuyor" hatası riski vardı; hook erken return'den önceye
+taşındı.
 
-Gerçek `supabase.auth.refreshSession()` çağrısıyla (Vite dev modülünü dynamic
-import ederek aynı singleton client'a erişilip) Playwright'ta uçtan uca
-doğrulandı: hem admin'in açık proje sihirbazı (Adım 1'de) hem proje
-yöneticisinin açık proje detayı (İş Planı sekmesinde), gerçek bir token
-yenilemesinden SONRA da aynı yerde kaldı — öncesinde (fix'siz) proje
-yöneticisi senaryosu "Genel Bakış"a düşüyordu, doğrulanan negatif kontrolle
-teyit edildi.
+Tedarikçi bakiyesi/Finans Raporları çoklu para birimi karışıklığı (bkz.
+"Bilinen açık noktalar") kısmen düzeltildi — kullanıcı "kısmi/hızlı" seçeneği
+onayladı (tam çözüm `paid_amount`/`remaining_amount`'ı da ödeme tarihindeki
+kurla TRY'ye çevirmeyi gerektiriyor, ayrı bir görev). `v_invoice_payment_overview`
+view'ına `total_amount_try` eklendi (`20260731065903_add_total_amount_try_to_invoice_payment_overview`
+migration'ı, `security_invoker=on` korunarak `CREATE OR REPLACE VIEW` — yeni
+kolon Postgres kısıtı gereği en sona eklenmek zorunda kaldı, ortaya eklenince
+"cannot change name of view column" hatası verdi). `TedarikciListesi.jsx`/
+`TedarikciDetayModal.jsx`/`FinansRaporlari.jsx`'teki toplam hesaplamaları
+(`total`, proje/kategori kırılımları) artık `total_amount_try ?? total_amount`
+kullanıyor; `financial_transactions` zaten TRY'ye kilitli olduğundan onun için
+`total_amount_try = amount`. `paid`/`remaining` hâlâ karışabilir (bilinçli
+sınırlama, CLAUDE.md'de not düşüldü).

@@ -62,7 +62,7 @@ export default function TedarikciDetayModal({ supplierId, onClose, onChanged }) 
     const fromInvoices = invoices.map(invoice => ({ ...invoice, source: 'fatura', label: invoice.invoice_no }))
     const fromTransactions = transactions.map(tx => ({
       id: tx.id, source: 'faturasiz', label: tx.transaction_no, project_id: tx.project_id,
-      total_amount: tx.amount, paid_amount: tx.paid_amount, remaining_amount: tx.remaining_amount,
+      total_amount: tx.amount, total_amount_try: tx.amount, paid_amount: tx.paid_amount, remaining_amount: tx.remaining_amount,
       currency: tx.currency, due_date: tx.due_date,
       status: tx.status === 'odendi' ? 'ödendi' : tx.status,
       vade_durumu: ['odeme_bekliyor', 'kismen_odendi'].includes(tx.status) && tx.due_date
@@ -76,7 +76,9 @@ export default function TedarikciDetayModal({ supplierId, onClose, onChanged }) 
     ...txPayments.map(payment => ({ ...payment, refId: payment.transaction_id })),
   ].sort((a, b) => String(b.payment_date).localeCompare(String(a.payment_date))), [payments, txPayments])
   const openInvoices = records.filter(record => Number(record.remaining_amount) > 0)
-  const total = records.reduce((sum, record) => sum + Number(record.total_amount || 0), 0)
+  // total_amount_try (TRY karşılığı) kullanılır — aksi halde USD/EUR faturalar
+  // TRY faturalarla aynı toplamda karışır (bkz. CLAUDE.md "Bilinen açık noktalar").
+  const total = records.reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)
   const paid = records.reduce((sum, record) => sum + Number(record.paid_amount || 0), 0)
   const remaining = openInvoices.reduce((sum, record) => sum + Number(record.remaining_amount || 0), 0)
   const overdue = openInvoices.filter(record => record.vade_durumu === 'vadesi_gecti').reduce((sum, record) => sum + Number(record.remaining_amount || 0), 0)

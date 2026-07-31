@@ -54,7 +54,7 @@ export default function FinansRaporlari({ defaultProjectId = '' }) {
     ...invoices.map(invoice => ({ ...invoice, source: 'fatura', category: invoice.category || 'diger' })),
     ...transactions.map(tx => ({
       id: tx.id, project_id: tx.project_id, supplier_id: tx.supplier_id, currency: tx.currency,
-      invoice_date: tx.transaction_date, total_amount: tx.amount, paid_amount: tx.paid_amount,
+      invoice_date: tx.transaction_date, total_amount: tx.amount, total_amount_try: tx.amount, paid_amount: tx.paid_amount,
       remaining_amount: tx.remaining_amount, source: 'faturasiz', category: 'diger',
     })),
   ], [invoices, transactions])
@@ -68,23 +68,25 @@ export default function FinansRaporlari({ defaultProjectId = '' }) {
   })
   const projectMap = useMemo(() => Object.fromEntries(projects.map(project => [project.id, project.name])), [projects])
   const supplierMap = useMemo(() => Object.fromEntries(suppliers.map(supplier => [supplier.id, supplier.name])), [suppliers])
-  const total = filtered.reduce((sum, record) => sum + Number(record.total_amount || 0), 0)
+  // total_amount_try (TRY karşılığı) kullanılır — aksi halde USD/EUR faturalar
+  // TRY faturalarla aynı toplamda karışır (bkz. CLAUDE.md "Bilinen açık noktalar").
+  const total = filtered.reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)
   const paid = filtered.reduce((sum, record) => sum + Number(record.paid_amount || 0), 0)
   const remaining = filtered.reduce((sum, record) => sum + Number(record.remaining_amount || 0), 0)
   const paymentRate = total ? Math.round(paid / total * 100) : 0
   const projectRows = projects.map(project => {
     const list = filtered.filter(record => record.project_id === project.id)
-    const invoiced = list.filter(record => record.source === 'fatura').reduce((sum, record) => sum + Number(record.total_amount || 0), 0)
-    const invoiceless = list.filter(record => record.source === 'faturasiz').reduce((sum, record) => sum + Number(record.total_amount || 0), 0)
+    const invoiced = list.filter(record => record.source === 'fatura').reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)
+    const invoiceless = list.filter(record => record.source === 'faturasiz').reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)
     const projectPaid = list.reduce((sum, record) => sum + Number(record.paid_amount || 0), 0)
     const rate = (invoiced + invoiceless) > 0 ? Math.round(projectPaid / (invoiced + invoiceless) * 100) : 0
     return { id: project.id, name: project.name, invoiced, invoiceless, paid: projectPaid, remaining: (invoiced + invoiceless) - projectPaid, rate }
   }).filter(row => row.invoiced || row.invoiceless)
   const maxValue = Math.max(1, ...projectRows.flatMap(row => [row.invoiced + row.invoiceless]))
   const categories = [
-    ['Malzeme', filtered.filter(record => record.category === 'malzeme').reduce((sum, record) => sum + Number(record.total_amount || 0), 0), '#2563EB'],
-    ['Hizmet', filtered.filter(record => record.category === 'hizmet').reduce((sum, record) => sum + Number(record.total_amount || 0), 0), '#6D3BD1'],
-    ['Diğer', filtered.filter(record => !['malzeme', 'hizmet'].includes(record.category)).reduce((sum, record) => sum + Number(record.total_amount || 0), 0), '#F97316'],
+    ['Malzeme', filtered.filter(record => record.category === 'malzeme').reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0), '#2563EB'],
+    ['Hizmet', filtered.filter(record => record.category === 'hizmet').reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0), '#6D3BD1'],
+    ['Diğer', filtered.filter(record => !['malzeme', 'hizmet'].includes(record.category)).reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0), '#F97316'],
   ]
   const categoryTotal = categories.reduce((sum, item) => sum + item[1], 0)
   const exportColumns = ['Proje', 'Faturalı', 'Faturasız', 'Ödenen', 'Kalan', 'Ödeme Oranı']
