@@ -1154,10 +1154,16 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   düzeltme migration'ı (`20260724081031`) eklendi ama orijinali hâlâ yerel
   dosya olarak yok — fark edilirse (`schema_migrations` ile `supabase/migrations/`
   karşılaştırması) geriye dönük eklenmesi gerekebilir.
-- **Faturalar mobil kart görünümü yok.** Brief mobilde tablo yerine kart
-  listesi istiyordu; zaman kısıtı nedeniyle yalnızca `overflow-x:auto` ile
-  yatay scroll fallback'i bırakıldı (diğer bazı tablolarla aynı, ama brief'in
-  istediği tam kart deneyimi değil).
+- ~~Faturalar mobil kart görünümü yok~~ — **bu not bayatmış, düzeltildi
+  (2026-07-31).** Gerçek kod zaten tam bir mobil kart görünümüne sahip:
+  `FaturaListesi.jsx`'te `.invoice-mobile-list` (article kartları) JSX'i +
+  `Dashboard.css`'te `@media (max-width:900px)` altında `.invoice-table-wrap{display:none}`/
+  `.invoice-mobile-list{display:grid}` — 390px genişlikte Playwright'ta canlı
+  doğrulandı (tablo gizli, 10 kart doğru render). Bu madde ne zaman/kim
+  tarafından eklendiğinden bağımsız CLAUDE.md'de hiç güncellenmemişti (bkz.
+  "Migration tracking boşluğu" — bu projede kod ile doküman arasında böyle bir
+  gecikme daha önce de görülmüş). Fark edilirse bu notu hatırlat: madde
+  kapalıdır, yeniden açmadan önce önce kodu kontrol et.
 - **Migration tracking boşluğu (Supabase tarafı) — hâlâ açık.** 2026-07-26'da
   fark edildi: `financial_transactions`/`financial_transaction_payments`
   şeması, `v_invoice_payment_overview` security_invoker düzeltmesi,
