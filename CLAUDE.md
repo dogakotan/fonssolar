@@ -1140,10 +1140,10 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 - Manuel proje sihirbazı yolundaki client-side mini-importer
   (`src/utils/projectExcelImport.js`) hâlâ eski, daha dar bir kategori setiyle
   sınırlı — ikincil yol olduğu için düşük öncelikli.
-- **`project_risks` tablosunda DELETE policy'si yok** (admin dahil hiçbir rol
-  için) — Riskler sihirbaz adımının (`Adim4Riskler.jsx`) mevcut riskleri
-  silip yeniden eklemesi gereken durumlarda bu adım sessizce 0 satır siler.
-  Henüz kimse fark etmedi/rapor etmedi; fark edilirse önce bu notu hatırlat.
+- ~~`project_risks` tablosunda DELETE policy'si yok~~ — **düzeltildi (2026-07-31,
+  `20260731100738_add_project_risks_delete_policy`)**: `authenticated_delete_risks`
+  policy'si eklendi, aynı tablodaki `authenticated_insert_risks`/`authenticated_update_risks`
+  ile birebir aynı deseni (`user_has_project_access(project_id)`) kullanıyor.
 - **Migration `20260724072957_invoice_flow_single_approver_with_revision_and_payment_tracking`
   yerel dosyası eksik.** Bu görev sırasında canlıda uygulanmış ama
   `supabase/migrations/` altında karşılığı olmadığı fark edildi (muhasebe
