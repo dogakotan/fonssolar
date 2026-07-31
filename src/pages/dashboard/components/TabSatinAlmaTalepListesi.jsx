@@ -154,6 +154,11 @@ export default function TabSatinAlmaTalepListesi({
   // buton grubu yerine gerekçe input'u + onay/vazgeç gösterilir (OnayReddetActions.jsx
   // "compact" moduyla aynı desen). Gerekçe boşken gönderim disabled kalır.
   const [rejectDraft, setRejectDraft] = useState(null)
+  // "Tamamlandı" tıklanınca satır içinde açılan opsiyonel tedarikçi seçici —
+  // { id, supplierId } iken o satırda buton grubu yerine bu gösterilir
+  // (rejectDraft'la aynı desen). Boş bırakılıp doğrudan onaylanabilir.
+  const [completeDraft, setCompleteDraft] = useState(null)
+  const [suppliers, setSuppliers] = useState([])
   const [page, setPage] = useState(0)
 
   const canCreate = role === 'santiye_sefi' || role === 'proje_yoneticisi'
@@ -166,6 +171,12 @@ export default function TabSatinAlmaTalepListesi({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [projectId, filterDate, onlyPending, refreshKey])
   useEffect(() => { setPage(0) }, [statusFilter, fixedStatus, onlyPending, projectId, refreshKey])
+
+  // Tedarikçi listesi yalnızca "Tamamlandı" akışında (proje yöneticisi) gerekiyor.
+  useEffect(() => {
+    if (!canCompleteProcurement) return
+    supabase.from('suppliers').select('id, name').order('name').then(({ data }) => setSuppliers(data || []))
+  }, [canCompleteProcurement])
 
   // Dışarıdan (Bildirimler sayfasından) belirli bir talebe doğrudan gitme —
   // mevcut filtrelerden bağımsız, tek talebi id ile çekip açar (TicketListesi'nin
@@ -300,19 +311,21 @@ export default function TabSatinAlmaTalepListesi({
     setActionLoading(null)
   }
 
-  async function completeProjectManagerRequest(event, request) {
+  async function completeProjectManagerRequest(event, request, supplierId) {
     event.stopPropagation()
     setActionLoading(request.id)
     setErrorMessage('')
 
     const { error } = await supabase.rpc('complete_project_manager_purchase_request', {
       p_request_id: request.id,
+      p_supplier_id: supplierId || null,
     })
 
     if (error) {
       console.error('project manager purchase completion error:', error)
       setErrorMessage(error.message || 'Talep tamamlanamadı.')
     } else {
+      setCompleteDraft(null)
       await fetchData()
       onChanged?.()
     }
@@ -528,7 +541,32 @@ export default function TabSatinAlmaTalepListesi({
                         </div>
                         )
                       ) : canCompleteProcurement && isWaitingForProjectManager ? (
-                        rejectDraft?.id === request.id ? (
+                        completeDraft?.id === request.id ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }} onClick={event => event.stopPropagation()}>
+                            <select
+                              autoFocus
+                              value={completeDraft.supplierId}
+                              onChange={event => setCompleteDraft(d => ({ ...d, supplierId: event.target.value }))}
+                              style={{ border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontFamily: 'inherit', outline: 'none', width: 140 }}
+                            >
+                              <option value="">Tedarikçisiz devam et</option>
+                              {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                            </select>
+                            <button
+                              onClick={event => completeProjectManagerRequest(event, request, completeDraft.supplierId)}
+                              disabled={actionLoading === request.id}
+                              style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >
+                              {actionLoading === request.id ? '…' : 'Onayla'}
+                            </button>
+                            <button
+                              onClick={event => { event.stopPropagation(); setCompleteDraft(null) }}
+                              style={{ background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 8px', fontSize: 11.5, cursor: 'pointer', fontFamily: 'inherit' }}
+                            >
+                              Vazgeç
+                            </button>
+                          </div>
+                        ) : rejectDraft?.id === request.id ? (
                           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'nowrap' }} onClick={event => event.stopPropagation()}>
                             <input
                               type="text" autoFocus placeholder="İptal gerekçesi (zorunlu)"
@@ -552,7 +590,7 @@ export default function TabSatinAlmaTalepListesi({
                           </div>
                         ) : (
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'nowrap' }}>
-                          <button onClick={event => completeProjectManagerRequest(event, request)} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                          <button onClick={event => { event.stopPropagation(); setCompleteDraft({ id: request.id, supplierId: '' }) }} disabled={actionLoading === request.id} style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
                             {actionLoading === request.id ? '…' : 'Tamamlandı'}
                           </button>
                           <button onClick={event => { event.stopPropagation(); setRejectDraft({ id: request.id, note: '' }) }} disabled={actionLoading === request.id} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: projectId ? '5px 10px' : '5px 8px', fontSize: projectId ? 12 : 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>

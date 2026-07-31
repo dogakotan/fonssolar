@@ -306,9 +306,11 @@ bir adım var — akış `ProjeTabSatinAlma.jsx` → `TabSatinAlmaTalepListesi.j
 `TedarikKuyrugu.jsx` bileşenindeydi, `02c8af4` commit'iyle 23.07.2026'da
 kaldırıldı). `proje_yoneticisi`
 (`cross_project=true`, tüm projelere erişir) `onaylandi` durumundaki talepler
-için tek-tık **"Tamamlandı"** butonuyla `complete_project_manager_purchase_request`
-RPC'sini çağırır (`supplier_id`/`purchase_date` bu RPC'de hiç toplanmıyor —
-bilinen açık nokta, bkz. "Bilinen açık noktalar"). "İptal Et" tıklanınca satır
+için **"Tamamlandı"** butonuyla `complete_project_manager_purchase_request`
+RPC'sini çağırır — `purchase_date` otomatik (bugün), `supplier_id` ise
+2026-07-31'den beri tıklanınca açılan opsiyonel bir tedarikçi seçiciyle
+(`completeDraft` state, `rejectDraft`'la aynı satır-içi desen; boş geçilebilir).
+"İptal Et" tıklanınca satır
 içi bir gerekçe alanı açılır (`rejectDraft` state, `OnayReddetActions.jsx`'in
 "compact" moduyla aynı desen) — **gerekçe girilmeden "İptali Onayla" butonu
 disabled kalır** (`TalepDetayModal.jsx`'teki eşdeğer "Reddet" butonu da aynı
@@ -1091,13 +1093,16 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   karışıksa hâlâ yanlış olabilir. Tam çözüm (ödeme anındaki kuru saklayıp
   `paid_amount`'ı da TRY'ye çevirmek) ayrı, daha büyük bir görev — bkz.
   "Çoklu para birimi desteği". Fark edilirse önce bu notu hatırlat.
-- **`complete_project_manager_purchase_request` RPC'si (proje yöneticisinin
-  "Tamamlandı" butonu, tedarik adımı) `supplier_id`'ye hiç dokunmuyor**
-  (yalnızca `purchase_date`/`purchased_by` yazıyor) — tek-tık akışta tedarikçi
-  hiç toplanmadığından, onaylanıp tedarik edilen HER talepte
-  `purchase_requests.supplier_id` null kalıyor. `FaturaOlusturModal.jsx`'teki
-  tedarikçi seçici bu boşluğu fatura aşamasında kapatıyor (fatura kendi
-  `supplier_id`'sini alıyor) ama talep kaydının kendisi hâlâ tedarikçisiz.
+- **`complete_project_manager_purchase_request` RPC'si — düzeltildi (2026-07-31).**
+  Artık opsiyonel bir `p_supplier_id` parametresi alıyor ve `supplier_id`'yi de
+  yazıyor. `TabSatinAlmaTalepListesi.jsx`'teki "Tamamlandı" butonu artık tek
+  tık değil — tıklanınca satır içinde `rejectDraft`'la aynı desende bir
+  tedarikçi `<select>`i açılır (kullanıcı kararıyla **opsiyonel**: "Tedarikçisiz
+  devam et" seçeneğiyle boş geçilebilir, akış tıkanmaz). Tedarikçi listesi bu
+  bileşende yalnızca proje yöneticisi için bir kereliğine çekilir (`suppliers`
+  tablosu, RLS zaten proje yöneticisine açık). `FaturaOlusturModal.jsx`'teki
+  tedarikçi seçici hâlâ aynı şekilde çalışıyor (fatura kendi `supplier_id`'sini
+  ayrıca alır) — bu ikisi birbirini geçersiz kılmaz, ikinci bir fırsat.
 - **`tests/procurement-workflow.spec.js` ve birkaç `procurement-*`/`accounting-scope`
   testi eski akışa göre yazılmış, güncellenmedi.** 2026-07-26'da satın
   alma→fatura akışı uçtan uca test edilirken fark edildi: bu spec'ler kaldırılmış
@@ -1195,3 +1200,11 @@ kolon Postgres kısıtı gereği en sona eklenmek zorunda kaldı, ortaya eklenin
 kullanıyor; `financial_transactions` zaten TRY'ye kilitli olduğundan onun için
 `total_amount_try = amount`. `paid`/`remaining` hâlâ karışabilir (bilinçli
 sınırlama, CLAUDE.md'de not düşüldü).
+
+`complete_project_manager_purchase_request` RPC'sine opsiyonel `p_supplier_id`
+parametresi eklendi (`20260731070917_complete_project_manager_purchase_request_add_supplier`)
+— proje yöneticisinin "Tamamlandı" butonu artık `supplier_id`'yi de yazabiliyor.
+Kullanıcı kararıyla **opsiyonel** tutuldu (zorunlu değil): buton artık
+`rejectDraft`'la aynı satır-içi desende bir tedarikçi `<select>`i açıyor,
+"Tedarikçisiz devam et" ile boş geçilebiliyor — tek-tık hızlı akış tamamen
+bozulmadı.
