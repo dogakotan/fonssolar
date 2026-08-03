@@ -43,6 +43,13 @@ export default function Adim1ProjeBilgileri({
     battery_count:    src.battery_count    != null ? String(src.battery_count)    : '',
   })
   const [error, setError] = useState(null)
+  // Depolama/Batarya alanları Arazi GES'te kasıtlı olarak gösterilmiyor —
+  // saha ölçeğindeki arazi projelerinde batarya depolaması bu sistemde hiç
+  // takip edilmiyor; çatı/evsel GES'te (batarya yaygın) hâlâ görünür kalmalı
+  // (kullanıcı kararı, 03.08.2026). storage_kwh/battery_* state'te hâlâ
+  // taşınıyor ki tür değişse de mevcut bir projedeki eski değer sessizce
+  // sıfırlanmasın.
+  const isArazi = form.project_type === 'arazi_ges'
 
   useEffect(() => {
     if (form.start_date && form.target_date) {
@@ -180,10 +187,10 @@ export default function Adim1ProjeBilgileri({
             </div>
           </div>
 
-          {/* Kurulu Güç */}
+          {/* Kurulu Güç — Depolama Kapasitesi Arazi GES'te gizli, bkz. isArazi tanımı */}
           <div style={{ paddingTop: '1rem', borderTop: '1px solid #f1f5f9' }}>
             <p style={F.secTitle}>Kurulu Güç</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isArazi ? 'repeat(2, 1fr)' : 'repeat(3, 1fr)', gap: '1rem' }}>
               <div style={F.group}>
                 <label style={F.label}>DC Güç (kWp)</label>
                 <input style={F.input} type="number" min="0" step="any" value={form.capacity_kwp} onChange={set('capacity_kwp')} placeholder="5000" />
@@ -192,14 +199,16 @@ export default function Adim1ProjeBilgileri({
                 <label style={F.label}>AC Güç (kWe)</label>
                 <input style={F.input} type="number" min="0" step="any" value={form.capacity_kwe} onChange={set('capacity_kwe')} placeholder="4800" />
               </div>
-              <div style={F.group}>
-                <label style={F.label}>Depolama Kapasitesi (kWh)</label>
-                <input style={F.input} type="number" min="0" step="any" value={form.storage_kwh} onChange={set('storage_kwh')} placeholder="0" />
-              </div>
+              {!isArazi && (
+                <div style={F.group}>
+                  <label style={F.label}>Depolama Kapasitesi (kWh)</label>
+                  <input style={F.input} type="number" min="0" step="any" value={form.storage_kwh} onChange={set('storage_kwh')} placeholder="0" />
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Ekipman Bilgileri */}
+          {/* Ekipman Bilgileri — Batarya Markası/Gücü/Adedi Arazi GES'te gizli, bkz. isArazi tanımı */}
           <div style={{ paddingTop: '1rem', borderTop: '1px solid #f1f5f9' }}>
             <p style={F.secTitle}>Ekipman Bilgileri</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -219,18 +228,22 @@ export default function Adim1ProjeBilgileri({
                 <label style={F.label}>İnvertör Sayısı</label>
                 <input style={F.input} type="number" min="0" value={form.inverter_count} onChange={set('inverter_count')} placeholder="0" />
               </div>
-              <div style={F.group}>
-                <label style={F.label}>Batarya Markası</label>
-                <input style={F.input} value={form.battery_brand} onChange={set('battery_brand')} placeholder="BYD, CATL…" />
-              </div>
-              <div style={F.group}>
-                <label style={F.label}>Batarya Gücü (kW)</label>
-                <input style={F.input} type="number" min="0" step="any" value={form.battery_power_kw} onChange={set('battery_power_kw')} placeholder="0" />
-              </div>
-              <div style={F.group}>
-                <label style={F.label}>Batarya Adedi</label>
-                <input style={F.input} type="number" min="0" value={form.battery_count} onChange={set('battery_count')} placeholder="0" />
-              </div>
+              {!isArazi && (
+                <>
+                  <div style={F.group}>
+                    <label style={F.label}>Batarya Markası</label>
+                    <input style={F.input} value={form.battery_brand} onChange={set('battery_brand')} placeholder="BYD, CATL…" />
+                  </div>
+                  <div style={F.group}>
+                    <label style={F.label}>Batarya Gücü (kW)</label>
+                    <input style={F.input} type="number" min="0" step="any" value={form.battery_power_kw} onChange={set('battery_power_kw')} placeholder="0" />
+                  </div>
+                  <div style={F.group}>
+                    <label style={F.label}>Batarya Adedi</label>
+                    <input style={F.input} type="number" min="0" value={form.battery_count} onChange={set('battery_count')} placeholder="0" />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
