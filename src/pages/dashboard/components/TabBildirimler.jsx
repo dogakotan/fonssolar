@@ -143,9 +143,11 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
   }
 
   async function markAllRead() {
-    const unreadIds = items.filter(n => !n.is_read).map(n => n.id)
-    if (!unreadIds.length) return
-    await supabase.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).in('id', unreadIds)
+    // NotificationBell.jsx'teki aynı bug'ın burada da tekrarlanmasını önlemek için
+    // `items` listesine (limit(200)) bağlı kalmadan doğrudan is_read=false ile
+    // toplu güncelleme yapılıyor — RLS zaten recipient_id=auth.uid()'e daraltıyor.
+    if (!unreadCount) return
+    await supabase.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).eq('is_read', false)
     load()
   }
 

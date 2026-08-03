@@ -83,9 +83,13 @@ export default function NotificationBell({ onNavigate }) {
   }
 
   async function markAllRead() {
-    const unreadIds = items.filter(n => !n.is_read).map(n => n.id)
-    if (!unreadIds.length) return
-    await supabase.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).in('id', unreadIds)
+    // Dropdown yalnızca ilk 30 bildirimi gösterir (`items`) — bir kullanıcının
+    // 30'dan fazla okunmamış bildirimi varsa yalnızca görünenleri işaretlemek
+    // rozeti hiç sıfırlamıyordu (RLS zaten recipient_id=auth.uid()'e daralttığı
+    // için `items` listesine bağlı kalmadan doğrudan is_read=false ile toplu
+    // güncelleme yapmak gerçekten TÜMÜNÜ kapsar).
+    if (!unread) return
+    await supabase.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).eq('is_read', false)
     load()
   }
 
