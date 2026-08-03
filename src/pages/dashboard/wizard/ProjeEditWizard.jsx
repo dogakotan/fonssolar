@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import WizardStepper            from './WizardStepper'
 import Adim1ProjeBilgileri      from './Adim1ProjeBilgileri'
@@ -8,6 +8,7 @@ import Adim4Riskler             from './Adim4Riskler'
 import Adim5Tedarik             from './Adim5Tedarik'
 import Adim6Butce               from './Adim6Butce'
 import Adim8Tamamlandi          from './Adim8Tamamlandi'
+import { projectWizardDraftKey, loadProjectWizardDraft, saveProjectWizardDraft, clearProjectWizardDraft } from '../../../utils/projectWizardDraft'
 
 const TABLE_MAP = {
   2: 'project_tasks',
@@ -19,11 +20,44 @@ const STEP_LABELS = ['Proje Bilgileri', 'İş Kalemleri', 'Kategori Ağırlıkla
 
 export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
   const projectId = project.id
-  const [step,        setStep]        = useState(1)
-  const [stepsResult, setStepsResult] = useState({})
+  const draftKey = projectWizardDraftKey('edit', projectId)
+  const initialDraft = useRef(loadProjectWizardDraft(draftKey)).current
+  const [step,        setStep]        = useState(initialDraft?.step ?? 1)
+  const [stepsResult, setStepsResult] = useState(initialDraft?.stepsResult ?? {})
+  const [draftNotice, setDraftNotice] = useState(!!initialDraft)
   const [saving,      setSaving]      = useState(false)
   const [toast,       setToast]       = useState(null) // { msg, ok }
   const actionRef = useRef('next')
+
+  useEffect(() => {
+    saveProjectWizardDraft(draftKey, { step, stepsResult })
+  }, [draftKey, step, stepsResult])
+
+  function setStepDraft(stepNo, draft) {
+    setStepsResult(r => ({ ...r, [stepNo]: draft }))
+  }
+
+  function discardDraft() {
+    clearProjectWizardDraft(draftKey)
+    setStepsResult({})
+    setStep(1)
+    setDraftNotice(false)
+  }
+
+  function handleCancel() {
+    clearProjectWizardDraft(draftKey)
+    onSuccess()
+  }
+
+  function handleFinish() {
+    clearProjectWizardDraft(draftKey)
+    onSuccess()
+  }
+
+  function handleViewProject(id, name) {
+    clearProjectWizardDraft(draftKey)
+    onViewProject(id, name)
+  }
 
   const goNext = () => setStep(s => s + 1)
   const goBack = () => setStep(s => s - 1)
@@ -110,11 +144,20 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
   const btnBase = { padding: '0.5rem', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', border: 'none' }
 
   return (
-    <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      {draftNotice && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.55rem 0.9rem', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 'var(--radius-md)', fontSize: 12.5, color: '#92400e' }}>
+          <span>📝 Kaydedilmemiş bir taslak bulundu, devam ediliyor.</span>
+          <button type="button" onClick={discardDraft} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#92400e', fontWeight: 700, fontSize: 12, cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit' }}>
+            Taslağı Sil ve Baştan Başla
+          </button>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
       <div className="card" style={{ width: 210, flexShrink: 0, overflow: 'hidden' }}>
         <WizardStepper current={step} completedSteps={Object.keys(stepsResult).map(Number)} availableUntil={7} onSelect={setStep} labels={STEP_LABELS} />
         <div style={{ padding: '0.875rem', borderTop: '1px solid var(--color-border-md)', display: 'grid', gap: '0.5rem' }}>
-          <button type="button" onClick={onSuccess} style={{ ...btnBase, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)' }}>
+          <button type="button" onClick={handleCancel} style={{ ...btnBase, background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)' }}>
             İptal
           </button>
           {step < 7 && (
@@ -159,7 +202,8 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             mode="edit"
             initialProject={project}
             onDone={r => handleStepDone(1, r)}
-            onCancel={onSuccess}
+            onCancel={handleCancel}
+            onDraftChange={r => setStepDraft(1, r)}
           />
         )}
         {step === 2 && (
@@ -169,6 +213,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             mode="edit"
             onDone={r => handleStepDone(2, r)}
             onBack={goBack}
+            onDraftChange={r => setStepDraft(2, r)}
           />
         )}
         {step === 3 && (
@@ -179,6 +224,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             mode="edit"
             onDone={r => handleStepDone(3, r)}
             onBack={goBack}
+            onDraftChange={r => setStepDraft(3, r)}
           />
         )}
         {step === 4 && (
@@ -188,6 +234,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             mode="edit"
             onDone={r => handleStepDone(4, r)}
             onBack={goBack}
+            onDraftChange={r => setStepDraft(4, r)}
           />
         )}
         {step === 5 && (
@@ -197,6 +244,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             mode="edit"
             onDone={r => handleStepDone(5, r)}
             onBack={goBack}
+            onDraftChange={r => setStepDraft(5, r)}
           />
         )}
         {step === 6 && (
@@ -206,6 +254,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             mode="edit"
             onDone={r => handleStepDone(6, r)}
             onBack={goBack}
+            onDraftChange={r => setStepDraft(6, r)}
           />
         )}
         {step === 7 && (
@@ -215,10 +264,11 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             mode="edit"
             project={project}
             onBack={goBack}
-            onSuccess={onSuccess}
-            onViewProject={onViewProject}
+            onSuccess={handleFinish}
+            onViewProject={handleViewProject}
           />
         )}
+      </div>
       </div>
     </div>
   )

@@ -1265,6 +1265,25 @@ parametresiyle ayrıştırılmıştır — aynı sabit satırdan başlanırsa B�
 başlık satırının kendisi ("Kategori"/"Kalem Adı"/₺0) geçerli bir kalem sanılıp
 her yüklemede eklenir (30.07.2026'da bulunup düzeltilen bug).
 
+**`is_critical`/`dashboard_visible`/`dashboard_order` kaldırılınca Excel yükleme
+sessizce kırılmıştı (03.08.2026'da bulunup düzeltildi).** Bu üç kolon
+`project_tasks`'tan düşürülürken (bkz. "Otomatik risk motoru" ve "Son
+değişiklik" geçmişi) `import-project-excel`/`export-project-excel` edge
+fonksiyonları ve statik `fons-solar-proje-sablonu.xlsx` şablonu güncellenmemişti
+— İş Kalemleri sayfasının P/Q/R sütunları (Dashboard Göster/Sıra, Kritik mi?)
+hâlâ bu kolonlara okuyup/yazıyordu, yani birincil "Yeni Proje" Excel akışındaki
+HER görev insert/update'i artık var olmayan bir koloma yazmaya çalışıp "column
+does not exist" ile başarısız oluyordu (proje satırı ve kategori ağırlıkları
+önce yazıldığından proje listede görünüyordu, yalnızca görevler hiç
+işlenmiyordu — "sanki yapıyor ama hata var" şeklinde fark edildi). Düzeltme:
+her iki edge fonksiyondan da bu 3 alan çıkarıldı (redeploy edildi), şablon
+dosyasından P/Q/R sütunları ve ilgili data validation'lar temizlendi, Kullanım
+Kılavuzu sayfası ve versiyon banner'ı **Şablon v7**'ye güncellendi. Yeni bir
+kolon kaldırma/ekleme yapılırken bu iki edge fonksiyon + statik şablon +
+`src/utils/projectExcelImport.js` (ikincil "Manuel doldur" mini-importer)
+DÖRDÜNÜN de senkron güncellenmesi gerektiği unutulmamalı — biri atlanırsa aynı
+sınıf regresyon tekrarlanır.
+
 **Proje ID çakışması — "Yeni Proje" akışı (30.07.2026):** `import-project-excel`
 `mode` parametresi alır (`ask`/`update`/`duplicate`). İlk denemede (`mode=ask`,
 frontend'in varsayılanı) Excel'deki Proje ID (E5) zaten bir projeye aitse
@@ -1285,7 +1304,37 @@ Proje oluşturma/düzenleme sihirbazı (`YeniProjeWizard.jsx`/`ProjeEditWizard.j
 detay takibi Faz 2'ye ertelendi) → Bütçe → Tamamlandı. "Yeni Proje" butonu
 birincil akış olarak Excel şablonu yükler; küçük bir "Manuel doldur" bağlantısı
 sihirbazı da açar (bu ikincil yoldaki mini-importer hâlâ eski kategori setiyle
-sınırlı).
+sınırlı). Gerçek DB yazımı (`projects` insert/update + tüm adım tablolarının
+toplu insert'i) yalnızca son adımda (`Adim8Tamamlandi.jsx`'in "Kaydet"i) olur —
+öncesindeki adımlar salt `stepsResult` state'inde birikir (ProjeEditWizard'ın
+adım-bazlı "Kaydet" butonu hariç, o `directSave()` ile o adımı hemen DB'ye yazar).
+
+**Taslak otomatik kaydetme (03.08.2026):** Sihirbaz içindeyken herhangi bir
+adım/sayfa geçişinde (WizardStepper'dan başka bir adıma tıklama, ya da Proje
+Yönetimi'nden tamamen başka bir sekmeye geçip TabProjeYonetimi'nin unmount
+olması) o ana kadar girilenler kaybolmasın diye `src/utils/projectWizardDraft.js`
+üzerinden tarayıcı `localStorage`'ına yazılır (DB'ye YAZILMAZ — `daily_report_drafts`'ın
+DB-bazlı taslak deseninden kasıtlı olarak farklı, burada cross-device kalıcılığa
+gerek yok). Her adım bileşeni (`Adim1ProjeBilgileri`…`Adim6Butce`) artık bir
+`onDraftChange` prop'u alıp kendi ham (henüz doğrulanmamış/commit edilmemiş)
+state'ini her değişiklikte üst bileşene bildiriyor — bu, WizardStepper'daki adım
+linklerinin `onSelect`'i doğrudan `setStep` çağırıp mevcut adımın "Devam"/"Kaydet"
+akışını (validasyon + `onDone`) hiç tetiklemeden komponenti unmount etmesi
+yüzünden gerekli: aksi halde bir adımda yazıp doğrudan başka bir adıma tıklamak
+o adımdaki değişiklikleri sessizce siliyordu. Taslak anahtarı yeni projede sabit
+(`ges-project-wizard-draft:new`), düzenlemede projeye özel
+(`ges-project-wizard-draft:edit:<projectId>`). Sihirbaz açılışında bir taslak
+bulunursa sarı bir bilgi şeridi ("Kaydedilmemiş bir taslak bulundu, devam
+ediliyor" + "Taslağı Sil ve Baştan Başla" linki) gösterilir; taslak sihirbaz
+başarıyla tamamlandığında veya "İptal" ile çıkıldığında temizlenir, yalnızca
+sayfa/sekme değişip geri dönüldüğünde kalıcı olması amaçlanıyor. Düzenleme
+modunda DB'den taze veri çeken adımlar (İş Kalemleri/Riskler/Bütçe — Kategori
+Ağırlıkları zaten öyleydi) artık bir taslak zaten varsa bu fetch'i atlıyor
+(aksi halde taslaktaki değişiklikler o adıma her dönüşte DB'deki eski haliyle
+ezilirdi) — bunun bilinen dengesi: aynı projede uzun süre (günler) açık kalmış
+eski bir taslak, o aradaki başka bir DB değişikliğini (örn. başka biri Excel'den
+güncelledi) o adım için geçici olarak gizleyebilir; "Taslağı Sil ve Baştan
+Başla" bu durumun kaçış yolu.
 
 ### Test ortamı
 5 profil, 2 proje: "Ege Enerji İzmir GES – TEST" ve "Kayseri Develi GES".
@@ -1446,87 +1495,24 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**03.08.2026 — İş Planı durum güncelleme bug'ı, eksik hedef miktar verisi ve
-İş Kalemleri adımının sadeleştirilmesi.**
-
-1. **`TalepDetayModal.jsx` değil, İş Planı görev durumu tabloya yansımıyordu —
-   düzeltildi.** `TabIsPlan.jsx`'teki `deriveTaskStatusAt()`, `target_qty`'si
-   olmayan (kilometre taşı) görevlerde de tarih/ilerlemeye göre durumu yeniden
-   hesaplayıp `set_task_milestone_status` RPC'siyle kullanıcının az önce
-   seçtiği durumu (ör. "Beklemede") sessizce eziyordu — plan başlangıcı
-   ileride olan bir görev her zaman literal `'bekliyor'` gösteriyordu. Artık
-   `target_qty > 0` olmayan görevlerde bu fonksiyon DB'deki `status`'a hiç
-   dokunmuyor (bkz. "İlerleme hesaplama modeli").
-2. **Kaptan Demir Çelik (Adana GES-1/2) — hiçbir görevde hedef miktar yoktu.**
-   Kullanıcı canlı bir projede "kolon çakımı gibi kalemler de durum modunda
-   görünüyor" diye bildirdi; DB'de bu iki proje için TÜM görevlerin
-   `target_qty=null` olduğu bulundu (proje kurulurken hiç girilmemiş). BOM'dan
-   kesin eşleşen PV modül (18.634/2.870 adet) ve İnverter (35/6 adet) hedefleri
-   yazıldı; aşık/kiriş/DC kablo için iki gerçek referans projenin (Ege, Kayseri)
-   kendi oranları çapraz doğrulanıp (aşık=modül/2, kiriş=aşık/13, DC kablo=modül
-   ×5,64 — üçü de iki projede de tutarlı) tahmini hedefler + `notes` alanına
-   "tahmini, gerçek BOQ ile teyit edilmeli" notuyla yazıldı. Kolon çakımı için
-   iki referans projenin oranı tutmadığından (%44 fark) hiçbir sayı yazılmadı —
-   gerçek keşif rakamı gerekiyor.
-3. **Proje sihirbazı İş Kalemleri adımı sadeleştirildi + kullanılmayan alanlar
-   kaldırıldı** (bkz. "İlerleme hesaplama modeli", "Otomatik risk motoru").
-   `Adim2IsKalemleri.jsx`'teki "Kritik Yol" checkbox'ı (`is_critical`) ve
-   "Dashboard'da göster"/"Dashboard Sırası" (`dashboard_visible`/`dashboard_order`)
-   kaldırıldı; "% İlerleme" + "Durum" + ayrı "Ölçülebilir İlerleme Hedefi"
-   bölümü tek bir **Takip Türü: Durum | İlerleme** seçiciyle birleştirildi.
-   `dashboard_visible`/`dashboard_order`'ı okuyan tek RPC (`get_project_dashboard`)
-   zaten hiçbir frontend dosyasından çağrılmıyordu (dead code) — kolonlar
-   `project_tasks`'tan düşürüldü. `is_critical` otomatik risk motorunda
-   (`fn_recompute_auto_risks`) gecikme şiddetini bir kademe yükseltiyordu;
-   kullanıcı kararıyla kaldırıldı, şiddet artık yalnızca gecikme gün sayısına
-   göre (8+ kritik, 4-7 yüksek, altı orta). `get_project_gantt` çıktısından
-   `is_critical` alanı ve `trg_tasks_recompute_risks` trigger'ının `UPDATE OF`
-   sütun listesinden `is_critical` kaldırıldı (kolonu düşürebilmek için önce
-   bu bağımlılığın kaldırılması gerekti — `apply_migration` bunu bağımlı
-   trigger hatasıyla ilk denemede reddetti, iki adımda uygulandı). Bu adımın
-   kendi mini Excel şablonu/parse'ı (`src/utils/projectExcelImport.js`) aynı
-   şekilde güncellendi ("Kritik mi?"/"Dashboard" sütunları kaldırıldı, "Yapılan
-   Miktar" sütunu eklendi). **Kapsam dışı bırakıldı:** birincil "Yeni Proje"
-   Excel akışı (`supabase/functions/import-project-excel` edge fonksiyonu +
-   `fons-solar-proje-sablonu.xlsx` statik şablonu + `export-project-excel`)
-   hâlâ eski `is_critical`/`dashboard_visible`/`dashboard_order` sütunlarını
-   okuyup dolduruyor — edge fonksiyon redeploy'u ve ikili Excel dosyası
-   düzenlemesi gerektirdiğinden bu göreve dahil edilmedi, ayrı bir temizlik
-   gerekiyor (fark edilirse bu notu hatırlat).
-
-Şema değişikliği yapıldığından (`project_tasks.is_critical`/`dashboard_visible`/
-`dashboard_order` kolonları kaldırıldı) `fons_solar_sistem_dokumantasyonu.docx`/
-`fons_solar_veritabani_dokumantasyonu.docx` güncellemesi kullanıcıya hatırlatıldı.
-
-**02.08.2026 — açık detay modalları yenilemede kayboluyordu, URL'e taşındı
-(frontend-only, migration yok).** Kullanıcı bir kayıt detayını (satın alma
-talebi/ticket/fatura) incelerken sayfayı yenileyince modalın sessizce kapanıp
-alttaki listeye döndüğünü bildirdi ("sayfa en başa atıyor" — daha önce
-30.07.2026'da düzeltilen üst-sekme/proje routing bug'ından FARKLI bir sorun,
-bu kez açık bir modal'ın state'i hiç URL'e yansımıyordu). Kapsamlı canlı testle
-(4 rol, Playwright) üst sekme/proje-içi sekme/localStorage alt-sekmelerin
-hepsinin zaten doğru kalıcı olduğu, tek boşluğun detay modalları olduğu
-doğrulandı. Çözüm: `?talep=`/`?ticket=`/`?fatura=`/`?tedarikci=` sorgu
-parametreleri (bkz. "Frontend yapısı" → Routing notu) — `TabSatinAlmaTalepListesi`,
-`MuhasebeSatinAlma` (bu arada muhasebenin satın alma bildirimi deep-link'i hiç
-çalışmıyordu, o da düzeltildi), `TicketListesi`, `FaturaListesi`, `TedarikciListesi`
-hepsi yeni paylaşımlı `src/hooks/useUrlSyncedSelection.js` hook'unu kullanıyor.
-İlk implementasyonda React StrictMode'un (dev'de) effect'leri iki kez
-çalıştırması yüzünden basit bir "ilk render'ı atla" sayacı mount anındaki
-geçici `null`'ı gerçek kapanış sanıp deep-link fetch'i bitmeden URL'i
-temizliyordu — Playwright'ta `console.log` ile adım adım izlenip bulundu,
-hook "son raporlanan değerle karşılaştırma" desenine çevrilerek düzeltildi.
-66 testlik tam paket ve eslint bu turdan sonra da temiz.
-
-**Aynı gün, ikinci adım — proje-içi (ProjeDetay) eşdeğerleri de kapsandı.**
-Kullanıcı "hepsini yapalım" deyince `ProjeDetay`'ın kendi Satın Alma/Finans/
-Tickets alt-sekmelerine de aynı URL-kalıcılığı eklendi (bkz. "Frontend yapısı"
-→ Routing notu). Bu sırada AYNI kök neden sınıfından (StrictMode'un dev'de
-effect'leri iki kez çalıştırması) İKİNCİ bir bug daha bulundu: `ProjeDetay`'ın
-kendi `tab` state'ini `onTabChange`'e yansıtan efekti her mount'ta gereksiz
-tetiklenip URL'deki yeni eklenen sorgu parametresini siliyordu —
-`useUrlSyncedSelection`'daki "son işlenen değerle karşılaştır" deseniyle
-(`lastActedTabRef`) düzeltildi. Ayrıca bu turda `faz-e.spec.js`'in debounce
-testi bir kez daha (önceki bir kesintiden kalan test verisi yüzünden, bkz.
-yukarıdaki "Genel ders") flake verdi — temizlik sonrası 66/66 yeşil, kod
-değişikliğiyle ilgisizdi. 66 testlik tam paket ve eslint bu turdan sonra da temiz.
+**03.08.2026 — proje yönetimi sihirbazında (Yeni Proje / Düzenle) taslak
+otomatik kaydetme eklendi (frontend-only, migration yok).** Kullanıcı sihirbaz
+doluyken bir adımdan diğerine (WizardStepper) veya Proje Yönetimi'nden tamamen
+başka bir sekmeye geçtiğinde girilenlerin sessizce kaybolduğunu bildirdi. Kök
+neden: her adım bileşeni yalnızca "Devam"/"Kaydet" tıklanınca (`onDone`) veri
+raporluyordu; WizardStepper'ın adım linkleri ise doğrudan `setStep` çağırıp bu
+akışı hiç tetiklemeden komponenti unmount ediyordu, ayrıca tüm sihirbaz state'i
+(`stepsResult`) yalnızca bellekte tutulduğundan Proje Yönetimi sekmesinden
+ayrılmak (TabProjeYonetimi unmount) her şeyi silip baştan başlatıyordu. Çözüm:
+yeni `src/utils/projectWizardDraft.js` ile `localStorage`'a yazılan bir taslak
+katmanı — 6 adım bileşeninin (`Adim1ProjeBilgileri`…`Adim6Butce`) hepsine
+`onDraftChange` prop'u eklendi (her biri kendi ham state'ini her değişiklikte
+üst bileşene bildiriyor, validasyon beklemeden), `YeniProjeWizard.jsx`/
+`ProjeEditWizard.jsx` bunu `stepsResult`+`step`'le birlikte debounce'suz
+localStorage'a yazıp mount'ta geri okuyor. Düzenleme modunda DB'den taze veri
+çeken adımlarda (İş Kalemleri/Riskler/Bütçe) taslak varsa fetch atlanıyor artık
+(Kategori Ağırlıkları zaten bu deseni kullanıyordu) — aksi halde taslak her
+adım-dönüşünde DB'nin eski haliyle ezilirdi. Taslak sihirbaz tamamlanınca veya
+"İptal"le çıkılınca temizleniyor; kalıcı olması istenen tek durum sayfa/sekme
+değişip geri dönülmesi. Detay: bkz. "Excel şablonu / proje sihirbazı" bölümündeki
+"Taslak otomatik kaydetme" notu.

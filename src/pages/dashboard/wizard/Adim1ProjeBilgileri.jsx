@@ -15,6 +15,7 @@ export default function Adim1ProjeBilgileri({
   result,
   onDone,
   onCancel,
+  onDraftChange,
   mode = 'new',
   initialProject,
 }) {
@@ -51,6 +52,8 @@ export default function Adim1ProjeBilgileri({
       if (diff > 0) setForm(f => ({ ...f, total_days: String(diff) }))
     }
   }, [form.start_date, form.target_date])
+
+  useEffect(() => { onDraftChange?.({ ...form }) }, [form]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleIdChange(e) {
     const slug = e.target.value.toLowerCase().replace(/\s+/g, '-')
