@@ -106,7 +106,7 @@ export default function Dashboard() {
     if (urlTabValid) return
     const defaultTab = navigation.defaultTab || 'genel'
     navigate(`/dashboard/${defaultTab}`, { replace: true })
-  }, [role, navigation])
+  }, [role, navigation, navigate, pathSegments])
 
   // Adres çubuğu tek doğruluk kaynağı — her navigasyonda (geri/ileri tuşları,
   // navigate() çağrıları, doğrudan URL girişi) buradan activeTab/proje
@@ -139,7 +139,7 @@ export default function Dashboard() {
     if (nextTab === 'tickets') setOpenTicketId(params.get('ticket') || null)
     if (nextTab === 'finans') setOpenInvoiceId(params.get('fatura') || null)
     if (nextTab === 'odemeler') setOpenSupplierId(params.get('tedarikci') || null)
-  }, [location.pathname, location.search, navigation])
+  }, [location.pathname, location.search, navigation, pathSegments])
 
   // Bir liste ekranındaki açık detay modalının id'sini adres çubuğuna yazar/siler
   // (replace — her aç/kapa browser history'e yeni girdi eklemesin diye) — yukarıdaki

@@ -76,7 +76,7 @@ export default function MuhasebeGenelOzet({ onNavigate, onGoToInvoice }) {
   useRealtimeRefresh(['purchase_requests'], refetchRequests)
   useRealtimeRefresh(['invoice_payments'], fetchPayments)
 
-  const invoices = invoiceData?.invoices || []
+  const invoices = useMemo(() => invoiceData?.invoices || [], [invoiceData?.invoices])
   // get_satin_alma_overview_all() muhasebe için satin_alindi/fatura_bekliyor'un
   // yanına fatura_onay_bekliyor'u da eklendi (bkz. CLAUDE.md "Satın alma akışı")
   // — ama bu ikincisi zaten faturası oluşturulmuş, yönetici onayında bekleyen
