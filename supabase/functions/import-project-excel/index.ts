@@ -2,7 +2,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import ExcelJS from "npm:exceljs@4.4.0";
 import {
-  toStr, toNumber, toInt, toBool, toDate,
+  toStr, toNumber, toInt, toDate,
   projectTypeToCode, taskCategoryToCode, CANONICAL_CATEGORY_WEIGHTS, riskCategoryToCode,
 } from "./mapping.ts";
 
@@ -192,8 +192,7 @@ Deno.serve(async (req) => {
     const taskRows = rows(ws("İş Kalemleri"), "A", {
       task_code: "A", task_name: "B", category: "C", sub_category: "D", group_label: "E",
       planned_start: "F", planned_end: "G", status: "I", responsible: "J", responsible_role: "K",
-      team_size: "L", notes: "M", unit: "N", target_qty: "O", dashboard_visible: "P", dashboard_order: "Q",
-      is_critical: "R",
+      team_size: "L", notes: "M", unit: "N", target_qty: "O",
     }).map((r) => ({
       project_id: projectIdToUse,
       task_code: toStr(r.task_code),
@@ -209,9 +208,6 @@ Deno.serve(async (req) => {
       team_size: toInt(r.team_size),
       unit: toStr(r.unit),
       target_qty: toNumber(r.target_qty),
-      dashboard_visible: toBool(r.dashboard_visible),
-      dashboard_order: toInt(r.dashboard_order) ?? 0,
-      is_critical: toBool(r.is_critical),
     })).filter((r) => r.task_code && r.task_name && r.planned_start && r.planned_end);
     await upsertByKey(sb, "project_tasks", projectIdToUse, ["task_code"], taskRows, log);
 

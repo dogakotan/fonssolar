@@ -14,7 +14,6 @@ const jsonErr = (b, s) =>
 
 const CAP = 310;                       // temizlenecek son satır
 const d = (s) => (s ? new Date(s + "T00:00:00Z") : null);
-const yn = (b) => (b ? "Evet" : "Hayır");
 
 
 // records: [{A:val,B:val,...}]; clearCols: temizlenecek kolonlar
@@ -105,14 +104,13 @@ Deno.serve(async (req) => {
     p.getCell("J22").value = proj.battery_power_kw ?? null;
     p.getCell("J23").value = proj.battery_count ?? null;
 
-    /* 2) İş Kalemleri (H = süre formülü, dokunma; N-Q = ölçülebilir ilerleme hedefi; R = kritik yol) */
+    /* 2) İş Kalemleri (H = süre formülü, dokunma; N-O = ölçülebilir ilerleme hedefi) */
     writeSheet(ws("İş Kalemleri"), 5, (tasks.data ?? []).map((t) => ({
       A: t.task_code, B: t.task_name, C: TASK_CAT_TO_LABEL[t.category] ?? t.category,
       D: t.sub_category, E: t.group_label, F: d(t.planned_start), G: d(t.planned_end),
       I: t.status, J: t.responsible, K: t.responsible_role, L: t.team_size, M: t.notes,
-      N: t.unit, O: t.target_qty, P: yn(t.dashboard_visible), Q: t.dashboard_order,
-      R: yn(t.is_critical),
-    })), ["A","B","C","D","E","F","G","I","J","K","L","M","N","O","P","Q","R"]);
+      N: t.unit, O: t.target_qty,
+    })), ["A","B","C","D","E","F","G","I","J","K","L","M","N","O"]);
 
     /* 3) Kategori Ağırlıkları (salt okunur özet — İş Kalemleri'nden hesaplanan ortalama ilerleme eklenir) */
     {
