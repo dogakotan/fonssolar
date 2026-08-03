@@ -623,7 +623,7 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 }
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, onTabChange, initialReportId, onOpenedReport }) {
+export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, onTabChange, initialReportId, onOpenedReport, openRequestId, onOpenedRequest, onSelectedRequestChange, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange, openTicketId, onOpenedTicket, onSelectedTicketChange }) {
   // Öncelik: açık deep-link (initialTab, ör. bildirimden gelme/URL) > projeye özel
   // localStorage'da kalıcı son seçim > "Genel Proje" — aksi halde başka bir menü
   // öğesine geçip aynı projeye geri dönüldüğünde (bileşen unmount/remount
@@ -642,7 +642,18 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   // her render'da yeniden tetiklenmesine yol açardı.
   const onTabChangeRef = useRef(onTabChange)
   onTabChangeRef.current = onTabChange
+  // Mount'ta URL zaten initialTab'i yansıtıyor — buna rağmen bu efekt her mount'ta
+  // (React StrictMode'da dev'de iki kez) çalışıp onTabChange'i tetikliyordu, bu da
+  // navigate()'in bare bir path'e (query string'siz) gitmesine, dolayısıyla
+  // TicketListesi/ProjeTabSatinAlma/ProjeTabFinans'ın URL'e yazdığı ?talep=/?fatura=/
+  // ?ticket= parametresinin sayfa yenilenir yenilenmez silinmesine yol açıyordu
+  // (bkz. useUrlSyncedSelection'daki aynı kök neden — StrictMode). "Son işlenen tab"
+  // ile karşılaştırmak hem mount'u hem StrictMode'un tekrar çağrısını filtreler,
+  // yalnızca GERÇEK bir sekme değişiminde navigate tetiklenir.
+  const lastActedTabRef = useRef(tab)
   useEffect(() => {
+    if (tab === lastActedTabRef.current) return
+    lastActedTabRef.current = tab
     onTabChangeRef.current?.(tab)
   }, [tab])
   // Bileşen aynı proje için mount kalırken (ör. bir bildirimden gelen deep-link
@@ -1364,9 +1375,18 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         <TicketListesi
           projectId={projectId}
           filterDate={filterDate}
+          openTicketId={openTicketId}
+          onOpenedTicket={onOpenedTicket}
+          onSelectedTicketChange={onSelectedTicketChange}
         />
       ) : tab === 'satin-alma' ? (
-        <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
+        <ProjeTabSatinAlma
+          projectId={projectId}
+          filterDate={filterDate}
+          openRequestId={openRequestId}
+          onOpenedRequest={onOpenedRequest}
+          onSelectedRequestChange={onSelectedRequestChange}
+        />
       ) : tab === 'malzeme-listesi' ? (
         <ProjeTabMalzemeListesi
           projectId={projectId}
@@ -1376,7 +1396,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           onGoTab={setTab}
         />
       ) : tab === 'finans' ? (
-        <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
+        <ProjeTabFinans
+          projectId={projectId}
+          filterDate={filterDate}
+          openInvoiceId={openInvoiceId}
+          onOpenedInvoice={onOpenedInvoice}
+          onSelectedInvoiceChange={onSelectedInvoiceChange}
+        />
       ) : tab === 'raporlar' ? (
         <DailyReportList
           projectId={projectId}

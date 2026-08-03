@@ -24,7 +24,7 @@ const EMPTY_ACTION_ITEMS = {
   yoneticiOnayi: { count: 0, amount: 0 },
 }
 
-export default function ProjeTabFinans({ projectId, filterDate }) {
+export default function ProjeTabFinans({ projectId, filterDate, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange }) {
   const { isAdmin, role } = useAuth()
   // Proje yöneticisi artık fatura onay sürecindeki "Yönetici" — Faturalar/Onay
   // Kuyruğu'nu görüp aksiyon alabilmesi gerekiyor.
@@ -96,6 +96,13 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canApprove])
 
+  // Adres çubuğunda bir fatura id'si varsa (yenileme/deep-link) "Faturalar"
+  // sekmesine zorla geç — bkz. menü seviyesindeki TabFinans.jsx'teki aynı desen.
+  useEffect(() => {
+    if (!openInvoiceId) return
+    setTab('faturalar')
+  }, [openInvoiceId])
+
   if (!loading && !authorized) {
     return <UnauthorizedScopeNotice />
   }
@@ -142,7 +149,14 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
             </div>
           </div>
       </>}
-      {tab === 'faturalar' && <FaturaListesi projectId={projectId} />}
+      {tab === 'faturalar' && (
+        <FaturaListesi
+          projectId={projectId}
+          openInvoiceId={openInvoiceId}
+          onOpenedInvoice={onOpenedInvoice}
+          onSelectedInvoiceChange={onSelectedInvoiceChange}
+        />
+      )}
       {tab === 'onay' && <OnayKuyrugu projectId={projectId} />}
     </div>
   )

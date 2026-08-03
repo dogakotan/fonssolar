@@ -135,12 +135,19 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   sanıp deep-link fetch'i bitmeden URL parametresini silebiliyordu — bulunup
   düzeltilen bug, `useUrlSyncedSelection` bu yüzden sayaç yerine "son
   raporlanan değerle karşılaştırma" deseni kullanıyor (StrictMode'un aynı
-  değerle gelen tekrar çağrısını doğal olarak filtreler). Kapsam dışı
-  bırakılan (henüz yapılmayan) yer: proje-içi `ProjeDetay`'ın kendi Satın
-  Alma/Finans sekmeleri bu deep-link/URL-senkron prop'larını index.jsx'ten
-  hiç almıyor (`ProjeDetay.jsx:1369`'daki `<ProjeTabSatinAlma>` çağrısı gibi)
-  — yalnızca menü-seviyesi (üst sekme) görünümler kapsandı, proje detayı
-  içindeki eşdeğerler ayrı bir iş.
+  değerle gelen tekrar çağrısını doğal olarak filtreler). **Proje detayı
+  içindeki eşdeğerler de aynı gün ikinci bir adımda kapsandı** — `ProjeDetay`
+  artık `openRequestId`/`openInvoiceId`/`openTicketId` + `onSelected*Change`
+  prop'larını alıp kendi Satın Alma/Finans/Tickets alt-sekmelerine
+  (`ProjeTabSatinAlma`/`ProjeTabFinans`/`TicketListesi`) iletiyor; URL
+  `/dashboard/projeler/{id}/{sekme}?talep=`/`?fatura=`/`?ticket=` şeklinde.
+  Burada AYRI bir StrictMode-kaynaklı bug daha bulundu: `ProjeDetay`'ın kendi
+  `tab` state'ini `onTabChange` prop'una (→ `navigate(...,{replace:true})`)
+  yansıtan efekti her mount'ta (StrictMode'da iki kez) tetikleniyordu — bu da
+  bare bir path'e (query string'siz) navigate edip yeni eklenen `?talep=` vb.
+  parametreyi sayfa yenilenir yenilenmez siliyordu. `useUrlSyncedSelection`'daki
+  aynı "son işlenen değerle karşılaştır" deseni (`lastActedTabRef`) burada da
+  uygulanarak düzeltildi.
 - Proje-özel görünümler `src/pages/dashboard/components/ProjeTab*.jsx` altında
   (`ProjeDetay.jsx` seçilen projeyi gösterir); genel/tüm-projeler görünümleri
   ayrı `Tab*.jsx` dosyalarında. Finans/Satın Alma bu ikisi arasında alt
@@ -1509,6 +1516,17 @@ hepsi yeni paylaşımlı `src/hooks/useUrlSyncedSelection.js` hook'unu kullanıy
 geçici `null`'ı gerçek kapanış sanıp deep-link fetch'i bitmeden URL'i
 temizliyordu — Playwright'ta `console.log` ile adım adım izlenip bulundu,
 hook "son raporlanan değerle karşılaştırma" desenine çevrilerek düzeltildi.
-66 testlik tam paket ve eslint bu turdan sonra da temiz. Kapsam dışı: proje-içi
-`ProjeDetay`'ın kendi Satın Alma/Finans sekmeleri (yalnızca menü-seviyesi
-görünümler kapsandı, ayrı bir takip maddesi).
+66 testlik tam paket ve eslint bu turdan sonra da temiz.
+
+**Aynı gün, ikinci adım — proje-içi (ProjeDetay) eşdeğerleri de kapsandı.**
+Kullanıcı "hepsini yapalım" deyince `ProjeDetay`'ın kendi Satın Alma/Finans/
+Tickets alt-sekmelerine de aynı URL-kalıcılığı eklendi (bkz. "Frontend yapısı"
+→ Routing notu). Bu sırada AYNI kök neden sınıfından (StrictMode'un dev'de
+effect'leri iki kez çalıştırması) İKİNCİ bir bug daha bulundu: `ProjeDetay`'ın
+kendi `tab` state'ini `onTabChange`'e yansıtan efekti her mount'ta gereksiz
+tetiklenip URL'deki yeni eklenen sorgu parametresini siliyordu —
+`useUrlSyncedSelection`'daki "son işlenen değerle karşılaştır" deseniyle
+(`lastActedTabRef`) düzeltildi. Ayrıca bu turda `faz-e.spec.js`'in debounce
+testi bir kez daha (önceki bir kesintiden kalan test verisi yüzünden, bkz.
+yukarıdaki "Genel ders") flake verdi — temizlik sonrası 66/66 yeşil, kod
+değişikliğiyle ilgisizdi. 66 testlik tam paket ve eslint bu turdan sonra da temiz.

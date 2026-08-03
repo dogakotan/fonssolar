@@ -120,21 +120,27 @@ export default function Dashboard() {
     const nextTab = tabSeg && TABS[tabSeg] && (!allowed || allowed.includes(tabSeg)) ? tabSeg : null
     if (!nextTab) return
     setActiveTab(nextTab)
+    // Bir liste ekranındaki açık detay modalı (talep/ticket/fatura/tedarikçi)
+    // da adres çubuğundaki sorgu parametresinden geri yükleniyor — yenileme/
+    // geri-ileri/doğrudan URL'de modal açık kalsın diye (bkz. syncEntityParam,
+    // TabSatinAlmaTalepListesi/MuhasebeSatinAlma/TicketListesi/FaturaListesi/
+    // TedarikciListesi'ndeki onSelect* callback'leri). Proje detayı içindeki
+    // Satın Alma/Finans/Tickets alt-sekmeleri de (02.08.2026'da eklendi) aynı
+    // state'i (openRequestId vb.) paylaşır — activeTab tek seferde ya 'satin-alma'
+    // ya 'projeler' olduğundan çakışma olmaz.
+    const params = new URLSearchParams(location.search)
     if (nextTab === 'projeler' && projSeg) {
       setSelectedProjectId(projSeg)
       setShowProjectDetail(true)
       setInitialProjectTab(projTabSeg || null)
+      if (projTabSeg === 'satin-alma') setOpenRequestId(params.get('talep') || null)
+      if (projTabSeg === 'finans') setOpenInvoiceId(params.get('fatura') || null)
+      if (projTabSeg === 'tickets') setOpenTicketId(params.get('ticket') || null)
     } else if (nextTab === 'projeler') {
       setShowProjectDetail(false)
       setInitialProjectTab(null)
     }
 
-    // Bir liste ekranındaki açık detay modalı (talep/ticket/fatura/tedarikçi)
-    // da adres çubuğundaki sorgu parametresinden geri yükleniyor — yenileme/
-    // geri-ileri/doğrudan URL'de modal açık kalsın diye (bkz. syncEntityParam,
-    // TabSatinAlmaTalepListesi/MuhasebeSatinAlma/TicketListesi/FaturaListesi/
-    // TedarikciListesi'ndeki onSelect* callback'leri).
-    const params = new URLSearchParams(location.search)
     if (nextTab === 'satin-alma') setOpenRequestId(params.get('talep') || null)
     if (nextTab === 'tickets') setOpenTicketId(params.get('ticket') || null)
     if (nextTab === 'finans') setOpenInvoiceId(params.get('fatura') || null)
@@ -404,6 +410,15 @@ export default function Dashboard() {
             onTabChange={(tab) => navigate(`/dashboard/projeler/${selectedProjectId}/${tab}`, { replace: true })}
             initialReportId={initialReportId}
             onOpenedReport={() => setInitialReportId(null)}
+            openRequestId={openRequestId}
+            onOpenedRequest={() => setOpenRequestId(null)}
+            onSelectedRequestChange={(id) => syncEntityParam('talep', id)}
+            openInvoiceId={openInvoiceId}
+            onOpenedInvoice={() => setOpenInvoiceId(null)}
+            onSelectedInvoiceChange={(id) => syncEntityParam('fatura', id)}
+            openTicketId={openTicketId}
+            onOpenedTicket={() => setOpenTicketId(null)}
+            onSelectedTicketChange={(id) => syncEntityParam('ticket', id)}
           />
         )}
         {activeTab === 'satin-alma'   && role === 'santiye_sefi' && (
