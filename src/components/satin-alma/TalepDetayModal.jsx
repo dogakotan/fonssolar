@@ -24,14 +24,15 @@ function requestType(req, items) {
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'Hizmet' : 'Malzeme'
 }
 
-function Step({ done, active, label, last = false }) {
-  const color = done ? '#22C55E' : active ? '#F59E0B' : '#CBD5E1'
+function Step({ done, active, cancelled = false, label, last = false }) {
+  const color = cancelled ? '#EF4444' : done ? '#22C55E' : active ? '#F59E0B' : '#CBD5E1'
+  const ring = cancelled ? '#FEE2E2' : done ? '#DCFCE7' : active ? '#FEF3C7' : '#F1F5F9'
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr', gap: 8, position: 'relative' }}>
       {!last && <span style={{ position: 'absolute', left: 5, top: 16, bottom: -10, width: 1, background: '#E5E7EB' }} />}
-      <span style={{ position: 'relative', zIndex: 1, width: 10, height: 10, borderRadius: '50%', background: color, marginTop: 4, boxShadow: `0 0 0 4px ${done ? '#DCFCE7' : active ? '#FEF3C7' : '#F1F5F9'}` }} />
+      <span style={{ position: 'relative', zIndex: 1, width: 10, height: 10, borderRadius: '50%', background: color, marginTop: 4, boxShadow: `0 0 0 4px ${ring}` }} />
       <div>
-        <p style={{ margin: 0, fontSize: 12.5, fontWeight: 800, color: done || active ? '#0F172A' : '#94A3B8' }}>{label}</p>
+        <p style={{ margin: 0, fontSize: 12.5, fontWeight: 800, color: cancelled || done || active ? '#0F172A' : '#94A3B8' }}>{label}</p>
       </div>
     </div>
   )
@@ -77,11 +78,16 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const invoiceCreated = ['fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const invoiceDone = status === 'faturasi_kesildi'
   const invoiceActive = ['satin_alindi', 'fatura_bekliyor'].includes(status)
-  const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
+  // 'iptal' yalnızca proje yöneticisinin tedarik adımındaki "İptal Et"iyle
+  // 'onaylandi'dan geçilir — o noktaya ulaşan bir talep yönetici onayını zaten
+  // almış demektir, bu yüzden approvalDone'a da dahil (onay adımı kırmızı değil
+  // yeşil kalmalı, iptal edilen adım tedarik adımıdır).
+  const approvalDone = ['onaylandi', 'satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi', 'iptal'].includes(status)
   const procurementActive = status === 'onaylandi'
   const procurementDone = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const isRejected = status === 'red_edildi'
-  const isCancelled = isRejected || status === 'iptal'
+  const isProcurementCancelled = status === 'iptal'
+  const isCancelled = isRejected || isProcurementCancelled
   const siteChiefProcessing = status === 'onaylandi'
   const siteChiefComplete = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const canInvoice = (isAdmin || isMuhasebe) && isAwaitingInvoice(req)
@@ -182,6 +188,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                     <Step
                       active={siteChiefProcessing}
                       done={siteChiefProcessing || siteChiefComplete}
+                      cancelled={isCancelled}
                       label={isCancelled ? 'İşlem İptal Edildi' : 'İşleme Alındı'}
                     />
                     <Step done={siteChiefComplete} label="İşlem Tamamlandı" last />
@@ -195,12 +202,14 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                 <Step
                   active={status === 'bekliyor'}
                   done={approvalDone}
+                  cancelled={isRejected}
                   label={isRejected ? 'Yönetici Onayı Reddedildi' : approvalDone ? 'Yönetici Onayı Alındı' : 'Yönetici Onayı Bekliyor'}
                 />
                 <Step
                   active={procurementActive}
                   done={procurementDone}
-                  label="Proje Yöneticisinde"
+                  cancelled={isProcurementCancelled}
+                  label={isProcurementCancelled ? 'Tedarik İptal Edildi' : 'Proje Yöneticisinde'}
                 />
                 <Step
                   active={invoiceActive}

@@ -221,10 +221,16 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
       return
     }
 
+    // 'bekliyor' yalnızca utils/satinAlma.js normalizeStatus'un görüntü-kovası —
+    // purchase_requests_status_check bu değeri DB'ye asla yazdırmaz, ham değer
+    // her zaman talep_olusturuldu/fiyat_girildi/onay_bekliyor üçünden biridir
+    // (bkz. TalepDetayModal.jsx'teki updateStatus'un aynı sebeple ham status
+    // kullanması) — .eq('status','bekliyor') hiçbir satırla eşleşmediğinden
+    // admin/proje yöneticisi dışındaki roller için bu KPI hep 0 dönüyordu.
     supabase.from('purchase_requests')
       .select('id', { count: 'exact', head: true })
       .in('project_id', ids)
-      .eq('status', isProjectManager ? 'onaylandi' : 'bekliyor')
+      .in('status', isProjectManager ? ['onaylandi'] : ['talep_olusturuldu', 'fiyat_girildi', 'onay_bekliyor'])
       .then(({ count, error }) => {
         if (!error) setFilteredPurchases(count ?? 0)
       })

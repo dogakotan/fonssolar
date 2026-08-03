@@ -1562,3 +1562,118 @@ paket ve eslint bu turdan sonra da temiz.
 noktayı ikinci kez sorguladığında yeniden gözden geçirilmeli — burada gerçek
 bir tasarım kararının ARDINDA, farkında olunmayan gerçek bir veri/durum bug'ı
 saklanıyordu (₺975.600 askıda kalmış ödeme).
+
+**Aynı gün, altıncı tur — 2 bulgu araştırıldı, kod hatası OLMADIĞI teyit
+edildi (kod değişikliği yok).** Muhasebe hesabıyla Bekleyenler/Satın Alma
+ekranında SAT-2026-012/013/002 için "Onay Süreci" modalının üçünde de aynı
+adımları gösterdiği, bu yüzden bileşenin statik/hard-coded olabileceği
+raporlandı; ayrıca aynı rozetin ("Onayda") hem fatura oluşturulmadan önceki
+`onaylandi` durumunda hem de fatura sonrası `fatura_onay_bekliyor`'da
+göründüğü iddia edildi. İkisi de kodda doğrulanamadı: (1) `TalepDetayModal.jsx`'in
+"Onay Süreci" adımları statik değil, tamamen `req.status`'tan türüyor
+(`approvalDone`/`procurementDone`/`invoiceCreated` vb.) — incelenen üç talep
+zaten listede aynı "Onayda" rozetini taşıyordu, yani gerçek durumları
+(`fatura_onay_bekliyor`) baştan aynıydı; aynı durumdaki taleplerin modalının
+aynı görünmesi beklenen davranış. (2) `get_satin_alma_overview_all()`'ın
+muhasebe dalı (`20260728120915_satin_alma_overview_include_fatura_onay_bekliyor.sql`)
+muhasebeye yalnızca `satin_alindi`/`fatura_bekliyor`/`fatura_onay_bekliyor`
+durumundaki talepleri döndürüyor — `onaylandi` durumu muhasebenin bu ekranına
+hiç girmiyor, dolayısıyla "onaylandi durumunda da Onayda yazıyor" senaryosu
+kodda mümkün değil (muhtemelen test sırasında admin/proje yöneticisinin kendi
+listesiyle — orada `onaylandi`→"Proje Yöneticisinde", `fatura_onay_bekliyor`→
+"Fatura Onayda" olarak zaten ayrı etiketleniyor — karıştırılmış olmalı).
+
+**Aynı gün, yedinci tur — santiye_sefi rolü testi: 1 gerçek bug düzeltildi, 2
+bulgu araştırılıp kapatıldı, 1 not doğrulandı.**
+1. **`TalepDetayModal.jsx`'in "Onay Süreci"/"İşlem Süreci" adımlarında
+   reddedilen/iptal edilen talepler gri (pasif) gösteriliyordu — GERÇEK BUG,
+   düzeltildi.** `Step` bileşeni yalnızca `done`(yeşil)/`active`(sarı) ikili
+   durumunu biliyordu, red/iptal için üçüncü bir renk yoktu — liste görünümü
+   (`TabSatinAlmaTalepListesi.jsx`'in `ProcessStatusBadge`'i) `red_edildi`/`iptal`
+   için kırmızı gösterirken modal aynı durumdaki adımı gri bırakıyordu (SAT-2026-005
+   ile doğrulandı). `Step`'e `cancelled` prop'u eklendi (kırmızı `#EF4444`),
+   hem admin/PM modalının "Yönetici Onayı" adımına (`isRejected`) hem proje
+   yöneticisinin tedarik adımındaki "İptal Et"iyle oluşan `iptal` durumuna
+   (yeni `isProcurementCancelled`, "Proje Yöneticisinde" adımını kırmızı
+   "Tedarik İptal Edildi" yapar) hem site şefi görünümündeki tek adıma
+   (`isCancelled`) bağlandı. Bu arada `approvalDone` listesine `iptal` de
+   eklendi — `iptal`e yalnızca `onaylandi`dan (yönetici onayı çoktan alınmış)
+   geçildiğinden, onay adımının kendisi hâlâ yeşil kalmalı, kırmızı olan
+   tedarik adımı. Frontend-only, migration yok, eslint temiz.
+2. **Bulgu M (talep sahibine "onaylandı" bildirimi gitmiyor iddiası) — canlı
+   DB'de doğrulanamadı, muhtemelen bir test/oturum yanılgısı.** SAT-2026-144
+   (test sırasında oluşturulan gerçek talep) için `trg_notify_purchase_request_status`
+   gerçekten çalışmış: `notifications` tablosunda `recipient_id`=santiyesefi.test,
+   `entity_id`=bu talep, `event_type='status_changed'`, body="Yeni durum:
+   onaylandi", `is_read=false` bir satır bulundu — yani bildirim backend'de
+   doğru üretilmiş ve hâlâ okunmamış duruyor. Test sırasında incelenen diğer
+   "onaylandı" örnekleri (SAT-2026-004 vb.) muhtemelen doğrudan SQL ile seed
+   edilmiş demo veri — durumları hiç gerçek bir UPDATE ile değişmediğinden
+   (`AFTER UPDATE` trigger'ı hiç tetiklenmemiş) o kayıtlar için bildirim zaten
+   var olamaz, bu backend'de bir eksiklik değil. Kullanıcıdan santiyesefi.test
+   ile Bildirimler'i yenileyip SAT-2026-144'ü tekrar kontrol etmesi istendi.
+3. **Bulgu O (Riskler'e santiye_sefi menüsünden erişim yok) — kasıtlı, bug
+   değil.** `role_allowed_tabs`'ta santiye_sefi için `projeler` sekmesi hiç
+   yok (yalnızca genel/is-plani/satin-alma/tickets/daily-report/rapor-listesi/
+   bildirimler) — yani site şefi normal kullanımda tam `ProjeDetay.jsx`'e
+   (dolayısıyla Malzeme Listesi'nin Riskler alt-sekmesine) hiç giremiyor;
+   kendi sadeleştirilmiş Satın Alma görünümü zaten yalnızca Talepler ve
+   Malzeme Listesi içeriyor (bkz. "Frontend yapısı" → şantiye şefi notu),
+   Riskler bilinçli olarak dışarıda. `ProjeDetay.jsx` sekme bazlı rol gizleme
+   yapmadığından (`CLAUDE.md`'nin kendi notu) doğrudan URL'le girilebilmesi
+   beklenen davranış, RLS/erişim açığı değil.
+4. **İlerleme testindeki "%55.2→%57.6 girdim ama proje geneli değişmedi" notu
+   — kullanıcının rounding şüphesi rakamla doğrulandı.** `fn_sync_project_progress`
+   basit formülü (`ROUND(SUM(weight_pct * kategori_ortalaması)/100)`) ile
+   Kayseri Develi GES'te `kiris_montaji` kategorisinin ağırlığı %10 ve
+   kategoride tek görev var: güncelleme öncesi ağırlıklı toplam 2694/100=26.94,
+   sonrası 2718/100=27.18 — ikisi de tam sayıya yuvarlanınca 27 kalıyor. Gerçek
+   bir realtime/hesaplama sorunu yok, yalnızca görüntülenen tam sayı bu küçük
+   farkı yansıtamıyor.
+
+**Aynı gün, acil prod bug — 4 kullanıcı giriş yapamıyordu, düzeltildi.**
+`berksurucu@fonssolar.com` girişte arayüzde çıplak `{}` hatası aldı. Auth
+loglarında (`get_logs('auth')`) kök neden bulundu: `error finding user: sql:
+Scan error on column index 3, name "confirmation_token": converting NULL to
+string is unsupported` — GoTrue, `auth.users.confirmation_token` (ve
+`recovery_token`/`email_change`/`email_change_token_new`) `NULL` olduğunda
+`signInWithPassword`'da 500 patlıyor. Bu kolonlar normal signup/Admin API
+akışında her zaman `''` olur; `NULL` yalnızca bir hesap bu akışın DIŞINDA
+(doğrudan SQL insert ile) oluşturulduğunda oluşur. Sorgulayınca 4 gerçek
+proje_yöneticisi hesabının (`berksurucu@fonssolar.com`, `bayram.demir@`,
+`osman.karadogan@`, `cem.aslan@fonssolar.com`) bu şekilde bozuk olduğu
+görüldü. `UPDATE auth.users SET ...= COALESCE(..., '')` ile (yalnızca NULL→''
+dönüşümü, veri kaybı yok) 4 satır düzeltildi, doğrulandı (0 NULL kaldı). **Not:**
+bundan sonra `auth.users`'a doğrudan SQL ile kullanıcı eklenirse (Admin API/
+`supabase.auth.admin.createUser` dışında) aynı hata tekrarlanır — yeni
+kullanıcılar hep Admin API/normal signup ile oluşturulmalı, bu 4 kolonun
+`''` varsayılanını atlayan bir INSERT bir daha yazılmamalı.
+
+**Aynı gün, sekizinci tur — admin rolü derin kontrolü: 2 gerçek bug düzeltildi
+(biri migration'lı), 1 bulgu retest bekliyor.**
+1. **Bulgu R — "Bekleyen Onaylar" KPI'ının Satın Alma ve Ticket sayaçları
+   eksik sayıyordu, ikisi de gerçek bug, düzeltildi.** (a) `TabGenel.jsx`'teki
+   admin/proje-yöneticisi Satın Alma sayacı `.eq('status','bekliyor')`
+   kullanıyordu — `'bekliyor'` yalnızca `utils/satinAlma.js`'in görüntü-kovası,
+   `purchase_requests_status_check` bu değeri DB'ye hiç yazdırmaz (aynı kök
+   neden sınıfı: bkz. "Satın alma akışı" altındaki `TalepDetayModal` Onayla/
+   Reddet bug'ı) — sorgu her zaman 0 dönüyordu. `.in('status', ['talep_olusturuldu',
+   'fiyat_girildi','onay_bekliyor'])`'a çevrildi (frontend-only). (b)
+   `get_dashboard_summary.open_tickets` yalnızca `status='açık'` sayıyordu;
+   gerçek durum dağılımı (`açık`=4, `gönderildi`=5, `işlemde`=2, `kapatıldı`=8,
+   `iptal_edildi`=3) sorgulandığında kanonik "Açık" tanımının (`ticketStatus.js`'teki
+   `STATUS_META`, `açık`+`gönderildi`'yi aynı etikette birleştirir) toplamının
+   9 olduğu doğrulandı — dashboard'un 4'ü tam olarak bu ikinci ham değeri
+   atladığını gösteriyordu. `open_tickets`'ı `status in ('açık','gönderildi')`'e
+   çeviren migration onaylanıp uygulandı (`20260801211040_fix_dashboard_open_tickets_count_include_gonderildi`).
+   Fatura sayacı (`pending_invoices`, zaten `yönetici_onayında`'ya daraltılmıştı,
+   bkz. "Gerçekleşen maliyet kanonik tanımı") zaten doğruydu, dokunulmadı.
+2. **Bulgu L/P (site şefi modalının reddedilen talepte yeşil/donuk kalması) —
+   retest bekliyor.** Aynı oturumda biraz önce (yedinci turdan hemen önce)
+   uygulanan `TalepDetayModal.jsx` `cancelled` düzeltmesi tam bu senaryoyu
+   (`isCancelled`, site şefi görünümüne de bağlı) kapsıyor; SAT-2026-005'in
+   verisi (`status='reddedildi'`, proje/RLS erişimi santiyesefi.test ile
+   uyumlu) doğrudan DB'den doğrulandı — kodda bir engel yok. Kullanıcıdan
+   sayfayı sert yenileyip santiyesefi.test ile tekrar kontrol etmesi istendi;
+   hâlâ tamamen donuk görünürse (kırmızı bile değil) daha derin bir sorun
+   olabilir, tekrar bakılacak.
