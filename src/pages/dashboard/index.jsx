@@ -77,6 +77,7 @@ export default function Dashboard() {
   const [openTicketId,        setOpenTicketId]        = useState(null)
   const [openRequestId,       setOpenRequestId]        = useState(null)
   const [openInvoiceId,       setOpenInvoiceId]        = useState(null)
+  const [openSupplierId,      setOpenSupplierId]       = useState(null)
   const [invoiceProjectId,    setInvoiceProjectId]     = useState(null)
   const [initialProjectTab,   setInitialProjectTab]    = useState(() => (pathSegments[0] === 'projeler' ? pathSegments[2] || null : null))
   const [initialReportId,     setInitialReportId]      = useState(null)
@@ -127,7 +128,29 @@ export default function Dashboard() {
       setShowProjectDetail(false)
       setInitialProjectTab(null)
     }
-  }, [location.pathname, navigation])
+
+    // Bir liste ekranındaki açık detay modalı (talep/ticket/fatura/tedarikçi)
+    // da adres çubuğundaki sorgu parametresinden geri yükleniyor — yenileme/
+    // geri-ileri/doğrudan URL'de modal açık kalsın diye (bkz. syncEntityParam,
+    // TabSatinAlmaTalepListesi/MuhasebeSatinAlma/TicketListesi/FaturaListesi/
+    // TedarikciListesi'ndeki onSelect* callback'leri).
+    const params = new URLSearchParams(location.search)
+    if (nextTab === 'satin-alma') setOpenRequestId(params.get('talep') || null)
+    if (nextTab === 'tickets') setOpenTicketId(params.get('ticket') || null)
+    if (nextTab === 'finans') setOpenInvoiceId(params.get('fatura') || null)
+    if (nextTab === 'odemeler') setOpenSupplierId(params.get('tedarikci') || null)
+  }, [location.pathname, location.search, navigation])
+
+  // Bir liste ekranındaki açık detay modalının id'sini adres çubuğuna yazar/siler
+  // (replace — her aç/kapa browser history'e yeni girdi eklemesin diye) — yukarıdaki
+  // URL-sync efektinin karşılığı, yenilemede modalın geri yüklenebilmesi için.
+  function syncEntityParam(paramName, id) {
+    const params = new URLSearchParams(location.search)
+    if (id) params.set(paramName, id)
+    else params.delete(paramName)
+    const qs = params.toString()
+    navigate(`${location.pathname}${qs ? `?${qs}` : ''}`, { replace: true })
+  }
 
   useEffect(() => {
     window.localStorage.setItem('dashboard-active-tab', activeTab)
@@ -158,7 +181,7 @@ export default function Dashboard() {
     navigate(`/dashboard/projeler/${id}/${tab}`)
   }
 
-  function handleTabChange(tab) {
+  function handleTabChange(tab, query = '') {
     const allowed = navigation?.tabs
     if (allowed && !allowed.includes(tab)) return
     if (role === 'santiye_sefi' && tab === 'daily-report') {
@@ -178,7 +201,7 @@ export default function Dashboard() {
       navigate(`/dashboard/projeler/${selectedProjectId}${initialProjectTab ? `/${initialProjectTab}` : ''}`)
       return
     }
-    navigate(`/dashboard/${tab}`)
+    navigate(`/dashboard/${tab}${query}`)
   }
 
   function openReportModal(id = null) {
@@ -201,15 +224,13 @@ export default function Dashboard() {
   // Tickets sekmesine geç, o ticket'ı doğrudan aç.
   function goToTicket(ticketId) {
     closeReportModal()
-    setOpenTicketId(ticketId)
-    handleTabChange('tickets')
+    handleTabChange('tickets', `?ticket=${ticketId}`)
   }
 
   // Bildirimler sayfasından bir satın alma talebi bildirimine tıklanınca:
   // Satın Alma sekmesine geç, o talebi doğrudan aç.
   function goToRequest(requestId) {
-    setOpenRequestId(requestId)
-    handleTabChange('satin-alma')
+    handleTabChange('satin-alma', `?talep=${requestId}`)
   }
 
   // Bildirimler sayfasından bir fatura bildirimine tıklanınca: Finans sekmesine
@@ -224,9 +245,8 @@ export default function Dashboard() {
       if (data) goToRequest(data)
       return
     }
-    setOpenInvoiceId(invoiceId)
     setInvoiceProjectId(invoiceProjectId)
-    handleTabChange('finans')
+    handleTabChange('finans', `?fatura=${invoiceId}`)
   }
 
   // Bildirimler sayfasından bir günlük rapor bildirimine tıklanınca: rapor
@@ -387,28 +407,36 @@ export default function Dashboard() {
           />
         )}
         {activeTab === 'satin-alma'   && role === 'santiye_sefi' && (
-          <ProjeTabSatinAlma projectId={projectId} siteChiefView openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
+          <ProjeTabSatinAlma projectId={projectId} siteChiefView openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} onSelectedRequestChange={(id) => syncEntityParam('talep', id)} />
         )}
         {activeTab === 'satin-alma'   && role === 'proje_yoneticisi' && (
-          <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
+          <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} onSelectedRequestChange={(id) => syncEntityParam('talep', id)} />
         )}
         {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && (
-          <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} />
+          <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} onSelectedRequestChange={(id) => syncEntityParam('talep', id)} />
         )}
         {activeTab === 'finans'       && (
           <TabFinans
             openInvoiceId={openInvoiceId}
             onOpenedInvoice={() => setOpenInvoiceId(null)}
+            onSelectedInvoiceChange={(id) => syncEntityParam('fatura', id)}
             invoiceProjectId={invoiceProjectId}
             onNavigateTop={handleTabChange}
           />
         )}
-        {activeTab === 'odemeler'     && <TabOdemeler />}
+        {activeTab === 'odemeler'     && (
+          <TabOdemeler
+            openSupplierId={openSupplierId}
+            onOpenedSupplier={() => setOpenSupplierId(null)}
+            onSelectedSupplierChange={(id) => syncEntityParam('tedarikci', id)}
+          />
+        )}
         {activeTab === 'tickets'      && (
           <TabTickets
             selectedDate={selectedDate}
             openTicketId={openTicketId}
             onOpenedTicket={() => setOpenTicketId(null)}
+            onSelectedTicketChange={(id) => syncEntityParam('ticket', id)}
           />
         )}
         {activeTab === 'kullanicilar' && (isAdmin || role === 'proje_yoneticisi') && <TabKullanicilar />}

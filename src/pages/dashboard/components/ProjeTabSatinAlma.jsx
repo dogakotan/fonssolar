@@ -10,7 +10,7 @@ import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
 import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
 
-export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false, openRequestId, onOpenedRequest }) {
+export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false, openRequestId, onOpenedRequest, onSelectedRequestChange }) {
   const { isAdmin, role } = useAuth()
   const canManageProcurement = isAdmin || role === 'proje_yoneticisi'
   // Sekme seçimi projeye özel olarak localStorage'da kalıcı — aksi halde başka
@@ -136,6 +136,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
           siteChiefView={siteChiefView}
           openRequestId={openRequestId}
           onOpenedRequest={onOpenedRequest}
+          onSelectedRequestChange={onSelectedRequestChange}
         />
       )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}

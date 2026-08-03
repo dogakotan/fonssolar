@@ -7,7 +7,7 @@ import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
 import MuhasebeSatinAlma from './MuhasebeSatinAlma'
 
-export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
+export default function TabSatinAlma({ openRequestId, onOpenedRequest, onSelectedRequestChange } = {}) {
   const { role, isAdmin, isMuhasebe } = useAuth()
   // Sekme seçimi localStorage'da kalıcı — aksi halde başka bir menü öğesine
   // geçip Satın Alma'ya geri dönüldüğünde (bileşen unmount/remount olduğundan)
@@ -82,6 +82,9 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
           projectOptions={projectOptions}
           projectFilter={projectFilter}
           onProjectFilter={setProjectFilter}
+          openRequestId={openRequestId}
+          onOpenedRequest={onOpenedRequest}
+          onSelectedRequestChange={onSelectedRequestChange}
         />
       </div>
     )
@@ -122,6 +125,7 @@ export default function TabSatinAlma({ openRequestId, onOpenedRequest } = {}) {
           refreshKey={refreshKey}
           openRequestId={openRequestId}
           onOpenedRequest={onOpenedRequest}
+          onSelectedRequestChange={onSelectedRequestChange}
           listTitle={isMuhasebe ? 'Faturalanacak Talepler' : undefined}
         />
       )}

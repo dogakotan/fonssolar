@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useUrlSyncedSelection } from '../../hooks/useUrlSyncedSelection'
 import { supabase } from '../../lib/supabase'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../ui/DataStatusBanner'
@@ -105,7 +106,7 @@ const linkBtn = { background: 'none', border: 'none', color: 'var(--color-primar
 // projectId/filterDate yoksa (menü modu): tüm projelerin faturaları, Satıra
 // tıklama → detay modalı. projectId doluysa (proje modu): yalnız o projenin
 // faturaları (filterDate'e kadar).
-export default function FaturaListesi({ projectId = null, filterDate = null, openInvoiceId, onOpenedInvoice }) {
+export default function FaturaListesi({ projectId = null, filterDate = null, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange }) {
   const { isAdmin, isMuhasebe, role } = useAuth()
   const canApprove = isAdmin || role === 'proje_yoneticisi'
   const [invoices, setInvoices] = useState([])
@@ -120,6 +121,8 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
   const [editingInvoice, setEditingInvoice] = useState(null)
   const [showAddInvoice, setShowAddInvoice] = useState(false)
   const [detayFatura, setDetayFatura] = useState(null)
+  // Açık fatura detay modalının id'sini adres çubuğuna yansıtır.
+  useUrlSyncedSelection(detayFatura?.id ?? null, onSelectedInvoiceChange)
   const [cancelling, setCancelling] = useState(null)
 
   async function fetchInvoices() {

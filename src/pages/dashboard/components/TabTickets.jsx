@@ -3,7 +3,7 @@ import { useAuth } from '../../../context/AuthContext'
 import { getProjects } from '../../../api'
 import TicketListesi from '../../../components/tickets/TicketListesi'
 
-export default function TabTickets({ openTicketId, onOpenedTicket } = {}) {
+export default function TabTickets({ openTicketId, onOpenedTicket, onSelectedTicketChange } = {}) {
   const { isAdmin, role } = useAuth()
   // proje_yoneticisi de cross_project (admin gibi tüm erişilebilir projeleri görebiliyor) —
   // 2026-07-21'de proje filtresi bu role da açıldı.
@@ -40,6 +40,7 @@ export default function TabTickets({ openTicketId, onOpenedTicket } = {}) {
         projectId={projectFilter || undefined}
         openTicketId={openTicketId}
         onOpenedTicket={onOpenedTicket}
+        onSelectedTicketChange={onSelectedTicketChange}
       />
     </div>
   )

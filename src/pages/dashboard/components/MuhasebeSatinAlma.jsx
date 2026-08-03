@@ -6,6 +6,7 @@ import Pager from '../../../components/ui/Pager'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../../../components/ui/DataStatusBanner'
 import { requestNo } from '../../../utils/purchaseRequestNo'
+import { useUrlSyncedSelection } from '../../../hooks/useUrlSyncedSelection'
 
 const PAGE_SIZE = 8
 const money = value => new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(Number(value) || 0)
@@ -14,7 +15,7 @@ const requestAmount = request => Number(request.approved_amount ?? request.estim
 const requestType = request => request.category === 'hizmet' ? 'Hizmet' : request.category === 'diger' ? 'Diğer' : 'Malzeme'
 const supplierName = request => request.supplier_name || request.supplier?.name || request.suppliers?.name || '—'
 
-export default function MuhasebeSatinAlma({ requests, refreshing, onRefresh, projectOptions, projectFilter, onProjectFilter }) {
+export default function MuhasebeSatinAlma({ requests, refreshing, onRefresh, projectOptions, projectFilter, onProjectFilter, openRequestId, onOpenedRequest, onSelectedRequestChange }) {
   const [invoices, setInvoices] = useState([])
   const [search, setSearch] = useState('')
   const [dateFilter, setDateFilter] = useState('all')
@@ -24,6 +25,25 @@ export default function MuhasebeSatinAlma({ requests, refreshing, onRefresh, pro
   const [detailRequest, setDetailRequest] = useState(null)
   const [invoiceError, setInvoiceError] = useState('')
   const [showAddInvoice, setShowAddInvoice] = useState(false)
+
+  // Bildirimler'den bir satın alma talebine deep-link — bu ekranın kendi
+  // requests prop'u zaten tam talep listesini içerdiğinden (get_satin_alma_overview_all),
+  // TabSatinAlmaTalepListesi'ndeki gibi ayrı bir RPC'ye gerek yok, doğrudan bulunur.
+  // Öncesinde bu bileşen openRequestId'yi hiç almıyordu — muhasebe bir satın alma
+  // bildirimine tıkladığında sessizce hiçbir şey açılmıyordu.
+  useEffect(() => {
+    if (!openRequestId) return
+    // requests prop'u (get_satin_alma_overview_all) henüz yüklenmemiş olabilir —
+    // boşken tüketmeyi (onOpenedRequest) erteliyoruz, aksi halde veri gelmeden
+    // "bulunamadı" sayılıp deep-link sessizce kaybolurdu.
+    if (!requests.length) return
+    const found = requests.find(r => r.id === openRequestId)
+    if (found) setDetailRequest(found)
+    onOpenedRequest?.()
+  }, [openRequestId, requests, onOpenedRequest])
+
+  // Açık detay modalının id'sini adres çubuğuna yansıtır.
+  useUrlSyncedSelection(detailRequest?.id ?? null, onSelectedRequestChange)
 
   async function fetchInvoices() {
     const { data, error } = await supabase.rpc('get_invoices_list', { p_project_id: null, p_filter_date: null })

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useUrlSyncedSelection } from '../../../hooks/useUrlSyncedSelection'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
@@ -132,6 +133,7 @@ export default function TabSatinAlmaTalepListesi({
   siteChiefView = false,
   openRequestId,
   onOpenedRequest,
+  onSelectedRequestChange,
 }) {
   const { user, role, isAdmin, isMuhasebe } = useAuth()
   const [requests, setRequests] = useState([])
@@ -141,6 +143,10 @@ export default function TabSatinAlmaTalepListesi({
   const [statusFilter, setStatusFilter] = useState(onlyPending ? 'bekliyor' : 'all')
   const [showNew, setShowNew] = useState(false)
   const [selected, setSelected] = useState(null)
+  // Açık detay modalının id'sini adres çubuğuna yansıtır (yenilemede/geri-ileri'de
+  // modal açık kalsın diye) — hem satır tıklamasından hem openRequestId deep-link'inden
+  // gelen açılışları kapsar, kapanışta da id'yi null'a çeker (bkz. useUrlSyncedSelection).
+  useUrlSyncedSelection(selected?.id ?? null, onSelectedRequestChange)
   const [faturaRequest, setFaturaRequest] = useState(null)
   const [actionLoading, setActionLoading] = useState(null)
   const [errorMessage, setErrorMessage] = useState('')

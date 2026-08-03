@@ -8,6 +8,7 @@ import DateNavigator from '../ui/DateNavigator'
 import { SEVERITY_META as SEVERITY, SEVERITY_ORDER, SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
 import { CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
 import { fetchProfileNames } from '../../utils/profileNames'
+import { useUrlSyncedSelection } from '../../hooks/useUrlSyncedSelection'
 
 const TH = { height: 24, boxSizing: 'border-box', padding: '0 12px', lineHeight: '24px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', whiteSpace: 'nowrap', verticalAlign: 'middle' }
 const TD = { height: 64, boxSizing: 'border-box', padding: '0 12px', fontSize: 12.5, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
@@ -158,7 +159,7 @@ function QuickActionModal({ ticket, action, onClose, onDone }) {
   )
 }
 
-export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId, filterStatus, filterSeverity, filterDate: filterDateProp, openTicketId, onOpenedTicket }) {
+export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId, filterStatus, filterSeverity, filterDate: filterDateProp, openTicketId, onOpenedTicket, onSelectedTicketChange }) {
   const { user, isAdmin, role, projectId: authProjectId } = useAuth()
   const [tickets, setTickets]               = useState([])
   const [loading, setLoading]               = useState(true)
@@ -174,6 +175,8 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   const calBtnRef = useRef(null)
   const [showNew, setShowNew]               = useState(false)
   const [selected, setSelected]             = useState(null)
+  // Açık ticket detay modalının id'sini adres çubuğuna yansıtır.
+  useUrlSyncedSelection(selected?.id ?? null, onSelectedTicketChange)
   const [quickAction, setQuickAction]       = useState(null)
   const isProjectManager = role === 'proje_yoneticisi'
   const canManage = isAdmin || isProjectManager

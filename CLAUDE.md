@@ -114,7 +114,33 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   dahil) `showProjectDetail`'i sıfırlıyordu — bu yüzden bir projenin
   içindeyken başka bir menüye geçip "Projeler"e geri dönmek her seferinde
   proje listesine düşüyordu; bu satır kaldırıldı, listeye dönmenin açık yolu
-  artık yalnızca `ProjeDetay`'ın kendi "← Projelere Dön" butonu.
+  artık yalnızca `ProjeDetay`'ın kendi "← Projelere Dön" butonu. **Açık detay
+  modalları da (02.08.2026'da eklendi) URL'e yansıyor** — satın alma talebi
+  (`?talep=`), ticket (`?ticket=`), fatura (`?fatura=`), tedarikçi (`?tedarikci=`)
+  detay modallerinin hepsi bu sorgu parametreleriyle kalıcı (`TabSatinAlmaTalepListesi`/
+  `MuhasebeSatinAlma`/`TicketListesi`/`FaturaListesi`/`TedarikciListesi`,
+  `src/hooks/useUrlSyncedSelection.js` paylaşımlı hook'u üzerinden) —
+  öncesinde bir detay modalı açıkken sayfa yenilenince modal sessizce kapanıp
+  alttaki listeye dönülüyordu (üst sekme/proje kaybolmuyordu ama "hangi kaydı
+  inceliyordum" bilgisi kayboluyordu). `index.jsx`'teki `syncEntityParam`
+  yardımcı fonksiyonu mevcut path'i koruyarak yalnızca ilgili parametreyi
+  ekler/siler (`{replace:true}`, her aç/kapa history'e girdi eklemesin diye);
+  bildirimlerden gelen deep-link'ler (`goToRequest`/`goToTicket`/`goToInvoice`)
+  artık `setOpen*Id` + ayrı `navigate()` yerine doğrudan sorgu parametreli
+  URL'e gider, `openRequestId` vb. state'i URL'den TEK bir merkezi efekt
+  türetir. **Kritik implementasyon notu:** çocuk bileşendeki "seçili id
+  değişti, parent'a bildir" efekti basit bir "ilk render'ı atla" sayacıyla
+  yazılırsa React StrictMode'un (dev'de) efektleri iki kez çalıştırması bu
+  sayacı yanlış tüketip mount anındaki geçici `null` durumunu "gerçek kapanış"
+  sanıp deep-link fetch'i bitmeden URL parametresini silebiliyordu — bulunup
+  düzeltilen bug, `useUrlSyncedSelection` bu yüzden sayaç yerine "son
+  raporlanan değerle karşılaştırma" deseni kullanıyor (StrictMode'un aynı
+  değerle gelen tekrar çağrısını doğal olarak filtreler). Kapsam dışı
+  bırakılan (henüz yapılmayan) yer: proje-içi `ProjeDetay`'ın kendi Satın
+  Alma/Finans sekmeleri bu deep-link/URL-senkron prop'larını index.jsx'ten
+  hiç almıyor (`ProjeDetay.jsx:1369`'daki `<ProjeTabSatinAlma>` çağrısı gibi)
+  — yalnızca menü-seviyesi (üst sekme) görünümler kapsandı, proje detayı
+  içindeki eşdeğerler ayrı bir iş.
 - Proje-özel görünümler `src/pages/dashboard/components/ProjeTab*.jsx` altında
   (`ProjeDetay.jsx` seçilen projeyi gösterir); genel/tüm-projeler görünümleri
   ayrı `Tab*.jsx` dosyalarında. Finans/Satın Alma bu ikisi arasında alt
@@ -1464,3 +1490,25 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 Şema değişikliği yapıldığından (`project_tasks.is_critical`/`dashboard_visible`/
 `dashboard_order` kolonları kaldırıldı) `fons_solar_sistem_dokumantasyonu.docx`/
 `fons_solar_veritabani_dokumantasyonu.docx` güncellemesi kullanıcıya hatırlatıldı.
+
+**02.08.2026 — açık detay modalları yenilemede kayboluyordu, URL'e taşındı
+(frontend-only, migration yok).** Kullanıcı bir kayıt detayını (satın alma
+talebi/ticket/fatura) incelerken sayfayı yenileyince modalın sessizce kapanıp
+alttaki listeye döndüğünü bildirdi ("sayfa en başa atıyor" — daha önce
+30.07.2026'da düzeltilen üst-sekme/proje routing bug'ından FARKLI bir sorun,
+bu kez açık bir modal'ın state'i hiç URL'e yansımıyordu). Kapsamlı canlı testle
+(4 rol, Playwright) üst sekme/proje-içi sekme/localStorage alt-sekmelerin
+hepsinin zaten doğru kalıcı olduğu, tek boşluğun detay modalları olduğu
+doğrulandı. Çözüm: `?talep=`/`?ticket=`/`?fatura=`/`?tedarikci=` sorgu
+parametreleri (bkz. "Frontend yapısı" → Routing notu) — `TabSatinAlmaTalepListesi`,
+`MuhasebeSatinAlma` (bu arada muhasebenin satın alma bildirimi deep-link'i hiç
+çalışmıyordu, o da düzeltildi), `TicketListesi`, `FaturaListesi`, `TedarikciListesi`
+hepsi yeni paylaşımlı `src/hooks/useUrlSyncedSelection.js` hook'unu kullanıyor.
+İlk implementasyonda React StrictMode'un (dev'de) effect'leri iki kez
+çalıştırması yüzünden basit bir "ilk render'ı atla" sayacı mount anındaki
+geçici `null`'ı gerçek kapanış sanıp deep-link fetch'i bitmeden URL'i
+temizliyordu — Playwright'ta `console.log` ile adım adım izlenip bulundu,
+hook "son raporlanan değerle karşılaştırma" desenine çevrilerek düzeltildi.
+66 testlik tam paket ve eslint bu turdan sonra da temiz. Kapsam dışı: proje-içi
+`ProjeDetay`'ın kendi Satın Alma/Finans sekmeleri (yalnızca menü-seviyesi
+görünümler kapsandı, ayrı bir takip maddesi).

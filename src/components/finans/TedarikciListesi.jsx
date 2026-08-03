@@ -6,6 +6,7 @@ import TedarikciFormModal from './TedarikciFormModal'
 import TedarikciDetayModal from './TedarikciDetayModal'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../ui/DataStatusBanner'
+import { useUrlSyncedSelection } from '../../hooks/useUrlSyncedSelection'
 
 const PAGE_SIZE = 8
 const dateText = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('tr-TR') : '—'
@@ -20,7 +21,7 @@ function supplierStatus(row) {
 const today = () => new Date().toISOString().slice(0, 10)
 const in7Days = () => new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
 
-export default function TedarikciListesi({ projectId = '' }) {
+export default function TedarikciListesi({ projectId = '', openSupplierId, onOpenedSupplier, onSelectedSupplierChange }) {
   const [suppliers, setSuppliers] = useState([])
   const [invoices, setInvoices] = useState([])
   const [transactions, setTransactions] = useState([])
@@ -32,6 +33,17 @@ export default function TedarikciListesi({ projectId = '' }) {
   const [page, setPage] = useState(0)
   const [detailId, setDetailId] = useState(null)
   const [adding, setAdding] = useState(false)
+
+  // Adres çubuğundan (yenileme/deep-link) gelen tedarikçi id'si — TedarikciDetayModal
+  // zaten yalnızca id ile çalıştığından ayrı bir kayıt araması gerekmiyor.
+  useEffect(() => {
+    if (!openSupplierId) return
+    setDetailId(openSupplierId)
+    onOpenedSupplier?.()
+  }, [openSupplierId, onOpenedSupplier])
+
+  // Açık tedarikçi detay modalının id'sini adres çubuğuna yansıtır.
+  useUrlSyncedSelection(detailId ?? null, onSelectedSupplierChange)
 
   async function fetchData() {
     setLoading(true)

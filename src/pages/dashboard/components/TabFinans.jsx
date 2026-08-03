@@ -28,7 +28,7 @@ const EMPTY_ACTION_ITEMS = {
   yoneticiOnayi: { count: 0, amount: 0 },
 }
 
-export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProjectId, onNavigateTop } = {}) {
+export default function TabFinans({ openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange, invoiceProjectId, onNavigateTop } = {}) {
   const { isMuhasebe } = useAuth()
   // Sekme seçimi localStorage'da kalıcı — aksi halde başka bir menü öğesine
   // geçip Finans'a geri dönüldüğünde (bileşen unmount/remount olduğundan)
@@ -184,6 +184,7 @@ export default function TabFinans({ openInvoiceId, onOpenedInvoice, invoiceProje
           projectId={selectedProjectId || null}
           openInvoiceId={openInvoiceId}
           onOpenedInvoice={onOpenedInvoice}
+          onSelectedInvoiceChange={onSelectedInvoiceChange}
         />
       )}
       {tab === 'onay'      && <OnayKuyrugu projectId={selectedProjectId || null} />}

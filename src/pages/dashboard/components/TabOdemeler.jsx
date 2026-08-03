@@ -12,7 +12,7 @@ const TABS = [
 // üzerinden) — Ödeme Takibi + Tedarikçiler önceden Finans'ın alt-sekmeleriydi,
 // muhasebenin günlük işinin ağırlıklı kısmı bu ikisi olduğundan ayrı bir menü
 // öğesine çıkarıldı (bkz. CLAUDE.md "Muhasebe & Finans modülü").
-export default function TabOdemeler({ initialTab } = {}) {
+export default function TabOdemeler({ initialTab, openSupplierId, onOpenedSupplier, onSelectedSupplierChange } = {}) {
   // Öncelik: açık deep-link (initialTab) > localStorage'da kalıcı son seçim >
   // varsayılan — başka bir menü öğesine geçip geri dönüldüğünde (bileşen
   // unmount/remount olduğundan) her seferinde "Ödeme Takibi"ne dönmesin diye
@@ -37,6 +37,13 @@ export default function TabOdemeler({ initialTab } = {}) {
     return () => { alive = false }
   }, [])
 
+  // Adres çubuğunda bir tedarikçi id'si varsa (yenileme/deep-link) "Tedarikçiler"
+  // sekmesine zorla geç — bkz. TabFinans.jsx'teki openInvoiceId ile aynı desen.
+  useEffect(() => {
+    if (!openSupplierId) return
+    setTab('tedarikciler')
+  }, [openSupplierId])
+
   return (
     <div>
       <div className="payment-top-bar">
@@ -52,7 +59,14 @@ export default function TabOdemeler({ initialTab } = {}) {
       </div>
 
       {tab === 'odemeler' && <OdemeTakibi projectId={selectedProjectId || null} />}
-      {tab === 'tedarikciler' && <TedarikciListesi projectId={selectedProjectId} />}
+      {tab === 'tedarikciler' && (
+        <TedarikciListesi
+          projectId={selectedProjectId}
+          openSupplierId={openSupplierId}
+          onOpenedSupplier={onOpenedSupplier}
+          onSelectedSupplierChange={onSelectedSupplierChange}
+        />
+      )}
     </div>
   )
 }
