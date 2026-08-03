@@ -1677,3 +1677,20 @@ kullanıcılar hep Admin API/normal signup ile oluşturulmalı, bu 4 kolonun
    sayfayı sert yenileyip santiyesefi.test ile tekrar kontrol etmesi istendi;
    hâlâ tamamen donuk görünürse (kırmızı bile değil) daha derin bir sorun
    olabilir, tekrar bakılacak.
+
+**02.08.2026 — yöneticiye sunum öncesi temizlik: 993+37 ölü bildirim ve 14 test
+kaydı silindi.** `notifications` 1127 satıra şişmişti (31.07'deki 776→349
+temizliğinden sonra yeni QA turlarıyla tekrar birikmiş) — `entity_id` artık
+hiçbir tabloda karşılığı olmayan (`purchase_request`/`invoice`/
+`procurement_item_change_request`/`daily_report`/`ticket`) 993 satır
+silindi, kalan 134'e indi. Ayrıca sunumda görünmemesi gereken 14 açık test
+etiketli kayıt (`SAT-2026-144`/`SAT-2026-033`/`SAT-2026-014` ve bağlı
+faturaları `TEST-FTR-2026-011`/`FTR-2026-QATEST01`/`KONTROL-27072026-FTR-001`,
+8 "QA Test"/"AUDIT..."/"PW Kritik Severity Test"/"ege proje deneme" ticket'ı)
+FK sırasına uygun şekilde (circular `invoices.purchase_request_id` ↔
+`purchase_requests.invoice_id` önce null'landı) silindi, bağlı 37 bildirim de
+temizlendi — `notifications` 97'ye indi. Silinmeden önce `tests/` içinde bu
+başlık/ID'lerin hiçbirine referans olmadığı grep ile doğrulandı (regresyon
+suite'ini etkilemiyor). Son durum: 13 satın alma talebi, 14 ticket, 31 fatura,
+97 bildirim — 2 test projesiyle (Ege Enerji İzmir GES – TEST, Kayseri Develi
+GES) tutarlı, sunuma uygun.
