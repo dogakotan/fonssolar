@@ -130,7 +130,7 @@ export default function NotificationBell({ onNavigate }) {
       {open && (
         <div style={{
           position: 'absolute', top: 44, right: 0, width: 340, maxHeight: 420,
-          overflowY: 'auto', background: '#fff', border: '1px solid #e2e8f0',
+          overflowY: 'auto', overflowX: 'hidden', background: '#fff', border: '1px solid #e2e8f0',
           borderRadius: 12, boxShadow: '0 12px 30px rgba(15,23,42,0.12)', zIndex: 50,
         }}>
           <div style={{
