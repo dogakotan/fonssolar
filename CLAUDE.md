@@ -1669,14 +1669,11 @@ kullanıcılar hep Admin API/normal signup ile oluşturulmalı, bu 4 kolonun
    Fatura sayacı (`pending_invoices`, zaten `yönetici_onayında`'ya daraltılmıştı,
    bkz. "Gerçekleşen maliyet kanonik tanımı") zaten doğruydu, dokunulmadı.
 2. **Bulgu L/P (site şefi modalının reddedilen talepte yeşil/donuk kalması) —
-   retest bekliyor.** Aynı oturumda biraz önce (yedinci turdan hemen önce)
-   uygulanan `TalepDetayModal.jsx` `cancelled` düzeltmesi tam bu senaryoyu
-   (`isCancelled`, site şefi görünümüne de bağlı) kapsıyor; SAT-2026-005'in
-   verisi (`status='reddedildi'`, proje/RLS erişimi santiyesefi.test ile
-   uyumlu) doğrudan DB'den doğrulandı — kodda bir engel yok. Kullanıcıdan
-   sayfayı sert yenileyip santiyesefi.test ile tekrar kontrol etmesi istendi;
-   hâlâ tamamen donuk görünürse (kırmızı bile değil) daha derin bir sorun
-   olabilir, tekrar bakılacak.
+   DÜZELTİLDİ, canlıda doğrulandı.** `TalepDetayModal.jsx`'e eklenen
+   `cancelled` durumu site şefi görünümüne de bağlanmıştı; kullanıcı
+   localhost:5182'de santiyesefi.test ile SAT-2026-005'i yeniden açıp "İşlem
+   Süreci"nin artık "İşlem İptal Edildi"yi kırmızı gösterdiğini hem detay
+   modalında hem talep listesindeki rozette teyit etti. Madde kapandı.
 
 **02.08.2026 — yöneticiye sunum öncesi temizlik: 993+37 ölü bildirim ve 14 test
 kaydı silindi.** `notifications` 1127 satıra şişmişti (31.07'deki 776→349
