@@ -32,10 +32,9 @@ const UNIT_OPTS = ['', 'adet', 'm', 'm²', 'm³', 'kg', 'ton', 'rulo', 'kutu']
 
 const DEF = {
   task_code: '', task_name: '', category: 'mekanik', sub_category: '',
-  planned_start: '', planned_end: '', progress_pct: '0', status: 'beklemede',
+  planned_start: '', planned_end: '', status: 'beklemede',
   responsible: '', team_size: '', equipment_notes: '', notes: '',
-  unit: '', target_qty: '0', dashboard_visible: false, dashboard_order: '0',
-  is_critical: false,
+  unit: '', target_qty: '0', total_progress: '0', tracking: 'durum',
 }
 
 const lbl = { fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '.03em' }
@@ -50,10 +49,10 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, mo
       return result.rows.map((r, i) => ({
         ...DEF, ...r,
         _id: Date.now() + i,
-        progress_pct: String(r.progress_pct ?? 0),
         team_size: String(r.team_size ?? ''),
         target_qty: String(r.target_qty ?? 0),
-        dashboard_order: String(r.dashboard_order ?? 0),
+        total_progress: String(r.total_progress ?? 0),
+        tracking: Number(r.target_qty || 0) > 0 ? 'ilerleme' : 'durum',
       }))
     }
     return [{ ...DEF, _id: 1 }]
@@ -73,13 +72,11 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, mo
         setRows(data?.length
           ? data.map((r, i) => ({
               ...DEF, ...r, _id: r.id ?? (Date.now() + i),
-              progress_pct: String(r.progress_pct ?? 0),
               team_size: String(r.team_size ?? ''),
               unit: r.unit ?? '',
               target_qty: String(r.target_qty ?? 0),
-              dashboard_visible: !!r.dashboard_visible,
-              dashboard_order: String(r.dashboard_order ?? 0),
-              is_critical: !!r.is_critical,
+              total_progress: String(r.total_progress ?? 0),
+              tracking: Number(r.target_qty || 0) > 0 ? 'ilerleme' : 'durum',
             }))
           : [])
       })
@@ -102,7 +99,7 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, mo
         setError('Excel dosyasında geçerli görev satırı bulunamadı. "Görev Adı" sütununun dolu olduğunu kontrol edin.')
         return
       }
-      setRows(parsed)
+      setRows(parsed.map(r => ({ ...r, tracking: Number(r.target_qty || 0) > 0 ? 'ilerleme' : 'durum' })))
       setVisibleRows(Math.min(parsed.length, 10))
       setImportMsg(`"${sheetName}" sayfasından ${parsed.length} görev yüklendi${skippedCount > 0 ? ` (${skippedCount} satır atlandı)` : ''}.`)
     } catch (err) {
@@ -117,26 +114,38 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, mo
     if (rows.length === 0) { onDone({ skipped: true, count: 0 }); return }
     const invalid = rows.filter(r => !r.task_name?.trim())
     if (invalid.length > 0) { setError('Her satırda "Görev Adı" zorunludur.'); return }
-    const payload = rows.map(({ _id, id, created_at, ...r }) => ({
-      project_id:        projectId,
-      task_code:         r.task_code       || null,
-      task_name:         r.task_name,
-      category:          r.category,
-      sub_category:      r.sub_category    || null,
-      planned_start:     r.planned_start   || null,
-      planned_end:       r.planned_end     || null,
-      progress_pct:      r.progress_pct !== '' ? Number(r.progress_pct) : 0,
-      status:            r.status,
-      responsible:       r.responsible     || null,
-      team_size:         r.team_size !== '' ? Number(r.team_size) : null,
-      equipment_notes:   r.equipment_notes || null,
-      notes:             r.notes           || null,
-      unit:              r.unit            || null,
-      target_qty:        r.target_qty !== '' ? Number(r.target_qty) : 0,
-      dashboard_visible: !!r.dashboard_visible,
-      dashboard_order:   r.dashboard_order !== '' ? Number(r.dashboard_order) : 0,
-      is_critical:       !!r.is_critical,
-    }))
+    const payload = rows.map(({ _id, id, created_at, tracking, ...r }) => {
+      const isIlerleme = tracking === 'ilerleme'
+      const targetQty = isIlerleme && r.target_qty !== '' ? Number(r.target_qty) : 0
+      const totalProgress = isIlerleme && r.total_progress !== '' ? Number(r.total_progress) : 0
+      // İlerleme takipli görevde durum/yüzde miktardan türetilir (bkz. TabIsPlan.jsx'teki
+      // deriveTaskStatusAt ile aynı mantık) — kullanıcı elle durum seçmez.
+      const progressPct = isIlerleme
+        ? (targetQty > 0 ? Math.min(100, Math.round((totalProgress / targetQty) * 100)) : 0)
+        : (r.status === 'tamamlandi' ? 100 : 0)
+      const status = isIlerleme
+        ? (progressPct >= 100 ? 'tamamlandi' : (totalProgress > 0 ? 'devam_ediyor' : 'beklemede'))
+        : r.status
+
+      return {
+        project_id:      projectId,
+        task_code:       r.task_code       || null,
+        task_name:       r.task_name,
+        category:        r.category,
+        sub_category:    r.sub_category    || null,
+        planned_start:   r.planned_start   || null,
+        planned_end:     r.planned_end     || null,
+        progress_pct:    progressPct,
+        status,
+        responsible:     r.responsible     || null,
+        team_size:       r.team_size !== '' ? Number(r.team_size) : null,
+        equipment_notes: r.equipment_notes || null,
+        notes:           r.notes           || null,
+        unit:            isIlerleme ? (r.unit || null) : null,
+        target_qty:      targetQty,
+        total_progress:  totalProgress,
+      }
+    })
     onDone({ rows: payload, skipped: false, count: rows.length })
   }
 
@@ -224,21 +233,37 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, mo
                 <input style={inp} type="date" value={row.planned_end} onChange={e => upd(row._id, 'planned_end', e.target.value)} />
               </div>
               <div>
-                <label style={lbl}>% İlerleme</label>
-                <input style={inp} type="number" min="0" max="100" value={row.progress_pct} onChange={e => upd(row._id, 'progress_pct', e.target.value)} placeholder="0" />
-              </div>
-              <div>
-                <label style={lbl}>Durum</label>
-                <select style={inp} value={row.status} onChange={e => upd(row._id, 'status', e.target.value)}>
-                  {STATUS_OPTS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                <label style={lbl}>Takip Türü</label>
+                <select style={inp} value={row.tracking} onChange={e => upd(row._id, 'tracking', e.target.value)}>
+                  <option value="durum">Durum</option>
+                  <option value="ilerleme">İlerleme</option>
                 </select>
               </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 6 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#0f172a', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={row.is_critical} onChange={e => upd(row._id, 'is_critical', e.target.checked)} />
-                  Kritik Yol
-                </label>
-              </div>
+              {row.tracking === 'durum' ? (
+                <div>
+                  <label style={lbl}>Durum</label>
+                  <select style={inp} value={row.status} onChange={e => upd(row._id, 'status', e.target.value)}>
+                    {STATUS_OPTS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label style={lbl}>Birim</label>
+                    <select style={inp} value={row.unit} onChange={e => upd(row._id, 'unit', e.target.value)}>
+                      {UNIT_OPTS.map(u => <option key={u} value={u}>{u || '—'}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={lbl}>Hedef Miktar</label>
+                    <input style={inp} type="number" min="0" step="any" value={row.target_qty} onChange={e => upd(row._id, 'target_qty', e.target.value)} placeholder="0" />
+                  </div>
+                  <div>
+                    <label style={lbl}>Ne Kadar Yapıldı</label>
+                    <input style={inp} type="number" min="0" step="any" value={row.total_progress} onChange={e => upd(row._id, 'total_progress', e.target.value)} placeholder="0" />
+                  </div>
+                </>
+              )}
               <div>
                 <label style={lbl}>Sorumlu</label>
                 <input style={inp} value={row.responsible} onChange={e => upd(row._id, 'responsible', e.target.value)} placeholder="Ad Soyad" />
@@ -254,29 +279,6 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, mo
               <div style={{ gridColumn: 'span 4' }}>
                 <label style={lbl}>Notlar</label>
                 <input style={inp} value={row.notes} onChange={e => upd(row._id, 'notes', e.target.value)} placeholder="Ek notlar" />
-              </div>
-              <div style={{ gridColumn: 'span 4', borderTop: '1px dashed #e2e8f0', paddingTop: '0.6rem', marginTop: '0.15rem' }}>
-                <label style={{ ...lbl, color: '#0ea5e9' }}>Ölçülebilir İlerleme Hedefi (opsiyonel — sahadan günlük raporla takip edilecekse doldurun)</label>
-              </div>
-              <div>
-                <label style={lbl}>Birim</label>
-                <select style={inp} value={row.unit} onChange={e => upd(row._id, 'unit', e.target.value)}>
-                  {UNIT_OPTS.map(u => <option key={u} value={u}>{u || '—'}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Hedef Miktar</label>
-                <input style={inp} type="number" min="0" step="any" value={row.target_qty} onChange={e => upd(row._id, 'target_qty', e.target.value)} placeholder="0" />
-              </div>
-              <div>
-                <label style={lbl}>Dashboard Sırası</label>
-                <input style={inp} type="number" min="0" value={row.dashboard_order} onChange={e => upd(row._id, 'dashboard_order', e.target.value)} placeholder="0" />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', paddingBottom: 6 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#0f172a', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={row.dashboard_visible} onChange={e => upd(row._id, 'dashboard_visible', e.target.checked)} />
-                  Dashboard'da göster
-                </label>
               </div>
             </div>
           </div>

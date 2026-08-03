@@ -41,11 +41,6 @@ function normCat(val, fallback = 'mekanik') {
   return CAT_MAP[String(val).toLowerCase().trim()] || fallback
 }
 
-function toBoolTR(val) {
-  if (!val) return false
-  return /^(evet|true|1|yes|x|✓)$/i.test(String(val).trim())
-}
-
 const VALID_UNITS = ['adet', 'm', 'm²', 'm³', 'kg', 'ton', 'rulo', 'kutu']
 
 // Satır objesinden herhangi bir anahtar adıyla değer al
@@ -97,7 +92,6 @@ export async function parseIsKalemleri(file) {
         sub_category:      String(pick(r, 'alt kategori', 'sub_category', 'ilgili kurum', 'kurum') || '').trim(),
         planned_start:     toDateStr(pick(r, 'başlangıç', 'plan başlangıç', 'planned_start', 'baslangic', 'start')),
         planned_end:       toDateStr(pick(r, 'bitiş', 'plan bitiş', 'planned_end', 'bitis', 'end')),
-        progress_pct:      String(pick(r, 'ilerleme', 'progress_pct', '%') || 0),
         status:            'beklemede',
         responsible:       String(pick(r, 'sorumlu', 'responsible') || '').trim(),
         team_size:         String(pick(r, 'ekip', 'team_size', 'ekip sayısı', 'ekip sayisi') || '').trim(),
@@ -105,9 +99,7 @@ export async function parseIsKalemleri(file) {
         notes:             String(pick(r, 'notlar', 'notes', 'not') || '').trim(),
         unit:              VALID_UNITS.includes(rawUnit) ? rawUnit : '',
         target_qty:        String(Number(pick(r, 'hedef miktar', 'target_qty', 'hedef', 'miktar') || 0)),
-        dashboard_visible: toBoolTR(pick(r, 'dashboard göster', 'dashboard goster', 'dashboard_visible')),
-        dashboard_order:   String(Number(pick(r, 'dashboard sıra', 'dashboard sira', 'dashboard_order') || 0)),
-        is_critical:       toBoolTR(pick(r, 'kritik mi?', 'kritik mi', 'kritik yol', 'kritik', 'is_critical')),
+        total_progress:    String(Number(pick(r, 'yapılan miktar', 'yapilan miktar', 'total_progress', 'gerçekleşen') || 0)),
       }
     })
     .filter(r => r.task_name)
@@ -121,15 +113,15 @@ export function downloadProjectTemplate() {
 
   // Sayfa 1: İş Kalemleri (Gantt görevi + varsa ölçülebilir ilerleme hedefi)
   const ws1 = XLSX.utils.aoa_to_sheet([
-    ['Görev Kodu', 'Görev Adı', 'Kategori', 'Alt Kategori / Kurum', 'Plan Başlangıç', 'Plan Bitiş', 'Sorumlu', 'Ekip Sayısı', 'Ekipman', 'Notlar', 'Birim', 'Hedef Miktar', 'Dashboard Göster', 'Dashboard Sıra', 'Kritik mi?'],
-    ['T001', 'Mobilizasyon ve Şantiye Kurulumu', 'mobilizasyon', '',   '2026-07-01', '2026-07-07', 'Proje Müdürü', 10,  '', '',                      '',     0,    '', 0, ''],
-    ['T002', 'Panel Temel Kazık Çakımı',         'mekanik',       '',   '2026-07-08', '2026-07-30', 'Mekanik Şef', 25,  'Kazık çakma makinesi', '', 'adet', 2500, 'Evet', 1, 'Evet'],
-    ['T003', 'Solar Panel Montajı',               'mekanik',       '',   '2026-07-20', '2026-08-15', 'Mekanik Şef', 30,  '', '',                     'adet', 3000, 'Evet', 2, ''],
-    ['T004', 'DC Kablo Döşeme',                   'elektrik_dc',   '',   '2026-08-01', '2026-08-20', 'Elektrik Şefi', 15, '', '',                    'm',    15000, 'Evet', 3, 'Evet'],
-    ['T005', 'AC Kablo ve Pano',                  'elektrik_ac',   '',   '2026-08-10', '2026-08-25', 'Elektrik Şefi', 12, '', '',                    'm',    3000, 'Evet', 4, ''],
-    ['T006', 'Devreye Alma',                      'devreye_alma',  '',   '2026-09-01', '2026-09-10', 'Proje Müdürü', 8,  '', '',                      '',     0,    '', 0, ''],
+    ['Görev Kodu', 'Görev Adı', 'Kategori', 'Alt Kategori / Kurum', 'Plan Başlangıç', 'Plan Bitiş', 'Sorumlu', 'Ekip Sayısı', 'Ekipman', 'Notlar', 'Birim', 'Hedef Miktar', 'Yapılan Miktar'],
+    ['T001', 'Mobilizasyon ve Şantiye Kurulumu', 'mobilizasyon', '',   '2026-07-01', '2026-07-07', 'Proje Müdürü', 10,  '', '',                      '',     0,    0],
+    ['T002', 'Panel Temel Kazık Çakımı',         'mekanik',       '',   '2026-07-08', '2026-07-30', 'Mekanik Şef', 25,  'Kazık çakma makinesi', '', 'adet', 2500, 800],
+    ['T003', 'Solar Panel Montajı',               'mekanik',       '',   '2026-07-20', '2026-08-15', 'Mekanik Şef', 30,  '', '',                     'adet', 3000, 0],
+    ['T004', 'DC Kablo Döşeme',                   'elektrik_dc',   '',   '2026-08-01', '2026-08-20', 'Elektrik Şefi', 15, '', '',                    'm',    15000, 0],
+    ['T005', 'AC Kablo ve Pano',                  'elektrik_ac',   '',   '2026-08-10', '2026-08-25', 'Elektrik Şefi', 12, '', '',                    'm',    3000, 0],
+    ['T006', 'Devreye Alma',                      'devreye_alma',  '',   '2026-09-01', '2026-09-10', 'Proje Müdürü', 8,  '', '',                      '',     0,    0],
   ])
-  ws1['!cols'] = [8, 28, 15, 18, 15, 15, 15, 10, 20, 20, 8, 12, 14, 12, 10].map(w => ({ wch: w }))
+  ws1['!cols'] = [8, 28, 15, 18, 15, 15, 15, 10, 20, 20, 8, 12, 12].map(w => ({ wch: w }))
   XLSX.utils.book_append_sheet(wb, ws1, 'İş Kalemleri')
 
   XLSX.writeFile(wb, 'GES_Proje_Sablonu.xlsx')

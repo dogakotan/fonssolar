@@ -1117,22 +1117,50 @@ eklenmedi (kullanıcı kararıyla yalnızca fatura oluşturma kapsamına alınd�
 
 ### İlerleme hesaplama modeli
 İlerleme tek kaynaktan, `project_tasks` üzerinden yürüyor: `target_qty`, `unit`,
-`total_progress`, `progress_pct`, `dashboard_visible`, `dashboard_order`.
-Günlük raporda girilen miktar `progress_daily` (task_id bazlı) satırına yazılır,
-trigger zinciriyle `project_tasks`'a ve oradan `projects.progress`'e yansır.
-Proje bazlı kategori ağırlıkları `project_category_weights(project_id, category,
-weight_pct)` tablosunda — proje sihirbazındaki "Kategori Ağırlıkları" adımı +
+`total_progress`, `progress_pct`. Proje sihirbazının İş Kalemleri adımında
+(`Adim2IsKalemleri.jsx`) her görev için **Takip Türü: Durum | İlerleme** seçilir
+(03.08.2026'da eklendi, önceki "% İlerleme" + "Durum" + ayrı "Ölçülebilir
+İlerleme Hedefi" bölümünün sadeleştirilmiş hali) — **Durum** seçilirse yalnızca
+durum dropdown'u (beklemede/devam ediyor/tamamlandı/askıda/iptal) gösterilir,
+`target_qty=0` kalır (bkz. `set_task_milestone_status` RPC, "İş akışı" ilerideki
+not); **İlerleme** seçilirse Birim + Hedef Miktar + Ne Kadar Yapıldı girilir,
+durum/yüzde bunlardan türetilir (kullanıcı elle durum seçmez). `target_qty > 0`
+olan görevler `TabIsPlan.jsx`'te "+ İlerleme Gir" ile miktar bazlı, olmayanlar
+"Durum Güncelle" dropdown'uyla (`MilestoneStatusControl`) takip edilir —
+`deriveTaskStatusAt()` bu ayrımı `target_qty`'ye göre yapar, milestone
+görevlerin durumuna tarih/yüzde tahminiyle hiç dokunmaz (03.08.2026'da bulunan
+bug: öncesinde bu fonksiyon milestone görevlerde de durumu ezip kullanıcının
+seçtiği durumu tabloya hiç yansıtmıyordu). Günlük raporda girilen miktar
+`progress_daily` (task_id bazlı) satırına yazılır, trigger zinciriyle
+`project_tasks`'a ve oradan `projects.progress`'e yansır. Proje bazlı kategori
+ağırlıkları `project_category_weights(project_id, category, weight_pct)`
+tablosunda — proje sihirbazındaki "Kategori Ağırlıkları" adımı +
 `save_project_category_weights` RPC'siyle düzenlenir.
 
-### Kritik yol ve otomatik risk motoru
-`project_tasks.is_critical` (boolean) — kritik yol bilgisi görev satırının
-kendisinde. `task_category` enum'u 15 değer (10 eski kategori + montaj alt
-kırılımı: kolon/kiriş/aşık/panel montajı, köşk trafo).
+**Kaldırılan alanlar (03.08.2026):** `project_tasks.dashboard_visible`/
+`dashboard_order` — bir görevi "öne çıkan" işaretleyip sıralı göstermek için
+tasarlanmıştı, tek okuyucusu olan `get_project_dashboard` RPC'si hiçbir
+frontend dosyasından çağrılmıyordu (muhtemelen `progress_items` → `project_tasks`
+tekilleştirme refactor'ünde tüketen ekran kaldırılmış ama giriş alanı wizard'da
+kalmış) — kolonlar + wizard'daki "Dashboard'da göster"/"Dashboard Sırası"
+alanları kaldırıldı. `project_tasks.is_critical` de aynı turda kaldırıldı,
+bkz. altındaki not.
+
+### Otomatik risk motoru
+`task_category` enum'u 15 değer (10 eski kategori + montaj alt kırılımı:
+kolon/kiriş/aşık/panel montajı, köşk trafo).
 
 `project_risks` elle girilebildiği gibi `fn_recompute_auto_risks(p_project_id,
 p_close_material_risks default false)` ile de otomatik oluşur/kapanır: (1) plan
-bitiş tarihi geçmiş + tamamlanmamış görev → şiddet gecikme gün sayısına göre;
-(2) bir BOM kalemi için satın alma talepleri toplamı planlanan miktarı aşarsa.
+bitiş tarihi geçmiş + tamamlanmamış görev → şiddet **yalnızca gecikme gün
+sayısına göre** (8+ gün kritik, 4-7 gün yüksek, altı orta — 03.08.2026'ya kadar
+`project_tasks.is_critical` bayrağı şiddeti bir kademe daha yükseltiyordu,
+kullanıcı kararıyla kaldırıldı: Gantt'ta zaten görsel bir "kritik yol" vurgusu
+yoktu — bkz. aşağıdaki not —, wizard'daki "Kritik Yol" checkbox'ı yalnızca bu
+şiddet hesabını besliyordu ve kafa karıştırıcı bulundu; `is_critical` kolonu +
+`get_project_gantt` çıktısındaki alan + trigger'ın `UPDATE OF` sütun listesi
+birlikte kaldırıldı); (2) bir BOM kalemi için satın alma talepleri toplamı
+planlanan miktarı aşarsa.
 Tetikleyiciler `project_tasks`/`purchase_requests`/`purchase_request_items`/
 `daily_reports` üzerinde. **Kapanma koşulları kasıtlı olarak asimetrik:**
 `gorev_gecikmesi` görevin `progress_pct >= 100` olmasıyla (veya durumu
@@ -1381,313 +1409,58 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   yazılmış ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
 
+
+
 ## Son değişiklik
 
-**31.07.2026 — QA turu: 9 bulgu, kök nedeni bulunup düzeltildi (routing,
-talep kodu, dashboard istatistikleri, fatura sekmeleri, kullanıcı listesi,
-sızmış test verisi, ticket durum/oluşturan tutarsızlığı, tarih filtresi).**
+**03.08.2026 — İş Planı durum güncelleme bug'ı, eksik hedef miktar verisi ve
+İş Kalemleri adımının sadeleştirilmesi.**
 
-1. **Routing** (bkz. "Frontend yapısı" → Routing) — `/dashboard/*` wildcard
-   route + URL↔state senkronizasyon efekti eklendi, adres çubuğu artık gerçek
-   görünümü yansıtıyor, yenileme/geri-ileri çalışıyor. `tests/helpers.js`'teki
-   `loginUi`'ın `waitForURL` deseni yeni şemaya göre güncellendi
-   (`**/dashboard/**`). 23 UI Playwright testi regresyon olmadan geçti.
-2. **Tekrarlanan satın alma kodları** (bkz. "Satın alma akışı" → Talep kodu) —
-   `request_no` kolonu + `fn_next_purchase_request_no()` sayaç fonksiyonu
-   eklendi (`20260731110000`), 14 mevcut kayıt geriye dönük dolduruldu, 4
-   frontend kopyası `src/utils/purchaseRequestNo.js`'te birleştirildi.
-3. **Dashboard istatistik tutarsızlığı** (bkz. "Gerçekleşen maliyet kanonik
-   tanımı" altındaki not) — `get_dashboard_summary.critical_tickets` ve
-   `get_finans_overview(_all)_internal.quickFacts.pendingCount/Amount` iki
-   farklı durumu birleştirip özet ekranında tek sayı gösteriyordu, detay
-   ekranlarıyla uyuşmuyordu (`20260731130000`).
-4. **Faturalar sekmesi toplamı** (bkz. "Faturalar liste teması") —
-   `kismen_odendi`/`reddedildi` için sekme yoktu, "Tümü" toplamı sekmelerin
-   toplamına eşit değildi; `FaturaListesi.jsx`'in `TABS` dizisine ikisi de
-   eklendi (frontend-only, migration yok).
-5. **Kullanıcı listesi** (bkz. "Roller") — veri modeli sağlamdı, `profiles_select`
-   RLS'i proje_yoneticisi'ni dışarıda bırakıyordu; `admin`'e ek olarak
-   `proje_yoneticisi` de eklendi (`20260731140000`).
-6. **Sızmış test verisi temizliği** — 2 test faturası ("kk"/"ftrasf123"), 2 test
-   ticket'ı ("scsscssc"/"FAZ4 UI test - silinecek"), 4 stale bildirim silindi;
-   3 satın alma talebindeki geliştirici notu (`request_note`) temizlendi.
-   "ftrasf123"e bağlı talep trigger'lar geçici `DISABLE`/`ENABLE` edilerek
-   doğru şekilde `satin_alindi`'ye (fatura yokmuş gibi) geri alındı.
-7. **Ticket durum etiketi tutarsızlığı** (bkz. "Ticket sistemi") —
-   `TicketListesi.jsx`'in dosya-lokal `TICKET_STATUS_META`'sı `gönderildi`/`açık`'ı
-   "Gönderildi" gösteriyordu, kanonik `ticketStatus.js` + Bildirimler + durum
-   filtresi "Açık" gösteriyordu; "Açık"a tekilleştirildi.
-8. **Ticket "Oluşturan" bilgisi** (bkz. "Ticket sistemi") — `profiles_select`
-   RLS'i santiye_sefi'nin başka bir kullanıcının adını okumasını engelliyordu;
-   yalnızca `id`+`full_name` döndüren `get_profile_names` RPC'si eklendi
-   (`20260731150000`), 3 dosya `src/utils/profileNames.js`'e geçirildi.
-9. **Dashboard tarih filtresi** (bkz. "Roller" altındaki `TabGenel` notu) —
-   proje satırları `created_at`'e göre gizleniyordu ama İlerleme kolonu tarihten
-   bağımsız hep canlı değeri gösteriyordu; `get_project_by_date.overall_pct`
-   yeniden kullanılarak proje başına tarih-farkında ilerleme çekiliyor artık
-   (migration yok, `get_project_by_date` zaten vardı).
+1. **`TalepDetayModal.jsx` değil, İş Planı görev durumu tabloya yansımıyordu —
+   düzeltildi.** `TabIsPlan.jsx`'teki `deriveTaskStatusAt()`, `target_qty`'si
+   olmayan (kilometre taşı) görevlerde de tarih/ilerlemeye göre durumu yeniden
+   hesaplayıp `set_task_milestone_status` RPC'siyle kullanıcının az önce
+   seçtiği durumu (ör. "Beklemede") sessizce eziyordu — plan başlangıcı
+   ileride olan bir görev her zaman literal `'bekliyor'` gösteriyordu. Artık
+   `target_qty > 0` olmayan görevlerde bu fonksiyon DB'deki `status`'a hiç
+   dokunmuyor (bkz. "İlerleme hesaplama modeli").
+2. **Kaptan Demir Çelik (Adana GES-1/2) — hiçbir görevde hedef miktar yoktu.**
+   Kullanıcı canlı bir projede "kolon çakımı gibi kalemler de durum modunda
+   görünüyor" diye bildirdi; DB'de bu iki proje için TÜM görevlerin
+   `target_qty=null` olduğu bulundu (proje kurulurken hiç girilmemiş). BOM'dan
+   kesin eşleşen PV modül (18.634/2.870 adet) ve İnverter (35/6 adet) hedefleri
+   yazıldı; aşık/kiriş/DC kablo için iki gerçek referans projenin (Ege, Kayseri)
+   kendi oranları çapraz doğrulanıp (aşık=modül/2, kiriş=aşık/13, DC kablo=modül
+   ×5,64 — üçü de iki projede de tutarlı) tahmini hedefler + `notes` alanına
+   "tahmini, gerçek BOQ ile teyit edilmeli" notuyla yazıldı. Kolon çakımı için
+   iki referans projenin oranı tutmadığından (%44 fark) hiçbir sayı yazılmadı —
+   gerçek keşif rakamı gerekiyor.
+3. **Proje sihirbazı İş Kalemleri adımı sadeleştirildi + kullanılmayan alanlar
+   kaldırıldı** (bkz. "İlerleme hesaplama modeli", "Otomatik risk motoru").
+   `Adim2IsKalemleri.jsx`'teki "Kritik Yol" checkbox'ı (`is_critical`) ve
+   "Dashboard'da göster"/"Dashboard Sırası" (`dashboard_visible`/`dashboard_order`)
+   kaldırıldı; "% İlerleme" + "Durum" + ayrı "Ölçülebilir İlerleme Hedefi"
+   bölümü tek bir **Takip Türü: Durum | İlerleme** seçiciyle birleştirildi.
+   `dashboard_visible`/`dashboard_order`'ı okuyan tek RPC (`get_project_dashboard`)
+   zaten hiçbir frontend dosyasından çağrılmıyordu (dead code) — kolonlar
+   `project_tasks`'tan düşürüldü. `is_critical` otomatik risk motorunda
+   (`fn_recompute_auto_risks`) gecikme şiddetini bir kademe yükseltiyordu;
+   kullanıcı kararıyla kaldırıldı, şiddet artık yalnızca gecikme gün sayısına
+   göre (8+ kritik, 4-7 yüksek, altı orta). `get_project_gantt` çıktısından
+   `is_critical` alanı ve `trg_tasks_recompute_risks` trigger'ının `UPDATE OF`
+   sütun listesinden `is_critical` kaldırıldı (kolonu düşürebilmek için önce
+   bu bağımlılığın kaldırılması gerekti — `apply_migration` bunu bağımlı
+   trigger hatasıyla ilk denemede reddetti, iki adımda uygulandı). Bu adımın
+   kendi mini Excel şablonu/parse'ı (`src/utils/projectExcelImport.js`) aynı
+   şekilde güncellendi ("Kritik mi?"/"Dashboard" sütunları kaldırıldı, "Yapılan
+   Miktar" sütunu eklendi). **Kapsam dışı bırakıldı:** birincil "Yeni Proje"
+   Excel akışı (`supabase/functions/import-project-excel` edge fonksiyonu +
+   `fons-solar-proje-sablonu.xlsx` statik şablonu + `export-project-excel`)
+   hâlâ eski `is_critical`/`dashboard_visible`/`dashboard_order` sütunlarını
+   okuyup dolduruyor — edge fonksiyon redeploy'u ve ikili Excel dosyası
+   düzenlemesi gerektirdiğinden bu göreve dahil edilmedi, ayrı bir temizlik
+   gerekiyor (fark edilirse bu notu hatırlat).
 
-Her migration için tam SQL gösterilip onay alındı. Her düzeltme canlı ortamda
-(Playwright veya doğrudan RPC/SQL çağrısıyla) doğrulandı — bulguların çoğu
-"UI'da öyle görünüyor" değil, gerçek veri/RLS/RPC seviyesinde kök nedeniyle
-teyit edildi (ör. `critical_tickets` için canlı 0 vs 2 karşılaştırması,
-`profiles_select` politika metninin okunması, ticket join'lerinin rol bazında
-tekrar çalıştırılması). Şema değişikliği yapıldığından `fons_solar_sistem_dokumantasyonu.docx`/
+Şema değişikliği yapıldığından (`project_tasks.is_critical`/`dashboard_visible`/
+`dashboard_order` kolonları kaldırıldı) `fons_solar_sistem_dokumantasyonu.docx`/
 `fons_solar_veritabani_dokumantasyonu.docx` güncellemesi kullanıcıya hatırlatıldı.
-
-**Aynı gün, ikinci bir QA turu (14 madde, çoğu birinci turla örtüşüyor) —
-5 yeni bulgu + 776 test bildirimi temizliği.** Kullanıcı bağımsız bir QA
-raporu daha getirdi; 9 madde zaten yukarıdaki turda düzeltilmişti (doğrulandı,
-hâlâ tutuyor), 5'i gerçekten yeniydi:
-1. **Bildirim zili rozeti (30 vs 35)** — `NotificationBell.jsx` okunmamış
-   sayısını yalnızca son `.limit(30)` kayıt üzerinden hesaplıyordu; `limit(200)`'e
-   çekildi (bkz. "Bildirim sistemi").
-2. **Tedarikçi "Tedarikçi No" çakışması** — gerçek `tax_no` alanı DB'de zaten
-   doğruydu; liste satırındaki kozmetik "Tedarikçi No" UUID'nin İLK 8
-   karakterini kullanıyordu, 4 demo tedarikçinin UUID'si kasıtlı olarak aynı
-   önekle (`aaaaaaaa-0000-...`) oluşturulduğundan hepsi "AAAAAAAA" görünüyordu;
-   SONdan 8 karaktere çevrildi (bkz. "Muhasebe & Finans modülü" → Tedarikçiler).
-3. **"Onay Bekleyen Fatura"nın 3. tutarsız yeri** — `get_dashboard_summary.pending_invoices`
-   (TabGenel'in "Bekleyen Onaylar" kartı) hâlâ eski geniş tanımı kullanıyordu
-   (10 vs Onay Kuyruğu/Faturalar/Finans→Genel'in 9'u); `yönetici_onayında`'ya
-   daraltıldı (`20260731160000`, bkz. "Gerçekleşen maliyet kanonik tanımı").
-4. **"Kritik Risk" yanlış etiketleme** — Genel Bakış'taki bu KPI aslında ticket
-   şiddet sayısını gösteriyordu, gerçek `project_risks` verisiyle hiç bağlantısı
-   yoktu; kullanıcı "tam çözüm" seçti — `get_dashboard_summary`'ye gerçek
-   `critical_risks` alanı eklendi (aynı migration, bkz. yukarısı).
-5. **776 stale test bildirimi** — Playwright regresyon suite'i tekrar tekrar
-   koşulduğunda her koşum admin/proje yöneticisine gerçek `notify_*` bildirimleri
-   üretiyor; testlerin `afterAll`'ı `purchase_requests`/`invoices` satırlarını
-   temizliyor ama `notifications`'ı temizlemiyor — zamanla yüzlerce "ölü" bildirim
-   birikmiş (E2E_*/FAZ_E_SUITE_TEST_*/AUDIT*/PW* başlıklı), kullanıcı onayıyla
-   toplu silindi (349 gerçek bildirim kaldı).
-
-Diğer 5 madde (PM'de F5 routing, admin'de "tekrarlanan" bildirimler, "23 Temmuz
-raporu girildi" bildirim uyuşmazlığı, SAT-2026-001/002'de ₺0 tutar) araştırılıp
-kod hatası OLMADIĞI teyit edildi — sırasıyla: routing hem admin hem PM için
-tek tek yeniden test edilip yeniden üretilemedi (muhtemelen birinci turun
-routing düzeltmesinden önceki bir gözlem); "tekrarlanan" bildirimler aslında
-bu oturumun kendi Playwright koşumlarının ürettiği farklı (fake) taleplere ait
-gerçek bildirimlerdi (madde 5'le birlikte temizlendi); rapor bildirimi
-proje-bazlı, "Raporlarım" kişi-bazlı olduğundan raporu BAŞKA bir test hesabının
-(PM) girmiş olması ikisinin de doğru çalıştığı ama farklı şey ölçtüğü anlamına
-geliyordu; ₺0 tutar `YeniTalepModal.jsx`'te hiç birim fiyat alanı olmamasından
-kaynaklanıyor (fiyat yalnızca fatura kesilirken girilir) — kullanıcı bunun
-mevcut tasarımla tutarlı olduğunu onayladı, dokunulmadı (bkz. "Tek kalem kuralı"
-altındaki not).
-
-**Aynı gün, üçüncü tur — Chrome extension ile kullanıcılar-arası zincir testi,
-1 kritik zincir-durduran bug + 1 test-altyapısı bulgusu.** Kullanıcının isteğiyle
-tüm çapraz-rol bağlantılı iş akışları (satın alma→onay→fatura→ödeme, BOM/risk,
-ticket, günlük rapor→hatırlatma, bildirim click-through, kullanıcı görünürlüğü)
-Chrome extension'a test brifingi olarak anlatıldı; extension canlıda test edip
-**kritik** bir zincir-durduran bug buldu:
-1. **`TalepDetayModal.jsx` Onayla/Reddet hiçbir zaman çalışmıyordu** (bkz.
-   "Satın alma akışı" altındaki bug notu) — iyimser-kilit ön-koşulu
-   normalize edilmiş görüntü değeri `'bekliyor'`yu ham DB filtresi olarak
-   kullanıyordu, bu değer DB'de asla yazılmadığından güncelleme her zaman 0
-   satır etkiliyordu; TÜM yeni satın alma taleplerinde yönetici onay/red
-   veremiyordu (liste-satırı akışı etkilenmemişti). `expectedStatus = canReview
-   ? req.status : 'onaylandi'` ile düzeltildi, admin hesabıyla hem Onayla hem
-   Reddet için canlıda uçtan uca doğrulandı.
-2. **`request_no` DEFAULT eksikliği** — tam regresyon paketi (`npx playwright
-   test`, 23 testlik alt-küme değil TÜM `tests/`) çalıştırılınca
-   `purchase-single-item.spec.js`'in eşzamanlılık testi (RPC'yi bypass edip
-   doğrudan insert yapıyor) `request_no` NOT NULL hatasıyla kırık bulundu —
-   30.07.2026'daki `request_no` migration'ından beri böyleymiş, üretim kodu
-   etkilenmemiş (RPC dışında insert yok) ama savunma amaçlı kolona
-   `fn_next_purchase_request_no(...)` çağıran bir DEFAULT + `authenticated`'a
-   bu fonksiyona EXECUTE eklendi (`20260731170000`).
-   `faz-e.spec.js`'teki debounce testinin ilk koşumdaki başarısızlığı ise
-   önceki bir kesintiye ait 10 kalıntı test faturasından kaynaklanan flake'ti
-   (temizlik sonrası temiz geçti) — gerçek bir regresyon değildi.
-
-**Genel ders:** dar bir "regresyon suite" alt-kümesi (`npm run test:e2e`,
-23 test) her round sonunda yeşil çıksa da, `tests/` altındaki TÜM dosyalar
-(66 test) periyodik olarak tam koşulmalı — `purchase-single-item.spec.js` gibi
-dosyalar alt-kümenin dışında kalabiliyor. Ayrıca bir buton/aksiyonun yalnızca
-GÖRÜNÜR olduğunu doğrulayan testler (`procurement-role-acceptance.spec.js`'in
-"Onayla" butonu görünürlük kontrolü gibi) gerçek tıklama+DB-durum doğrulaması
-yapan testlerin yerini tutmaz — bu fark tam olarak bu bug'ın regresyon
-suite'inden kaçmasının sebebiydi.
-
-**Aynı gün, dördüncü tur — Flow 1'in son adımı (muhasebe ödeme girişi) test
-edilirken 2 bug daha bulundu, ikisi de düzeltildi.** Kullanıcı "vade tarihi
-boş = peşin ödeme" senaryosunu (bkz. "Fatura/Harcama Ekle sihirbazı" altındaki
-not) uçtan uca test ederken faturanın hem Ödeme Takibi'nden hem "Ödendi"
-sekmesinden kaybolduğunu, detay modalında "Ödeme Gir" aksiyonu hiç
-çıkmadığını ve "Bağlı Talep" alanının boş göründüğünü bildirdi:
-1. **`purchase_requests_select` RLS'i muhasebeyi kendi faturasının bağlı
-   talebini görmekten alıkoyuyordu** (bkz. "RPC katmanı" → Muhasebe
-   izolasyonu notu) — `fatura_onay_bekliyor`/`faturasi_kesildi` de eklendi
-   (`20260731180000`). `accounting-scope.spec.js`'in eski, dar durum listesini
-   doğrulayan assertion'ı da bu genişlemeye göre güncellendi (eski hâli artık
-   düzeltilmiş davranışı "regresyon" sayardı).
-2. **Peşin fatura hiçbir zaman `paid_amount` almıyordu** (bkz. "Fatura onay
-   akışı" → "Peşin kapanır" notu) — `fn_invoice_approval_cascade`'in
-   `requires_payment_tracking=false` dalına `paid_amount = total_amount`
-   eklendi, mevcut tek etkilenen kayıt (SAT-2026-033/FTR-2026-QATEST01)
-   geriye dönük düzeltildi.
-
-İkisi de admin/muhasebe hesabıyla canlıda doğrulandı: `v_invoice_payment_overview`
-artık bu fatura için `remaining_amount=0` dönüyor, muhasebe FaturaDetayModal'da
-"Bağlı Talep" kartında talebin başlığını görüyor. 66 testlik tam paket ve eslint
-bu turdan sonra da temiz.
-
-**Aynı gün, beşinci tur — "Ödeme Takibi'nde hiç görünmemesi" kullanıcı
-tarafından tasarım kararı olarak kabul edilmedi, gerçek bir 3. bug'ın üstünü
-örtüyormuş.** Dördüncü turda "bu kasıtlı, vade yoksa takip gerekmiyor" diye
-bırakılan nokta kullanıcı tarafından tekrar sorgulanınca (peşin fatura artık
-`paid_amount=total` olduğuna göre "ödenmiş" sayılıyor, o zaman neden Ödeme
-Takibi'nin hiçbir sekmesinde yok) daha derin incelendi ve **requires_payment_tracking=true
-olduğu halde `onaylandı`'da askıda kalmış 3 eski fatura** bulundu (bkz.
-"Fatura onay akışı" → "Peşin kapanır" notu altındaki detay) —
-INV-2026-016/INV-KAY-2026-006/INV-KAY-2026-010, toplam ₺975.600, `paid_amount=0`,
-2026-07-24'teki `odeme_bekliyor` ayrımından önceki seed veri, bugünkü
-`fn_invoice_approval_cascade` mantığıyla asla üretilemeyecek bir kombinasyon.
-Trigger'ı geçici kapatıp (`fn_validate_invoice_status_transition` bu geçişi
-normal rol bağlamı dışında reddediyordu) `odeme_bekliyor`'a taşındı
-(`20260731190000`) — artık gerçekten ödenebilir durumdalar. Ardından
-`OdemeTakibi.jsx`: fetch filtresine `onaylandı` eklendi, dosya-lokal
-`normalizeStatus`'a `onaylandı → odendi` eşlemesi eklendi (peşin fatura artık
-"Ödendi" sekmesinde, "Ödeme Ekle" butonu olmadan, sadece "Görüntüle" ile
-görünüyor) — bu eşleme yalnızca #3'teki veri düzeltmesinden SONRA güvenliydi,
-aksi halde gerçekte ödenmemiş 3 faturayı da yanlışlıkla "Ödendi" gösterirdi.
-Canlıda doğrulandı: "Ödendi" sekmesi 15→16, "Ödeme Bekleyen" sekmesi 3→9'a
-çıktı (3 eski fatura + muhtemelen faturasız işlemler dahil), FTR-2026-QATEST01
-"Ödendi"de, üç eski fatura "Ödeme Bekleyen"de doğru göründü. 66 testlik tam
-paket ve eslint bu turdan sonra da temiz.
-
-**Genel ders:** "bu kasıtlı bir tasarım kararı" açıklaması, kullanıcı aynı
-noktayı ikinci kez sorguladığında yeniden gözden geçirilmeli — burada gerçek
-bir tasarım kararının ARDINDA, farkında olunmayan gerçek bir veri/durum bug'ı
-saklanıyordu (₺975.600 askıda kalmış ödeme).
-
-**Aynı gün, altıncı tur — 2 bulgu araştırıldı, kod hatası OLMADIĞI teyit
-edildi (kod değişikliği yok).** Muhasebe hesabıyla Bekleyenler/Satın Alma
-ekranında SAT-2026-012/013/002 için "Onay Süreci" modalının üçünde de aynı
-adımları gösterdiği, bu yüzden bileşenin statik/hard-coded olabileceği
-raporlandı; ayrıca aynı rozetin ("Onayda") hem fatura oluşturulmadan önceki
-`onaylandi` durumunda hem de fatura sonrası `fatura_onay_bekliyor`'da
-göründüğü iddia edildi. İkisi de kodda doğrulanamadı: (1) `TalepDetayModal.jsx`'in
-"Onay Süreci" adımları statik değil, tamamen `req.status`'tan türüyor
-(`approvalDone`/`procurementDone`/`invoiceCreated` vb.) — incelenen üç talep
-zaten listede aynı "Onayda" rozetini taşıyordu, yani gerçek durumları
-(`fatura_onay_bekliyor`) baştan aynıydı; aynı durumdaki taleplerin modalının
-aynı görünmesi beklenen davranış. (2) `get_satin_alma_overview_all()`'ın
-muhasebe dalı (`20260728120915_satin_alma_overview_include_fatura_onay_bekliyor.sql`)
-muhasebeye yalnızca `satin_alindi`/`fatura_bekliyor`/`fatura_onay_bekliyor`
-durumundaki talepleri döndürüyor — `onaylandi` durumu muhasebenin bu ekranına
-hiç girmiyor, dolayısıyla "onaylandi durumunda da Onayda yazıyor" senaryosu
-kodda mümkün değil (muhtemelen test sırasında admin/proje yöneticisinin kendi
-listesiyle — orada `onaylandi`→"Proje Yöneticisinde", `fatura_onay_bekliyor`→
-"Fatura Onayda" olarak zaten ayrı etiketleniyor — karıştırılmış olmalı).
-
-**Aynı gün, yedinci tur — santiye_sefi rolü testi: 1 gerçek bug düzeltildi, 2
-bulgu araştırılıp kapatıldı, 1 not doğrulandı.**
-1. **`TalepDetayModal.jsx`'in "Onay Süreci"/"İşlem Süreci" adımlarında
-   reddedilen/iptal edilen talepler gri (pasif) gösteriliyordu — GERÇEK BUG,
-   düzeltildi.** `Step` bileşeni yalnızca `done`(yeşil)/`active`(sarı) ikili
-   durumunu biliyordu, red/iptal için üçüncü bir renk yoktu — liste görünümü
-   (`TabSatinAlmaTalepListesi.jsx`'in `ProcessStatusBadge`'i) `red_edildi`/`iptal`
-   için kırmızı gösterirken modal aynı durumdaki adımı gri bırakıyordu (SAT-2026-005
-   ile doğrulandı). `Step`'e `cancelled` prop'u eklendi (kırmızı `#EF4444`),
-   hem admin/PM modalının "Yönetici Onayı" adımına (`isRejected`) hem proje
-   yöneticisinin tedarik adımındaki "İptal Et"iyle oluşan `iptal` durumuna
-   (yeni `isProcurementCancelled`, "Proje Yöneticisinde" adımını kırmızı
-   "Tedarik İptal Edildi" yapar) hem site şefi görünümündeki tek adıma
-   (`isCancelled`) bağlandı. Bu arada `approvalDone` listesine `iptal` de
-   eklendi — `iptal`e yalnızca `onaylandi`dan (yönetici onayı çoktan alınmış)
-   geçildiğinden, onay adımının kendisi hâlâ yeşil kalmalı, kırmızı olan
-   tedarik adımı. Frontend-only, migration yok, eslint temiz.
-2. **Bulgu M (talep sahibine "onaylandı" bildirimi gitmiyor iddiası) — canlı
-   DB'de doğrulanamadı, muhtemelen bir test/oturum yanılgısı.** SAT-2026-144
-   (test sırasında oluşturulan gerçek talep) için `trg_notify_purchase_request_status`
-   gerçekten çalışmış: `notifications` tablosunda `recipient_id`=santiyesefi.test,
-   `entity_id`=bu talep, `event_type='status_changed'`, body="Yeni durum:
-   onaylandi", `is_read=false` bir satır bulundu — yani bildirim backend'de
-   doğru üretilmiş ve hâlâ okunmamış duruyor. Test sırasında incelenen diğer
-   "onaylandı" örnekleri (SAT-2026-004 vb.) muhtemelen doğrudan SQL ile seed
-   edilmiş demo veri — durumları hiç gerçek bir UPDATE ile değişmediğinden
-   (`AFTER UPDATE` trigger'ı hiç tetiklenmemiş) o kayıtlar için bildirim zaten
-   var olamaz, bu backend'de bir eksiklik değil. Kullanıcıdan santiyesefi.test
-   ile Bildirimler'i yenileyip SAT-2026-144'ü tekrar kontrol etmesi istendi.
-3. **Bulgu O (Riskler'e santiye_sefi menüsünden erişim yok) — kasıtlı, bug
-   değil.** `role_allowed_tabs`'ta santiye_sefi için `projeler` sekmesi hiç
-   yok (yalnızca genel/is-plani/satin-alma/tickets/daily-report/rapor-listesi/
-   bildirimler) — yani site şefi normal kullanımda tam `ProjeDetay.jsx`'e
-   (dolayısıyla Malzeme Listesi'nin Riskler alt-sekmesine) hiç giremiyor;
-   kendi sadeleştirilmiş Satın Alma görünümü zaten yalnızca Talepler ve
-   Malzeme Listesi içeriyor (bkz. "Frontend yapısı" → şantiye şefi notu),
-   Riskler bilinçli olarak dışarıda. `ProjeDetay.jsx` sekme bazlı rol gizleme
-   yapmadığından (`CLAUDE.md`'nin kendi notu) doğrudan URL'le girilebilmesi
-   beklenen davranış, RLS/erişim açığı değil.
-4. **İlerleme testindeki "%55.2→%57.6 girdim ama proje geneli değişmedi" notu
-   — kullanıcının rounding şüphesi rakamla doğrulandı.** `fn_sync_project_progress`
-   basit formülü (`ROUND(SUM(weight_pct * kategori_ortalaması)/100)`) ile
-   Kayseri Develi GES'te `kiris_montaji` kategorisinin ağırlığı %10 ve
-   kategoride tek görev var: güncelleme öncesi ağırlıklı toplam 2694/100=26.94,
-   sonrası 2718/100=27.18 — ikisi de tam sayıya yuvarlanınca 27 kalıyor. Gerçek
-   bir realtime/hesaplama sorunu yok, yalnızca görüntülenen tam sayı bu küçük
-   farkı yansıtamıyor.
-
-**Aynı gün, acil prod bug — 4 kullanıcı giriş yapamıyordu, düzeltildi.**
-`berksurucu@fonssolar.com` girişte arayüzde çıplak `{}` hatası aldı. Auth
-loglarında (`get_logs('auth')`) kök neden bulundu: `error finding user: sql:
-Scan error on column index 3, name "confirmation_token": converting NULL to
-string is unsupported` — GoTrue, `auth.users.confirmation_token` (ve
-`recovery_token`/`email_change`/`email_change_token_new`) `NULL` olduğunda
-`signInWithPassword`'da 500 patlıyor. Bu kolonlar normal signup/Admin API
-akışında her zaman `''` olur; `NULL` yalnızca bir hesap bu akışın DIŞINDA
-(doğrudan SQL insert ile) oluşturulduğunda oluşur. Sorgulayınca 4 gerçek
-proje_yöneticisi hesabının (`berksurucu@fonssolar.com`, `bayram.demir@`,
-`osman.karadogan@`, `cem.aslan@fonssolar.com`) bu şekilde bozuk olduğu
-görüldü. `UPDATE auth.users SET ...= COALESCE(..., '')` ile (yalnızca NULL→''
-dönüşümü, veri kaybı yok) 4 satır düzeltildi, doğrulandı (0 NULL kaldı). **Not:**
-bundan sonra `auth.users`'a doğrudan SQL ile kullanıcı eklenirse (Admin API/
-`supabase.auth.admin.createUser` dışında) aynı hata tekrarlanır — yeni
-kullanıcılar hep Admin API/normal signup ile oluşturulmalı, bu 4 kolonun
-`''` varsayılanını atlayan bir INSERT bir daha yazılmamalı.
-
-**Aynı gün, sekizinci tur — admin rolü derin kontrolü: 2 gerçek bug düzeltildi
-(biri migration'lı), 1 bulgu retest bekliyor.**
-1. **Bulgu R — "Bekleyen Onaylar" KPI'ının Satın Alma ve Ticket sayaçları
-   eksik sayıyordu, ikisi de gerçek bug, düzeltildi.** (a) `TabGenel.jsx`'teki
-   admin/proje-yöneticisi Satın Alma sayacı `.eq('status','bekliyor')`
-   kullanıyordu — `'bekliyor'` yalnızca `utils/satinAlma.js`'in görüntü-kovası,
-   `purchase_requests_status_check` bu değeri DB'ye hiç yazdırmaz (aynı kök
-   neden sınıfı: bkz. "Satın alma akışı" altındaki `TalepDetayModal` Onayla/
-   Reddet bug'ı) — sorgu her zaman 0 dönüyordu. `.in('status', ['talep_olusturuldu',
-   'fiyat_girildi','onay_bekliyor'])`'a çevrildi (frontend-only). (b)
-   `get_dashboard_summary.open_tickets` yalnızca `status='açık'` sayıyordu;
-   gerçek durum dağılımı (`açık`=4, `gönderildi`=5, `işlemde`=2, `kapatıldı`=8,
-   `iptal_edildi`=3) sorgulandığında kanonik "Açık" tanımının (`ticketStatus.js`'teki
-   `STATUS_META`, `açık`+`gönderildi`'yi aynı etikette birleştirir) toplamının
-   9 olduğu doğrulandı — dashboard'un 4'ü tam olarak bu ikinci ham değeri
-   atladığını gösteriyordu. `open_tickets`'ı `status in ('açık','gönderildi')`'e
-   çeviren migration onaylanıp uygulandı (`20260801211040_fix_dashboard_open_tickets_count_include_gonderildi`).
-   Fatura sayacı (`pending_invoices`, zaten `yönetici_onayında`'ya daraltılmıştı,
-   bkz. "Gerçekleşen maliyet kanonik tanımı") zaten doğruydu, dokunulmadı.
-2. **Bulgu L/P (site şefi modalının reddedilen talepte yeşil/donuk kalması) —
-   DÜZELTİLDİ, canlıda doğrulandı.** `TalepDetayModal.jsx`'e eklenen
-   `cancelled` durumu site şefi görünümüne de bağlanmıştı; kullanıcı
-   localhost:5182'de santiyesefi.test ile SAT-2026-005'i yeniden açıp "İşlem
-   Süreci"nin artık "İşlem İptal Edildi"yi kırmızı gösterdiğini hem detay
-   modalında hem talep listesindeki rozette teyit etti. Madde kapandı.
-
-**02.08.2026 — yöneticiye sunum öncesi temizlik: 993+37 ölü bildirim ve 14 test
-kaydı silindi.** `notifications` 1127 satıra şişmişti (31.07'deki 776→349
-temizliğinden sonra yeni QA turlarıyla tekrar birikmiş) — `entity_id` artık
-hiçbir tabloda karşılığı olmayan (`purchase_request`/`invoice`/
-`procurement_item_change_request`/`daily_report`/`ticket`) 993 satır
-silindi, kalan 134'e indi. Ayrıca sunumda görünmemesi gereken 14 açık test
-etiketli kayıt (`SAT-2026-144`/`SAT-2026-033`/`SAT-2026-014` ve bağlı
-faturaları `TEST-FTR-2026-011`/`FTR-2026-QATEST01`/`KONTROL-27072026-FTR-001`,
-8 "QA Test"/"AUDIT..."/"PW Kritik Severity Test"/"ege proje deneme" ticket'ı)
-FK sırasına uygun şekilde (circular `invoices.purchase_request_id` ↔
-`purchase_requests.invoice_id` önce null'landı) silindi, bağlı 37 bildirim de
-temizlendi — `notifications` 97'ye indi. Silinmeden önce `tests/` içinde bu
-başlık/ID'lerin hiçbirine referans olmadığı grep ile doğrulandı (regresyon
-suite'ini etkilemiyor). Son durum: 13 satın alma talebi, 14 ticket, 31 fatura,
-97 bildirim — 2 test projesiyle (Ege Enerji İzmir GES – TEST, Kayseri Develi
-GES) tutarlı, sunuma uygun.
