@@ -40,13 +40,19 @@ export default function NotificationBell({ onNavigate }) {
 
   async function load() {
     if (!user?.id) return
+    // Rozet sayısı önceden yalnızca en son 30 kayıt üzerinden hesaplanıyordu —
+    // toplam bildirim sayısı 30'u aştığında (ör. yoğun bir muhasebe hesabı)
+    // gerçek okunmamış sayısından (Bildirimler sayfasının kendi sayımı, aynı
+    // dedupeNotifications mantığıyla ama limit(200) kullanıyor) düşük çıkıyordu.
+    // Aynı üst sınır (200) + aynı dedup burada da kullanılıyor ki iki sayı hep
+    // eşleşsin; açılır listede yalnızca ilk 30'u gösteriyoruz (kasıtlı sade).
     const { data } = await supabase
       .from('notifications')
       .select('id, project_id, entity_type, entity_id, event_type, title, body, is_read, created_at')
       .order('created_at', { ascending: false })
-      .limit(30)
+      .limit(200)
     const uniqueItems = dedupeNotifications(data || [])
-    setItems(uniqueItems)
+    setItems(uniqueItems.slice(0, 30))
     setUnread(uniqueItems.filter(n => !n.is_read).length)
   }
 
@@ -77,9 +83,13 @@ export default function NotificationBell({ onNavigate }) {
   }
 
   async function markAllRead() {
-    const unreadIds = items.filter(n => !n.is_read).map(n => n.id)
-    if (!unreadIds.length) return
-    await supabase.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).in('id', unreadIds)
+    // Dropdown yalnızca ilk 30 bildirimi gösterir (`items`) — bir kullanıcının
+    // 30'dan fazla okunmamış bildirimi varsa yalnızca görünenleri işaretlemek
+    // rozeti hiç sıfırlamıyordu (RLS zaten recipient_id=auth.uid()'e daralttığı
+    // için `items` listesine bağlı kalmadan doğrudan is_read=false ile toplu
+    // güncelleme yapmak gerçekten TÜMÜNÜ kapsar).
+    if (!unread) return
+    await supabase.from('notifications').update({ is_read: true, read_at: new Date().toISOString() }).eq('is_read', false)
     load()
   }
 
@@ -124,7 +134,7 @@ export default function NotificationBell({ onNavigate }) {
       {open && (
         <div style={{
           position: 'absolute', top: 44, right: 0, width: 340, maxHeight: 420,
-          overflowY: 'auto', background: '#fff', border: '1px solid #e2e8f0',
+          overflowY: 'auto', overflowX: 'hidden', background: '#fff', border: '1px solid #e2e8f0',
           borderRadius: 12, boxShadow: '0 12px 30px rgba(15,23,42,0.12)', zIndex: 50,
         }}>
           <div style={{

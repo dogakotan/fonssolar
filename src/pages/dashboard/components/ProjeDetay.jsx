@@ -623,8 +623,8 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 }
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, initialReportId, onOpenedReport }) {
-  // Öncelik: açık deep-link (initialTab, ör. bildirimden gelme) > projeye özel
+export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, onTabChange, initialReportId, onOpenedReport, openRequestId, onOpenedRequest, onSelectedRequestChange, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange, openTicketId, onOpenedTicket, onSelectedTicketChange }) {
+  // Öncelik: açık deep-link (initialTab, ör. bildirimden gelme/URL) > projeye özel
   // localStorage'da kalıcı son seçim > "Genel Proje" — aksi halde başka bir menü
   // öğesine geçip aynı projeye geri dönüldüğünde (bileşen unmount/remount
   // olduğundan) her seferinde "Genel Proje"ye dönüyordu (bkz. TabFinans.jsx'teki
@@ -637,6 +637,33 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   useEffect(() => {
     try { window.localStorage.setItem(`proje-detay-active-tab-${projectId}`, tab) } catch {}
   }, [tab, projectId])
+  // onTabChange'i ref'te tutuyoruz — Dashboard her render'da yeni bir inline
+  // fonksiyon geçiyor, bunu doğrudan effect dependency'sine koymak effect'in
+  // her render'da yeniden tetiklenmesine yol açardı.
+  const onTabChangeRef = useRef(onTabChange)
+  onTabChangeRef.current = onTabChange
+  // Mount'ta URL zaten initialTab'i yansıtıyor — buna rağmen bu efekt her mount'ta
+  // (React StrictMode'da dev'de iki kez) çalışıp onTabChange'i tetikliyordu, bu da
+  // navigate()'in bare bir path'e (query string'siz) gitmesine, dolayısıyla
+  // TicketListesi/ProjeTabSatinAlma/ProjeTabFinans'ın URL'e yazdığı ?talep=/?fatura=/
+  // ?ticket= parametresinin sayfa yenilenir yenilenmez silinmesine yol açıyordu
+  // (bkz. useUrlSyncedSelection'daki aynı kök neden — StrictMode). "Son işlenen tab"
+  // ile karşılaştırmak hem mount'u hem StrictMode'un tekrar çağrısını filtreler,
+  // yalnızca GERÇEK bir sekme değişiminde navigate tetiklenir.
+  const lastActedTabRef = useRef(tab)
+  useEffect(() => {
+    if (tab === lastActedTabRef.current) return
+    lastActedTabRef.current = tab
+    onTabChangeRef.current?.(tab)
+  }, [tab])
+  // Bileşen aynı proje için mount kalırken (ör. bir bildirimden gelen deep-link
+  // veya tarayıcı geri/ileri tuşu URL'deki alt-sekmeyi değiştirdiğinde) initialTab
+  // prop'u değişebilir — useState initializer bunu yalnızca İLK mount'ta okur,
+  // bu efekt sonraki değişiklikleri de yakalar.
+  useEffect(() => {
+    if (initialTab && initialTab !== tab) setTab(initialTab)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTab])
   // Malzeme Listesi/Riskler tek sayfada iki alt-sekme — Genel Proje'deki Riskler
   // kartından "Tümünü Gör" tıklanınca doğrudan Riskler alt-sekmesine düşsün diye.
   // Aynı nedenle (unmount/remount) bu da projeye özel kalıcı.
@@ -1348,9 +1375,18 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         <TicketListesi
           projectId={projectId}
           filterDate={filterDate}
+          openTicketId={openTicketId}
+          onOpenedTicket={onOpenedTicket}
+          onSelectedTicketChange={onSelectedTicketChange}
         />
       ) : tab === 'satin-alma' ? (
-        <ProjeTabSatinAlma projectId={projectId} filterDate={filterDate} />
+        <ProjeTabSatinAlma
+          projectId={projectId}
+          filterDate={filterDate}
+          openRequestId={openRequestId}
+          onOpenedRequest={onOpenedRequest}
+          onSelectedRequestChange={onSelectedRequestChange}
+        />
       ) : tab === 'malzeme-listesi' ? (
         <ProjeTabMalzemeListesi
           projectId={projectId}
@@ -1360,7 +1396,13 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           onGoTab={setTab}
         />
       ) : tab === 'finans' ? (
-        <ProjeTabFinans projectId={projectId} filterDate={filterDate} />
+        <ProjeTabFinans
+          projectId={projectId}
+          filterDate={filterDate}
+          openInvoiceId={openInvoiceId}
+          onOpenedInvoice={onOpenedInvoice}
+          onSelectedInvoiceChange={onSelectedInvoiceChange}
+        />
       ) : tab === 'raporlar' ? (
         <DailyReportList
           projectId={projectId}

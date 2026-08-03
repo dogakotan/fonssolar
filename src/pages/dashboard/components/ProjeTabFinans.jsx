@@ -24,7 +24,7 @@ const EMPTY_ACTION_ITEMS = {
   yoneticiOnayi: { count: 0, amount: 0 },
 }
 
-export default function ProjeTabFinans({ projectId, filterDate }) {
+export default function ProjeTabFinans({ projectId, filterDate, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange }) {
   const { isAdmin, role } = useAuth()
   // Proje yöneticisi artık fatura onay sürecindeki "Yönetici" — Faturalar/Onay
   // Kuyruğu'nu görüp aksiyon alabilmesi gerekiyor.
@@ -79,10 +79,6 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   const dagilim = buildDagilimItems(overview?.dagilim)
   const recentActivity = formatRecentActivity(overview?.recentActivity)
 
-  if (!loading && !authorized) {
-    return <UnauthorizedScopeNotice />
-  }
-
   const tabs = [
     { key: 'genel', label: 'Genel' },
     ...(canApprove ? [
@@ -92,11 +88,24 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
   ]
 
   // localStorage'dan gelen sekme farklı bir rolden kalmış olabilir — geçerli
-  // değilse varsayılana düş (bkz. TabFinans.jsx'teki aynı desen).
+  // değilse varsayılana düş (bkz. TabFinans.jsx'teki aynı desen). Erken
+  // return'den (aşağıdaki authorized kontrolü) ÖNCE çağrılmalı — aksi halde
+  // Hooks kuralı ihlal edilir (react-hooks/rules-of-hooks).
   useEffect(() => {
     if (!tabs.some(t => t.key === tab)) setTab('genel')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canApprove])
+
+  // Adres çubuğunda bir fatura id'si varsa (yenileme/deep-link) "Faturalar"
+  // sekmesine zorla geç — bkz. menü seviyesindeki TabFinans.jsx'teki aynı desen.
+  useEffect(() => {
+    if (!openInvoiceId) return
+    setTab('faturalar')
+  }, [openInvoiceId])
+
+  if (!loading && !authorized) {
+    return <UnauthorizedScopeNotice />
+  }
 
   return (
     <div>
@@ -140,7 +149,14 @@ export default function ProjeTabFinans({ projectId, filterDate }) {
             </div>
           </div>
       </>}
-      {tab === 'faturalar' && <FaturaListesi projectId={projectId} />}
+      {tab === 'faturalar' && (
+        <FaturaListesi
+          projectId={projectId}
+          openInvoiceId={openInvoiceId}
+          onOpenedInvoice={onOpenedInvoice}
+          onSelectedInvoiceChange={onSelectedInvoiceChange}
+        />
+      )}
       {tab === 'onay' && <OnayKuyrugu projectId={projectId} />}
     </div>
   )

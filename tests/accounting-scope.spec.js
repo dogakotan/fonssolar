@@ -37,7 +37,11 @@ test.describe('Muhasebe rol kapsamı', () => {
     expect(purchaseList.data.requests.every(row => ['satin_alindi', 'fatura_bekliyor'].includes(row.status))).toBe(true)
 
     expect(rawRequests.error).toBeNull()
-    expect(rawRequests.data.every(row => ['satin_alindi', 'fatura_bekliyor'].includes(row.status))).toBe(true)
+    // fatura_onay_bekliyor/faturasi_kesildi 31.07.2026'da eklendi — muhasebe
+    // kendi oluşturduğu bir faturanın bağlı olduğu talebi, fatura talebi
+    // faturalandıktan SONRA da (onaylanana kadar) görebilmeli, aksi halde
+    // FaturaDetayModal'ın "Bağlı Talep" alanı kayboluyordu (bkz. CLAUDE.md).
+    expect(rawRequests.data.every(row => ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(row.status))).toBe(true)
     expect(procurementItems.data).toHaveLength(0)
     expect(budgetLines.data).toHaveLength(0)
     expect(costAllocations.data).toHaveLength(0)
@@ -52,9 +56,15 @@ test.describe('Muhasebe rol kapsamı', () => {
   test('arayüzde yalnız muhasebe sekmeleri görünür', async ({ page }) => {
     await loginUi(page, process.env.TEST_MUHASEBE_EMAIL, process.env.TEST_MUHASEBE_PASSWORD)
 
-    await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Genel', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toHaveCount(0)
+    // "Maliyet Tablosu" sidebar öğesi tamamen kaldırıldı (kullanıcı kararı) — hiçbir
+    // role görünmemeli, giriş ekranından (muhasebenin kendi Genel Bakış'ı) bile kontrol edilebilir.
     await expect(page.getByText('Maliyet Tablosu', { exact: true })).toHaveCount(0)
+
+    // Muhasebe menü Finans'a girince Faturalar (varsayılan) + Genel 2 alt-sekmesini
+    // görür; Onay Kuyruğu (proje_yöneticisi/admin'e özel) görmez.
+    await page.getByText('Finans', { exact: true }).first().click()
+    await expect(page.getByRole('button', { name: 'Faturalar', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Genel', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Onay Kuyruğu', exact: true })).toHaveCount(0)
   })
 })

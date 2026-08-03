@@ -9,7 +9,7 @@ import OdemeTakvimi from './OdemeTakvimi'
 import FaturaOlusturModal from '../satin-alma/FaturaOlusturModal'
 import FinansalIslemOdemeModal from './FinansalIslemOdemeModal'
 
-const INVOICE_PAYMENT_STATUSES = ['odeme_bekliyor', 'kismen_odendi', 'ödendi']
+const INVOICE_PAYMENT_STATUSES = ['odeme_bekliyor', 'kismen_odendi', 'ödendi', 'onaylandı']
 const TX_PAYMENT_STATUSES = ['odeme_bekliyor', 'kismen_odendi', 'odendi']
 const PAGE_SIZE = 10
 const TABS = [
@@ -19,7 +19,13 @@ const TABS = [
 
 // invoices'ta 'ödendi', financial_transactions'ta 'odendi' yazılıyor — tek ekranda
 // karşılaştırılabilmesi için görüntüleme durumu bu tek isimde birleştirilir.
-const normalizeStatus = status => (status === 'ödendi' ? 'odendi' : status)
+// 'onaylandı' (vade yok = peşin fatura) da buraya eklendi — fn_invoice_approval_cascade
+// bu duruma geçerken paid_amount=total_amount yazıyor (31.07.2026), yani fiilen
+// ödenmiş sayılır ve Ödeme Takibi'nde "Ödendi" sekmesinde görünmeli.
+const normalizeStatus = status => {
+  if (status === 'ödendi' || status === 'onaylandı') return 'odendi'
+  return status
+}
 
 function computeVadeDurumu(status, dueDate) {
   if (!['odeme_bekliyor', 'kismen_odendi'].includes(status) || !dueDate) return null

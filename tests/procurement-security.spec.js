@@ -174,7 +174,7 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     for (const result of attempts) expect(result.error).toBeTruthy()
   })
 
-  test('yalnızca admin fatura onayını değiştirebilir', async () => {
+  test('yalnızca yönetici (admin/proje yöneticisi) fatura onayını değiştirebilir', async () => {
     expect((await admin.from('purchase_requests').update({
       status: 'onaylandi', approved_by: adminId, approved_at: new Date().toISOString(),
     }).eq('id', requestId)).error).toBeNull()
@@ -216,6 +216,8 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
     })
     expect(completedRequest.purchase_date).toBeTruthy()
 
+    // taslak'tan başlar — 'bekliyor' artık invoices_status_check'te yok (akış
+    // taslak'tan başlıyor, bkz. CLAUDE.md "Fatura onay akışı").
     const { data: invoice, error: invoiceError } = await muhasebe.from('invoices').insert({
       project_id: foreignProjectId,
       purchase_request_id: requestId,
@@ -227,33 +229,46 @@ test.describe.serial('Satın alma yetki ve RLS güvenliği', () => {
       category: 'diger',
       description: marker,
       source: 'satin_alma',
-      status: 'bekliyor',
+      status: 'taslak',
       created_by: muhasebeId,
     }).select('id').single()
     expect(invoiceError).toBeNull()
     invoiceId = invoice.id
 
-    for (const [client, reviewerId] of [[muhasebe, muhasebeId], [pm, pmId]]) {
-      const { data, error } = await client.from('invoice_approvals').update({
-        status: 'onaylandı', reviewer_id: reviewerId, reviewed_at: new Date().toISOString(),
-      }).eq('invoice_id', invoiceId).eq('status', 'bekliyor').select('id')
-      expect(error).toBeNull()
-      expect(data).toHaveLength(0)
-    }
+    // Onaya Gönder — invoice_approvals'a step=1 satırı INSERT edilir (artık
+    // invoice insert'i bunu otomatik oluşturmuyor, bkz. fn_invoice_approval_submitted).
+    expect((await muhasebe.from('invoice_approvals').insert({
+      invoice_id: invoiceId, step: 1, step_label: 'Yönetici Onayı', status: 'bekliyor',
+    })).error).toBeNull()
 
-    const { data: pmInvoiceUpdate, error: pmInvoiceError } = await pm.from('invoices')
-      .update({ status: 'onaylandı' }).eq('id', invoiceId).select('id')
-    expect(pmInvoiceError).toBeNull()
-    expect(pmInvoiceUpdate).toHaveLength(0)
+    // muhasebe invoice_approvals'ı RLS düzeyinde güncelleyebilir (kaba taneli rol
+    // kontrolü, bkz. CLAUDE.md) ama asıl geçiş kuralı fn_validate_invoice_status_transition'da
+    // merkezi — muhasebenin invoices.status'u 'yönetici_onayında' -> 'onaylandı'ya
+    // taşıması izinli değil, cascade trigger'ı bu yüzden hata fırlatır (satır RLS'te
+    // sessizce filtrelenmez, gerçek bir exception olur).
+    const muhasebeAttempt = await muhasebe.from('invoice_approvals').update({
+      status: 'onaylandı', reviewer_id: muhasebeId, reviewed_at: new Date().toISOString(),
+    }).eq('invoice_id', invoiceId).eq('status', 'bekliyor').select('id')
+    expect(muhasebeAttempt.error).not.toBeNull()
 
     const { data: stillPending } = await admin.from('invoice_approvals')
       .select('status').eq('invoice_id', invoiceId).eq('status', 'bekliyor').single()
     expect(stillPending.status).toBe('bekliyor')
 
-    const { data: approvedRows, error: adminApprovalError } = await admin.from('invoice_approvals').update({
-      status: 'onaylandı', reviewer_id: adminId, reviewed_at: new Date().toISOString(),
+    // proje yöneticisi ("Yönetici") de admin gibi doğrudan invoices tablosuna yazamaz —
+    // invoices_update RLS'i yalnızca admin/muhasebe'ye açık, proje_yoneticisi yalnızca
+    // invoice_approvals üzerinden (SECURITY DEFINER cascade ile) hareket edebilir.
+    const { data: pmInvoiceUpdate, error: pmInvoiceError } = await pm.from('invoices')
+      .update({ status: 'onaylandı' }).eq('id', invoiceId).select('id')
+    expect(pmInvoiceError).toBeNull()
+    expect(pmInvoiceUpdate).toHaveLength(0)
+
+    // Gerçek onay — tek onaylayıcı "Yönetici" artık proje_yoneticisi (admin da aynı
+    // yetkiyle aksiyon alabilir, bkz. CLAUDE.md "Fatura onay akışı").
+    const { data: approvedRows, error: pmApprovalError } = await pm.from('invoice_approvals').update({
+      status: 'onaylandı', reviewer_id: pmId, reviewed_at: new Date().toISOString(),
     }).eq('invoice_id', invoiceId).eq('status', 'bekliyor').select('id')
-    expect(adminApprovalError).toBeNull()
+    expect(pmApprovalError).toBeNull()
     expect(approvedRows).toHaveLength(1)
   })
 

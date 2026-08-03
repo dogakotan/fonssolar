@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useUrlSyncedSelection } from '../../hooks/useUrlSyncedSelection'
 import { supabase } from '../../lib/supabase'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../ui/DataStatusBanner'
@@ -24,6 +25,10 @@ function statusMeta(status) {
 
 const PAGE_SIZE = 10
 
+// invoices_status_check'teki 8 durumun tamamı burada birer sekme olarak
+// karşılığını bulmalı — aksi halde "Tümü" sekmesindeki toplam, durum
+// sekmelerinin toplamına eşit olmaz (kismen_odendi/reddedildi eksikti,
+// bu iki durumdaki faturalar hiçbir sekmede sayılmıyordu).
 const TABS = [
   { key: 'hepsi', label: 'Tümü' },
   { key: 'taslak', label: 'Taslak' },
@@ -31,7 +36,9 @@ const TABS = [
   { key: 'duzeltme_bekliyor', label: 'Düzeltme' },
   { key: 'onaylandı', label: 'Onaylanan' },
   { key: 'odeme_bekliyor', label: 'Ödeme Bekleyen' },
+  { key: 'kismen_odendi', label: 'Kısmen Ödendi' },
   { key: 'ödendi', label: 'Ödendi' },
+  { key: 'reddedildi', label: 'Reddedildi' },
 ]
 
 // ── Fatura İptal Modal (onaylandı/odeme_bekliyor → reddedildi, admin) ────────
@@ -99,7 +106,7 @@ const linkBtn = { background: 'none', border: 'none', color: 'var(--color-primar
 // projectId/filterDate yoksa (menü modu): tüm projelerin faturaları, Satıra
 // tıklama → detay modalı. projectId doluysa (proje modu): yalnız o projenin
 // faturaları (filterDate'e kadar).
-export default function FaturaListesi({ projectId = null, filterDate = null, openInvoiceId, onOpenedInvoice }) {
+export default function FaturaListesi({ projectId = null, filterDate = null, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange }) {
   const { isAdmin, isMuhasebe, role } = useAuth()
   const canApprove = isAdmin || role === 'proje_yoneticisi'
   const [invoices, setInvoices] = useState([])
@@ -114,6 +121,8 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
   const [editingInvoice, setEditingInvoice] = useState(null)
   const [showAddInvoice, setShowAddInvoice] = useState(false)
   const [detayFatura, setDetayFatura] = useState(null)
+  // Açık fatura detay modalının id'sini adres çubuğuna yansıtır.
+  useUrlSyncedSelection(detayFatura?.id ?? null, onSelectedInvoiceChange)
   const [cancelling, setCancelling] = useState(null)
 
   async function fetchInvoices() {

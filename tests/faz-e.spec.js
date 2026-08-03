@@ -55,13 +55,20 @@ test.describe('Faz E — otomatik regresyon suite', () => {
     const { data: inserted, error: insertError } = await client
       .from('invoices')
       .insert({
-        project_id: PROJECT_IZMIR, amount, vat_rate: 0, status: 'bekliyor', source: 'manuel',
+        project_id: PROJECT_IZMIR, amount, vat_rate: 0, status: 'taslak', source: 'manuel',
         invoice_no: `${TEST_MARKER}_B`, invoice_date: new Date().toISOString().split('T')[0],
         description: TEST_MARKER, created_by: user.id,
       })
       .select('id')
       .single()
     expect(insertError).toBeNull()
+
+    // Onaya Gönder — invoice insert'i invoice_approvals satırını artık otomatik
+    // oluşturmuyor (bkz. fn_invoice_approval_submitted).
+    const { error: submitError } = await client.from('invoice_approvals').insert({
+      invoice_id: inserted.id, step: 1, step_label: 'Yönetici Onayı', status: 'bekliyor',
+    })
+    expect(submitError).toBeNull()
 
     const { error: approvalError } = await client.from('invoice_approvals').update({
       status: 'onaylandı', reviewer_id: user.id, reviewed_at: new Date().toISOString(),
@@ -94,7 +101,7 @@ test.describe('Faz E — otomatik regresyon suite', () => {
     const { client } = await signIn(ADMIN_EMAIL, ADMIN_PASSWORD)
     const today = new Date().toISOString().split('T')[0]
     const rows = Array.from({ length: 5 }, (_, i) => ({
-      project_id: PROJECT_IZMIR, amount: 100 + i, status: 'bekliyor', source: 'manuel',
+      project_id: PROJECT_IZMIR, amount: 100 + i, status: 'taslak', source: 'manuel',
       invoice_no: `${TEST_MARKER}_DEBOUNCE_${i}`, invoice_date: today, description: TEST_MARKER,
     }))
     const { data: insertedRows, error: insertError } = await client.from('invoices').insert(rows).select('id')

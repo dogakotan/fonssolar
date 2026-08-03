@@ -82,9 +82,12 @@ test.describe.serial('Satın alma eşzamanlılık ve idempotency', () => {
       category: 'diger',
       description: marker,
       source: 'satin_alma',
-      status: 'bekliyor',
+      status: 'taslak',
       created_by: muhasebeId,
     })
+    // İkisi de aynı purchase_request_id için — invoices_active_purchase_request_id_unique
+    // (kısmi index, yalnızca aktif/reddedilmemiş faturalarda tekillik) ikisinden yalnızca
+    // birinin başarılı olmasını garanti eder.
     const invoiceResults = await Promise.all([
       muhasebeA.from('invoices').insert(invoicePayload('A')).select('id').single(),
       muhasebeB.from('invoices').insert(invoicePayload('B')).select('id').single(),
@@ -92,6 +95,22 @@ test.describe.serial('Satın alma eşzamanlılık ve idempotency', () => {
     const successfulInvoices = invoiceResults.filter(result => result.data?.id)
     expect(successfulInvoices).toHaveLength(1)
     invoiceId = successfulInvoices[0].data.id
+
+    // Onaya Gönder — invoice insert'i artık invoice_approvals satırını otomatik
+    // oluşturmuyor (bkz. fn_invoice_approval_submitted).
+    expect((await muhasebeA.from('invoice_approvals').insert({
+      invoice_id: invoiceId, step: 1, step_label: 'Yönetici Onayı', status: 'bekliyor',
+    })).error).toBeNull()
+
+    // 'created' bildirimi artık admin'e değil proje yöneticisine gidiyor
+    // (fn_invoice_approval_submitted, notify_role('proje_yoneticisi', ...)). Bu kontrol
+    // reddetme/onaylama yarışından ÖNCE yapılmalı — pm bu talebin requested_by'ı da
+    // olduğundan, fatura reddedilince trg_notify_invoice_status pm'e AYNI (recipient,
+    // entity_type, entity_id) satırını 'rejected' event_type'ıyla üzerine yazar
+    // (notifications_recipient_entity_unique tek satır garantisi, dedupe_notifications_by_entity).
+    const { count: notificationCount } = await pm.from('notifications').select('id', { count: 'exact', head: true })
+      .eq('entity_id', invoiceId).eq('event_type', 'created')
+    expect(notificationCount).toBe(1)
 
     const { data: approvals } = await adminA.from('invoice_approvals').select('id').eq('invoice_id', invoiceId).eq('status', 'bekliyor')
     expect(approvals).toHaveLength(1)
@@ -101,11 +120,11 @@ test.describe.serial('Satın alma eşzamanlılık ve idempotency', () => {
     ])
     expect(results.filter(result => result.data?.length === 1)).toHaveLength(1)
 
+    // requires_payment_tracking varsayılan true olduğundan onay genelde doğrudan
+    // 'onaylandı' değil 'odeme_bekliyor'a düşer — sync_cost_allocation_from_invoice
+    // ikisini de (kismen_odendi/ödendi ile birlikte) "gerçekleşen maliyet" sayar.
     const { data: invoice } = await adminA.from('invoices').select('status').eq('id', invoiceId).single()
     const { count: allocationCount } = await adminA.from('cost_allocations').select('id', { count: 'exact', head: true }).eq('invoice_id', invoiceId)
-    expect(allocationCount).toBe(invoice.status === 'onaylandı' ? 1 : 0)
-    const { count: notificationCount } = await adminA.from('notifications').select('id', { count: 'exact', head: true })
-      .eq('entity_id', invoiceId).eq('event_type', 'created')
-    expect(notificationCount).toBe(1)
+    expect(allocationCount).toBe(['onaylandı', 'odeme_bekliyor', 'kismen_odendi', 'ödendi'].includes(invoice.status) ? 1 : 0)
   })
 })

@@ -45,7 +45,7 @@ function uniqueCategories(rows = []) {
   return [...new Set(rows.map(row => row.category).filter(Boolean))]
 }
 
-export default function Adim3KategoriAgirliklari({ projectId, taskRows, result, mode = 'new', onDone, onBack }) {
+export default function Adim3KategoriAgirliklari({ projectId, taskRows, result, mode = 'new', onDone, onBack, onDraftChange }) {
   const taskCategories = useMemo(() => uniqueCategories(taskRows), [taskRows])
   const [rows, setRows] = useState(() => result?.rows?.length
     ? result.rows.map(row => ({ ...row, weight_pct: String(row.weight_pct) }))
@@ -77,6 +77,8 @@ export default function Adim3KategoriAgirliklari({ projectId, taskRows, result, 
       ])
     }).finally(() => setLoading(false))
   }, [mode, projectId, result, taskCategories])
+
+  useEffect(() => { onDraftChange?.({ rows, skipped: false, count: rows.length }) }, [rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const total = rows.reduce((sum, row) => sum + (Number(row.weight_pct) || 0), 0)
   const validTotal = Math.abs(total - 100) <= 0.01

@@ -139,6 +139,7 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
   const [showCal, setShowCal]   = useState(false)
   const [calPos, setCalPos]     = useState({ top: 0, right: 0 })
   const [filteredPurchases, setFilteredPurchases] = useState(null)
+  const [progressAsOf, setProgressAsOf] = useState(null) // projectId -> overall_pct (selectedDate seçiliyken)
   const [showApprovalMenu, setShowApprovalMenu] = useState(false)
 
   // Genel Bakış KPI özeti — kapsam seçicideki proje (veya Tüm Projeler) için canlı çekilir.
@@ -152,6 +153,7 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
   const authorized          = summary?.authorized ?? true
   const openTickets         = summary?.open_tickets ?? null
   const criticalTickets     = summary?.critical_tickets ?? null
+  const criticalRisks       = summary?.critical_risks ?? null
   const totalBudget         = summary?.total_budget ?? null
   const spentAmount         = summary?.spent_amount ?? null
   const pendingInvoices     = summary?.pending_invoices ?? null
@@ -219,14 +221,41 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
       return
     }
 
+    // 'bekliyor' yalnızca utils/satinAlma.js normalizeStatus'un görüntü-kovası —
+    // purchase_requests_status_check bu değeri DB'ye asla yazdırmaz, ham değer
+    // her zaman talep_olusturuldu/fiyat_girildi/onay_bekliyor üçünden biridir
+    // (bkz. TalepDetayModal.jsx'teki updateStatus'un aynı sebeple ham status
+    // kullanması) — .eq('status','bekliyor') hiçbir satırla eşleşmediğinden
+    // admin/proje yöneticisi dışındaki roller için bu KPI hep 0 dönüyordu.
     supabase.from('purchase_requests')
       .select('id', { count: 'exact', head: true })
       .in('project_id', ids)
-      .eq('status', isProjectManager ? 'onaylandi' : 'bekliyor')
+      .in('status', isProjectManager ? ['onaylandi'] : ['talep_olusturuldu', 'fiyat_girildi', 'onay_bekliyor'])
       .then(({ count, error }) => {
         if (!error) setFilteredPurchases(count ?? 0)
       })
   }, [selectedDate, projects, loading, isProjectManager])
+
+  // Tarih Seç bir geçmiş tarih seçtiğinde Projeler tablosundaki İlerleme kolonu
+  // her zaman GÜNCEL (canlı) progress'i gösteriyordu, seçilen tarihe göre hiç
+  // değişmiyordu — görsel olarak "filtre bir şey yapmıyor" izlenimi buradan
+  // geliyordu (proje oluşturma tarihine göre satır gizleme zaten çalışıyordu,
+  // ama iki test projesi de haftalar önce oluşturulduğundan bu neredeyse hiç
+  // görünür bir etki yaratmıyordu). ProjeDetay'ın kendi tarih-farkında ilerleme
+  // kaynağıyla (get_project_by_date.overall_pct) aynı hesap kullanılarak her
+  // proje için o tarihteki gerçek ilerleme çekiliyor.
+  useEffect(() => {
+    if (!selectedDate || projects.length === 0) { setProgressAsOf(null); return }
+    let alive = true
+    const dateStr = selectedDate.toISOString().slice(0, 10)
+    Promise.all(projects.map(p =>
+      supabase.rpc('get_project_by_date', { p_project_id: p.id, p_date: dateStr })
+        .then(({ data }) => [p.id, data?.overall_pct])
+    )).then(entries => {
+      if (alive) setProgressAsOf(new Map(entries))
+    })
+    return () => { alive = false }
+  }, [selectedDate, projects])
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -243,7 +272,9 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
   const { loading: weatherLoading, error: weatherError, current: weatherCurrent, tomorrow: weatherTomorrow } = useWeather(konum)
 
   const displayProjects = selectedDate
-    ? projects.filter(p => p.created_at && new Date(p.created_at) <= new Date(selectedDate))
+    ? projects
+        .filter(p => p.created_at && new Date(p.created_at) <= new Date(selectedDate))
+        .map(p => (progressAsOf?.has(p.id) ? { ...p, progress: Math.round(Number(progressAsOf.get(p.id) ?? p.progress)) } : p))
     : projects
 
   if (!authorized) {
@@ -267,8 +298,8 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, gap: 6 }}>
               <span style={{ color: 'var(--color-muted)' }}>Kritik Risk</span>
-              <strong style={{ color: (criticalTickets ?? 0) > 0 ? '#ef4444' : 'var(--color-text)' }}>
-                {criticalTickets === null ? '…' : criticalTickets} proje
+              <strong style={{ color: (criticalRisks ?? 0) > 0 ? '#ef4444' : 'var(--color-text)' }}>
+                {criticalRisks === null ? '…' : criticalRisks}
               </strong>
             </div>
           </div>

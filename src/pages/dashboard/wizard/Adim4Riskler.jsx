@@ -21,24 +21,27 @@ const inp = { padding: '0.45rem 0.625rem', border: '1px solid #e2e8f0', borderRa
 const btnP = { padding: '0.5rem 1.1rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const btnS = { padding: '0.5rem 1.1rem', background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }
 
-export default function Adim4Riskler({ projectId, result, onDone, onBack, mode = 'new' }) {
+function mapDraftRows(rows) {
+  return rows.map((r, i) => ({
+    ...DEF, ...r,
+    _id: Date.now() + i,
+    probability: String(r.probability ?? 3),
+    impact: String(r.impact ?? 3),
+  }))
+}
+
+export default function Adim4Riskler({ projectId, result, onDone, onBack, onDraftChange, mode = 'new' }) {
   const [rows,  setRows]  = useState(() => {
+    if (result?.rows?.length) return mapDraftRows(result.rows)
     if (mode === 'edit') return []
-    if (result?.rows?.length) {
-      return result.rows.map((r, i) => ({
-        ...DEF, ...r,
-        _id: Date.now() + i,
-        probability: String(r.probability ?? 3),
-        impact: String(r.impact ?? 3),
-      }))
-    }
     return [{ ...DEF, _id: 1 }]
   })
   const [error, setError] = useState(null)
   const loadedRef = useRef(false)
 
+  // Bir taslak zaten varsa DB'den taze veri çekmiyoruz — bkz. Adim2IsKalemleri.jsx'teki not.
   useEffect(() => {
-    if (mode !== 'edit' || loadedRef.current) return
+    if (mode !== 'edit' || loadedRef.current || result?.rows?.length) return
     loadedRef.current = true
     supabase.from('project_risks').select('*').eq('project_id', projectId)
       .then(({ data }) => {
@@ -46,7 +49,10 @@ export default function Adim4Riskler({ projectId, result, onDone, onBack, mode =
           ? data.map((r, i) => ({ ...DEF, ...r, _id: r.id ?? (Date.now() + i), probability: String(r.probability ?? 3), impact: String(r.impact ?? 3) }))
           : [])
       })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => { onDraftChange?.({ rows, skipped: false, count: rows.length }) }, [rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function addRow() { setRows(r => [...r, { ...DEF, _id: Date.now() }]) }
   function upd(_id, k, v) { setRows(r => r.map(row => row._id === _id ? { ...row, [k]: v } : row)) }

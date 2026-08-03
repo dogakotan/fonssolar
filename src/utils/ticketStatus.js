@@ -14,10 +14,3 @@ export const CATEGORY_META = {
   'elektrik': { bg: '#EFF6FF', color: '#185FA5', label: 'Elektrik' },
   'mekanik':  { bg: '#F5F3FF', color: '#7C3AED', label: 'Mekanik' },
 }
-
-export const STATUS_TABS = [
-  { key: 'all',         label: 'Tümü' },
-  { key: 'acik',        label: 'Açık' },
-  { key: 'islemde',     label: 'İşlemde' },
-  { key: 'sonuclandi',  label: 'Sonuçlandı' },
-]

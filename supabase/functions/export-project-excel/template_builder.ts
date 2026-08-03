@@ -13,7 +13,6 @@ const ST_RISK = "açık,azaltıldı,kabul_edildi,kapatıldı";
 const CAT_RISK = "İş Kalemi,Satın Alma,Diğer";
 const CAT_BOM = "Mekanik,Elektrik,İnşaat,İSG,Genel";
 const PRIO_BOM = "kritik,önemli,normal";
-const YN = "Evet,Hayır";
 
 function band(ws, title, subtitle, span) {
   ws.mergeCells(1, 1, 1, span);
@@ -116,12 +115,12 @@ export function buildWorkbook(ExcelJS, categoryWeights = CANONICAL_CATEGORY_WEIG
 
   {
     const ws = wb.addWorksheet("İş Kalemleri", { views: [{ state: "frozen", ySplit: 4 }] });
-    band(ws, "İŞ KALEMLERİ", "Adım 2 — Görev listesi · Kategori · Tarih · Durum · Hedef Miktar · Kritik Yol  →  Supabase: project_tasks", 18);
-    header(ws, ["Görev\nKodu","Görev Adı","Kategori","Alt\nKategori","Grup\nEtiketi","Plan\nBaşlangıç","Plan\nBitiş","Süre\n(Gün)","Durum","Sorumlu","Sorumlu\nRol","Ekip\nSayısı","Notlar","Birim","Hedef\nMiktar","Dashboard\nGöster","Dashboard\nSıra","Kritik\nmi?"]);
-    [10,26,16,14,14,13,13,9,14,16,14,9,26,10,12,13,12,9].forEach((w,i)=>ws.getColumn(i+1).width=w);
-    fill(ws, ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R"], 5, N, { H:(r)=>`IFERROR(G${r}-F${r},"")` });
+    band(ws, "İŞ KALEMLERİ", "Adım 2 — Görev listesi · Kategori · Tarih · Durum · Hedef Miktar  →  Supabase: project_tasks", 15);
+    header(ws, ["Görev\nKodu","Görev Adı","Kategori","Alt\nKategori","Grup\nEtiketi","Plan\nBaşlangıç","Plan\nBitiş","Süre\n(Gün)","Durum","Sorumlu","Sorumlu\nRol","Ekip\nSayısı","Notlar","Birim","Hedef\nMiktar"]);
+    [10,26,16,14,14,13,13,9,14,16,14,9,26,10,12].forEach((w,i)=>ws.getColumn(i+1).width=w);
+    fill(ws, ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O"], 5, N, { H:(r)=>`IFERROR(G${r}-F${r},"")` });
     for (let r=5;r<=N;r++){ ws.getCell(`F${r}`).numFmt="dd.mm.yyyy"; ws.getCell(`G${r}`).numFmt="dd.mm.yyyy"; }
-    dv(ws, `C5:C${N}`, CAT_TASK); dv(ws, `I5:I${N}`, ST_TASK); dv(ws, `P5:P${N}`, YN); dv(ws, `R5:R${N}`, YN);
+    dv(ws, `C5:C${N}`, CAT_TASK); dv(ws, `I5:I${N}`, ST_TASK);
   }
 
   {
@@ -251,11 +250,11 @@ export function buildWorkbook(ExcelJS, categoryWeights = CANONICAL_CATEGORY_WEIG
 
   {
     const ws = wb.addWorksheet("📘 Kullanım Kılavuzu");
-    band(ws, "KULLANIM KILAVUZU", "Şablon v6 (16.07.2026: Riskler'e Kategori kolonu eklendi)", 4);
+    band(ws, "KULLANIM KILAVUZU", "Şablon v7 (03.08.2026: İş Kalemleri'nden Dashboard Göster/Sıra ve Kritik mi? kolonları kaldırıldı)", 4);
     [6,34,70].forEach((w,i)=>ws.getColumn(i+1).width=w);
     const rowsG = [
       ["1","Proje Bilgileri -> projects","Proje ID: kucuk harf, bosluksuz, tire."],
-      ["2","İş Kalemleri -> project_tasks","Kategori/Durum dropdown. Kritik mi?=Evet isaretlenen gorevler kritik yol sayilir."],
+      ["2","İş Kalemleri -> project_tasks","Kategori/Durum dropdown. Birim+Hedef Miktar doldurulursa gorev sahadan gunluk raporla miktar bazli takip edilir, bos birakilirsa Durum kolonuyla takip edilir."],
       ["3","Kategori Ağırlıkları (salt okunur) -> project_category_weights","Panel montaji %20, digerleri %10/%5, toplam %100."],
       ["4","Riskler -> project_risks","Manuel risklerde siddet Olasilik x Etki skorundan hesaplanir. Otomatik risklerde orta/yuksek/kritik seviyesi Supabase risk motorundan gelir. Kategori: Is Kalemi/Satin Alma/Diger."],
       ["5","Bütçe -> budget_lines","Planlanan tutarlar."],

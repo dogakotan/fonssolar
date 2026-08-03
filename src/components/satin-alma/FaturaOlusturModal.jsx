@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { getProjects } from '../../api'
 import { toUserMessage as translateError } from '../../utils/errors'
 import { fetchDoviz } from '../../utils/exchangeRates'
+import { requestNo } from '../../utils/purchaseRequestNo'
 
 const INVOICE_ERROR_RULES = [
   { match: ['fatura eklemeye uygun değil', 'faturasız kapatmaya uygun değil', 'henüz proje yöneticisi tarafından'], message: 'Bu talep henüz kapatmaya uygun değil.' },
@@ -11,7 +12,6 @@ const INVOICE_ERROR_RULES = [
 ]
 const DOCUMENT_TYPES = [['belgesiz', 'Belge yok / sonra eklenecek'], ['fis', 'Fiş'], ['makbuz', 'Makbuz'], ['sozlesme', 'Sözleşme'], ['dekont', 'Dekont'], ['diger', 'Diğer']]
 const money = (value, currency = 'TRY') => new Intl.NumberFormat('tr-TR', { style: 'currency', currency, maximumFractionDigits: 2 }).format(Number(value) || 0)
-const requestNo = request => request.request_no || request.code || `SAT-${new Date(request.created_at || Date.now()).getFullYear()}-${String(request.id || '').replaceAll('-', '').slice(-4).toUpperCase()}`
 const categoryLabel = category => category === 'hizmet' ? 'Hizmet' : category === 'malzeme' ? 'Malzeme' : 'Diğer'
 const errorText = error => translateError(error, { rules: INVOICE_ERROR_RULES, fallback: err => err?.message || 'Kayıt oluşturulamadı.' })
 
@@ -71,7 +71,7 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
     getProjects().then(({ data }) => setProjects(data || []))
     supabase
       .from('purchase_requests')
-      .select('id, title, project_id, supplier_id, category, estimated_amount_excl_vat, estimated_vat_rate, estimated_amount_incl_vat, created_at, projects(name), suppliers(name)')
+      .select('id, request_no, title, project_id, supplier_id, category, estimated_amount_excl_vat, estimated_vat_rate, estimated_amount_incl_vat, created_at, projects(name), suppliers(name)')
       .eq('status', 'satin_alindi')
       .order('created_at', { ascending: false })
       .then(({ data }) => setPendingRequests(data || []))

@@ -7,6 +7,8 @@ import SiteChiefTicketDetayModal from './SiteChiefTicketDetayModal'
 import DateNavigator from '../ui/DateNavigator'
 import { SEVERITY_META as SEVERITY, SEVERITY_ORDER, SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
 import { CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
+import { fetchProfileNames } from '../../utils/profileNames'
+import { useUrlSyncedSelection } from '../../hooks/useUrlSyncedSelection'
 
 const TH = { height: 24, boxSizing: 'border-box', padding: '0 12px', lineHeight: '24px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', whiteSpace: 'nowrap', verticalAlign: 'middle' }
 const TD = { height: 64, boxSizing: 'border-box', padding: '0 12px', fontSize: 12.5, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
@@ -15,9 +17,14 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('tr-TR') : '—'
 // İşlem durumu — Satın Alma talep listesindeki ProcessStatusBadge (tek nokta +
 // kalın metin rozeti, UYGUNLUK/ACİLİYET kolonlarıyla aynı görsel dil) ile aynı
 // desen — eskiden 3 adımlı yatay bir onay-süreci göstergesiydi (ApprovalStepsHorizontal).
+// Etiketler utils/ticketStatus.js'teki STATUS_META (Bildirimler/TicketDetayModal'ın
+// kullandığı kanonik kaynak) ve aşağıdaki Durum filtresi dropdown'uyla ("Açık")
+// birebir aynı olmalı — burada ayrı bir kopya olarak "Gönderildi" tutulması
+// Bildirimler'in aynı ticket'ı "Açık" göstermesiyle çelişen bir tutarsızlığa
+// yol açıyordu (2026-07-31'de bulunan bug).
 const TICKET_STATUS_META = {
-  gönderildi:   { color: 'var(--color-primary)', label: 'Gönderildi' },
-  açık:         { color: 'var(--color-primary)', label: 'Gönderildi' },
+  gönderildi:   { color: 'var(--color-primary)', label: 'Açık' },
+  açık:         { color: 'var(--color-primary)', label: 'Açık' },
   işlemde:      { color: 'var(--color-warning)', label: 'İşlemde' },
   kapatıldı:    { color: 'var(--color-success)', label: 'Kapatıldı' },
   iptal_edildi: { color: 'var(--color-danger)',  label: 'İptal Edildi' },
@@ -42,16 +49,14 @@ function actionOwnerText(ticket) {
   return null
 }
 
-async function withUpdaterProfiles(tickets = []) {
-  const updaterIds = [...new Set(tickets.map(ticket => ticket.updated_by).filter(Boolean))]
-  if (updaterIds.length === 0) return tickets
-
-  const { data: profiles } = await supabase
-    .from('profiles')
-    .select('id, full_name')
-    .in('id', updaterIds)
-  const profileById = new Map((profiles || []).map(profile => [profile.id, profile]))
-  return tickets.map(ticket => ({ ...ticket, updater: profileById.get(ticket.updated_by) || null }))
+async function withProfileNames(tickets = []) {
+  const ids = tickets.flatMap(ticket => [ticket.created_by, ticket.updated_by])
+  const byId = await fetchProfileNames(ids)
+  return tickets.map(ticket => ({
+    ...ticket,
+    creator: byId.get(ticket.created_by) || null,
+    updater: byId.get(ticket.updated_by) || null,
+  }))
 }
 
 /* ── Hızlı aksiyon modalı (satır butonu) ── */
@@ -154,7 +159,7 @@ function QuickActionModal({ ticket, action, onClose, onDone }) {
   )
 }
 
-export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId, filterStatus, filterSeverity, filterDate: filterDateProp, openTicketId, onOpenedTicket }) {
+export default function TicketListesi({ onNewTicket, refreshKey, projectId: propProjectId, filterStatus, filterSeverity, filterDate: filterDateProp, openTicketId, onOpenedTicket, onSelectedTicketChange }) {
   const { user, isAdmin, role, projectId: authProjectId } = useAuth()
   const [tickets, setTickets]               = useState([])
   const [loading, setLoading]               = useState(true)
@@ -170,6 +175,8 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   const calBtnRef = useRef(null)
   const [showNew, setShowNew]               = useState(false)
   const [selected, setSelected]             = useState(null)
+  // Açık ticket detay modalının id'sini adres çubuğuna yansıtır.
+  useUrlSyncedSelection(selected?.id ?? null, onSelectedTicketChange)
   const [quickAction, setQuickAction]       = useState(null)
   const isProjectManager = role === 'proje_yoneticisi'
   const canManage = isAdmin || isProjectManager
@@ -188,13 +195,13 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     let alive = true
     supabase
       .from('tickets')
-      .select('*, creator:profiles!tickets_created_by_fkey(full_name)')
+      .select('*')
       .eq('id', openTicketId)
       .maybeSingle()
       .then(async ({ data }) => {
         if (!alive) return
         if (data) {
-          const [enriched] = await withUpdaterProfiles([data])
+          const [enriched] = await withProfileNames([data])
           if (alive) setSelected(enriched)
         }
         onOpenedTicket?.()
@@ -230,7 +237,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     const dateColumn = statusTab === 'sonuclandi' ? 'resolved_at' : 'created_at'
     let q = supabase
       .from('tickets')
-      .select('*, creator:profiles!tickets_created_by_fkey(full_name)')
+      .select('*')
       .order(dateColumn, { ascending, nullsFirst: false })
 
     // Status filtresi — "Onay Bekleyenler" sekmesi işleme alınmayı bekleyen
@@ -280,7 +287,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     const { data, error } = await q
     if (error) console.error('TicketListesi fetch error:', error)
 
-    let result = await withUpdaterProfiles(data || [])
+    let result = await withProfileNames(data || [])
     // Severity sort: client-side
     if (sortMode === 'sev_desc') result = result.sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0))
     if (sortMode === 'sev_asc')  result = result.sort((a, b) => (SEVERITY_ORDER[a.severity] || 0) - (SEVERITY_ORDER[b.severity] || 0))

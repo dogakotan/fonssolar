@@ -6,6 +6,7 @@ import TedarikciFormModal from './TedarikciFormModal'
 import TedarikciDetayModal from './TedarikciDetayModal'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../ui/DataStatusBanner'
+import { useUrlSyncedSelection } from '../../hooks/useUrlSyncedSelection'
 
 const PAGE_SIZE = 8
 const dateText = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('tr-TR') : '—'
@@ -20,7 +21,7 @@ function supplierStatus(row) {
 const today = () => new Date().toISOString().slice(0, 10)
 const in7Days = () => new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
 
-export default function TedarikciListesi({ projectId = '' }) {
+export default function TedarikciListesi({ projectId = '', openSupplierId, onOpenedSupplier, onSelectedSupplierChange }) {
   const [suppliers, setSuppliers] = useState([])
   const [invoices, setInvoices] = useState([])
   const [transactions, setTransactions] = useState([])
@@ -32,6 +33,17 @@ export default function TedarikciListesi({ projectId = '' }) {
   const [page, setPage] = useState(0)
   const [detailId, setDetailId] = useState(null)
   const [adding, setAdding] = useState(false)
+
+  // Adres çubuğundan (yenileme/deep-link) gelen tedarikçi id'si — TedarikciDetayModal
+  // zaten yalnızca id ile çalıştığından ayrı bir kayıt araması gerekmiyor.
+  useEffect(() => {
+    if (!openSupplierId) return
+    setDetailId(openSupplierId)
+    onOpenedSupplier?.()
+  }, [openSupplierId, onOpenedSupplier])
+
+  // Açık tedarikçi detay modalının id'sini adres çubuğuna yansıtır.
+  useUrlSyncedSelection(detailId ?? null, onSelectedSupplierChange)
 
   async function fetchData() {
     setLoading(true)
@@ -60,7 +72,7 @@ export default function TedarikciListesi({ projectId = '' }) {
   const records = useMemo(() => [
     ...invoices.map(invoice => ({ ...invoice, remaining_amount: invoice.remaining_amount })),
     ...transactions.map(tx => ({
-      supplier_id: tx.supplier_id, project_id: tx.project_id, total_amount: tx.amount,
+      supplier_id: tx.supplier_id, project_id: tx.project_id, total_amount: tx.amount, total_amount_try: tx.amount,
       paid_amount: tx.paid_amount, remaining_amount: tx.remaining_amount, due_date: tx.due_date,
       vade_durumu: ['odeme_bekliyor', 'kismen_odendi'].includes(tx.status) && tx.due_date
         ? (tx.due_date < today() ? 'vadesi_gecti' : tx.due_date <= in7Days() ? 'vadesi_yaklasiyor' : null)
@@ -71,7 +83,9 @@ export default function TedarikciListesi({ projectId = '' }) {
   const rows = useMemo(() => suppliers.map(supplier => {
     const list = records.filter(record => record.supplier_id === supplier.id && (!projectId || record.project_id === projectId))
     const open = list.filter(record => Number(record.remaining_amount) > 0)
-    const total = list.reduce((sum, record) => sum + Number(record.total_amount || 0), 0)
+    // total_amount_try (TRY karşılığı) kullanılır — aksi halde USD/EUR faturalar
+    // TRY faturalarla aynı toplamda karışır (bkz. CLAUDE.md "Bilinen açık noktalar").
+    const total = list.reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)
     const paid = list.reduce((sum, record) => sum + Number(record.paid_amount || 0), 0)
     const remaining = open.reduce((sum, record) => sum + Number(record.remaining_amount || 0), 0)
     const overdue = open.filter(record => record.vade_durumu === 'vadesi_gecti').reduce((sum, record) => sum + Number(record.remaining_amount || 0), 0)
@@ -117,11 +131,11 @@ export default function TedarikciListesi({ projectId = '' }) {
         {loading ? <div className="supplier-empty">Yükleniyor…</div> : pageRows.length === 0 ? <div className="supplier-empty">Tedarikçi bulunamadı.</div> : <>
           <div className="supplier-table-wrap"><table className="supplier-table"><thead><tr><th>Tedarikçi</th><th>Açık Kayıt</th><th>Toplam Faturalanan</th><th>Ödenen</th><th>Kalan</th><th>Vadesi Geçen</th><th>En Yakın Vade</th><th>Durum</th><th>İşlem</th></tr></thead><tbody>{pageRows.map(row => {
             const [label, tone] = supplierStatus(row)
-            return <tr key={row.id}><td><b>{row.name}</b><small>Tedarikçi No {String(row.id).slice(0, 8).toUpperCase()}</small></td><td>{row.openCount}</td><td>{formatPaymentCurrency(row.total)}</td><td>{formatPaymentCurrency(row.paid)}</td><td><b>{formatPaymentCurrency(row.remaining)}</b></td><td className={row.overdue ? 'danger' : ''}>{formatPaymentCurrency(row.overdue)}</td><td>{dateText(row.nearestDue)}</td><td><span className={`supplier-status ${tone}`}>{label}</span></td><td><button onClick={() => setDetailId(row.id)}>Detay</button></td></tr>
+            return <tr key={row.id}><td><b>{row.name}</b><small>Tedarikçi No {String(row.id).slice(-8).toUpperCase()}</small></td><td>{row.openCount}</td><td>{formatPaymentCurrency(row.total)}</td><td>{formatPaymentCurrency(row.paid)}</td><td><b>{formatPaymentCurrency(row.remaining)}</b></td><td className={row.overdue ? 'danger' : ''}>{formatPaymentCurrency(row.overdue)}</td><td>{dateText(row.nearestDue)}</td><td><span className={`supplier-status ${tone}`}>{label}</span></td><td><button onClick={() => setDetailId(row.id)}>Detay</button></td></tr>
           })}</tbody></table></div>
           <div className="supplier-mobile-list">{pageRows.map(row => {
             const [label, tone] = supplierStatus(row)
-            return <article key={row.id}><header><div><b>{row.name}</b><small>Tedarikçi No {String(row.id).slice(0, 8).toUpperCase()}</small></div><span className={`supplier-status ${tone}`}>{label}</span></header><dl><dt>Açık Kayıt</dt><dd>{row.openCount}</dd><dt>Toplam</dt><dd>{formatPaymentCurrency(row.total)}</dd><dt>Ödenen</dt><dd>{formatPaymentCurrency(row.paid)}</dd><dt>Kalan</dt><dd>{formatPaymentCurrency(row.remaining)}</dd><dt>Vadesi Geçen</dt><dd className="danger">{formatPaymentCurrency(row.overdue)}</dd><dt>En Yakın Vade</dt><dd>{dateText(row.nearestDue)}</dd></dl><button onClick={() => setDetailId(row.id)}>Detayları Gör</button></article>
+            return <article key={row.id}><header><div><b>{row.name}</b><small>Tedarikçi No {String(row.id).slice(-8).toUpperCase()}</small></div><span className={`supplier-status ${tone}`}>{label}</span></header><dl><dt>Açık Kayıt</dt><dd>{row.openCount}</dd><dt>Toplam</dt><dd>{formatPaymentCurrency(row.total)}</dd><dt>Ödenen</dt><dd>{formatPaymentCurrency(row.paid)}</dd><dt>Kalan</dt><dd>{formatPaymentCurrency(row.remaining)}</dd><dt>Vadesi Geçen</dt><dd className="danger">{formatPaymentCurrency(row.overdue)}</dd><dt>En Yakın Vade</dt><dd>{dateText(row.nearestDue)}</dd></dl><button onClick={() => setDetailId(row.id)}>Detayları Gör</button></article>
           })}</div>
           <Pager page={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} onChange={setPage} />
         </>}

@@ -146,6 +146,13 @@ function getEffectiveFilterDate(dateText, period) {
 }
 
 function deriveTaskStatusAt(task, pct, date) {
+  // target_qty'si olmayan kilometre taşı işlerde durum set_task_milestone_status
+  // RPC'siyle doğrudan/manuel yönetilir (bkz. MilestoneStatusControl) — bu görevler
+  // için DB'deki status alanı zaten tek doğru kaynak, tarih/miktar tahminiyle
+  // ezilirse (ör. plan başlangıcı hâlâ ileride diye) kullanıcının seçtiği durum
+  // hiçbir zaman tabloya yansımaz.
+  if (!(Number(task.target_qty || 0) > 0)) return task.status || 'beklemede'
+
   // Gerçek durum tamamlandı/iptal ise bu kesin kabul edilir — miktar tahmini asla ezmez
   // (aksi halde hedefe tam ulaşmayan ama fiilen bitmiş bir görev "devam ediyor" görünür).
   if (task.status === 'tamamlandi' || task.status === 'iptal') return task.status
@@ -170,8 +177,7 @@ function statusLabel(status) {
 }
 
 function riskSeverityLabel(task) {
-  const severity = String(task?.risk_severity || (task?.is_critical ? 'kritik' : 'orta'))
-    .toLocaleLowerCase('tr-TR')
+  const severity = String(task?.risk_severity || 'orta').toLocaleLowerCase('tr-TR')
   return {
     düşük: 'Düşük',
     orta: 'Orta',
