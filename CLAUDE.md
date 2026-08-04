@@ -1560,3 +1560,32 @@ silme/şifre değiştirme hata mesajları üretimde bozuk görünüyordu. Yerel
 (doğru UTF-8) kaynaktan `deploy_edge_function` ile yeniden deploy edildi
 (create-user v12→v13, manage-user v8→v9), redeploy sonrası tekrar çekilip
 karakterlerin doğru geldiği doğrulandı.
+
+**pg_cron sağlığı doğrulandı.** `create_daily_report_reminders()` job'ı aktif,
+`cron.job_run_details` 2026-07-11'den bugüne (08-04) hafta içi her gün
+`succeeded` dönüyor, hafta sonu atlamaları schedule (`0 6 * * 1-5`) ile
+tutarlı — sorun yok.
+
+**Veri bütünlüğü taraması — 1 gerçek eksik kayıt bulunup düzeltildi.**
+8 çapraz kontrolden (remaining_amount senkronu, fatura↔talep tutarlılığı,
+tekil aktif fatura, orphan FK, geçersiz `role_key`, vb.) 7'si temizdi. Ama
+`financial_transactions`'ın `cost_allocations`'a senkron trigger'ı
+(`sync_cost_allocation_from_financial_transaction`,
+`20260726162840_link_financial_transactions_to_cost_allocations`) devreye
+girmeden ÖNCE, `20260724153500_seed_financial_transactions_demo` migration'ı
+ile eklenen 4 demo satırın (test-kayseri-develi-ges'te 2, test-izmir-ges-2026'da
+2, toplam ₺690.000) hiç `cost_allocations` karşılığı yoktu — bu iki test
+projesinin "gerçekleşen maliyet" hesabı (`get_finans_overview`/Maliyet Kalemi
+Özeti) bu tutarı sessizce dışlıyordu. Trigger'ın yapacağı upsert'in birebir
+aynısı geriye dönük çalıştırılıp (`20260804085002_fix_financial_transactions_missing_cost_allocations_backfill`)
+düzeltildi, tekrar taranıp 0 eksik kayıt kaldığı doğrulandı. **Genel ders:**
+bir tabloyu başka bir tabloya bağlayan senkron trigger'ı sonradan eklerken
+(bu projede birden fazla örneği var, bkz. "Trigger zincirleri"), trigger'dan
+ÖNCE insert edilmiş satırlar otomatik olarak geriye dönük işlenmiyor — aynı
+migration'da bir backfill adımı da eklenmeli, aksi halde bu tür sessiz
+eksikler birikir.
+
+Bu oturumdaki her iki DB migration'ı da (`20260804081125_revoke_anon_execute_stray_functions`,
+`20260804085002_fix_financial_transactions_missing_cost_allocations_backfill`)
+uygulanır uygulanmaz aynı isim+versiyonla yerel dosyaya da yazıldı — yukarıdaki
+"Migration tracking boşluğu" biriktirmesine bu ikisi eklenmedi.
