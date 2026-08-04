@@ -1474,45 +1474,75 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   "Migration tracking boşluğu" — bu projede kod ile doküman arasında böyle bir
   gecikme daha önce de görülmüş). Fark edilirse bu notu hatırlat: madde
   kapalıdır, yeniden açmadan önce önce kodu kontrol et.
-- **Migration tracking boşluğu (Supabase tarafı) — hâlâ açık.** 2026-07-26'da
-  fark edildi: `financial_transactions`/`financial_transaction_payments`
-  şeması, `v_invoice_payment_overview` security_invoker düzeltmesi,
-  `role_allowed_tabs`/`role_sidebar_items` normalizasyonu,
-  `harden_database_security_and_indexes` gibi birden fazla migration canlıda
-  uygulanmış (tablolar/fonksiyonlar gerçekten var) ama
+- **Migration tracking boşluğu (Supabase tarafı) — kısmen kapandı, çoğunluğu
+  hâlâ açık.** 2026-07-26'da fark edildi: `financial_transactions`/
+  `financial_transaction_payments` şeması, `v_invoice_payment_overview`
+  security_invoker düzeltmesi, `role_allowed_tabs`/`role_sidebar_items`
+  normalizasyonu, `harden_database_security_and_indexes` gibi birden fazla
+  migration canlıda uygulanmış (tablolar/fonksiyonlar gerçekten var) ama
   `supabase_migrations.schema_migrations`'ta versiyonları YOK — muhtemelen
   migration tooling atlanıp doğrudan SQL editöründen uygulanmış (yerel dosya
   adlarındaki zaman damgaları da gerçek uygulanan versiyonlarla eşleşmiyor,
   ör. yerel `20260724170000_harden_database_security_and_indexes.sql` iken
-  canlıda aynı isim `20260724133320` altında kayıtlı). Bu hâlâ düzeltilmedi
-  (kapsamı büyük, ayrı bir "migration tracking reconciliation" görevi
-  gerektirir) — ama en azından yerel dosyaların kendisi artık git'te (önceki
-  bir oturumda 16 migration + 17 finans/muhasebe bileşen dosyası diske
-  yazılmış ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
+  canlıda aynı isim `20260724133320` altında kayıtlı). 2026-08-04'te
+  `list_migrations` ile tam bir karşılaştırma yapıldı: ~40 migration'da yalnızca
+  bu tür zararsız timestamp sürüklenmesi var, ama **6 migration'ın (07-24/07-30
+  tarihli: `invoice_payment_tracking_partial_payments`,
+  `extend_suppliers_for_accounting_profile`, `add_get_invoice_linked_purchase_request`,
+  `notify_muhasebe_on_duzeltme_istendi`, `grant_execute_fn_next_purchase_request_no`,
+  ve zaten bilinen `invoice_flow_single_approver_with_revision_and_payment_tracking`)
+  hâlâ hiç yerel dosyası yok** — bunlar karmaşık/çok adımlı olduğundan bu
+  turda yeniden inşa edilmedi (kullanıcı kararıyla kapsam dışı bırakıldı,
+  ayrı bir "migration tracking reconciliation" görevi gerektirir). Buna
+  karşılık en güncel iki migration (`20260803101019_drop_critical_path_and_dashboard_visible_fields`,
+  `20260803101309_update_functions_after_dropping_critical_path_columns` —
+  `is_critical`/`dashboard_visible`/`dashboard_order` kaldırma turu) mevcut
+  şema durumundan yeniden inşa edilip repoya geri eklendi (bkz. "Son
+  değişiklik"). En azından yerel dosyaların kendisi artık git'te (önceki bir
+  oturumda 16 migration + 17 finans/muhasebe bileşen dosyası diske yazılmış
+  ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
 
 
 
 ## Son değişiklik
 
-**03.08.2026 — proje yönetimi sihirbazında (Yeni Proje / Düzenle) taslak
-otomatik kaydetme eklendi (frontend-only, migration yok).** Kullanıcı sihirbaz
-doluyken bir adımdan diğerine (WizardStepper) veya Proje Yönetimi'nden tamamen
-başka bir sekmeye geçtiğinde girilenlerin sessizce kaybolduğunu bildirdi. Kök
-neden: her adım bileşeni yalnızca "Devam"/"Kaydet" tıklanınca (`onDone`) veri
-raporluyordu; WizardStepper'ın adım linkleri ise doğrudan `setStep` çağırıp bu
-akışı hiç tetiklemeden komponenti unmount ediyordu, ayrıca tüm sihirbaz state'i
-(`stepsResult`) yalnızca bellekte tutulduğundan Proje Yönetimi sekmesinden
-ayrılmak (TabProjeYonetimi unmount) her şeyi silip baştan başlatıyordu. Çözüm:
-yeni `src/utils/projectWizardDraft.js` ile `localStorage`'a yazılan bir taslak
-katmanı — 6 adım bileşeninin (`Adim1ProjeBilgileri`…`Adim6Butce`) hepsine
-`onDraftChange` prop'u eklendi (her biri kendi ham state'ini her değişiklikte
-üst bileşene bildiriyor, validasyon beklemeden), `YeniProjeWizard.jsx`/
-`ProjeEditWizard.jsx` bunu `stepsResult`+`step`'le birlikte debounce'suz
-localStorage'a yazıp mount'ta geri okuyor. Düzenleme modunda DB'den taze veri
-çeken adımlarda (İş Kalemleri/Riskler/Bütçe) taslak varsa fetch atlanıyor artık
-(Kategori Ağırlıkları zaten bu deseni kullanıyordu) — aksi halde taslak her
-adım-dönüşünde DB'nin eski haliyle ezilirdi. Taslak sihirbaz tamamlanınca veya
-"İptal"le çıkılınca temizleniyor; kalıcı olması istenen tek durum sayfa/sekme
-değişip geri dönülmesi. Detay: bkz. "Excel şablonu / proje sihirbazı" bölümündeki
-"Taslak otomatik kaydetme" notu.
+**04.08.2026 — Supabase akışları denetimi: bir güvenlik açığı kapatıldı, 2
+migration dosyası repoya geri eklendi.** `get_advisors`/`list_migrations` ile
+uçtan uca bir denetim yapıldı (migration senkronizasyonu, security/performance
+advisors, satın alma→fatura→ödeme durum tutarlılığı, postgres logları).
+
+**Güvenlik düzeltmesi (canlıya uygulandı):** `get_profile_names(uuid[])`
+fonksiyonu `anon` (oturumsuz) role'e de `EXECUTE` açıktı ve içeride hiçbir
+`auth.uid()` kontrolü yoktu — yani oturum açmadan herhangi biri
+`/rest/v1/rpc/get_profile_names` ile herhangi bir kullanıcının (admin dahil)
+`full_name`'ini UUID vererek çekebiliyordu (gerçek bir PII sızıntısı; bu
+fonksiyon yalnızca `authenticated`'a açık olacak şekilde tasarlanmıştı, bkz.
+"RPC katmanı" → "Yetki/kapsam çekirdeği"). Aynı taramada 4 fonksiyon daha
+gereksiz yere `anon`/`PUBLIC`'e açık bulundu — `complete_project_manager_purchase_request`
+(içeride `auth.uid() is null` kontrolü olduğundan sömürülemezdi ama savunma
+amaçlı kapatıldı) ve 3 trigger fonksiyonu (`fn_guard_financial_transaction_requires_procurement_done`,
+`fn_sync_invoice_remaining_amount`, `sync_purchase_request_from_financial_transaction`
+— trigger fonksiyonu oldukları için zaten RPC olarak çağrılamazlar ama hijyen
+için kapatıldı). Hepsinden `REVOKE EXECUTE ... FROM anon, PUBLIC` (trigger
+fonksiyonlarında ayrıca `authenticated`) uygulandı, `authenticated` grant'ları
+(gerçek kullanım için gerekenler) korundu.
+
+**Migration tracking boşluğu — kısmen kapatıldı.** `supabase/migrations/`
+(370 dosya) ile canlıdaki `schema_migrations` (374 kayıt) tam karşılaştırıldı.
+En güncel iki migration'ın (`20260803101019_drop_critical_path_and_dashboard_visible_fields`,
+`20260803101309_update_functions_after_dropping_critical_path_columns` —
+`is_critical`/`dashboard_visible`/`dashboard_order` kaldırma turu, bkz.
+"Otomatik risk motoru"/"İlerleme hesaplama modeli") hiç yerel dosyası yoktu;
+mevcut canlı şema durumundan (kolonlar zaten yok, `get_project_gantt`/
+`fn_recompute_auto_risks`/`trg_tasks_recompute_risks` zaten güncel) birebir
+eşdeğer içerik yeniden inşa edilip iki dosya olarak repoya eklendi — DB'ye
+tekrar uygulanmadı (zaten canlıda), yalnızca geriye dönük repo kaydı. Kalan 6
+eski migration (07-24/07-30 tarihli, daha karmaşık/çok adımlı) kullanıcı
+kararıyla bu turun kapsamı dışında bırakıldı — bkz. "Migration tracking
+boşluğu" notu.
+
+Değişmeyenler: satın alma→fatura→ödeme durum dağılımları CLAUDE.md'nin tarif
+ettiği zincirle tutarlı bulundu, postgres loglarındaki hata patlaması (08-03
+11:13-11:14) incelenip Playwright regresyon suite'inin beklenen negatif-yol
+testleri olduğu doğrulandı (gerçek prod hatası değil).
