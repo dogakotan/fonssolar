@@ -628,12 +628,28 @@ reddedip güncel miktarla yeniden değerlendirmek zorunda kalır.
 **`procurement_items`'taki eski sipariş-takip kolonları kaldırıldı (04.08.2026).**
 `status`/`priority`/`order_date`/`expected_delivery`/`actual_delivery`/
 `supplier`/`notes`/`updated_by`/`received_by`/`received_date` satın alma
-talebi akışından ÖNCEKİ bir sipariş-takip tasarımından kalmaydı — hiçbir
-güncel RPC/UI'nin bunlara yazmadığı/okumadığı doğrulanıp (`update_procurement_status`
-zaten dead code olarak kaldırılmıştı, bağımlı trigger/view/fonksiyon yok)
-`20260804091411_drop_unused_procurement_order_tracking_columns` ile
-`DROP COLUMN` edildi. Malzeme Listesi artık yalnızca `planned_qty` ile takip
-ediliyor. Bu alanlara dayanan yeni bir özellik istenirse önce bu notu hatırlat.
+talebi akışından ÖNCEKİ bir sipariş-takip tasarımından kalmaydı (`update_procurement_status`
+zaten dead code olarak kaldırılmıştı) — `20260804091411_drop_unused_procurement_order_tracking_columns`
+ile `DROP COLUMN` edildi. Malzeme Listesi artık yalnızca `planned_qty` ile
+takip ediliyor. **Bağımlılık taraması eksikti — canlıda gerçek bir kesinti
+yarattı, aynı gün düzeltildi:** `get_satin_alma_overview`/
+`get_satin_alma_overview_all_internal` fonksiyonları `procurement_items`
+çıktısında hâlâ `'status', pi.status` alanı döndürüyordu; bu iki fonksiyon
+DROP COLUMN öncesi taramada gözden kaçmıştı (regex/`ilike` taraması yalnızca
+`pg_proc.prosrc`'te değil `pg_get_functiondef` çıktısında da arama
+gerektiriyordu — ikisi arasında fark olmamalıydı ama ilk tur bu iki
+fonksiyonu yakalamamıştı). Sonuç: proje_yoneticisi rolünde Satın Alma sayfası
+"Veri yüklenemedi" ile tamamen kırıldı (`get_satin_alma_overview_all` 400,
+Postgres log'unda `column pi.status does not exist`). `20260804094500_fix_satin_alma_overview_dropped_status_column`
+ile her iki fonksiyondan da `'status', pi.status,` satırı kaldırılarak
+düzeltildi (frontend — `ProjeTabMalzemeListesi`/`ProjeTabFaturaKesilecekler`/
+`ProjeTabSatinAlma`/`TabSatinAlma` — bu alanı hiç okumuyordu, grep ile
+doğrulandı). **Ders:** bir kolonu DROP etmeden önceki bağımlılık taraması
+yalnızca `prosrc ilike` değil, gerçek çalıştırılabilir bir smoke-test
+(`select fn(...)` çağrısı) ile de doğrulanmalı — statik metin taraması
+`SELECT jsonb_agg(jsonb_build_object(...))` gibi çok satırlı/iç içe
+ifadelerde alan adını atlayabiliyor. Bu alanlara dayanan yeni bir özellik
+istenirse önce bu notu hatırlat.
 
 ### Ticket oluşturma — genel vs proje bazlı
 `tickets.project_id` nullable — `NULL` "genel" (projeye bağlı olmayan) ticket
@@ -1519,32 +1535,32 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**04.08.2026 — Ölü kod temizliği: `procurement_items` eski kolonları +
-`daily_report_issues` yazı yolu kaldırıldı.**
+**04.08.2026 — Ölü kod temizliği (`procurement_items` + `daily_report_issues`)
+sonrası canlı regresyon bulundu ve düzeltildi.**
 
-**1) `procurement_items`'taki 10 eski sipariş-takip kolonu** (`status`/
-`priority`/`order_date`/`expected_delivery`/`actual_delivery`/`supplier`/
-`notes`/`updated_by`/`received_by`/`received_date`) `DROP COLUMN` edildi
-(`20260804091411_drop_unused_procurement_order_tracking_columns`) — bağımlı
-trigger/view/fonksiyon olmadığı doğrulanıp kaldırıldı. Detay: bkz. "BOM
-planlanan miktar değişiklikleri" bölümü.
-
-**2) `daily_report_issues` yazı yolu** (`save_daily_report`'un `p_issues`
+Ölü kod temizliği iki adımda yapıldı: (1) `procurement_items`'taki 10 eski
+sipariş-takip kolonu (`status`/`priority`/`order_date`/`expected_delivery`/
+`actual_delivery`/`supplier`/`notes`/`updated_by`/`received_by`/`received_date`)
+`DROP COLUMN` edildi (`20260804091411_drop_unused_procurement_order_tracking_columns`);
+(2) `daily_report_issues` yazı yolu (`save_daily_report`'un `p_issues`
 parametresi + `fn_create_ticket_from_daily_report_issue()` INSERT trigger'ı)
-kaldırıldı (`20260804091950_remove_dead_daily_report_issues_write_path`) —
-"Sorunlar" bölümü 2026-07-29'da UI'dan kaldırıldığından beri bu yol zaten
-fiilen ölüydü. **Tablo ve içindeki veri KORUNDU** (silinmedi) — yalnızca
-yazı yolu kaldırıldı, `DailyReportDetail.jsx`/Excel-PDF export'taki salt-okunur
-gösterim değişmedi. Eşzamanlı olarak `DailyReportForm.jsx`'ten `issues` state'i,
-`issueDescription()`/`ISSUE_META_PREFIX` ve RPC çağrısındaki `p_issues` alanı
-temizlendi (RPC imzası 15→14 parametreye düştüğünden frontend'in de aynı anda
-güncellenmesi zorunluydu); `tests/manual-task-progress.spec.js`'teki bir
-Playwright testi de aynı RPC'yi `p_issues: []` ile çağırdığından güncellendi
-(aksi halde imza uyuşmazlığından kırılırdı). Detay: bkz. "Saha ekranları"
-bölümündeki `daily_report_issues` notu.
+kaldırıldı (`20260804091950_remove_dead_daily_report_issues_write_path`, RPC
+imzası 15→14 parametreye düştü, `DailyReportForm.jsx`/`tests/manual-task-progress.spec.js`
+eşzamanlı güncellendi). Tablo ve verisi korundu, yalnızca yazı yolu kaldırıldı.
 
-Her iki migration da uygulanır uygulanmaz doğru versiyonla yerel dosyaya
-yazıldı (bkz. "Migration tracking boşluğu" — bu ikisi biriktirmeye eklenmedi).
+**Kullanıcı canlıda bir hata ekran görüntüsüyle bildirdi:** proje_yoneticisi
+rolünde Satın Alma sayfası "Veri yüklenemedi" ile tamamen kırılmıştı.
+Postgres logunda `column pi.status does not exist` + `get_satin_alma_overview_all`
+400 bulundu — (1) adımındaki bağımlılık taraması eksikti: `get_satin_alma_overview`
+ve `get_satin_alma_overview_all_internal` hâlâ `procurement_items` çıktısında
+`'status', pi.status` döndürüyordu. `20260804094500_fix_satin_alma_overview_dropped_status_column`
+ile her iki fonksiyondan da bu alan kaldırıldı (frontend hiç okumuyordu, grep
+ile doğrulandı), `get_satin_alma_overview_all_internal()` çağrısıyla canlıda
+doğrulandı. Detay ve çıkarılan ders: bkz. "BOM planlanan miktar değişiklikleri"
+bölümündeki not.
+
+Üç migration da uygulanır uygulanmaz doğru versiyonla yerel dosyaya yazıldı
+(bkz. "Migration tracking boşluğu" — biriktirmeye eklenmedi).
 
 Aynı gün daha önce yapılan Supabase akışları denetimi (migration senkronu,
 security/performance advisors, edge fonksiyon encoding düzeltmesi, pg_cron
