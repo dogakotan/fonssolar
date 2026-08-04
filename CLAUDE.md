@@ -213,16 +213,18 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   **"Sorunlar" bölümü formdan kaldırıldı (2026-07-29, kullanıcı kararı) — kalıcı
   karar:** artık bir sorun/bloker bildirmek için doğrudan Tickets sekmesinden
   ticket açılır, günlük rapordan sorun girilmez; geri getirilmesi teklif
-  edilirse önce bu kararı hatırlat. `daily_report_issues` tablosu, `fn_create_ticket_from_daily_report_issue()`
-  trigger'ı ve `save_daily_report`'un `p_issues` parametresi backend'de hâlâ
-  duruyor (geriye dönük uyumluluk — eski raporlardaki satırlar `DailyReportForm.jsx`
-  tarafından sessizce, değiştirilmeden `p_issues`'a geri gönderilip korunuyor;
-  aksi halde RPC'nin id-bazlı silme adımı bunları temizlerdi) ama artık hiçbir
-  UI'dan yeni satır eklenmiyor — fiilen dead code, ayrı bir temizlik migration'ı
-  gerektirir (henüz yapılmadı). Eski raporlardaki geçmiş "Sorunlar" verisi
+  edilirse önce bu kararı hatırlat. **Dead code temizliği yapıldı (04.08.2026):**
+  `save_daily_report`'un `p_issues` parametresi ve `fn_create_ticket_from_daily_report_issue()`
+  INSERT trigger'ı kaldırıldı (`20260804091950_remove_dead_daily_report_issues_write_path`)
+  — `DailyReportForm.jsx`'teki `issues` state'i, `issueDescription()`/`ISSUE_META_PREFIX`
+  ve RPC çağrısındaki `p_issues` alanı da eşzamanlı temizlendi. `daily_report_issues`
+  TABLOSU ve içindeki veri KORUNDU (silinmedi) — yalnızca yazı yolu kaldırıldı,
+  tablo artık salt-okunur bir arşiv. Eski raporlardaki geçmiş "Sorunlar" verisi
   `DailyReportDetail.jsx` (salt okunur detay sayfası) ve Excel/PDF export'ta
-  hâlâ görüntüleniyor, `daily_report_issues.description` kolonu `category`/
-  `closed_at`/`notes` alanlarını `__ISSUE_META__{json}` öneki ile paketler.
+  hâlâ görüntüleniyor (bu okuma yolu değişmedi), `daily_report_issues.description`
+  kolonu `category`/`closed_at`/`notes` alanlarını `__ISSUE_META__{json}` öneki
+  ile paketlemeyi sürdürüyor (yalnızca decode ediliyor, artık hiç encode
+  edilmiyor).
   `daily_reports.notes` kolonu da aynı desende `isg_notes`/`incident_notes`/
   `description` alanlarını `__REPORT_NOTES_META__{json}` öneki ile paketler
   (`reportNotesPayload()`, `DailyReportForm.jsx`) — `DailyReportList.jsx`'in
@@ -1517,85 +1519,40 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**04.08.2026 — Supabase akışları denetimi: bir güvenlik açığı kapatıldı, 2
-migration dosyası repoya geri eklendi.** `get_advisors`/`list_migrations` ile
-uçtan uca bir denetim yapıldı (migration senkronizasyonu, security/performance
-advisors, satın alma→fatura→ödeme durum tutarlılığı, postgres logları).
+**04.08.2026 — Ölü kod temizliği: `procurement_items` eski kolonları +
+`daily_report_issues` yazı yolu kaldırıldı.**
 
-**Güvenlik düzeltmesi (canlıya uygulandı):** `get_profile_names(uuid[])`
-fonksiyonu `anon` (oturumsuz) role'e de `EXECUTE` açıktı ve içeride hiçbir
-`auth.uid()` kontrolü yoktu — yani oturum açmadan herhangi biri
-`/rest/v1/rpc/get_profile_names` ile herhangi bir kullanıcının (admin dahil)
-`full_name`'ini UUID vererek çekebiliyordu (gerçek bir PII sızıntısı; bu
-fonksiyon yalnızca `authenticated`'a açık olacak şekilde tasarlanmıştı, bkz.
-"RPC katmanı" → "Yetki/kapsam çekirdeği"). Aynı taramada 4 fonksiyon daha
-gereksiz yere `anon`/`PUBLIC`'e açık bulundu — `complete_project_manager_purchase_request`
-(içeride `auth.uid() is null` kontrolü olduğundan sömürülemezdi ama savunma
-amaçlı kapatıldı) ve 3 trigger fonksiyonu (`fn_guard_financial_transaction_requires_procurement_done`,
-`fn_sync_invoice_remaining_amount`, `sync_purchase_request_from_financial_transaction`
-— trigger fonksiyonu oldukları için zaten RPC olarak çağrılamazlar ama hijyen
-için kapatıldı). Hepsinden `REVOKE EXECUTE ... FROM anon, PUBLIC` (trigger
-fonksiyonlarında ayrıca `authenticated`) uygulandı, `authenticated` grant'ları
-(gerçek kullanım için gerekenler) korundu.
+**1) `procurement_items`'taki 10 eski sipariş-takip kolonu** (`status`/
+`priority`/`order_date`/`expected_delivery`/`actual_delivery`/`supplier`/
+`notes`/`updated_by`/`received_by`/`received_date`) `DROP COLUMN` edildi
+(`20260804091411_drop_unused_procurement_order_tracking_columns`) — bağımlı
+trigger/view/fonksiyon olmadığı doğrulanıp kaldırıldı. Detay: bkz. "BOM
+planlanan miktar değişiklikleri" bölümü.
 
-**Migration tracking boşluğu — kısmen kapatıldı.** `supabase/migrations/`
-(370 dosya) ile canlıdaki `schema_migrations` (374 kayıt) tam karşılaştırıldı.
-En güncel iki migration'ın (`20260803101019_drop_critical_path_and_dashboard_visible_fields`,
-`20260803101309_update_functions_after_dropping_critical_path_columns` —
-`is_critical`/`dashboard_visible`/`dashboard_order` kaldırma turu, bkz.
-"Otomatik risk motoru"/"İlerleme hesaplama modeli") hiç yerel dosyası yoktu;
-mevcut canlı şema durumundan (kolonlar zaten yok, `get_project_gantt`/
-`fn_recompute_auto_risks`/`trg_tasks_recompute_risks` zaten güncel) birebir
-eşdeğer içerik yeniden inşa edilip iki dosya olarak repoya eklendi — DB'ye
-tekrar uygulanmadı (zaten canlıda), yalnızca geriye dönük repo kaydı. Kalan 6
-eski migration (07-24/07-30 tarihli, daha karmaşık/çok adımlı) kullanıcı
-kararıyla bu turun kapsamı dışında bırakıldı — bkz. "Migration tracking
-boşluğu" notu.
+**2) `daily_report_issues` yazı yolu** (`save_daily_report`'un `p_issues`
+parametresi + `fn_create_ticket_from_daily_report_issue()` INSERT trigger'ı)
+kaldırıldı (`20260804091950_remove_dead_daily_report_issues_write_path`) —
+"Sorunlar" bölümü 2026-07-29'da UI'dan kaldırıldığından beri bu yol zaten
+fiilen ölüydü. **Tablo ve içindeki veri KORUNDU** (silinmedi) — yalnızca
+yazı yolu kaldırıldı, `DailyReportDetail.jsx`/Excel-PDF export'taki salt-okunur
+gösterim değişmedi. Eşzamanlı olarak `DailyReportForm.jsx`'ten `issues` state'i,
+`issueDescription()`/`ISSUE_META_PREFIX` ve RPC çağrısındaki `p_issues` alanı
+temizlendi (RPC imzası 15→14 parametreye düştüğünden frontend'in de aynı anda
+güncellenmesi zorunluydu); `tests/manual-task-progress.spec.js`'teki bir
+Playwright testi de aynı RPC'yi `p_issues: []` ile çağırdığından güncellendi
+(aksi halde imza uyuşmazlığından kırılırdı). Detay: bkz. "Saha ekranları"
+bölümündeki `daily_report_issues` notu.
 
-Değişmeyenler: satın alma→fatura→ödeme durum dağılımları CLAUDE.md'nin tarif
-ettiği zincirle tutarlı bulundu, postgres loglarındaki hata patlaması (08-03
-11:13-11:14) incelenip Playwright regresyon suite'inin beklenen negatif-yol
-testleri olduğu doğrulandı (gerçek prod hatası değil).
+Her iki migration da uygulanır uygulanmaz doğru versiyonla yerel dosyaya
+yazıldı (bkz. "Migration tracking boşluğu" — bu ikisi biriktirmeye eklenmedi).
 
-**Edge fonksiyon encoding bug'ı düzeltildi (canlıya redeploy edildi).**
-`create-user`/`manage-user` edge fonksiyonlarının deploy edilmiş versiyonları
-`get_edge_function` ile çekilip yerel `supabase/functions/` dosyalarıyla
-karşılaştırıldı: `import-project-excel`/`export-project-excel` birebir
-senkrondu, ama `create-user`/`manage-user`'ın canlı kodundaki TÜM Türkçe
-karakterli hata mesajları mojibake ile bozulmuştu (ör. yerelde `"Yalnızca
-POST isteği desteklenir"` iken canlıda `"YalnÄ±zca POST isteÄŸi desteklenir"`)
-— muhtemelen geçmişte bir deploy anında yanlış encoding ile yüklenmiş,
-mantık/logic etkilenmemiş ama `TabKullanicilar.jsx`'teki kullanıcı oluşturma/
-silme/şifre değiştirme hata mesajları üretimde bozuk görünüyordu. Yerel
-(doğru UTF-8) kaynaktan `deploy_edge_function` ile yeniden deploy edildi
-(create-user v12→v13, manage-user v8→v9), redeploy sonrası tekrar çekilip
-karakterlerin doğru geldiği doğrulandı.
-
-**pg_cron sağlığı doğrulandı.** `create_daily_report_reminders()` job'ı aktif,
-`cron.job_run_details` 2026-07-11'den bugüne (08-04) hafta içi her gün
-`succeeded` dönüyor, hafta sonu atlamaları schedule (`0 6 * * 1-5`) ile
-tutarlı — sorun yok.
-
-**Veri bütünlüğü taraması — 1 gerçek eksik kayıt bulunup düzeltildi.**
-8 çapraz kontrolden (remaining_amount senkronu, fatura↔talep tutarlılığı,
-tekil aktif fatura, orphan FK, geçersiz `role_key`, vb.) 7'si temizdi. Ama
-`financial_transactions`'ın `cost_allocations`'a senkron trigger'ı
-(`sync_cost_allocation_from_financial_transaction`,
-`20260726162840_link_financial_transactions_to_cost_allocations`) devreye
-girmeden ÖNCE, `20260724153500_seed_financial_transactions_demo` migration'ı
-ile eklenen 4 demo satırın (test-kayseri-develi-ges'te 2, test-izmir-ges-2026'da
-2, toplam ₺690.000) hiç `cost_allocations` karşılığı yoktu — bu iki test
-projesinin "gerçekleşen maliyet" hesabı (`get_finans_overview`/Maliyet Kalemi
-Özeti) bu tutarı sessizce dışlıyordu. Trigger'ın yapacağı upsert'in birebir
-aynısı geriye dönük çalıştırılıp (`20260804085002_fix_financial_transactions_missing_cost_allocations_backfill`)
-düzeltildi, tekrar taranıp 0 eksik kayıt kaldığı doğrulandı. **Genel ders:**
-bir tabloyu başka bir tabloya bağlayan senkron trigger'ı sonradan eklerken
-(bu projede birden fazla örneği var, bkz. "Trigger zincirleri"), trigger'dan
-ÖNCE insert edilmiş satırlar otomatik olarak geriye dönük işlenmiyor — aynı
-migration'da bir backfill adımı da eklenmeli, aksi halde bu tür sessiz
-eksikler birikir.
-
-Bu oturumdaki her iki DB migration'ı da (`20260804081125_revoke_anon_execute_stray_functions`,
-`20260804085002_fix_financial_transactions_missing_cost_allocations_backfill`)
-uygulanır uygulanmaz aynı isim+versiyonla yerel dosyaya da yazıldı — yukarıdaki
-"Migration tracking boşluğu" biriktirmesine bu ikisi eklenmedi.
+Aynı gün daha önce yapılan Supabase akışları denetimi (migration senkronu,
+security/performance advisors, edge fonksiyon encoding düzeltmesi, pg_cron
+sağlığı, `financial_transactions`→`cost_allocations` backfill) ilgili
+bölümlere (bkz. "Migration tracking boşluğu", "RPC katmanı", yukarısı)
+işlendi — özet: `get_profile_names` ve 4 fonksiyondan daha `anon`/`PUBLIC`
+EXECUTE kaldırıldı, `create-user`/`manage-user` edge fonksiyonlarındaki
+Türkçe karakter mojibake'i redeploy ile düzeltildi, 5+2 eksik migration
+dosyası (2'si en güncel, 5'i 07-24/07-30 tarihli) idempotent olarak repoya
+geri eklendi, 4 demo `financial_transactions` kaydının eksik `cost_allocations`
+karşılığı backfill edildi.

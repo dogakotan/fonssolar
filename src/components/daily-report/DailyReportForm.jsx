@@ -102,7 +102,6 @@ function newTaskRow() {
   return { description: '' }
 }
 
-const ISSUE_META_PREFIX = '__ISSUE_META__'
 const REPORT_NOTES_META_PREFIX = '__REPORT_NOTES_META__'
 
 function encodeMeta(prefix, payload, fallback = '') {
@@ -119,15 +118,6 @@ function decodeMeta(prefix, value) {
   } catch {
     return { description: text }
   }
-}
-
-function issueDescription(row) {
-  return encodeMeta(ISSUE_META_PREFIX, {
-    category: row.category || '',
-    closed_at: row.closed_at || '',
-    notes: row.notes || '',
-    description: row.description || '',
-  }, row.description || '')
 }
 
 function reportNotesPayload(formData) {
@@ -208,11 +198,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   const [photos, setPhotos]             = useState([]) // { file, caption, preview }
   const [existingPhotos, setExistingPhotos] = useState([])
 
-  // Sorunlar artık bu formdan girilmiyor (Tickets sekmesi kullanılıyor) — bu state
-  // yalnızca ESKİ raporlardaki daily_report_issues satırlarını save_daily_report'a
-  // değişmeden geri göndermek için tutulur (aksi halde RPC bunları siler, bkz. loadAll).
-  const [issues, setIssues] = useState([])
-
   const [alreadyExists, setAlreadyExists] = useState(false)
   const weatherCity = project?.location?.split('/')?.[0]?.trim() || null
   const liveWeather = useWeather(weatherCity)
@@ -253,7 +238,7 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
   // ayrı ayrı (ve birbirinden sapan) kopyaları olması önceki hatanın kaynağıydı:
   // "zaten var" durumunda form hiç doldurulmuyor, Kaydet o günün verisini siliyordu.
   async function loadReportInto(id, seq) {
-    // Personnel/machinery/progress/photos/issues get_daily_report_detail RPC'sinden
+    // Personnel/machinery/progress/photos get_daily_report_detail RPC'sinden
     // tek çağrıyla gelir (mevcut RPC, ayrı ayrı supabase.from() sorgularıyla aynı veriyi döner).
     // daily_tasks bu RPC'nin dönüşünde henüz yok, o yüzden ayrı sorgulanıyor. RPC materials
     // de döndürüyor ama bu form artık Malzeme Kullanımı bölümünü göstermediği için kullanılmıyor.
@@ -345,29 +330,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
 
     // Existing photos
     setExistingPhotos(await withSignedStorageUrls('saha-fotolari', detail?.photos || []))
-
-    // Issues — id/ticket_id KORUNMALI: id geri gönderilmezse save_daily_report
-    // bunu yeni sorun sanıp her kayıtta mükerrer ticket açar (bkz. RPC yorumu).
-    const issueRows = detail?.issues || []
-    if (issueRows.length > 0) {
-      setIssues(issueRows.map(i => {
-        const meta = decodeMeta(ISSUE_META_PREFIX, i.description)
-        return {
-          id:                i.id,
-          ticket_id:         i.ticket_id        || null,
-          topic:             i.topic             || '',
-          category:          meta.category        || '',
-          priority:          i.priority          || 'orta',
-          assigned_to:       i.assigned_to       || '',
-          description:       meta.description    || '',
-          resolution_status: i.resolution_status || 'açık',
-          closed_at:         meta.closed_at      || '',
-          notes:             meta.notes          || '',
-        }
-      }))
-    } else {
-      setIssues([])
-    }
   }
 
   // Seçilen tarih için hiç rapor yoksa formu o tarihle boşa döner.
@@ -393,7 +355,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setPlannedTasks([newTaskRow()])
     setPhotos([])
     setExistingPhotos([])
-    setIssues([])
     setReportOwnerId(null)
   }
 
@@ -583,7 +544,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
       manualQty: { ...manualQty },
       itemNotes: { ...itemNotes },
       existingQtys: { ...existingQtys },
-      issues: issues.map(r => ({ ...r })),
       photos: photos.slice(),
       existingPhotos: existingPhotos.slice(),
       reportId,
@@ -601,7 +561,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
     setManualQty(snap.manualQty || {})
     setItemNotes(snap.itemNotes)
     setExistingQtys(snap.existingQtys)
-    setIssues(snap.issues)
     // Panel açıkken eklenmiş yeni fotoğrafların preview URL'lerini bellekte bırakmamak için iptal edilir.
     const keepUrls = new Set(snap.photos.map(p => p.preview))
     photos.forEach(p => { if (!keepUrls.has(p.preview)) URL.revokeObjectURL(p.preview) })
@@ -765,15 +724,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         }
       }
 
-      const validIssues = issues.filter(r => r.topic).map(r => ({
-        id:                r.id || null, // mevcut satır — backend'in mükerrer ticket açmaması için şart
-        topic:             r.topic,
-        priority:          r.priority,
-        assigned_to:       r.assigned_to || null,
-        description:       issueDescription(r) || null,
-        resolution_status: r.resolution_status,
-      }))
-
       const { data: rid, error: saveErr } = await supabase.rpc('save_daily_report', {
         p_project_id:     effectiveProjectId,
         p_report_date:    formData.report_date,
@@ -790,7 +740,6 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
         p_progress:       [],
         p_daily_tasks:    taskRows,
         p_materials:      [],
-        p_issues:         validIssues,
         p_task_progress:  progressRows,
       })
       if (saveErr) throw saveErr
