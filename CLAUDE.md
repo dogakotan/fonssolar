@@ -1474,31 +1474,40 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   "Migration tracking boşluğu" — bu projede kod ile doküman arasında böyle bir
   gecikme daha önce de görülmüş). Fark edilirse bu notu hatırlat: madde
   kapalıdır, yeniden açmadan önce önce kodu kontrol et.
-- **Migration tracking boşluğu (Supabase tarafı) — kısmen kapandı, çoğunluğu
-  hâlâ açık.** 2026-07-26'da fark edildi: `financial_transactions`/
-  `financial_transaction_payments` şeması, `v_invoice_payment_overview`
-  security_invoker düzeltmesi, `role_allowed_tabs`/`role_sidebar_items`
-  normalizasyonu, `harden_database_security_and_indexes` gibi birden fazla
-  migration canlıda uygulanmış (tablolar/fonksiyonlar gerçekten var) ama
+- **Migration tracking boşluğu (Supabase tarafı) — büyük ölçüde kapandı,
+  yalnızca 1 migration gerçekten kurtarılamaz.** 2026-07-26'da fark edildi:
+  `financial_transactions`/`financial_transaction_payments` şeması,
+  `v_invoice_payment_overview` security_invoker düzeltmesi,
+  `role_allowed_tabs`/`role_sidebar_items` normalizasyonu,
+  `harden_database_security_and_indexes` gibi birden fazla migration canlıda
+  uygulanmış (tablolar/fonksiyonlar gerçekten var) ama
   `supabase_migrations.schema_migrations`'ta versiyonları YOK — muhtemelen
   migration tooling atlanıp doğrudan SQL editöründen uygulanmış (yerel dosya
   adlarındaki zaman damgaları da gerçek uygulanan versiyonlarla eşleşmiyor,
   ör. yerel `20260724170000_harden_database_security_and_indexes.sql` iken
   canlıda aynı isim `20260724133320` altında kayıtlı). 2026-08-04'te
   `list_migrations` ile tam bir karşılaştırma yapıldı: ~40 migration'da yalnızca
-  bu tür zararsız timestamp sürüklenmesi var, ama **6 migration'ın (07-24/07-30
-  tarihli: `invoice_payment_tracking_partial_payments`,
+  bu tür zararsız timestamp sürüklenmesi var; 6 migration'ın (07-24/07-30
+  tarihli) hiç yerel dosyası yoktu — bunlardan 5'i (`invoice_payment_tracking_partial_payments`,
   `extend_suppliers_for_accounting_profile`, `add_get_invoice_linked_purchase_request`,
-  `notify_muhasebe_on_duzeltme_istendi`, `grant_execute_fn_next_purchase_request_no`,
-  ve zaten bilinen `invoice_flow_single_approver_with_revision_and_payment_tracking`)
-  hâlâ hiç yerel dosyası yok** — bunlar karmaşık/çok adımlı olduğundan bu
-  turda yeniden inşa edilmedi (kullanıcı kararıyla kapsam dışı bırakıldı,
-  ayrı bir "migration tracking reconciliation" görevi gerektirir). Buna
-  karşılık en güncel iki migration (`20260803101019_drop_critical_path_and_dashboard_visible_fields`,
+  `notify_muhasebe_on_duzeltme_istendi`, `grant_execute_fn_next_purchase_request_no`)
+  mevcut canlı şema durumundan (tablo/trigger/fonksiyon/grant hâlâ yaşıyor)
+  **idempotent** olarak (`IF NOT EXISTS`/`CREATE OR REPLACE`/drop+recreate
+  constraint) yeniden inşa edilip repoya eklendi — tarihi SQL'in birebir aynısı
+  garantisi yok, ama bir `db reset`'te aynı nihai duruma ulaştırır ve sonraki
+  gerçek yerel dosyalarla (`fix_kismen_odendi_status_omissions` vb.) çakışmaz.
+  **`invoice_flow_single_approver_with_revision_and_payment_tracking`
+  (07-24 072957) kalıcı olarak kurtarılamaz** — bunu düzelten sonraki migration
+  (`20260724081031_invoice_workflow_single_approver_backend_fix`, yerelde zaten
+  var) `create_invoice_approval_chain()`/`trg_notify_invoice_insert()` gibi
+  fonksiyonları DROP ediyor; bu fonksiyonların orijinal gövdesi artık ne canlı
+  DB'de ne de hiçbir dosyada var — yeniden yazılırsa uydurma olur, kullanıcı
+  kararıyla bu tek migration açık madde olarak bırakıldı. En güncel iki migration
+  (`20260803101019_drop_critical_path_and_dashboard_visible_fields`,
   `20260803101309_update_functions_after_dropping_critical_path_columns` —
-  `is_critical`/`dashboard_visible`/`dashboard_order` kaldırma turu) mevcut
-  şema durumundan yeniden inşa edilip repoya geri eklendi (bkz. "Son
-  değişiklik"). En azından yerel dosyaların kendisi artık git'te (önceki bir
+  `is_critical`/`dashboard_visible`/`dashboard_order` kaldırma turu) de aynı
+  şekilde mevcut şema durumundan yeniden inşa edilip repoya geri eklendi (bkz.
+  "Son değişiklik"). En azından yerel dosyaların kendisi artık git'te (önceki bir
   oturumda 16 migration + 17 finans/muhasebe bileşen dosyası diske yazılmış
   ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
