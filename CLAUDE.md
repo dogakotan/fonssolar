@@ -1546,3 +1546,17 @@ Değişmeyenler: satın alma→fatura→ödeme durum dağılımları CLAUDE.md'n
 ettiği zincirle tutarlı bulundu, postgres loglarındaki hata patlaması (08-03
 11:13-11:14) incelenip Playwright regresyon suite'inin beklenen negatif-yol
 testleri olduğu doğrulandı (gerçek prod hatası değil).
+
+**Edge fonksiyon encoding bug'ı düzeltildi (canlıya redeploy edildi).**
+`create-user`/`manage-user` edge fonksiyonlarının deploy edilmiş versiyonları
+`get_edge_function` ile çekilip yerel `supabase/functions/` dosyalarıyla
+karşılaştırıldı: `import-project-excel`/`export-project-excel` birebir
+senkrondu, ama `create-user`/`manage-user`'ın canlı kodundaki TÜM Türkçe
+karakterli hata mesajları mojibake ile bozulmuştu (ör. yerelde `"Yalnızca
+POST isteği desteklenir"` iken canlıda `"YalnÄ±zca POST isteÄŸi desteklenir"`)
+— muhtemelen geçmişte bir deploy anında yanlış encoding ile yüklenmiş,
+mantık/logic etkilenmemiş ama `TabKullanicilar.jsx`'teki kullanıcı oluşturma/
+silme/şifre değiştirme hata mesajları üretimde bozuk görünüyordu. Yerel
+(doğru UTF-8) kaynaktan `deploy_edge_function` ile yeniden deploy edildi
+(create-user v12→v13, manage-user v8→v9), redeploy sonrası tekrar çekilip
+karakterlerin doğru geldiği doğrulandı.
