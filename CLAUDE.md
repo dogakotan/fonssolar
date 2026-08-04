@@ -623,14 +623,15 @@ görüntüsüyle karşılaştırır; aradan otomatik aşım (veya başka bir ona
 geçtiyse onayı sessizce ezmek yerine açık hatayla reddeder, admin talebi
 reddedip güncel miktarla yeniden değerlendirmek zorunda kalır.
 
-`procurement_items`'ta `status`/`priority`/`order_date`/`expected_delivery`/
-`actual_delivery`/`supplier`/`notes`/`updated_by`/`received_by`/`received_date`
-kolonları satın alma talebi akışından ÖNCEKİ bir sipariş-takip tasarımından
-kalma — hiçbir güncel RPC/UI artık bunlara yazmıyor (onları güncelleyen tek
-RPC olan `update_procurement_status` dead code olarak kaldırıldı), bazılarında
-eski/donmuş veri hâlâ duruyor ama kolonlar bilinçli olarak silinmedi. Malzeme
-Listesi artık yalnızca `planned_qty` ile takip ediliyor. Bu alanlara dayanan
-yeni bir özellik istenirse önce bu notu hatırlat.
+**`procurement_items`'taki eski sipariş-takip kolonları kaldırıldı (04.08.2026).**
+`status`/`priority`/`order_date`/`expected_delivery`/`actual_delivery`/
+`supplier`/`notes`/`updated_by`/`received_by`/`received_date` satın alma
+talebi akışından ÖNCEKİ bir sipariş-takip tasarımından kalmaydı — hiçbir
+güncel RPC/UI'nin bunlara yazmadığı/okumadığı doğrulanıp (`update_procurement_status`
+zaten dead code olarak kaldırılmıştı, bağımlı trigger/view/fonksiyon yok)
+`20260804091411_drop_unused_procurement_order_tracking_columns` ile
+`DROP COLUMN` edildi. Malzeme Listesi artık yalnızca `planned_qty` ile takip
+ediliyor. Bu alanlara dayanan yeni bir özellik istenirse önce bu notu hatırlat.
 
 ### Ticket oluşturma — genel vs proje bazlı
 `tickets.project_id` nullable — `NULL` "genel" (projeye bağlı olmayan) ticket
