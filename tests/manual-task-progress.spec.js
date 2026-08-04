@@ -148,7 +148,6 @@ test.describe.serial('İş planından manuel ilerleme', () => {
       p_progress: [],
       p_daily_tasks: [],
       p_materials: [],
-      p_issues: [],
       p_task_progress: [{ task_id: task.id, qty_added: 0.4, note: 'E2E rapor içi ilerleme' }],
     })
     expect(saved.error).toBeNull()

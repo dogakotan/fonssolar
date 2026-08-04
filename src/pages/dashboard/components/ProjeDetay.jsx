@@ -1189,7 +1189,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   return (
     <div>
       {/* Eylem çubuğu */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
         <button onClick={onBack} style={backBtn}>← Projelere Dön</button>
         <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
           <button onClick={() => setTab('genel')} style={tab === 'genel' ? tabBtnActive : tabBtn}>

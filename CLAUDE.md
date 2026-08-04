@@ -213,16 +213,18 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   **"Sorunlar" bölümü formdan kaldırıldı (2026-07-29, kullanıcı kararı) — kalıcı
   karar:** artık bir sorun/bloker bildirmek için doğrudan Tickets sekmesinden
   ticket açılır, günlük rapordan sorun girilmez; geri getirilmesi teklif
-  edilirse önce bu kararı hatırlat. `daily_report_issues` tablosu, `fn_create_ticket_from_daily_report_issue()`
-  trigger'ı ve `save_daily_report`'un `p_issues` parametresi backend'de hâlâ
-  duruyor (geriye dönük uyumluluk — eski raporlardaki satırlar `DailyReportForm.jsx`
-  tarafından sessizce, değiştirilmeden `p_issues`'a geri gönderilip korunuyor;
-  aksi halde RPC'nin id-bazlı silme adımı bunları temizlerdi) ama artık hiçbir
-  UI'dan yeni satır eklenmiyor — fiilen dead code, ayrı bir temizlik migration'ı
-  gerektirir (henüz yapılmadı). Eski raporlardaki geçmiş "Sorunlar" verisi
+  edilirse önce bu kararı hatırlat. **Dead code temizliği yapıldı (04.08.2026):**
+  `save_daily_report`'un `p_issues` parametresi ve `fn_create_ticket_from_daily_report_issue()`
+  INSERT trigger'ı kaldırıldı (`20260804091950_remove_dead_daily_report_issues_write_path`)
+  — `DailyReportForm.jsx`'teki `issues` state'i, `issueDescription()`/`ISSUE_META_PREFIX`
+  ve RPC çağrısındaki `p_issues` alanı da eşzamanlı temizlendi. `daily_report_issues`
+  TABLOSU ve içindeki veri KORUNDU (silinmedi) — yalnızca yazı yolu kaldırıldı,
+  tablo artık salt-okunur bir arşiv. Eski raporlardaki geçmiş "Sorunlar" verisi
   `DailyReportDetail.jsx` (salt okunur detay sayfası) ve Excel/PDF export'ta
-  hâlâ görüntüleniyor, `daily_report_issues.description` kolonu `category`/
-  `closed_at`/`notes` alanlarını `__ISSUE_META__{json}` öneki ile paketler.
+  hâlâ görüntüleniyor (bu okuma yolu değişmedi), `daily_report_issues.description`
+  kolonu `category`/`closed_at`/`notes` alanlarını `__ISSUE_META__{json}` öneki
+  ile paketlemeyi sürdürüyor (yalnızca decode ediliyor, artık hiç encode
+  edilmiyor).
   `daily_reports.notes` kolonu da aynı desende `isg_notes`/`incident_notes`/
   `description` alanlarını `__REPORT_NOTES_META__{json}` öneki ile paketler
   (`reportNotesPayload()`, `DailyReportForm.jsx`) — `DailyReportList.jsx`'in
@@ -623,14 +625,31 @@ görüntüsüyle karşılaştırır; aradan otomatik aşım (veya başka bir ona
 geçtiyse onayı sessizce ezmek yerine açık hatayla reddeder, admin talebi
 reddedip güncel miktarla yeniden değerlendirmek zorunda kalır.
 
-`procurement_items`'ta `status`/`priority`/`order_date`/`expected_delivery`/
-`actual_delivery`/`supplier`/`notes`/`updated_by`/`received_by`/`received_date`
-kolonları satın alma talebi akışından ÖNCEKİ bir sipariş-takip tasarımından
-kalma — hiçbir güncel RPC/UI artık bunlara yazmıyor (onları güncelleyen tek
-RPC olan `update_procurement_status` dead code olarak kaldırıldı), bazılarında
-eski/donmuş veri hâlâ duruyor ama kolonlar bilinçli olarak silinmedi. Malzeme
-Listesi artık yalnızca `planned_qty` ile takip ediliyor. Bu alanlara dayanan
-yeni bir özellik istenirse önce bu notu hatırlat.
+**`procurement_items`'taki eski sipariş-takip kolonları kaldırıldı (04.08.2026).**
+`status`/`priority`/`order_date`/`expected_delivery`/`actual_delivery`/
+`supplier`/`notes`/`updated_by`/`received_by`/`received_date` satın alma
+talebi akışından ÖNCEKİ bir sipariş-takip tasarımından kalmaydı (`update_procurement_status`
+zaten dead code olarak kaldırılmıştı) — `20260804091411_drop_unused_procurement_order_tracking_columns`
+ile `DROP COLUMN` edildi. Malzeme Listesi artık yalnızca `planned_qty` ile
+takip ediliyor. **Bağımlılık taraması eksikti — canlıda gerçek bir kesinti
+yarattı, aynı gün düzeltildi:** `get_satin_alma_overview`/
+`get_satin_alma_overview_all_internal` fonksiyonları `procurement_items`
+çıktısında hâlâ `'status', pi.status` alanı döndürüyordu; bu iki fonksiyon
+DROP COLUMN öncesi taramada gözden kaçmıştı (regex/`ilike` taraması yalnızca
+`pg_proc.prosrc`'te değil `pg_get_functiondef` çıktısında da arama
+gerektiriyordu — ikisi arasında fark olmamalıydı ama ilk tur bu iki
+fonksiyonu yakalamamıştı). Sonuç: proje_yoneticisi rolünde Satın Alma sayfası
+"Veri yüklenemedi" ile tamamen kırıldı (`get_satin_alma_overview_all` 400,
+Postgres log'unda `column pi.status does not exist`). `20260804094500_fix_satin_alma_overview_dropped_status_column`
+ile her iki fonksiyondan da `'status', pi.status,` satırı kaldırılarak
+düzeltildi (frontend — `ProjeTabMalzemeListesi`/`ProjeTabFaturaKesilecekler`/
+`ProjeTabSatinAlma`/`TabSatinAlma` — bu alanı hiç okumuyordu, grep ile
+doğrulandı). **Ders:** bir kolonu DROP etmeden önceki bağımlılık taraması
+yalnızca `prosrc ilike` değil, gerçek çalıştırılabilir bir smoke-test
+(`select fn(...)` çağrısı) ile de doğrulanmalı — statik metin taraması
+`SELECT jsonb_agg(jsonb_build_object(...))` gibi çok satırlı/iç içe
+ifadelerde alan adını atlayabiliyor. Bu alanlara dayanan yeni bir özellik
+istenirse önce bu notu hatırlat.
 
 ### Ticket oluşturma — genel vs proje bazlı
 `tickets.project_id` nullable — `NULL` "genel" (projeye bağlı olmayan) ticket
@@ -1474,9 +1493,10 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   "Migration tracking boşluğu" — bu projede kod ile doküman arasında böyle bir
   gecikme daha önce de görülmüş). Fark edilirse bu notu hatırlat: madde
   kapalıdır, yeniden açmadan önce önce kodu kontrol et.
-- **Migration tracking boşluğu (Supabase tarafı) — hâlâ açık.** 2026-07-26'da
-  fark edildi: `financial_transactions`/`financial_transaction_payments`
-  şeması, `v_invoice_payment_overview` security_invoker düzeltmesi,
+- **Migration tracking boşluğu (Supabase tarafı) — büyük ölçüde kapandı,
+  yalnızca 1 migration gerçekten kurtarılamaz.** 2026-07-26'da fark edildi:
+  `financial_transactions`/`financial_transaction_payments` şeması,
+  `v_invoice_payment_overview` security_invoker düzeltmesi,
   `role_allowed_tabs`/`role_sidebar_items` normalizasyonu,
   `harden_database_security_and_indexes` gibi birden fazla migration canlıda
   uygulanmış (tablolar/fonksiyonlar gerçekten var) ama
@@ -1484,35 +1504,71 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   migration tooling atlanıp doğrudan SQL editöründen uygulanmış (yerel dosya
   adlarındaki zaman damgaları da gerçek uygulanan versiyonlarla eşleşmiyor,
   ör. yerel `20260724170000_harden_database_security_and_indexes.sql` iken
-  canlıda aynı isim `20260724133320` altında kayıtlı). Bu hâlâ düzeltilmedi
-  (kapsamı büyük, ayrı bir "migration tracking reconciliation" görevi
-  gerektirir) — ama en azından yerel dosyaların kendisi artık git'te (önceki
-  bir oturumda 16 migration + 17 finans/muhasebe bileşen dosyası diske
-  yazılmış ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
+  canlıda aynı isim `20260724133320` altında kayıtlı). 2026-08-04'te
+  `list_migrations` ile tam bir karşılaştırma yapıldı: ~40 migration'da yalnızca
+  bu tür zararsız timestamp sürüklenmesi var; 6 migration'ın (07-24/07-30
+  tarihli) hiç yerel dosyası yoktu — bunlardan 5'i (`invoice_payment_tracking_partial_payments`,
+  `extend_suppliers_for_accounting_profile`, `add_get_invoice_linked_purchase_request`,
+  `notify_muhasebe_on_duzeltme_istendi`, `grant_execute_fn_next_purchase_request_no`)
+  mevcut canlı şema durumundan (tablo/trigger/fonksiyon/grant hâlâ yaşıyor)
+  **idempotent** olarak (`IF NOT EXISTS`/`CREATE OR REPLACE`/drop+recreate
+  constraint) yeniden inşa edilip repoya eklendi — tarihi SQL'in birebir aynısı
+  garantisi yok, ama bir `db reset`'te aynı nihai duruma ulaştırır ve sonraki
+  gerçek yerel dosyalarla (`fix_kismen_odendi_status_omissions` vb.) çakışmaz.
+  **`invoice_flow_single_approver_with_revision_and_payment_tracking`
+  (07-24 072957) kalıcı olarak kurtarılamaz** — bunu düzelten sonraki migration
+  (`20260724081031_invoice_workflow_single_approver_backend_fix`, yerelde zaten
+  var) `create_invoice_approval_chain()`/`trg_notify_invoice_insert()` gibi
+  fonksiyonları DROP ediyor; bu fonksiyonların orijinal gövdesi artık ne canlı
+  DB'de ne de hiçbir dosyada var — yeniden yazılırsa uydurma olur, kullanıcı
+  kararıyla bu tek migration açık madde olarak bırakıldı. En güncel iki migration
+  (`20260803101019_drop_critical_path_and_dashboard_visible_fields`,
+  `20260803101309_update_functions_after_dropping_critical_path_columns` —
+  `is_critical`/`dashboard_visible`/`dashboard_order` kaldırma turu) de aynı
+  şekilde mevcut şema durumundan yeniden inşa edilip repoya geri eklendi (bkz.
+  "Son değişiklik"). En azından yerel dosyaların kendisi artık git'te (önceki bir
+  oturumda 16 migration + 17 finans/muhasebe bileşen dosyası diske yazılmış
+  ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
 
 
 
 ## Son değişiklik
 
-**03.08.2026 — proje yönetimi sihirbazında (Yeni Proje / Düzenle) taslak
-otomatik kaydetme eklendi (frontend-only, migration yok).** Kullanıcı sihirbaz
-doluyken bir adımdan diğerine (WizardStepper) veya Proje Yönetimi'nden tamamen
-başka bir sekmeye geçtiğinde girilenlerin sessizce kaybolduğunu bildirdi. Kök
-neden: her adım bileşeni yalnızca "Devam"/"Kaydet" tıklanınca (`onDone`) veri
-raporluyordu; WizardStepper'ın adım linkleri ise doğrudan `setStep` çağırıp bu
-akışı hiç tetiklemeden komponenti unmount ediyordu, ayrıca tüm sihirbaz state'i
-(`stepsResult`) yalnızca bellekte tutulduğundan Proje Yönetimi sekmesinden
-ayrılmak (TabProjeYonetimi unmount) her şeyi silip baştan başlatıyordu. Çözüm:
-yeni `src/utils/projectWizardDraft.js` ile `localStorage`'a yazılan bir taslak
-katmanı — 6 adım bileşeninin (`Adim1ProjeBilgileri`…`Adim6Butce`) hepsine
-`onDraftChange` prop'u eklendi (her biri kendi ham state'ini her değişiklikte
-üst bileşene bildiriyor, validasyon beklemeden), `YeniProjeWizard.jsx`/
-`ProjeEditWizard.jsx` bunu `stepsResult`+`step`'le birlikte debounce'suz
-localStorage'a yazıp mount'ta geri okuyor. Düzenleme modunda DB'den taze veri
-çeken adımlarda (İş Kalemleri/Riskler/Bütçe) taslak varsa fetch atlanıyor artık
-(Kategori Ağırlıkları zaten bu deseni kullanıyordu) — aksi halde taslak her
-adım-dönüşünde DB'nin eski haliyle ezilirdi. Taslak sihirbaz tamamlanınca veya
-"İptal"le çıkılınca temizleniyor; kalıcı olması istenen tek durum sayfa/sekme
-değişip geri dönülmesi. Detay: bkz. "Excel şablonu / proje sihirbazı" bölümündeki
-"Taslak otomatik kaydetme" notu.
+**04.08.2026 — Ölü kod temizliği (`procurement_items` + `daily_report_issues`)
+sonrası canlı regresyon bulundu ve düzeltildi.**
+
+Ölü kod temizliği iki adımda yapıldı: (1) `procurement_items`'taki 10 eski
+sipariş-takip kolonu (`status`/`priority`/`order_date`/`expected_delivery`/
+`actual_delivery`/`supplier`/`notes`/`updated_by`/`received_by`/`received_date`)
+`DROP COLUMN` edildi (`20260804091411_drop_unused_procurement_order_tracking_columns`);
+(2) `daily_report_issues` yazı yolu (`save_daily_report`'un `p_issues`
+parametresi + `fn_create_ticket_from_daily_report_issue()` INSERT trigger'ı)
+kaldırıldı (`20260804091950_remove_dead_daily_report_issues_write_path`, RPC
+imzası 15→14 parametreye düştü, `DailyReportForm.jsx`/`tests/manual-task-progress.spec.js`
+eşzamanlı güncellendi). Tablo ve verisi korundu, yalnızca yazı yolu kaldırıldı.
+
+**Kullanıcı canlıda bir hata ekran görüntüsüyle bildirdi:** proje_yoneticisi
+rolünde Satın Alma sayfası "Veri yüklenemedi" ile tamamen kırılmıştı.
+Postgres logunda `column pi.status does not exist` + `get_satin_alma_overview_all`
+400 bulundu — (1) adımındaki bağımlılık taraması eksikti: `get_satin_alma_overview`
+ve `get_satin_alma_overview_all_internal` hâlâ `procurement_items` çıktısında
+`'status', pi.status` döndürüyordu. `20260804094500_fix_satin_alma_overview_dropped_status_column`
+ile her iki fonksiyondan da bu alan kaldırıldı (frontend hiç okumuyordu, grep
+ile doğrulandı), `get_satin_alma_overview_all_internal()` çağrısıyla canlıda
+doğrulandı. Detay ve çıkarılan ders: bkz. "BOM planlanan miktar değişiklikleri"
+bölümündeki not.
+
+Üç migration da uygulanır uygulanmaz doğru versiyonla yerel dosyaya yazıldı
+(bkz. "Migration tracking boşluğu" — biriktirmeye eklenmedi).
+
+Aynı gün daha önce yapılan Supabase akışları denetimi (migration senkronu,
+security/performance advisors, edge fonksiyon encoding düzeltmesi, pg_cron
+sağlığı, `financial_transactions`→`cost_allocations` backfill) ilgili
+bölümlere (bkz. "Migration tracking boşluğu", "RPC katmanı", yukarısı)
+işlendi — özet: `get_profile_names` ve 4 fonksiyondan daha `anon`/`PUBLIC`
+EXECUTE kaldırıldı, `create-user`/`manage-user` edge fonksiyonlarındaki
+Türkçe karakter mojibake'i redeploy ile düzeltildi, 5+2 eksik migration
+dosyası (2'si en güncel, 5'i 07-24/07-30 tarihli) idempotent olarak repoya
+geri eklendi, 4 demo `financial_transactions` kaydının eksik `cost_allocations`
+karşılığı backfill edildi.

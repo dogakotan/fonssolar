@@ -40,7 +40,7 @@ export default function ProjeTabMalzemeListesi({ projectId, filterDate, activeSe
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
 
-      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--color-border-md)' }}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--color-border-md)' }}>
         {SECTIONS.map(s => (
           <button key={s.key} onClick={() => setSection(s.key)} style={{
             background: 'none', border: 'none', padding: '10px 22px',
