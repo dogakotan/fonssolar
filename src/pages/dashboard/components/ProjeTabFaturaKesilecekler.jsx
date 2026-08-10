@@ -375,6 +375,8 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
   const [editingRow, setEditingRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [showNewMaterial, setShowNewMaterial] = useState(false)
+  const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
 
   const canRequest = isAdmin || role === 'proje_yoneticisi'
   const canReview = isAdmin
@@ -394,12 +396,16 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
     addedViaCount: 0,
     isPendingNew: true,
   }))
-  const allRows = [...pendingNewRows, ...rows]
+  const searchTerm = search.trim().toLocaleLowerCase('tr')
+  const allRowsUnfiltered = [...pendingNewRows, ...rows]
+  const allRows = allRowsUnfiltered
+    .filter(row => !searchTerm || (row.material || '').toLocaleLowerCase('tr').includes(searchTerm))
+    .filter(row => !categoryFilter || row.category === categoryFilter)
   const totalPagesAll = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE))
   const safePageAll = Math.min(page, totalPagesAll - 1)
   const pageRowsAll = allRows.slice(safePageAll * PAGE_SIZE, safePageAll * PAGE_SIZE + PAGE_SIZE)
 
-  useEffect(() => { setPage(0) }, [allRows.length])
+  useEffect(() => { setPage(0) }, [allRows.length, searchTerm, categoryFilter])
 
   const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
 
@@ -424,10 +430,26 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', margin: 0 }}>Malzeme Listesi</h3>
           <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20 }}>
-            {allRows.length} kalem
+            {allRowsUnfiltered.length} kalem
           </span>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Malzeme ara…"
+            style={{ marginLeft: 'auto', width: 200, fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border-md)', color: 'var(--color-text)', background: 'var(--color-surface)', fontFamily: 'inherit' }}
+          />
+          <select
+            value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value)}
+            style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border-md)', color: 'var(--color-text)', background: 'var(--color-surface)', fontFamily: 'inherit', cursor: 'pointer' }}
+          >
+            <option value="">Tüm Kategoriler</option>
+            {MALZEME_KATEGORI_OPTS.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
           {canRequest && (
-            <button onClick={() => setShowNewMaterial(true)} style={{ marginLeft: 'auto', background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button onClick={() => setShowNewMaterial(true)} style={{ background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               + Yeni Malzeme
             </button>
           )}
@@ -437,7 +459,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>Yükleniyor…</div>
         ) : allRows.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>
-            Bu projeye ait malzeme listesi henüz eklenmemiş.
+            {(searchTerm || categoryFilter) ? 'Aramanızla/filtrenizle eşleşen malzeme bulunamadı.' : 'Bu projeye ait malzeme listesi henüz eklenmemiş.'}
           </div>
         ) : (
           <>
