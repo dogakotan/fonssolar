@@ -10,6 +10,28 @@ const HEADER_HEIGHT = 24
 
 const TH = { height: HEADER_HEIGHT, boxSizing: 'border-box', padding: '0 14px', lineHeight: `${HEADER_HEIGHT}px`, textAlign: 'left', fontSize: 9.5, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', verticalAlign: 'middle' }
 const TD = { height: ROW_HEIGHT, boxSizing: 'border-box', padding: '0 14px', fontSize: 13, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
+// Uzun malzeme/kategori adları satır sarmasına (dolayısıyla satır yüksekliğinin
+// içerik uzunluğuna göre değişmesine) sebep oluyordu — tek satıra sabitlenip
+// taşan kısım "…" ile kesiliyor, tam metin title tooltip'inde görünür.
+const TD_TRUNCATE = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 280 }
+
+// Malzeme adı kesildiğinde (TD_TRUNCATE) tam metni görebilmek için üzerine
+// gelince çıkan küçük bir balon — native `title` tooltip'i yerine (gecikmeli/
+// küçük/tarayıcıya göre değişken) kendi temamıza uygun, anında görünen bir
+// tooltip. `overflow:hidden` yalnızca metni saran iç span'da — balon onun
+// KARDEŞİ olduğundan kesilmiyor, dışarı taşabiliyor.
+function MaterialNameCell({ name, style }) {
+  return (
+    <td style={{ ...TD, ...style }}>
+      <span className="malz-tt-group" style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', verticalAlign: 'middle' }}>
+        <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>
+          {name}
+        </span>
+        <span className="malz-tt-bubble">{name}</span>
+      </span>
+    </td>
+  )
+}
 
 const formatQty = (value) =>
   Number(value || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
@@ -85,6 +107,17 @@ function MiktarDuzenleModal({ row, onClose, onSaved }) {
   )
 }
 
+const MALZEME_KATEGORI_OPTS = [
+  'Mobilizasyon',
+  'Hizmet',
+  'İş makineleri',
+  'Güvenlik',
+  'Elektrik',
+  'Mekanik',
+  'Hırdavat',
+  'Diğer',
+]
+
 function YeniMalzemeEkleModal({ projectId, onClose, onSaved }) {
   const [equipment, setEquipment] = useState('')
   const [unit, setUnit] = useState('')
@@ -145,8 +178,13 @@ function YeniMalzemeEkleModal({ projectId, onClose, onSaved }) {
 
           <div style={{ marginBottom: 14 }}>
             <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Kategori</label>
-            <input value={category} onChange={e => setCategory(e.target.value)} placeholder="Örn: Mekanik, Elektrik"
-              style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
+            <select value={category} onChange={e => setCategory(e.target.value)}
+              style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none', background: '#fff' }}>
+              <option value="">Seçiniz</option>
+              {MALZEME_KATEGORI_OPTS.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
           </div>
 
           <div style={{ marginBottom: 20 }}>
@@ -337,6 +375,8 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
   const [editingRow, setEditingRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [showNewMaterial, setShowNewMaterial] = useState(false)
+  const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
 
   const canRequest = isAdmin || role === 'proje_yoneticisi'
   const canReview = isAdmin
@@ -356,27 +396,60 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
     addedViaCount: 0,
     isPendingNew: true,
   }))
-  const allRows = [...pendingNewRows, ...rows]
+  const searchTerm = search.trim().toLocaleLowerCase('tr')
+  const allRowsUnfiltered = [...pendingNewRows, ...rows]
+  const allRows = allRowsUnfiltered
+    .filter(row => !searchTerm || (row.material || '').toLocaleLowerCase('tr').includes(searchTerm))
+    .filter(row => !categoryFilter || row.category === categoryFilter)
   const totalPagesAll = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE))
   const safePageAll = Math.min(page, totalPagesAll - 1)
   const pageRowsAll = allRows.slice(safePageAll * PAGE_SIZE, safePageAll * PAGE_SIZE + PAGE_SIZE)
 
-  useEffect(() => { setPage(0) }, [allRows.length])
+  useEffect(() => { setPage(0) }, [allRows.length, searchTerm, categoryFilter])
 
   const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
 
   return (
     <div>
-      {canReview && <BekleyenDegisikliklerPanel items={pending} onReviewed={onPendingChanged} />}
+      <style>{`
+        .malz-tt-bubble {
+          visibility: hidden; opacity: 0; pointer-events: none;
+          position: absolute; left: 0; top: 100%; margin-top: 6px; z-index: 30;
+          background: #111827; color: #fff; padding: 7px 11px; border-radius: 8px;
+          font-size: 12px; font-weight: 500; line-height: 1.4; white-space: normal;
+          max-width: 320px; box-shadow: 0 6px 18px rgba(0,0,0,.22); transition: opacity .12s ease;
+        }
+        .malz-tt-group:hover .malz-tt-bubble { visibility: visible; opacity: 1; }
+      `}</style>
+      {/* Bekleyen değişiklik yokken "Bekleyen miktar değişikliği bulunmuyor" banner'ı
+          hiçbir bilgi taşımadan sayfada boşuna ~80px yer kaplıyordu — sığdırma
+          isteğiyle yalnızca gerçekten bekleyen bir şey varsa gösteriliyor artık. */}
+      {canReview && pending.length > 0 && <BekleyenDegisikliklerPanel items={pending} onReviewed={onPendingChanged} />}
 
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text)', margin: 0 }}>Malzeme Listesi</h3>
           <span style={{ background: 'var(--color-bg)', color: 'var(--color-text-sub)', fontSize: 11, fontWeight: 500, padding: '2px 8px', borderRadius: 20 }}>
-            {allRows.length} kalem
+            {allRowsUnfiltered.length} kalem
           </span>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Malzeme ara…"
+            style={{ marginLeft: 'auto', width: 200, fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border-md)', color: 'var(--color-text)', background: 'var(--color-surface)', fontFamily: 'inherit' }}
+          />
+          <select
+            value={categoryFilter}
+            onChange={e => setCategoryFilter(e.target.value)}
+            style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border-md)', color: 'var(--color-text)', background: 'var(--color-surface)', fontFamily: 'inherit', cursor: 'pointer' }}
+          >
+            <option value="">Tüm Kategoriler</option>
+            {MALZEME_KATEGORI_OPTS.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
           {canRequest && (
-            <button onClick={() => setShowNewMaterial(true)} style={{ marginLeft: 'auto', background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button onClick={() => setShowNewMaterial(true)} style={{ background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               + Yeni Malzeme
             </button>
           )}
@@ -386,16 +459,21 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>Yükleniyor…</div>
         ) : allRows.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>
-            Bu projeye ait malzeme listesi henüz eklenmemiş.
+            {(searchTerm || categoryFilter) ? 'Aramanızla/filtrenizle eşleşen malzeme bulunamadı.' : 'Bu projeye ait malzeme listesi henüz eklenmemiş.'}
           </div>
         ) : (
           <>
-          <div style={{ overflowX: 'auto' }}>
+          {/* overflowX tek başına yazılırsa tarayıcı overflow-y'yi de (varsayılan
+              'visible' olduğundan) otomatik 'auto'ya çeviriyor -- içerik dikeyde
+              hiç taşmasa bile bu, sağda gereksiz bir dikey scrollbar'a yol
+              açıyordu. overflowY'yi açıkça 'hidden' yazmak bu otomatik
+              dönüşümü engelliyor (yatay scroll ihtiyacı hâlâ çalışır). */}
+          <div style={{ overflow: 'auto hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
               <thead>
                 <tr>
-                  {['MALZEME', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN', ...(canRequest ? ['İŞLEM'] : []), ''].map((h, i) => (
-                    <th key={h || `col-${i}`} style={{ ...TH, position: 'sticky', top: 0, background: 'var(--color-surface)', zIndex: 1, boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)', width: h ? undefined : 28 }}>{h}</th>
+                  {['MALZEME', 'KATEGORİ', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN', ...(canRequest ? ['İŞLEM'] : []), ''].map((h, i) => (
+                    <th key={h || `col-${i}`} style={{ ...TH, background: 'var(--color-surface)', boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)', width: h ? undefined : 28 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -404,8 +482,9 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
                   if (row.isPendingNew) {
                     return (
                       <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border)', background: '#FFFBEB' }}>
-                        <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text)' }}>{row.material}</td>
-                        <td style={TD} colSpan={canRequest ? 5 : 4}>
+                        <MaterialNameCell name={row.material} style={{ fontWeight: 600, color: 'var(--color-text)' }} />
+                        <td style={TD}>—</td>
+                        <td style={TD} colSpan={canRequest ? 4 : 3}>
                           <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
                             Yeni Malzeme — Onay Bekliyor: {formatQty(row.planned)} {row.unit}
                           </span>
@@ -416,7 +495,8 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
                   const pendingChange = pendingByItemId.get(row.id)
                   return (
                   <tr key={row.id || row.material} onClick={() => setDetailRow(row)} style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}>
-                    <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text)' }}>{row.material}</td>
+                    <MaterialNameCell name={row.material} style={{ fontWeight: 600, color: 'var(--color-text)' }} />
+                    <td style={{ ...TD, ...TD_TRUNCATE, maxWidth: 140 }} title={row.category || ''}>{row.category || '—'}</td>
                     <td style={TD}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                         <span>{formatQty(row.planned)} {row.unit}</span>

@@ -1188,10 +1188,11 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
   return (
     <div>
-      {/* Eylem çubuğu */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
+      {/* Eylem çubuğu — altındaki alt-sekme şeridiyle (Malzeme Listesi/Riskler,
+          Finans, Satın Alma) tek bir bütün gibi görünmesi için boşluk sıkı tutulur. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'nowrap', overflowX: 'auto' }}>
         <button onClick={onBack} style={backBtn}>← Projelere Dön</button>
-        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'nowrap' }}>
           <button onClick={() => setTab('genel')} style={tab === 'genel' ? tabBtnActive : tabBtn}>
             Genel Proje
           </button>
@@ -1222,8 +1223,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
         </div>
 
         {/* ── Sağ grup: Tarih Navigasyon + Dışa Aktar ── */}
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <div ref={calendarRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+          <div ref={calendarRef} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap', justifyContent: 'flex-end' }}>
             <button onClick={() => setShowCalendar(v => !v)} style={calendarBtn} title="Takvim">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" />

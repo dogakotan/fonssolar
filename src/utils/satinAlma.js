@@ -120,6 +120,7 @@ export function buildMaterialListRows(materials, requests) {
       id: material.id,
       material: materialName(material) || 'Malzeme',
       unit: material.unit || '',
+      category: material.category || '',
       planned,
       sent,
       required: Math.max(0, planned - sent),

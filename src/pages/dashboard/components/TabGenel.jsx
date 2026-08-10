@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react'
-import { unzipSync, strFromU8, strToU8 } from 'fflate'
 import { supabase } from '../../../lib/supabase'
 import { getProjects } from '../../../api'
 import ProgBar from '../../../components/ui/ProgBar'
