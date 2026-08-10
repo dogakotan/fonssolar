@@ -74,22 +74,6 @@
   display: flex; flex-direction: column; gap: 0.25rem;
 }
 
-.sidebar-user-row {
-  display: flex; align-items: center; gap: 0.625rem;
-  padding: 0.375rem 0.5rem; border-radius: 0.5rem;
-}
-
-.sidebar-avatar {
-  width: 32px; height: 32px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; font-weight: 700; font-size: 0.72rem; flex-shrink: 0;
-}
-
-.sidebar-user-info { flex: 1; min-width: 0; overflow: hidden; }
-
-.user-name { font-size: 0.8rem; font-weight: 600; color: #1e293b; margin: 0 0 0.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.user-role { font-size: 0.67rem; color: #94a3b8; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 .sidebar-logout-btn {
   display: flex; align-items: center; gap: 0.5rem;
   width: 100%; padding: 0.5rem 0.625rem; border-radius: 0.5rem;
@@ -118,7 +102,6 @@
   justify-content: center; padding: 0.6rem; gap: 0;
   position: relative;
 }
-.sidebar.collapsed .sidebar-user-row { justify-content: center; }
 .sidebar.collapsed .sidebar-logout-btn { justify-content: center; padding: 0.5rem; }
 
 /* İkon-only sidebar tooltip — document.body'e portal'lanır (Sidebar.jsx), bu
@@ -153,16 +136,6 @@
   z-index: 40;
 }
 .dash-header h2 { font-size: 1.125rem; font-weight: 700; color: var(--color-text); margin: 0; }
-
-.santiye-kpi-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-
-@media (max-width: 1180px) {
-  .santiye-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-@media (max-width: 640px) {
-  .santiye-kpi-grid { grid-template-columns: 1fr; }
-}
 
 /* ── Stat kartlar ── */
 .stats-grid {
@@ -229,7 +202,6 @@
 .prog-wrap span { font-size: .75rem; color: #64748b; width: 2.5rem; }
 .prog-bar { flex: 1; height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
 .prog-fill { height: 100%; background: var(--color-primary); border-radius: 3px; transition: width .4s ease; }
-.prog-label { font-size: .72rem; color: #94a3b8; margin: .4rem 0 0; text-align: right; }
 
 /* ── Badge ── */
 .badge {
@@ -242,56 +214,6 @@
 .badge.blue   { background: #dbeafe; color: #1d4ed8; }
 .badge.red    { background: #fee2e2; color: #dc2626; }
 .badge.gray   { background: #f1f5f9; color: #64748b; }
-
-/* ── Projeler ── */
-.projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
-.project-card {
-  background: var(--color-surface); border-radius: var(--radius-lg); padding: 1.25rem 1.5rem;
-  box-shadow: var(--shadow-card);
-  border: 1px solid var(--color-border); cursor: pointer; transition: box-shadow .2s;
-}
-.project-card:hover { box-shadow: 0 4px 24px rgba(0,59,142,.12); }
-.proj-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: .875rem; }
-.proj-top h3 { font-size: .9rem; font-weight: 700; color: #0f172a; margin: 0 0 .2rem; }
-.proj-top p  { font-size: .75rem; color: #94a3b8; margin: 0; }
-.proj-meta   { display: flex; gap: 1rem; font-size: .78rem; color: #64748b; margin-bottom: .875rem; }
-
-/* ── Görevler ── */
-.task-list { padding: .5rem; }
-.task-item {
-  display: flex; align-items: center; gap: .875rem;
-  padding: .875rem 1rem; border-radius: .5rem; transition: background .15s;
-}
-.task-item:hover { background: #f8fafc; }
-.task-item.task-active { background: #eff6ff; }
-
-.task-dot { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.task-dot.done-dot    { background: #dcfce7; color: #16a34a; }
-.task-dot.active-dot  { background: #dbeafe; }
-.task-dot.active-dot div { width: 8px; height: 8px; border-radius: 50%; background: var(--color-primary); }
-.task-dot.pending-dot { border: 2px solid #e2e8f0; }
-.task-dot.late-dot    { border: 2px solid #fca5a5; }
-
-.task-body { flex: 1; }
-.task-name { font-size: .82rem; font-weight: 500; color: #0f172a; margin: 0 0 .15rem; }
-.task-name.done-name { text-decoration: line-through; color: #64748b; }
-.task-meta { font-size: .7rem; color: #94a3b8; margin: 0; }
-.task-meta.late { color: #ef4444; }
-
-/* ── Ekip ── */
-.team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
-.team-card {
-  background: var(--color-surface); border-radius: var(--radius-lg); padding: 1.5rem;
-  box-shadow: var(--shadow-card);
-  border: 1px solid var(--color-border); text-align: center;
-}
-.avatar {
-  width: 52px; height: 52px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  margin: 0 auto .75rem; color: #fff; font-weight: 700; font-size: 1.1rem;
-}
-.team-card h4 { font-size: .875rem; font-weight: 700; color: #0f172a; margin: 0 0 .2rem; }
-.team-card p  { font-size: .72rem; color: #64748b; margin: 0 0 .5rem; }
 
 /* ── Proje içi genel bakış ── */
 .project-overview { display: flex; flex-direction: column; gap: 1rem; max-width: 100%; min-width: 0; overflow-x: hidden; }
@@ -329,9 +251,6 @@
 .project-weather-tomorrow span { color: var(--color-muted); font-size: .7rem; font-weight: 700; text-transform: uppercase; }
 .project-weather-tomorrow strong { font-size: .85rem; color: var(--color-text); }
 .project-weather-tomorrow small { color: var(--color-muted); font-size: .68rem; text-align: right; }
-.project-weather-lost { margin-top: auto; padding-top: .8rem; color: var(--color-muted); font-size: .82rem; }
-.project-weather-lost strong { color: var(--color-danger); }
-.project-weather-empty { padding: 2.2rem 0; color: var(--color-muted); font-size: .85rem; text-align: center; }
 .project-mid-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: stretch; min-width: 0; }
 .project-category-card { display: flex; flex-direction: column; }
 .project-category-card,
@@ -341,50 +260,6 @@
 .project-timeline-chart { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: .25rem .25rem 0; }
 .project-timeline-plot { flex: 1; min-height: 225px; height: 225px; }
 .project-timeline-legend { display: flex; gap: 1rem; flex-wrap: wrap; flex-shrink: 0; margin-top: .25rem; padding-top: .1rem; }
-.kpi-hover::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 10px);
-  transform: translateX(-50%) translateY(4px);
-  min-width: 180px;
-  max-width: 260px;
-  padding: .5rem .65rem;
-  border-radius: .55rem;
-  background: #0f172a;
-  color: #fff;
-  font-size: .72rem;
-  font-weight: 600;
-  line-height: 1.5;
-  white-space: pre-line;
-  text-align: left;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, .18);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .12s ease, transform .12s ease;
-  z-index: 30;
-}
-.kpi-hover::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 4px);
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: #0f172a;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .12s ease;
-  z-index: 31;
-}
-.kpi-hover:hover::after,
-.kpi-hover:hover::before {
-  opacity: 1;
-}
-.kpi-hover:hover::after {
-  transform: translateX(-50%) translateY(0);
-}
-
 .project-bottom-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; min-width: 0; }
 .project-mini-card { padding: 1rem 1.1rem; min-height: 220px; min-width: 0; }
 .project-category-bullets { display: flex; flex-direction: column; gap: .55rem; overflow-y: auto; flex: 1; min-height: 0; padding: .1rem .15rem .2rem; scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
@@ -616,24 +491,9 @@
   margin-bottom: 20px;
   flex-wrap: wrap;
 }
-.ss-kpi-card {
-  flex: 1;
-  min-width: 160px;
-}
-
-/* ── Tablet ≤900px: kart satırı 2'li ── */
-@media (max-width: 900px) {
-  .ss-kpi-card {
-    flex: unset;
-    min-width: unset;
-    width: calc(50% - 6px);
-  }
-}
-
 /* ── Mobil ≤768px: butonlar tam genişlik ── */
 @media (max-width: 768px) {
   .ss-kpi-grid  { gap: 10px; margin-bottom: 12px; }
-  .ss-kpi-card  { width: 100% !important; flex: none !important; min-height: 56px; }
 }
 
 /* Günlük rapor üst bant — özet kartları (Proje / Tarih / Toplam İşçi / Genel Durum) */
@@ -669,8 +529,6 @@
   transition: background 0.1s;
 }
 .ss-list-row:hover { background: #F9FAFB; }
-.ss-list-row--static { cursor: default; }
-.ss-list-row--static:hover { background: transparent; }
 .ss-list-title  { flex: 1; font-size: 13px; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ss-list-badges { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
 .ss-request-row { position: relative; }
@@ -767,13 +625,6 @@
   }
 }
 
-/* KPI kart satırı — mobil 2'li, tablet 3'lü, masaüstü 6'lı (hepsi yan yana) */
-.ss-kpi-grid-6 {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
 .ss-kpi-grid-overview {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -786,14 +637,6 @@
 .ss-overview-weather { order: 4; }
 .ss-overview-personnel { order: 5; }
 .ss-overview-vehicle { order: 6; }
-.ss-kpi-card {
-  min-height: 112px;
-  padding: 12px 14px;
-  border: 1px solid var(--color-border-md);
-  border-radius: 12px;
-  background: var(--color-primary-bg);
-}
-.ss-kpi-label { color: var(--color-muted); font-size: 13px; font-weight: 500; }
 .ss-overview-purchase .ss-kpi-value,
 .ss-overview-ticket .ss-kpi-value {
   font-size: 32px !important;
@@ -810,7 +653,6 @@
   line-height: 1.35;
 }
 .ss-kpi-detail strong { color: var(--color-text-sub); }
-.ss-kpi-detail-warning { color: var(--color-danger); }
 .ss-kpi-inline-action {
   min-height: 36px;
   margin-left: auto;
@@ -928,31 +770,6 @@
     margin-top: 8px;
   }
 }
-.ss-kpi-request-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
-.ss-kpi-request-grid button {
-  display: flex;
-  min-width: 0;
-  padding: 12px 13px;
-  flex-direction: column;
-  justify-content: space-between;
-  align-items: flex-start;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--color-border));
-  border-radius: 8px;
-  background: var(--color-surface);
-  color: var(--color-primary-text);
-  cursor: pointer;
-  font-family: inherit;
-  text-align: left;
-}
-.ss-kpi-request-grid button:hover { border-color: var(--color-primary); }
-.ss-kpi-request-grid strong { margin-top: 10px; font-size: 23px; line-height: 1; }
-.ss-kpi-request-grid span {
-  color: var(--color-text-sub);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
 .ss-overview-weather { padding: 12px 14px; }
 .ss-overview-weather .stat-label { margin-bottom: 4px; }
 .ss-overview-weather .project-weather-main { gap: 4px 8px; padding: 3px 0 5px; }
@@ -1084,19 +901,6 @@
   .ss-overview-vehicle .ss-detail-table-row:nth-child(even) { border-right: 1px solid var(--color-border); }
   .ss-overview-vehicle .ss-detail-table-row:nth-child(4n) { border-right: 0; }
 }
-@media (min-width: 640px) {
-  .ss-kpi-grid-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-@media (min-width: 1100px) {
-  .ss-kpi-grid-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-}
-
-/* Proje İlerlemesi — kalem satırları: mobilde isim üstte tam genişlik, bar alt satıra sarar
-   (dar ekranda isim çok kısa kesiliyordu, bkz. SantiyeSefiDashboard.jsx). */
-.pi-item-row { display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; }
-.pi-item-name-col { flex: 0 0 clamp(84px, 32%, 160px); min-width: 0; }
-.pi-item-bar-col { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-
 .pi-groups-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1212,9 +1016,6 @@
 @media (max-width: 480px) {
   .pi-groups-grid { grid-template-columns: 1fr; }
   .pi-compact-row { grid-template-columns: minmax(0, 1fr) minmax(100px, .9fr); }
-  .pi-item-row { flex-wrap: wrap; }
-  .pi-item-name-col { flex: 1 1 100%; }
-  .pi-item-bar-col { flex: 1 1 100%; }
 }
 
 /* ════════════════════════════════════════════
@@ -1283,21 +1084,6 @@
   }
 }
 
-/* ════════════════════════════════════════════
-   Ticket Detay Modal — Responsive
-   ════════════════════════════════════════════ */
-
-.ticket-detail-body {
-  padding: 24px;
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.ticket-detail-sidebar {
-  flex: 0 0 230px;
-}
-
 .site-chief-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1307,14 +1093,6 @@
 @media (max-width: 560px) {
   .site-chief-detail-grid {
     grid-template-columns: 1fr;
-  }
-
-  .ticket-detail-body {
-    padding: 16px;
-    gap: 16px;
-  }
-  .ticket-detail-sidebar {
-    flex: 1 1 100%;
   }
 }
 
@@ -1326,16 +1104,6 @@
 @media (max-width: 768px) {
   .desk-only { display: none !important; }
   .mob-only  { display: block !important; }
-}
-
-/* ── Hava durumu widget — mobilde gizle ── */
-.weather-widget-wrap {
-  flex-shrink: 0;
-  width: 280px;
-  align-self: stretch;
-}
-@media (max-width: 768px) {
-  .weather-widget-wrap { display: none !important; }
 }
 
 /* ── Proje listesi — mobil kart ── */
@@ -1393,60 +1161,6 @@
 }
 .sa-card:hover { background: #F9FAFB; }
 .sa-card:last-child { border-bottom: none; }
-.sa-card-title { font-size: 14px; font-weight: 600; color: #111827; margin: 0 0 3px; }
-.sa-card-proj  { font-size: 12px; color: #6B7280; margin: 0 0 8px; }
-.sa-card-foot  { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-.sa-card-date  { font-size: 11px; color: #9CA3AF; margin-left: auto; white-space: nowrap; }
-
-/* ── Gecmis Raporlar — mobil kart ── */
-.rep-mob-card {
-  padding: 12px 16px;
-  border-bottom: 1px solid #F3F4F6;
-  cursor: pointer; transition: background 0.1s;
-}
-.rep-mob-card:hover { background: #F9FAFB; }
-.rep-mob-card:last-child { border-bottom: none; }
-.rep-mob-head  { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap; }
-.rep-mob-date  { font-size: 12px; color: #94a3b8; white-space: nowrap; }
-.rep-mob-text  { font-size: 13px; color: #374151; line-height: 1.5; }
-
-/* ── Proje Dashboard — yeni layout ── */
-.proj-dash-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.75rem;
-  margin-bottom: 1.25rem;
-}
-.proj-dash-grid-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.25rem;
-  margin-bottom: 1.25rem;
-}
-.kpi-card-compact {
-  background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  padding: 0.875rem 1rem;
-  box-shadow: var(--shadow-card);
-  border: 1px solid var(--color-border);
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-}
-.kpi-card-compact-label {
-  font-size: 10px;
-  font-weight: 700;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin: 0;
-}
-.kpi-card-ring-row {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
 /* ── Modern Gantt İş Planı ── */
 .gantt-page {
   display: flex;
@@ -1489,7 +1203,6 @@
 .gantt-card { min-width: 0; border-color: #e8edf5; box-shadow: 0 12px 30px rgba(15, 23, 42, .075); }
 .gantt-card-header { padding: .68rem .8rem .68rem .9rem; border-bottom: 1px solid #eef2f7; display: flex; justify-content: space-between; gap: .75rem; align-items: flex-start; }
 .gantt-card-header h3 { margin: 0 0 .2rem; color: var(--color-text); font-size: .86rem; font-weight: 800; }
-.gantt-scale-badge { display: inline-flex; align-items: center; margin: 0 0 .35rem; padding: 2px 8px; border-radius: 999px; background: #eff6ff; color: var(--color-primary); font-size: .66rem; font-weight: 800; }
 .gantt-card-header p { margin: 0; color: var(--color-muted); font-size: .68rem; line-height: 1.3; }
 .gantt-toolbar { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: .45rem; }
 .gantt-toolbar select { height: 30px; padding: 0 1.65rem 0 .65rem; border: 1px solid #e2e8f0; border-radius: .5rem; background: #fff; color: var(--color-text); font: inherit; font-size: .68rem; font-weight: 650; outline: 0; }
@@ -1624,9 +1337,7 @@
 .gantt-detail-row .tone-teal { color: #0f766e; }
 .gantt-detail-row .tone-rose, .gantt-detail-row .tone-red { color: #ef4444; }
 .gantt-detail-row .tone-muted { color: #64748b; }
-.gantt-detail-note { padding: .7rem 0; border-bottom: 1px solid #eef2f7; }
-.gantt-detail-note h4 { margin: 0 0 .35rem; color: var(--color-text); font-size: .72rem; font-weight: 800; }
-.gantt-detail-note p, .gantt-detail-empty, .gantt-empty { margin: 0; color: #475569; font-size: .72rem; line-height: 1.5; }
+.gantt-detail-empty, .gantt-empty { margin: 0; color: #475569; font-size: .72rem; line-height: 1.5; }
 .gantt-detail-empty, .gantt-empty { padding: 2rem; text-align: center; color: var(--color-muted); }
 .gantt-panel-reopen { align-self: start; padding: .7rem .9rem; border: 1px solid #dbeafe; border-radius: .75rem; background: #eff6ff; color: var(--color-primary); font-size: .78rem; font-weight: 800; }
 
@@ -1844,34 +1555,6 @@
   align-items: stretch;
   margin-bottom: 12px;
 }
-.finans-tabs {
-  display: grid;
-  grid-template-columns: repeat(var(--finans-tab-count), minmax(0, 1fr));
-  width: 100%;
-  margin-bottom: 20px;
-  border-bottom: 2px solid var(--color-border-md);
-  overflow: hidden;
-}
-.finans-tab {
-  min-width: 0;
-  padding: 10px 8px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
-  background: none;
-  color: var(--color-muted);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.25;
-  text-align: center;
-  cursor: pointer;
-}
-.finans-tab.active {
-  border-bottom-color: var(--color-primary);
-  color: var(--color-primary);
-  font-weight: 600;
-}
 .finans-ozet-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem; }
 .finans-ozet-columns > div:first-child { padding-right: .2rem; border-right: 1px solid #f1f5f9; }
 /* Kart genişledi (2 sütun) — içindeki yazılar da diğer Genel Proje kartlarına göre biraz büyük olsun. */
@@ -1928,23 +1611,6 @@
   .finans-panel-grid { grid-template-columns: 1fr; }
   .finans-ozet-card { grid-column: span 1; }
   .finans-row2-grid { grid-template-columns: 1fr; }
-  .finans-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .finans-tab { margin-bottom: 0; border-bottom-color: var(--color-border); }
-}
-
-/* ── Proje liste satırı — responsive ── */
-.proj-list-item {
-  display: flex; align-items: center; gap: 1rem;
-  background: #fff; border-radius: 12px; padding: 0.75rem 1rem;
-  cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
-}
-.proj-list-info   { flex: 1 1 180px; min-width: 0; }
-.proj-list-actions { display: flex; align-items: center; gap: 0.625rem; flex-shrink: 0; }
-
-@media (max-width: 640px) {
-  .proj-list-item   { flex-wrap: wrap; gap: 0.625rem; }
-  .proj-list-info   { flex: 1 1 100%; }
-  .proj-list-status { flex: 1 1 auto; }
 }
 
 /* ── Overflow koruması ── */
@@ -2132,7 +1798,6 @@ body, #root { overflow-x: hidden; }
 .accounting-panel { border:1px solid var(--color-border-md); border-radius:12px; background:var(--color-surface); overflow:hidden; box-shadow:0 2px 8px rgba(15,23,42,.03); }
 .accounting-panel>header { min-height:48px; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:0 18px; border-bottom:1px solid var(--color-border); }
 .accounting-panel>header h3 { margin:0; color:var(--color-text); font-size:13.5px; font-weight:700; }
-.accounting-panel-count { padding:3px 7px; border-radius:12px; background:var(--color-bg); color:var(--color-muted); font-size:10px; }
 .accounting-header-link { border:0; background:none; color:var(--color-primary); font:650 11px inherit; cursor:pointer; }
 .accounting-task-row,.accounting-payment-row,.accounting-recent-row { min-height:57px; border-bottom:1px solid var(--color-border); }
 .accounting-task-row:last-child,.accounting-payment-row:last-child,.accounting-recent-row:last-child { border-bottom:0; }
@@ -2187,12 +1852,6 @@ body, #root { overflow-x: hidden; }
 .purchase-refreshing { margin-left:auto; color:var(--color-muted); font-size:11px; }
 .purchase-add-btn { margin-left:auto; border:1px solid var(--color-primary); border-radius:8px; padding:9px 14px; background:var(--color-primary); color:#fff; font:650 11px inherit; cursor:pointer; white-space:nowrap; box-shadow:0 4px 12px rgba(24,95,165,.17); }
 .purchase-refreshing+.purchase-add-btn { margin-left:0; }
-.purchase-tabs { display:flex; width:max-content; max-width:100%; margin-bottom:16px; border:1px solid var(--color-border-md); border-radius:9px; overflow-x:auto; background:var(--color-surface); }
-.purchase-tabs button { min-width:190px; display:flex; justify-content:center; align-items:center; gap:8px; border:0; border-right:1px solid var(--color-border); border-bottom:2px solid transparent; background:none; color:var(--color-muted); padding:10px 15px 8px; font:600 11.5px inherit; cursor:pointer; white-space:nowrap; }
-.purchase-tabs button:last-child { min-width:120px; border-right:0; }
-.purchase-tabs button.active { color:var(--color-primary); border-bottom-color:var(--color-primary); background:#F8FBFF; }
-.purchase-tabs b { min-width:21px; padding:2px 6px; border-radius:12px; color:inherit; background:var(--color-bg); font-size:10px; }
-.purchase-tabs .active b { color:#fff; background:var(--color-primary); }
 .purchase-filterbar { display:flex; align-items:center; gap:9px; margin-bottom:14px; padding:11px 13px; border:1px solid var(--color-border-md); border-radius:11px; background:var(--color-surface); }
 .purchase-search { min-width:260px; flex:1; display:flex; align-items:center; gap:8px; border:1px solid var(--color-border-md); border-radius:7px; padding:0 10px; color:var(--color-muted); font-size:18px; }
 .purchase-search input { min-width:0; width:100%; border:0; outline:0; padding:7px 0; background:transparent; color:var(--color-text); font:11.5px inherit; }
@@ -2244,9 +1903,6 @@ body, #root { overflow-x: hidden; }
   .purchase-invoice-btn.full,.purchase-view-btn.full { width:100%; }
 }
 @media (max-width:600px) {
-  .purchase-tabs { width:100%; }
-  .purchase-tabs button { min-width:145px; flex:1; font-size:9.5px; padding:9px 8px 7px; }
-  .purchase-tabs button:last-child { min-width:70px; }
   .purchase-filterbar { padding:8px; flex-wrap:wrap; }
   .purchase-search { min-width:0; }
   .purchase-reset { display:none; }
