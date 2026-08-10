@@ -134,7 +134,10 @@
 
 /* ── Main ── */
 .dash-main { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 0; display: flex; flex-direction: column; }
-.dash-content { padding: 1.25rem 2.5rem 6rem; flex: 1; min-width: 0; }
+/* Alt boşluk sağ-alt köşedeki sabit (viewport'a göre fixed, sayfa akışından
+   bağımsız) aksiyon butonuyla çakışmayı önlemek için var — 6rem gereğinden
+   fazlaydı, sayfaların çoğunda tek başına gereksiz scroll'a yol açıyordu. */
+.dash-content { padding: 1.25rem 2.5rem 3rem; flex: 1; min-width: 0; }
 .dash-header {
   min-height: 56px; background: var(--color-surface); color: var(--color-text);
   padding: 0 2.5rem; flex-shrink: 0;

@@ -250,24 +250,63 @@ Deno.serve(async (req) => {
     })).filter((r) => r.name && r.category && !/^toplam/i.test(r.name));
     await upsertByKey(sb, "budget_lines", projectIdToUse, ["category", "name"], budgetRows, log);
 
+    // priority/notes 04.08.2026'da procurement_items'tan DROP edildi
+    // (drop_unused_procurement_order_tracking_columns) -- burada hala okunup
+    // insert'e verildiginden "Could not find the 'notes' column" hatasi
+    // veriyordu. G/K kolonlari sablonda okunmaya devam eder ama artik DB'ye
+    // yazilmiyor (bkz. CLAUDE.md).
     const procRows = rows(ws("Malzeme Listesi"), "C", {
       item_no: "A", category: "B", equipment: "C", spec_ref: "D", unit: "E",
-      planned_qty: "F", priority: "G", lead_time_days: "H", warranty_years: "I",
-      brand_criteria: "J", notes: "K",
-    }).map((r) => ({
-      project_id: projectIdToUse,
-      item_no: toInt(r.item_no),
-      category: toStr(r.category),
-      equipment: toStr(r.equipment),
-      spec_ref: toStr(r.spec_ref),
-      unit: toStr(r.unit),
-      planned_qty: toNumber(r.planned_qty),
-      priority: toStr(r.priority) ?? "normal",
-      lead_time_days: toInt(r.lead_time_days),
-      warranty_years: toInt(r.warranty_years),
-      brand_criteria: toStr(r.brand_criteria),
-      notes: toStr(r.notes),
-    })).filter((r) => r.equipment);
+      planned_qty: "F", lead_time_days: "H", warranty_years: "I",
+      brand_criteria: "J",
+    }).map((r) => {
+      // procurement_items_planned_qty_positive CHECK: NULL izinli, 0/negatif degil.
+      // Bos birakilmis/0 girilmis hucreler toNumber ile dogrudan 0 donuyordu,
+      // bu da bu sayfada henuz miktari netlesmemis bir kalem satiri oldugunda
+      // "violates check constraint" ile TUM Malzeme Listesi'ni insert'i
+      // reddedip hicbir kalemin kaydedilmemesine yol aciyordu.
+      const plannedQty = toNumber(r.planned_qty);
+      return {
+        project_id: projectIdToUse,
+        item_no: toInt(r.item_no),
+        category: toStr(r.category),
+        equipment: toStr(r.equipment),
+        spec_ref: toStr(r.spec_ref),
+        unit: toStr(r.unit),
+        planned_qty: plannedQty > 0 ? plannedQty : null,
+        lead_time_days: toInt(r.lead_time_days),
+        warranty_years: toInt(r.warranty_years),
+        brand_criteria: toStr(r.brand_criteria),
+      };
+    }).filter((r) => r.equipment);
+
+    // procurement_items_project_equipment_unique: ayni Excel'de ayni malzeme adi
+    // birden fazla kez geciyorsa (ayni isim ama farkli kategori/miktarli iki farkli
+    // kalem -- ör. bir "Hizmet" satiri ile bir "Diger" metraj satiri ayni ada sahip
+    // olabiliyor) toplu insert TUMDEN reddediliyordu, tek bir kalem bile
+    // kaydedilmiyordu. Kullaniciya Excel'i elle duzenletmek yerine, ayni ad ikinci+
+    // kez gectiginde kategori (o da ayirt etmiyorsa sira no) eklenerek ad essiz
+    // hale getiriliyor -- veri kaybi olmuyor, yalnizca gorunen ad degisiyor.
+    const equipmentSeen = new Map();
+    for (const r of procRows) {
+      const key = r.equipment.trim().toLowerCase();
+      equipmentSeen.set(key, (equipmentSeen.get(key) || 0) + 1);
+    }
+    const equipmentOccurrence = new Map();
+    const finalNames = new Set();
+    for (const r of procRows) {
+      const key = r.equipment.trim().toLowerCase();
+      if (equipmentSeen.get(key) <= 1) { finalNames.add(key); continue; }
+      const n = (equipmentOccurrence.get(key) || 0) + 1;
+      equipmentOccurrence.set(key, n);
+      if (n === 1) { finalNames.add(key); continue; } // ilk gorulen ismini korur
+      let candidate = r.category ? `${r.equipment} (${r.category})` : `${r.equipment} #${n}`;
+      let candidateKey = candidate.trim().toLowerCase();
+      if (finalNames.has(candidateKey)) { candidate = `${r.equipment} #${n}`; candidateKey = candidate.trim().toLowerCase(); }
+      finalNames.add(candidateKey);
+      r.equipment = candidate;
+    }
+
     await upsertByKey(sb, "procurement_items", projectIdToUse, ["equipment"], procRows, log);
 
     return json({ ok: true, project_id: projectIdToUse, created: isNewProject, duplicated, summary: log });

@@ -151,12 +151,12 @@ Deno.serve(async (req) => {
       A: r.category, B: r.name, C: r.planned_amount, D: r.order_index,
     })), ["A","B","C","D","E"]);
 
-    /* 6) Malzeme Listesi */
+    /* 6) Malzeme Listesi -- priority/notes 04.08.2026'da procurement_items'tan
+       kaldirildi, G/K artik yazilmiyor (bkz. CLAUDE.md) */
     writeSheet(ws("Malzeme Listesi"), 5, (proc.data ?? []).map((r, i) => ({
       A: r.item_no ?? i + 1, B: r.category, C: r.equipment, D: r.spec_ref, E: r.unit,
-      F: r.planned_qty, G: r.priority, H: r.lead_time_days, I: r.warranty_years,
-      J: r.brand_criteria, K: r.notes,
-    })), ["A","B","C","D","E","F","G","H","I","J","K"]);
+      F: r.planned_qty, H: r.lead_time_days, I: r.warranty_years, J: r.brand_criteria,
+    })), ["A","B","C","D","E","F","H","I","J"]);
 
     const out = await wb.xlsx.writeBuffer();
     return new Response(out, {
