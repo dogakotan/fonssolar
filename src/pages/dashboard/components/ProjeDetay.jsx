@@ -1190,7 +1190,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     <div>
       {/* Eylem çubuğu — altındaki alt-sekme şeridiyle (Malzeme Listesi/Riskler,
           Finans, Satın Alma) tek bir bütün gibi görünmesi için boşluk sıkı tutulur. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem', flexWrap: 'nowrap', overflowX: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'nowrap', overflowX: 'auto' }}>
         <button onClick={onBack} style={backBtn}>← Projelere Dön</button>
         <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'nowrap' }}>
           <button onClick={() => setTab('genel')} style={tab === 'genel' ? tabBtnActive : tabBtn}>
