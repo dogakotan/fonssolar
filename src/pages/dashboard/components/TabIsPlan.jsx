@@ -5,25 +5,93 @@ import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import { useAuth } from '../../../context/AuthContext'
 
+// Gantt grupları project_tasks.group_label kolonundan DOĞRUDAN gelir — bu
+// kolon serbest metin (admin elle giriyor, ör. "KABUL", "ENH", "Mekanik
+// Bölüm"), bu yüzden burada category'ye dayalı hiçbir switch/case veya
+// keyword-matching YAPILMAZ (eskiden yapılıyordu, group_label config'te
+// bulunamayınca category+task_name metninde 'og'/'devreye' gibi kelime
+// arayan bir fallback'e düşüyordu — bu yüzden group_label='ENH' olan
+// görevler "og" geçen metin yüzünden Elektriksel — OG'ye, group_label=
+// 'KABUL' olan görevler "devreye_alma" category'si yüzünden Test & Devreye
+// Alma'ya yanlış düşüyordu, 11.08.2026'da bulunup düzeltildi).
+// CATEGORY_FALLBACK_GROUP yalnızca group_label boş olan görevler için
+// kullanılır (DB'de bugün itibarıyla görevlerin çoğunda group_label NULL —
+// bunlar için tek başvurulacak nokta task_category enum'ından sabit bir
+// obje lookup'ı, group_label doluyken bu tabloya hiç bakılmaz).
+const CATEGORY_FALLBACK_GROUP = {
+  mobilizasyon: 'Şantiye Hazırlık',
+  mekanik: 'Mekanik Montaj',
+  kolon_montaji: 'Mekanik Montaj',
+  kiris_montaji: 'Mekanik Montaj',
+  asik_montaji: 'Mekanik Montaj',
+  panel_montaji: 'Mekanik Montaj',
+  elektrik_dc: 'Elektriksel — DC',
+  elektrik_ac: 'Elektriksel — AC',
+  elektrik_og: 'Elektriksel — OG',
+  kosk_trafo: 'Elektriksel — OG',
+  topraklama: 'Elektriksel — OG',
+  enh: 'ENH',
+  devreye_alma: 'Devreye Alma',
+  evrak_sureci: 'Projelendirme & İzinler',
+  satin_alma: 'Satın Alma',
+}
+
+// Bölüm başlıklarının görüntülenme sırası. group_label serbest metin
+// olduğundan (aynı kategori için "Mekanik"/"Mekanik Bölüm", "Elektrik AC"/
+// "Elektriksel — AC" gibi birden çok yazım DB'de bir arada duruyor) burada
+// hepsi ayrı ayrı, kendi başlıkları altında listelenir — birbirine
+// eşitlenmez (farklı group_label = farklı başlık, her zaman).
 const GROUP_ORDER = [
   'Projelendirme & İzinler',
   'Şantiye Hazırlık',
+  'Mobilizasyon',
+  'Şantiye Mobilizasyon',
   'Mekanik Montaj',
+  'Mekanik',
+  'Mekanik Bölüm',
+  'Topraklama',
   'Elektriksel — DC',
+  'Elektrik DC',
   'Elektriksel — AC',
+  'Elektrik AC',
   'Elektriksel — OG',
-  'Test & Devreye Alma',
+  'Elektrik OG',
+  'ENH',
+  'Satın Alma',
+  'Devreye Alma',
+  'KABUL',
 ]
 
 const GROUP_CONFIG = {
   'Projelendirme & İzinler': { tone: 'blue', bar: '#5b8def', label: 'PROJELENDİRME & İZİNLER' },
   'Şantiye Hazırlık': { tone: 'green', bar: '#42b883', label: 'ŞANTİYE HAZIRLIK' },
+  'Mobilizasyon': { tone: 'green', bar: '#35a36f', label: 'MOBİLİZASYON' },
+  'Şantiye Mobilizasyon': { tone: 'green', bar: '#2f9668', label: 'ŞANTİYE MOBİLİZASYON' },
   'Mekanik Montaj': { tone: 'purple', bar: '#a78bfa', label: 'MEKANİK MONTAJ' },
+  'Mekanik': { tone: 'purple', bar: '#8b5cf6', label: 'MEKANİK' },
+  'Mekanik Bölüm': { tone: 'purple', bar: '#7c4fe0', label: 'MEKANİK BÖLÜM' },
+  'Topraklama': { tone: 'teal', bar: '#2f9e88', label: 'TOPRAKLAMA' },
   'Elektriksel — DC': { tone: 'amber', bar: '#f4b344', label: 'ELEKTRİKSEL — DC' },
+  'Elektrik DC': { tone: 'amber', bar: '#dc8f22', label: 'ELEKTRİK DC' },
   'Elektriksel — AC': { tone: 'sky', bar: '#77aae6', label: 'ELEKTRİKSEL — AC' },
+  'Elektrik AC': { tone: 'sky', bar: '#3f86d8', label: 'ELEKTRİK AC' },
   'Elektriksel — OG': { tone: 'teal', bar: '#4fbda7', label: 'ELEKTRİKSEL — OG' },
-  'Test & Devreye Alma': { tone: 'rose', bar: '#ea7d8c', label: 'TEST & DEVREYE ALMA' },
+  'Elektrik OG': { tone: 'teal', bar: '#14927f', label: 'ELEKTRİK OG' },
+  'ENH': { tone: 'blue', bar: '#2454b0', label: 'ENH' },
+  'Satın Alma': { tone: 'slate', bar: '#64748b', label: 'SATIN ALMA' },
+  'Devreye Alma': { tone: 'rose', bar: '#ea7d8c', label: 'DEVREYE ALMA' },
+  'KABUL': { tone: 'rose', bar: '#d94f64', label: 'KABUL' },
   '_diger': { tone: 'slate', bar: '#94a3b8', label: 'DİĞER' },
+}
+
+// GROUP_CONFIG'te (yukarıdaki 18 bilinen değer) karşılığı olmayan bir
+// group_label gelirse (ör. admin ileride yeni bir isim yazarsa) kırılmadan
+// _diger'in rengiyle ama KENDİ gerçek metniyle gösterilir — "DİĞER" gibi
+// yanıltıcı bir jenerik etiket YAZILMAZ, admin'in yazdığı metin korunur.
+function groupConfigFor(groupKey) {
+  if (GROUP_CONFIG[groupKey]) return GROUP_CONFIG[groupKey]
+  if (groupKey === '_diger') return GROUP_CONFIG._diger
+  return { ...GROUP_CONFIG._diger, label: groupKey }
 }
 
 const STATUS_LABELS = {
@@ -54,17 +122,9 @@ const W_PROGRESS = 64
 const W_WEEK = 20
 
 function resolveGroup(task) {
-  if (task.group_label && GROUP_CONFIG[task.group_label]) return task.group_label
-
-  const text = `${task.group_label || ''} ${task.category || ''} ${task.task_name || ''}`.toLocaleLowerCase('tr-TR')
-  if (text.includes('izin') || text.includes('proje') || text.includes('evrak') || text.includes('onay')) return 'Projelendirme & İzinler'
-  if (text.includes('şantiye') || text.includes('santiye') || text.includes('mobilizasyon') || text.includes('arazi') || text.includes('tesviye') || text.includes('güvenlik')) return 'Şantiye Hazırlık'
-  if (text.includes('mekanik') || text.includes('kolon') || text.includes('kiriş') || text.includes('kiris') || text.includes('panel') || text.includes('montaj')) return 'Mekanik Montaj'
-  if (text.includes('dc') || text.includes('konnektör') || text.includes('konnektor')) return 'Elektriksel — DC'
-  if ((text.includes('ac') || text.includes('inverter') || text.includes('pano')) && !text.includes('og')) return 'Elektriksel — AC'
-  if (text.includes('og') || text.includes('orta') || text.includes('xlpe') || text.includes('trafo') || text.includes('köşk') || text.includes('kosk') || text.includes('scada') || text.includes('enh')) return 'Elektriksel — OG'
-  if (text.includes('test') || text.includes('devreye') || text.includes('scada işlemleri') || text.includes('ticari üretim')) return 'Test & Devreye Alma'
-  return '_diger'
+  const label = (task.group_label || '').trim()
+  if (label) return label
+  return CATEGORY_FALLBACK_GROUP[task.category] || '_diger'
 }
 
 function fmtDate(date) {
@@ -419,7 +479,18 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     if (!grouped[key]) grouped[key] = []
     grouped[key].push(task)
   })
-  const groupKeys = [...GROUP_ORDER, '_diger'].filter(key => grouped[key])
+  Object.values(grouped).forEach(items => {
+    items.sort((a, b) => new Date(a.planned_start).getTime() - new Date(b.planned_start).getTime())
+  })
+  // GROUP_ORDER'da tanımlı olmayan (ör. ileride admin'in yazacağı yeni bir
+  // group_label) bir grup çıkarsa listeden SESSİZCE düşmesin diye en erken
+  // planned_start'a göre sıralanıp bilinen gruplardan sonra, '_diger'den
+  // önce eklenir — her group_label kendi başlığıyla görünür garantisi.
+  const knownGroupKeys = GROUP_ORDER.filter(key => grouped[key])
+  const unknownGroupKeys = Object.keys(grouped)
+    .filter(key => key !== '_diger' && !GROUP_ORDER.includes(key))
+    .sort((a, b) => new Date(grouped[a][0].planned_start).getTime() - new Date(grouped[b][0].planned_start).getTime())
+  const groupKeys = [...knownGroupKeys, ...unknownGroupKeys, ...(grouped._diger ? ['_diger'] : [])]
   const leftWidth = W_NO + W_NAME + W_START + W_END + W_DUR + W_PROGRESS
   const timelineWidth = weeks.length * W_WEEK
   const minWidth = leftWidth + timelineWidth
@@ -547,7 +618,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                 )}
 
                 {groupKeys.map(groupKey => {
-                  const cfg = GROUP_CONFIG[groupKey] || GROUP_CONFIG._diger
+                  const cfg = groupConfigFor(groupKey)
                   const items = grouped[groupKey] || []
                   const isOpen = !collapsed.has(groupKey)
                   const avg = items.length
@@ -563,7 +634,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                       </button>
 
                       {isOpen && items.map((task, index) => {
-                        const cfg = GROUP_CONFIG[resolveGroup(task)] || GROUP_CONFIG._diger
+                        const cfg = groupConfigFor(resolveGroup(task))
                         const barLeft = timelineOffsetPct(task.planned_start, timelineStart, timelineUnits)
                         const barEnd = timelineOffsetPct(task.planned_end, timelineStart, timelineUnits) + (100 / timelineUnits)
                         const barWidth = Math.max(1.2, barEnd - barLeft)
@@ -755,7 +826,7 @@ function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefV
     )
   }
 
-  const groupCfg = GROUP_CONFIG[group] || GROUP_CONFIG._diger
+  const groupCfg = groupConfigFor(group)
   const duration = daysBetween(task.planned_start, task.planned_end)
 
   const rows = [
