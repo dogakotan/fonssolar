@@ -31,22 +31,40 @@ function toUserMessage(error) {
 // bir popover'da gösterir. Dışarı tıklanınca kapanır.
 function BomEslesmeRozeti({ item }) {
   const [open, setOpen] = useState(false)
+  const [popoverStyle, setPopoverStyle] = useState(null)
   const ref = useRef(null)
+  const btnRef = useRef(null)
 
   useEffect(() => {
     if (!open) return
-    function onOutside(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    function onOutside(e) {
+      if (ref.current && !ref.current.contains(e.target) && !(btnRef.current && btnRef.current.contains(e.target))) setOpen(false)
+    }
     document.addEventListener('mousedown', onOutside)
     return () => document.removeEventListener('mousedown', onOutside)
   }, [open])
 
   if (!item) return null
 
+  // Rozet tablonun `overflow:'auto hidden'` kaydırma kutusu içinde olduğundan
+  // (yatay scroll için gerekli), position:'absolute' bir popover dikeyde
+  // kırpılıyordu — bu yüzden konum, tetikleyici butona göre `position:'fixed'`
+  // olarak hesaplanıp kaydırma kapsayıcısının dışına render ediliyor.
+  function toggle(e) {
+    e.stopPropagation()
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setPopoverStyle({ top: rect.bottom + 6, left: Math.min(rect.left, window.innerWidth - 250) })
+    }
+    setOpen(v => !v)
+  }
+
   return (
-    <span ref={ref} style={{ position: 'relative', display: 'inline-block', verticalAlign: 'middle', marginLeft: 6 }}>
+    <span style={{ position: 'relative', display: 'inline-block', verticalAlign: 'middle', marginLeft: 6 }}>
       <button
+        ref={btnRef}
         type="button"
-        onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
+        onClick={toggle}
         title="BOM'da mevcut — detay için tıklayın"
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #86EFAC',
@@ -56,11 +74,12 @@ function BomEslesmeRozeti({ item }) {
       >
         BOM'da mevcut
       </button>
-      {open && (
+      {open && popoverStyle && (
         <div
+          ref={ref}
           onClick={e => e.stopPropagation()}
           style={{
-            position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 40, width: 240,
+            position: 'fixed', top: popoverStyle.top, left: popoverStyle.left, zIndex: 1200, width: 240,
             background: '#111827', color: '#fff', borderRadius: 10, padding: '10px 12px',
             fontSize: 12, lineHeight: 1.5, boxShadow: '0 8px 20px rgba(0,0,0,.25)',
           }}
