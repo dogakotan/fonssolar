@@ -25,6 +25,15 @@ function projectIdLabel(projectId) {
     .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
 }
 
+// Aylık plandaki serbest kategori metnini (Mobilizasyon/Hizmet/İş makineleri/
+// Güvenlik/Elektrik/Mekanik/Hırdavat/Diğer) talebin kendi Tip alanına
+// (malzeme/hizmet/diger) eşler — ikisi ayrı taksonomi, birebir aynı değil.
+function planKategoriToRequestCategory(kategori) {
+  if (kategori === 'Hizmet') return 'hizmet'
+  if (kategori === 'Diğer') return 'diger'
+  return 'malzeme'
+}
+
 export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, availableProjects }) {
   const { user } = useAuth()
   const [projects, setProjects] = useState([])
@@ -41,6 +50,18 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, ava
   const modalBoxRef = useRef(null)
   const modalFooterRef = useRef(null)
 
+  // Şantiye şefinin aylık satın alma planından opsiyonel olarak bir kalem seçip
+  // talebi ona bağlaması için — plan seçilince yalnızca title/category otomatik
+  // dolar, formun geri kalanı (malzeme/miktar/birim) kullanıcı tarafından ayrıca
+  // girilir. Teslim alınmış plan kalemleri listeden çıkarılır (artık talep
+  // edilecek bir şey kalmadı).
+  const [planOptions, setPlanOptions] = useState([])
+  const [selectedPlanId, setSelectedPlanId] = useState(null)
+  const [planMenuOpen, setPlanMenuOpen] = useState(false)
+  const [planMenuStyle, setPlanMenuStyle] = useState(null)
+  const planMenuRef = useRef(null)
+  const planButtonRef = useRef(null)
+
   useEffect(() => {
     function handleOutsideClick(e) {
       if (materialMenuRef.current && !materialMenuRef.current.contains(e.target)) setMaterialMenuOpen(false)
@@ -48,6 +69,64 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, ava
     if (materialMenuOpen) document.addEventListener('mousedown', handleOutsideClick)
     return () => document.removeEventListener('mousedown', handleOutsideClick)
   }, [materialMenuOpen])
+
+  useEffect(() => {
+    function handleOutsideClick(e) {
+      if (planMenuRef.current && !planMenuRef.current.contains(e.target)) setPlanMenuOpen(false)
+    }
+    if (planMenuOpen) document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [planMenuOpen])
+
+  function togglePlanMenu() {
+    if (!planMenuOpen && planButtonRef.current) {
+      const rect = planButtonRef.current.getBoundingClientRect()
+      const margin = 8
+      const boxRect = modalBoxRef.current?.getBoundingClientRect()
+      const footerTop = modalFooterRef.current?.getBoundingClientRect().top
+      const boundBottom = footerTop ?? boxRect?.bottom ?? window.innerHeight
+      const boundTop = boxRect?.top ?? 0
+      const spaceBelow = boundBottom - rect.bottom - margin
+      const spaceAbove = rect.top - boundTop - margin
+      const openUp = spaceBelow < 120 && spaceAbove > spaceBelow
+      setPlanMenuStyle({
+        position: 'fixed',
+        left: rect.left,
+        width: rect.width,
+        ...(openUp
+          ? { bottom: window.innerHeight - rect.top + 4, maxHeight: Math.max(80, Math.min(220, spaceAbove)) }
+          : { top: rect.bottom + 4, maxHeight: Math.max(80, Math.min(220, spaceBelow)) }),
+      })
+    }
+    setPlanMenuOpen(v => !v)
+  }
+
+  function selectPlan(option) {
+    setSelectedPlanId(option.id)
+    setForm(f => ({
+      ...f,
+      title: `${option.kalem_adi}${option.ozellik ? ` — ${option.ozellik}` : ''}`,
+      category: planKategoriToRequestCategory(option.kategori),
+    }))
+    setPlanMenuOpen(false)
+  }
+
+  function clearPlan() {
+    setSelectedPlanId(null)
+    setPlanMenuOpen(false)
+  }
+
+  useEffect(() => {
+    setSelectedPlanId(null)
+    if (!form.project_id) { setPlanOptions([]); return }
+    supabase.from('procurement_monthly_plan')
+      .select('id, ay_no, kategori, kalem_adi, ozellik, birim, miktar, durum')
+      .eq('project_id', form.project_id)
+      .neq('durum', 'teslim_alindi')
+      .order('ay_no')
+      .order('kalem_adi')
+      .then(({ data }) => setPlanOptions(data || []))
+  }, [form.project_id])
 
   function toggleMaterialMenu() {
     if (!materialMenuOpen && materialButtonRef.current) {
@@ -165,7 +244,7 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, ava
     setSaving(true)
     setErrorMessage(null)
 
-    const { error } = await supabase.rpc('create_purchase_request_with_items', {
+    const { data: newRequestId, error } = await supabase.rpc('create_purchase_request_with_items', {
       p_project_id:   form.project_id,
       p_title:        form.title.trim(),
       p_category:     form.category,
@@ -181,9 +260,21 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, ava
 
     if (error) {
       setErrorMessage(error.message || 'Talep kaydedilemedi.')
-    } else {
-      onSaved()
+      setSaving(false)
+      return
     }
+
+    // Plan bağlantısı opsiyonel/ikincil bir alan — talep zaten oluşturuldu,
+    // bu adım başarısız olsa bile ana akışı (talebin kendisi) etkilemez.
+    if (selectedPlanId && newRequestId) {
+      const { error: linkError } = await supabase
+        .from('purchase_requests')
+        .update({ procurement_plan_id: selectedPlanId })
+        .eq('id', newRequestId)
+      if (linkError) console.error('procurement_plan_id link error:', linkError)
+    }
+
+    onSaved()
     setSaving(false)
   }
 
@@ -204,6 +295,66 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, ava
               <option value="">— Proje seçin —</option>
               {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
+          </div>
+
+          <div>
+            <label style={LABEL}>Bu ayın planından seç (opsiyonel)</label>
+            <div ref={planMenuRef} style={{ position: 'relative' }}>
+              <button
+                type="button"
+                ref={planButtonRef}
+                onClick={togglePlanMenu}
+                disabled={!form.project_id}
+                style={{
+                  border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit',
+                  width: '100%', boxSizing: 'border-box', background: form.project_id ? '#fff' : '#F9FAFB',
+                  cursor: form.project_id ? 'pointer' : 'not-allowed',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, textAlign: 'left',
+                }}
+              >
+                <span style={{ color: selectedPlanId ? '#111827' : '#9CA3AF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {selectedPlanId
+                    ? planOptions.find(o => o.id === selectedPlanId)?.kalem_adi || '— Plandan seçildi —'
+                    : '— Plandan bir kalem seçin (opsiyonel) —'}
+                </span>
+                <span style={{ fontSize: 10, color: '#9CA3AF', flexShrink: 0 }}>▾</span>
+              </button>
+              {planMenuOpen && planMenuStyle && (
+                <div style={{
+                  ...planMenuStyle, zIndex: 2000,
+                  background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8,
+                  overflowY: 'auto', boxShadow: '0 12px 28px rgba(15,23,42,0.16)',
+                }}>
+                  {planOptions.length === 0 && (
+                    <div style={{ padding: '8px 10px', fontSize: 12.5, color: '#9CA3AF' }}>Bu projede plan kalemi bulunamadı.</div>
+                  )}
+                  {planOptions.map(option => (
+                    <div
+                      key={option.id}
+                      onClick={() => selectPlan(option)}
+                      style={{ padding: '8px 10px', fontSize: 13, cursor: 'pointer', color: '#111827', borderBottom: '1px solid #F3F4F6' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
+                    >
+                      {option.kalem_adi}
+                      <span style={{ marginLeft: 6, fontSize: 11, color: '#9CA3AF' }}>
+                        ({option.ay_no}. Ay{option.ozellik ? ` · ${option.ozellik}` : ''})
+                      </span>
+                    </div>
+                  ))}
+                  {selectedPlanId && (
+                    <div
+                      onClick={clearPlan}
+                      style={{ padding: '8px 10px', fontSize: 13, cursor: 'pointer', color: '#92400E', fontWeight: 600 }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#FEF3C7' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
+                    >
+                      Seçimi Kaldır
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {errorMessage && (

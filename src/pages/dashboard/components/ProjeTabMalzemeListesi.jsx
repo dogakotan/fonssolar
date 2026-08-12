@@ -4,9 +4,11 @@ import { buildMaterialListRows } from '../../../utils/satinAlma'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import ProjeTabFaturaKesilecekler from './ProjeTabFaturaKesilecekler'
 import ProjeTabRiskler from './ProjeTabRiskler'
+import ProjeTabAylikPlan from './ProjeTabAylikPlan'
 
 const SECTIONS = [
   { key: 'malzeme', label: 'Malzeme Listesi' },
+  { key: 'aylik-plan', label: 'Aylık Satın Alma Planı' },
   { key: 'riskler', label: 'Riskler' },
 ]
 
@@ -57,6 +59,8 @@ export default function ProjeTabMalzemeListesi({ projectId, filterDate, activeSe
 
       {section === 'riskler' ? (
         <ProjeTabRiskler projectId={projectId} onGoTab={onGoTab} />
+      ) : section === 'aylik-plan' ? (
+        <ProjeTabAylikPlan projectId={projectId} />
       ) : (
         <ProjeTabFaturaKesilecekler
           rows={rows}
