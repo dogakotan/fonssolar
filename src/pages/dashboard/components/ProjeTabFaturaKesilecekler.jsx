@@ -107,7 +107,7 @@ function MiktarDuzenleModal({ row, onClose, onSaved }) {
   )
 }
 
-const MALZEME_KATEGORI_OPTS = [
+export const MALZEME_KATEGORI_OPTS = [
   'Mobilizasyon',
   'Hizmet',
   'İş makineleri',
