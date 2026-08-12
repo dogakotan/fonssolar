@@ -11,13 +11,6 @@ import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import { useWeather } from '../../../hooks/useWeather'
 import { useAuth } from '../../../context/AuthContext'
 import { dateFilter } from '../../../utils/exportUtils'
-import {
-  fetchXlsxTemplate,
-  fillTemplateSheet as fillExcelTemplateSheet,
-  setTemplateCell as setExcelTemplateCell,
-  downloadXlsxZip,
-  formatExcelDate,
-} from '../../../utils/excelUtils'
 
 function dateTr(iso) {
   if (!iso) return ''

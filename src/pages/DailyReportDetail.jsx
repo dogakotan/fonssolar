@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase'
 import { useDashboardData } from '../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../components/ui/DataStatusBanner'
