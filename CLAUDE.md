@@ -413,6 +413,33 @@ değerlendirilir, fonksiyon SECURITY DEFINER olması bunu atlamaz).
 — `create_purchase_request_with_items` RPC'sinde ve tablo trigger'ında
 (eşzamanlı ikinci kalem eklemeye karşı da) zorunlu kılınır.
 
+**Yeni Talep formu — "Bu ayın planından seç" kaldırıldı, kategori-önce
+malzeme filtresi eklendi (18.08.2026):** `YeniTalepModal.jsx`'teki aylık
+plandan kalem seçme bölümü (`procurement_monthly_plan` sorgusu + ilgili
+state/handler'lar) tamamen kaldırıldı — kullanıcı isteğiyle. Yerine, Tip
+alanının hemen altında (Malzeme seçilmeden ÖNCE) bir **Kategori** dropdown'u
+eklendi (`MALZEME_KATEGORI_OPTS`, `ProjeTabFaturaKesilecekler.jsx`'ten
+import — BOM'un "Yeni Malzeme Ekle" formuyla aynı sabit liste: Mobilizasyon/
+Hizmet/İş makineleri/Güvenlik/Elektrik/Mekanik/Hırdavat/Diğer). Bu, malzeme
+seçildikten SONRA bilgi amaçlı gösterilen bir alan değil — tersine, kategori
+seçilince Malzeme dropdown'undaki liste o kategoriye göre daralıyor
+(`filteredMaterialOptions`, `procurement_items.category` client-side filtre);
+kategori boş ("Tüm Kategoriler") bırakılırsa liste filtresiz kalır. Kategori
+değişince önceki malzeme seçimi sıfırlanır (artık listede olmayabilir).
+Listeden bir malzeme seçilirse (filtre boşken) kategori kalemin kendi
+`procurement_items.category`'sinden otomatik türer; "Diğer (Listede Yok)" ile
+serbest metin girilirse zaten seçilmiş olan kategori korunur. Bu değer
+`purchase_request_items.category` (yeni kolon,
+`20260818100000_add_category_to_purchase_request_items` migration'ı) kolonuna
+`create_purchase_request_with_items`'ın `p_items[0].material_category` alanı
+üzerinden yazılır — RPC imzası değişmedi, uçtan uca DB'de doğrulandı.
+**Not:** bazı eski BOM kayıtlarında `category` NULL (10 kayıt, test-izmir-ges-2026
+projesinde) — o projede bir kategori filtrelenince liste boş çıkabilir, bu
+veri eksikliği, UI bug'ı değil. `get_purchase_request_detail` (`to_jsonb(pri)`)
+bu alanı otomatik döndürür; `get_satin_alma_overview*` kalemleri elle
+`jsonb_build_object` ile kurduğundan bu alanı henüz döndürmüyor — bugüne kadar
+hiçbir ekran bunu göstermiyor, yalnızca kayıt altına alınıyor.
+
 **Proje yöneticisi tedarik adımı:** `onaylandi` ile fatura arasında zorunlu
 bir adım var — akış `ProjeTabSatinAlma.jsx` → `TabSatinAlmaTalepListesi.jsx`
 (`fixedStatus="onaylandi"`, "Bekleyen" sekmesi) üzerinden yürüyor,
@@ -1535,40 +1562,23 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**04.08.2026 — Ölü kod temizliği (`procurement_items` + `daily_report_issues`)
-sonrası canlı regresyon bulundu ve düzeltildi.**
+**18.08.2026 — `YeniTalepModal.jsx`: aylık plan seçimi kaldırıldı, malzeme
+kategorisi eklendi.**
 
-Ölü kod temizliği iki adımda yapıldı: (1) `procurement_items`'taki 10 eski
-sipariş-takip kolonu (`status`/`priority`/`order_date`/`expected_delivery`/
-`actual_delivery`/`supplier`/`notes`/`updated_by`/`received_by`/`received_date`)
-`DROP COLUMN` edildi (`20260804091411_drop_unused_procurement_order_tracking_columns`);
-(2) `daily_report_issues` yazı yolu (`save_daily_report`'un `p_issues`
-parametresi + `fn_create_ticket_from_daily_report_issue()` INSERT trigger'ı)
-kaldırıldı (`20260804091950_remove_dead_daily_report_issues_write_path`, RPC
-imzası 15→14 parametreye düştü, `DailyReportForm.jsx`/`tests/manual-task-progress.spec.js`
-eşzamanlı güncellendi). Tablo ve verisi korundu, yalnızca yazı yolu kaldırıldı.
-
-**Kullanıcı canlıda bir hata ekran görüntüsüyle bildirdi:** proje_yoneticisi
-rolünde Satın Alma sayfası "Veri yüklenemedi" ile tamamen kırılmıştı.
-Postgres logunda `column pi.status does not exist` + `get_satin_alma_overview_all`
-400 bulundu — (1) adımındaki bağımlılık taraması eksikti: `get_satin_alma_overview`
-ve `get_satin_alma_overview_all_internal` hâlâ `procurement_items` çıktısında
-`'status', pi.status` döndürüyordu. `20260804094500_fix_satin_alma_overview_dropped_status_column`
-ile her iki fonksiyondan da bu alan kaldırıldı (frontend hiç okumuyordu, grep
-ile doğrulandı), `get_satin_alma_overview_all_internal()` çağrısıyla canlıda
-doğrulandı. Detay ve çıkarılan ders: bkz. "BOM planlanan miktar değişiklikleri"
-bölümündeki not.
-
-Üç migration da uygulanır uygulanmaz doğru versiyonla yerel dosyaya yazıldı
-(bkz. "Migration tracking boşluğu" — biriktirmeye eklenmedi).
-
-Aynı gün daha önce yapılan Supabase akışları denetimi (migration senkronu,
-security/performance advisors, edge fonksiyon encoding düzeltmesi, pg_cron
-sağlığı, `financial_transactions`→`cost_allocations` backfill) ilgili
-bölümlere (bkz. "Migration tracking boşluğu", "RPC katmanı", yukarısı)
-işlendi — özet: `get_profile_names` ve 4 fonksiyondan daha `anon`/`PUBLIC`
-EXECUTE kaldırıldı, `create-user`/`manage-user` edge fonksiyonlarındaki
-Türkçe karakter mojibake'i redeploy ile düzeltildi, 5+2 eksik migration
-dosyası (2'si en güncel, 5'i 07-24/07-30 tarihli) idempotent olarak repoya
-geri eklendi, 4 demo `financial_transactions` kaydının eksik `cost_allocations`
-karşılığı backfill edildi.
+Kullanıcı isteğiyle "Bu ayın planından seç (opsiyonel)" bölümü (`procurement_monthly_plan`
+sorgusu + `selectedPlanId`/`planOptions`/plan dropdown state ve handler'ları)
+`YeniTalepModal.jsx`'ten tamamen kaldırıldı. Yerine, Tip=Malzeme'de malzeme
+adı seçildiğinde/girildiğinde altında bir **Kategori** dropdown'u eklendi
+(`MALZEME_KATEGORI_OPTS`, BOM'un "Yeni Malzeme Ekle" formuyla — `ProjeTabFaturaKesilecekler.jsx`
+— aynı sabit liste). Listeden malzeme seçilirse kategori `procurement_items.category`'den
+otomatik dolar (değiştirilebilir); "Diğer (Listede Yok)" ile serbest metin
+girilirse boş başlar, kullanıcı elle seçer. Bu değer yeni eklenen
+`purchase_request_items.category` kolonuna (`20260818100000_add_category_to_purchase_request_items`
+migration'ı, canlıya uygulandı) `create_purchase_request_with_items`'ın
+`p_items[0].material_category` alanı üzerinden yazılıyor — RPC imzası
+değişmedi. `get_purchase_request_detail` (`to_jsonb(pri)`) bu alanı otomatik
+döndürür; `get_satin_alma_overview*` kalemleri elle `jsonb_build_object` ile
+kurduğundan henüz döndürmüyor — bugün hiçbir ekran bu alanı göstermiyor,
+yalnızca kayıt altına alınıyor (ileride bir liste/rapor bu kategoriye göre
+filtrelemek isterse ilgili RPC'ye eklenmesi gerekir). Detay: bkz. "Satın alma
+akışı" bölümündeki ilgili not.
