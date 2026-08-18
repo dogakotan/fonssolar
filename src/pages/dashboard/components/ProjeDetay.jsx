@@ -373,15 +373,6 @@ const tabBtnActive = {
   ...tabBtn, background: 'var(--color-primary)', color: '#fff',
   border: '1px solid var(--color-primary)', fontWeight: 600,
 }
-const periodBtn = {
-  padding: '5px 14px', borderRadius: 20, border: '1px solid var(--color-border)',
-  background: '#fff', color: 'var(--color-muted)', fontSize: 12, fontWeight: 500,
-  cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s',
-}
-const periodBtnActive = {
-  ...periodBtn, background: 'var(--color-primary)', color: '#fff',
-  border: '1px solid var(--color-primary)',
-}
 const periodNavBtn = {
   padding: '2px 8px', borderRadius: 6, border: '1px solid var(--color-border)',
   background: '#fff', color: 'var(--color-text)', fontSize: 12, fontWeight: 600,
@@ -681,7 +672,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
   const [wps, setWPs]                = useState([])
   const [progressSummary, setProgressSummary] = useState(null)
   const [filterMode, setFilterMode]  = useState('gunluk')   // 'gunluk' | 'haftalik' | 'aylik'
-  const [loading, setLoading]        = useState(true)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [projectExcelLoading, setProjectExcelLoading] = useState(false)
   const [filterDate, setFilterDate]  = useState(todayStr())
@@ -1166,8 +1156,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
   useEffect(() => {
     if (!projectId) return
-    if (detayLoading) { setLoading(true); return }
-    if (!detayData || detayData.authorized === false) { setLoading(false); return }
+    if (detayLoading) return
+    if (!detayData || detayData.authorized === false) return
 
     setProject(detayData.project || null)
     setProgressSummary(detayData.progress_summary || null)
@@ -1179,7 +1169,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
       return true
     })
     setWPs(deduped)
-    setLoading(false)
   }, [projectId, detayData, detayLoading])
 
   if (projectId && !detayLoading && !authorized) {

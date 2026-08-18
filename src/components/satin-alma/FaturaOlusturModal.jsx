@@ -103,7 +103,6 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
         return picked ? { ...picked, project_name: picked.projects?.name, supplier_name: picked.suppliers?.name } : null
       })()
   const effectiveProjectId = linkedRequest?.project_id || manualProjectId
-  const effectiveProjectName = linkedRequest?.project_name || projects.find(p => p.id === effectiveProjectId)?.name || '—'
   const selectableRequests = manualProjectId ? pendingRequests.filter(r => r.project_id === manualProjectId) : pendingRequests
   const filteredRequests = (() => {
     const query = requestSearch.trim().toLocaleLowerCase('tr-TR')

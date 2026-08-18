@@ -66,8 +66,6 @@ export default function FinansRaporlari({ defaultProjectId = '' }) {
     if (month && record.invoice_date && !record.invoice_date.startsWith(month)) return false
     return true
   })
-  const projectMap = useMemo(() => Object.fromEntries(projects.map(project => [project.id, project.name])), [projects])
-  const supplierMap = useMemo(() => Object.fromEntries(suppliers.map(supplier => [supplier.id, supplier.name])), [suppliers])
   // total_amount_try (TRY karşılığı) kullanılır — aksi halde USD/EUR faturalar
   // TRY faturalarla aynı toplamda karışır (bkz. CLAUDE.md "Bilinen açık noktalar").
   const total = filtered.reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)

@@ -39,7 +39,6 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
     saveProjectWizardDraft(DRAFT_KEY, { step, stepsResult })
   }, [step, stepsResult])
 
-  const goNext = () => setStep(s => s + 1)
   const goBack = () => setStep(s => s - 1)
 
   function handleStepDone(stepNo, result) {

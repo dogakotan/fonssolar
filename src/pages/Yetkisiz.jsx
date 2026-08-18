@@ -1,9 +1,7 @@
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
 
 export default function YetkisizPage() {
   const navigate = useNavigate()
-  const { role } = useAuth()
 
   function handleGeri() {
     navigate('/dashboard')

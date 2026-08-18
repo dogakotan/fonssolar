@@ -63,7 +63,7 @@ function extractWeatherCity(project) {
   ].filter(Boolean)
 
   for (const candidate of candidates) {
-    const firstPart = String(candidate).split(/[\/,;-]/)[0]?.trim()
+    const firstPart = String(candidate).split(/[/,;-]/)[0]?.trim()
     if (firstPart) {
       const exactCity = TURKEY_CITIES.find(city => normalizeTR(city) === normalizeTR(firstPart))
       if (exactCity) return titleCity(exactCity)
