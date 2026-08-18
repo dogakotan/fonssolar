@@ -1177,22 +1177,62 @@ kolonları eklendi (`20260727090000_multicurrency_invoice_support` migration'ı)
 "Özet" kartı) `total_amount`/`amount` değil `total_amount_try` toplar — aksi
 halde bir USD faturası TRY faturalarıyla aynı sütunda sessizce toplanır.
 Yeni bir yer `SUM(invoices.total_amount)` yazarsa bu bir regresyon — `total_amount_try`
-kullanmalı. Ödeme takibi (`paid_amount`/`remaining_amount`/`invoice_payments`)
-kapsam dışı bırakıldı — fatura kendi para biriminde kalır, ödeme kurla
-dönüştürülmez (kullanıcı seçimi). `FaturaListesi.jsx`/`FaturaDetayModal.jsx`/
-`recentActivity` (`formatRecentActivity`) artık `inv.currency`'ye göre
-₺/$/€ gösteriyor — hardcoded TRY `Intl.NumberFormat` gördüğün yerde bu bir
-regresyon sinyali. `MuhasebeGenelOzet.jsx`'e (Genel Bakış, muhasebe) daha önce
-yalnızca admin/proje_yöneticisi'nin `TabFinans.jsx`'te gördüğü `KurCard`
+kullanmalı. `FaturaListesi.jsx`/`FaturaDetayModal.jsx`/`recentActivity`
+(`formatRecentActivity`) artık `inv.currency`'ye göre ₺/$/€ gösteriyor —
+hardcoded TRY `Intl.NumberFormat` gördüğün yerde bu bir regresyon sinyali.
+`MuhasebeGenelOzet.jsx`'e (Genel Bakış, muhasebe) daha önce yalnızca
+admin/proje_yöneticisi'nin `TabFinans.jsx`'te gördüğü `KurCard`
 (`ProjeTabFinansYanPanel.jsx`) eklendi — muhasebe artık kendi Genel Bakışında
 da güncel USD/EUR kurunu görüyor.
-**Bilinçli olarak kapsam dışı bırakıldı** (bkz. "Bilinen açık noktalar"):
-Tedarikçi bakiyesi (`TedarikciListesi.jsx`/`TedarikciDetayModal.jsx`) ve
-`FinansRaporlari.jsx` toplamları hâlâ ham `total_amount` topluyor — bir
-USD/EUR fatura tedarikçi bakiyesine girerse bu ikisi farklı para birimlerini
-karıştırabilir. Satın alma talebi (`purchase_requests.currency`) ve faturasız
-ödeme (`financial_transactions.currency`) formlarına da para birimi seçici
-eklenmedi (kullanıcı kararıyla yalnızca fatura oluşturma kapsamına alındı).
+
+**Ödeme anında kur yakalama (18.08.2026) — `paid_amount`/`remaining_amount`
+artık TRY'ye çevriliyor.** Önceki kısıtlama ("ödeme takibi kapsam dışı,
+`paid_amount`/`remaining_amount` faturanın kendi para biriminde kalır") tam
+kapatıldı. `invoice_payments.exchange_rate` (ödeme günündeki TCMB kuru,
+`OdemeEkleModal.jsx`/`TedarikciOdemeModal.jsx`'te `fetchDoviz()` ile otomatik
+çekilir, TRY'de her zaman 1) + generated `amount_try` kolonları eklendi
+(`invoice_payment_try_conversion` migration'ı); `invoices.paid_amount_try`/
+`remaining_amount_try` (düz, `paid_amount`/`remaining_amount` ile aynı
+desende `fn_invoice_payment_recalc()` tarafından bakımı yapılan kolonlar)
+eklendi, `v_invoice_payment_overview` bu ikisini de döndürüyor.
+`TedarikciListesi.jsx`/`TedarikciDetayModal.jsx`/`FinansRaporlari.jsx`'teki
+"Ödenen"/"Kalan" KPI toplamları artık `paid_amount_try`/`remaining_amount_try`
+kullanıyor (açık kayıt satırlarının KENDİSİ hâlâ kendi para biriminde
+gösterilir — yalnızca üstteki toplamlar TRY'ye çevrilir). **Bilinçli tasarım
+kararı:** kur kaynağı ödeme GÜNÜNÜN kuru (fatura oluşturma anındaki sabit
+`exchange_rate` değil) — gerçek nakit çıkışını yansıtır, ama bu yüzden
+`total_amount_try` (fatura anı kuru) ile `paid_amount_try` (ödeme anı kuru)
+farklı günlerin kurlarını karıştırabilir; bu, gerçekçi bir muhasebe
+sadeleştirmesi (realized/unrealized kur farkı ayrı izlenmiyor), regresyon değil.
+
+**Aynı turda kapatılan ek bir risk — ödeme para birimi artık faturayla
+kilitli.** `OdemeEkleModal.jsx`'te önceden ödeme için faturanın para
+biriminden BAĞIMSIZ bir "Para Birimi" dropdown'u vardı; ne frontend
+(`amount > remaining` ham karşılaştırma) ne de DB trigger'ı
+(`fn_invoice_payment_before_insert`/`fn_invoice_payment_recalc`, ikisi de
+`sum(amount)`/tutar karşılaştırmasını para birimi kontrolü yapmadan ham
+sayıyla yapıyordu) bunun fatura currency'siyle eşleştiğini doğruluyordu —
+biri yanlışlıkla farklı bir birim seçip ödeme girerse `paid_amount`/
+`remaining_amount`/durum sessizce bozulabilirdi (canlıda gerçekleşmiş bir
+mismatch YOKTU, kontrol edildi — yalnızca açık bir risk). Düzeltme: seçici
+kaldırıldı, ödeme her zaman faturanın kendi para biriminde (salt-okunur alan)
+girilir; `fn_invoice_payment_before_insert`'e ayrıca DB katmanında da
+`NEW.currency <> invoices.currency` reddeden bir savunma eklendi (defense-in-depth).
+Aynı sınıftan İKİNCİ bir örnek `TedarikciOdemeModal.jsx`'te (tedarikçiye toplu
+ödeme dağıtım sihirbazı) de bulundu — tek bir "Para Birimi" seçilip birden
+fazla faturaya dağıtılabiliyordu; orada da seçici kaldırılıp para birimi
+seçilen tedarikçinin açık faturalarından otomatik türetiliyor, farklı para
+biriminden faturalar o dağıtımdan otomatik hariç tutulup kullanıcıya
+bilgilendirme notu gösteriliyor (bir tedarikçinin TÜM açık faturaları aynı
+para biriminde olduğu sürece bu ayrım kullanıcıya hiç görünmez — bugüne kadar
+canlıda hep böyleydi, yalnızca 1 adet USD faturası var ve o hiç "açık" duruma
+geçmemişti).
+
+**Bilinçli olarak hâlâ kapsam dışı:** satın alma talebi
+(`purchase_requests.currency`) ve faturasız ödeme (`financial_transactions.currency`)
+formlarına para birimi seçici eklenmedi (kullanıcı kararıyla yalnızca fatura
+oluşturma/ödeme akışı kapsamına alındı, `financial_transactions.currency`
+pratikte hep TRY).
 
 ### İlerleme hesaplama modeli
 İlerleme tek kaynaktan, `project_tasks` üzerinden yürüyor: `target_qty`, `unit`,
@@ -1443,19 +1483,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
-- **Tedarikçi bakiyesi/Finans Raporları — kısmi düzeltildi (2026-07-31), tam
-  çözüm hâlâ açık.** `v_invoice_payment_overview` view'ına `total_amount_try`
-  eklendi (`20260731065903_add_total_amount_try_to_invoice_payment_overview`),
-  `TedarikciListesi.jsx`/`TedarikciDetayModal.jsx` (bakiye toplamı) ve
-  `FinansRaporlari.jsx` (proje/kategori toplamları) artık `total_amount_try ??
-  total_amount` kullanıyor — "toplam faturalanan" figürü artık TRY/USD/EUR
-  karışmıyor. **Ama `paid_amount`/`remaining_amount` kullanıcı kararıyla
-  kapsam dışı bırakıldı** — bunlar hâlâ faturanın kendi para biriminde
-  (ödeme tarihindeki kur farkını hesaba katmıyor), yani aynı ekranlardaki
-  "Ödenen"/"Kalan" toplamları bir tedarikçinin USD ve TRY faturaları
-  karışıksa hâlâ yanlış olabilir. Tam çözüm (ödeme anındaki kuru saklayıp
-  `paid_amount`'ı da TRY'ye çevirmek) ayrı, daha büyük bir görev — bkz.
-  "Çoklu para birimi desteği". Fark edilirse önce bu notu hatırlat.
+- ~~Tedarikçi bakiyesi/Finans Raporları — `paid_amount`/`remaining_amount`
+  TRY'ye çevrilmiyordu~~ — **tam çözüldü (18.08.2026).** Önceki kısmi düzeltme
+  (2026-07-31) yalnızca `total_amount_try`'yi kapsıyordu; şimdi `paid_amount`/
+  `remaining_amount` de TRY karşılıklarıyla (`paid_amount_try`/
+  `remaining_amount_try`) hesaplanıyor. Ayrıntı için "Çoklu para birimi
+  desteği" → "Ödeme anında kur yakalama" bölümüne bak.
 - **`complete_project_manager_purchase_request` RPC'si — düzeltildi (2026-07-31).**
   Artık opsiyonel bir `p_supplier_id` parametresi alıyor ve `supplier_id`'yi de
   yazıyor. `TabSatinAlmaTalepListesi.jsx`'teki "Tamamlandı" butonu artık tek
@@ -1466,11 +1499,14 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   tablosu, RLS zaten proje yöneticisine açık). `FaturaOlusturModal.jsx`'teki
   tedarikçi seçici hâlâ aynı şekilde çalışıyor (fatura kendi `supplier_id`'sini
   ayrıca alır) — bu ikisi birbirini geçersiz kılmaz, ikinci bir fırsat.
-  **Kalan tutarsızlık:** `TalepDetayModal.jsx`'in kendi "Tamamlandı" butonu
-  (proje detayı içinden talep açılıp tamamlanan yol) bu tedarikçi seçiciyi
-  içermiyor, hâlâ eski tek-parametreli `updateStatus('satin_alindi')` çağrısını
-  yapıyor — RPC'nin `p_supplier_id` varsayılanı `NULL` olduğundan hata vermiyor
-  ama o yoldan tamamlanan taleplerde tedarikçi hâlâ boş kalıyor.
+  ~~Kalan tutarsızlık: `TalepDetayModal.jsx`'in kendi "Tamamlandı" butonu bu
+  tedarikçi seçiciyi içermiyordu~~ — **düzeltildi (18.08.2026):**
+  `TalepDetayModal.jsx`'e de aynı opsiyonel tedarikçi `<select>`'i (aynı
+  "Tedarikçisiz devam et" varsayılanı) eklendi, `updateStatus()` artık
+  `p_supplier_id`'yi RPC'ye iletiyor. Uçtan uca gerçek RPC çağrısıyla
+  doğrulandı (test verisi geçici olarak tamamlanıp `supplier_id`/`status`
+  yazıldığı teyit edildikten sonra orijinal `onaylandi`/`NULL` haline
+  SQL'le geri alındı).
 - **Eski `procurement-*`/`accounting-scope`/`faz-e` testleri — DÜZELTİLDİ (2026-07-31).**
   `tests/procurement-workflow.spec.js`, `procurement-security.spec.js`,
   `procurement-two-initiators.spec.js`, `procurement-role-acceptance.spec.js`,
@@ -1562,16 +1598,51 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**18.08.2026 — Genel Bakış "Toplam Güç" kırpılma düzeltmesi (yalnızca kod).**
+**18.08.2026 — Ödemede TRY dönüşümü + para birimi mismatch riski kapatıldı
+(migration onaylı).**
 
-`TabGenel.jsx`'in "Proje Özeti" kartındaki "Toplam Güç" satırı, aynı karttaki
-diğer tüm satırlardan (Kritik Risk vb.) farklı olarak etikette
-`whiteSpace:'nowrap'+overflow:'hidden'+textOverflow:'ellipsis'`, değerde
-`whiteSpace:'nowrap'+flexShrink:0` taşıyordu — bu, satırdaki tüm sıkışmayı
-etikete yıkıp "Toplam G…" gibi kırpılmış, değeri (`27.03 MWp`) ise tam
-gösteren tutarsız bir görünüme yol açıyordu. Düzeltme: bu satıra özel stil
-kaldırıldı, satır artık karttaki diğer satırlarla birebir aynı (düz
-`<span>`/`<strong>`, gerekirse iki satıra sararak tam metni gösterir).
-1440×900 görünümde Playwright ile doğrulandı, `npm run lint` temiz.
-`.genel-kpi-grid`'in 6 kolonlu sabit grid'i (`Dashboard.css`) kasıtlı bir
-önceki tasarım kararı — dokunulmadı.
+"Bilinen açık noktalar"daki kalan büyük madde kapatıldı: `invoice_payments`e
+ödeme günündeki TCMB kurunu yakalayan `exchange_rate` + generated `amount_try`
+kolonları, `invoices`e `paid_amount_try`/`remaining_amount_try` (düz,
+`fn_invoice_payment_recalc()` tarafından bakımı yapılan) kolonlar eklendi
+(`invoice_payment_try_conversion` migration'ı, kullanıcı onayıyla uygulandı).
+`TedarikciListesi.jsx`/`TedarikciDetayModal.jsx`/`FinansRaporlari.jsx`'teki
+"Ödenen"/"Kalan" KPI toplamları artık bu TRY alanlarını kullanıyor. Ayrıntı
+"Çoklu para birimi desteği" → "Ödeme anında kur yakalama" bölümünde.
+
+İnceleme sırasında beklenenden ciddi bir ek risk bulundu: `OdemeEkleModal.jsx`'te
+ödeme, faturanın kendi para biriminden BAĞIMSIZ seçilebiliyordu — ne frontend
+ne de DB trigger'ları (`fn_invoice_payment_before_insert`/`_recalc`) bunu
+kontrol ediyordu, yanlış seçilirse `paid_amount` sessizce bozulabilirdi
+(canlıda gerçekleşmiş bir örnek yoktu, kontrol edildi). Kullanıcı onayıyla
+seçici tamamen kaldırılıp ödeme faturanın para birimine kilitlendi, DB
+trigger'ına da aynı kontrol savunma amaçlı eklendi. Aynı sınıftan ikinci bir
+örnek `TedarikciOdemeModal.jsx`'te (toplu ödeme dağıtımı) bulunup aynı
+şekilde düzeltildi — para birimi artık seçilen tedarikçinin açık
+faturalarından türüyor, farklı birimden faturalar dağıtımdan otomatik
+hariç tutuluyor.
+
+Uçtan uca doğrulama: gerçek bir test USD faturası (leftover audit kaydı,
+demo veri değil) geçici olarak `odeme_bekliyor` durumuna alınıp UI'dan
+$100 ödeme girildi — `exchange_rate`/`amount_try`/`paid_amount_try`/
+`remaining_amount_try`'nin doğru hesaplandığı `execute_sql` ile teyit edildi,
+`TedarikciDetayModal.jsx`'in KPI toplamının doğru TRY karşılığını gösterdiği
+Playwright ile görsel olarak doğrulandı, ardından fatura orijinal
+`taslak`/sıfırlanmış haline SQL'le geri alındı. `TedarikciOdemeModal.jsx`
+için de para birimi kilidinin göründüğü canlı ekran görüntüsüyle doğrulandı.
+`npm run lint`/`npm run build` temiz.
+
+Bu görevden önce, aynı oturumda ayrıca iki küçük düzeltme yapıldı:
+1. **`TalepDetayModal.jsx`'e tedarikçi seçici eklendi** — proje detayı
+   içinden bir talep "Tamamlandı" ile tamamlandığında (liste-satırı akışının
+   aksine) tedarikçi seçme imkânı yoktu, RPC'ye her zaman `p_supplier_id=NULL`
+   gidiyordu. Aynı opsiyonel `<select>` deseni eklendi, `updateStatus`'a
+   ikinci parametre olarak geçirildi; gerçek RPC çağrısıyla uçtan uca
+   doğrulanıp test verisi orijinal haline geri alındı.
+2. **Genel Bakış "Toplam Güç" kırpılma düzeltmesi** — `TabGenel.jsx`'in
+   "Proje Özeti" kartındaki bu satır, diğer kardeş satırlardan farklı olarak
+   nowrap+ellipsis+`flexShrink:0` taşıyıp "Toplam G…" şeklinde kırpılıyordu;
+   bu satıra özel stil kaldırıldı. Ardından aynı sınıftan başka bir tutarsızlık
+   olup olmadığı 19 dosyada tarandı — bulunamadı (kalan tüm ellipsis
+   kullanımları ya paylaşımlı render'dan ya gerçek değişken kullanıcı
+   verisinden). `.genel-kpi-grid`'in 6 kolonlu grid'i kasıtlı — dokunulmadı.

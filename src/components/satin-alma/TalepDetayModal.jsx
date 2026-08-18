@@ -47,6 +47,8 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [showFaturaModal, setShowFaturaModal] = useState(false)
+  const [supplierId, setSupplierId] = useState('')
+  const [suppliers, setSuppliers] = useState([])
 
   useEffect(() => {
     async function load() {
@@ -68,6 +70,11 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const canReview = isAdmin && status === 'bekliyor'
   const canComplete = role === 'proje_yoneticisi' && status === 'onaylandi'
   const canAct = canReview || canComplete
+
+  useEffect(() => {
+    if (!canComplete) return
+    supabase.from('suppliers').select('id, name').order('name').then(({ data }) => setSuppliers(data || []))
+  }, [canComplete])
   const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
   const description = req.description || req.request_note || req.notes || '-'
   const requester = req.requester_name || req.requested_by_name || req.created_by_name || '—'
@@ -92,13 +99,14 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const siteChiefComplete = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const canInvoice = (isAdmin || isMuhasebe) && isAwaitingInvoice(req)
 
-  async function updateStatus(nextStatus) {
+  async function updateStatus(nextStatus, supplierIdArg) {
     setSaving(true)
     setErrorMessage('')
 
     if (nextStatus === 'satin_alindi') {
       const { error } = await supabase.rpc('complete_project_manager_purchase_request', {
         p_request_id: req.id,
+        p_supplier_id: supplierIdArg || null,
       })
       setSaving(false)
       if (error) {
@@ -291,12 +299,22 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
 
           {canAct && (
             <section style={{ ...CARD, padding: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', gap: 10, alignItems: 'center' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: canComplete ? '1fr 150px 120px 120px' : '1fr 120px 120px', gap: 10, alignItems: 'center' }}>
                 <span style={{ color: '#64748B', fontSize: 12.5 }}>
                   {canReview ? 'Yönetici kararını bu talep üzerinden verebilir.' : 'Proje yöneticisi işlemi tamamlayabilir veya talebi reddedebilir.'}
                 </span>
+                {canComplete && (
+                  <select
+                    value={supplierId}
+                    onChange={event => setSupplierId(event.target.value)}
+                    style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '9px 10px', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', width: '100%' }}
+                  >
+                    <option value="">Tedarikçisiz devam et</option>
+                    {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                  </select>
+                )}
                 <button onClick={() => updateStatus(canReview ? 'reddedildi' : 'iptal')} disabled={saving || !note.trim()} style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: (saving || !note.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (saving || !note.trim()) ? 0.6 : 1 }}>Reddet</button>
-                <button onClick={() => updateStatus(canReview ? 'onaylandi' : 'satin_alindi')} disabled={saving} style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
+                <button onClick={() => updateStatus(canReview ? 'onaylandi' : 'satin_alindi', supplierId)} disabled={saving} style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
                   {saving ? 'Kaydediliyor…' : canReview ? 'Onayla' : 'Tamamlandı'}
                 </button>
               </div>

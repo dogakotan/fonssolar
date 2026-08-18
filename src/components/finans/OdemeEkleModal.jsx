@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { fetchDoviz } from '../../utils/exchangeRates'
 
 const METHODS = [
   ['havale', 'Havale'],
@@ -33,18 +34,33 @@ const label = { display: 'block', fontSize: 11.5, fontWeight: 600, color: 'var(-
 
 export default function OdemeEkleModal({ invoice, onClose, onSaved }) {
   const { user } = useAuth()
+  // Ödeme her zaman faturanın kendi para biriminde girilir — bir seçici sunup
+  // farklı bir birim seçtirmek, ne frontend ne de DB trigger'ının kontrol
+  // ettiği bir mismatch'e (paid_amount'ın sessizce bozulmasına) yol açardı.
   const currency = invoice.currency || 'TRY'
   const remaining = Number(invoice.remaining_amount) || 0
   const [form, setForm] = useState({
     payment_date: new Date().toISOString().slice(0, 10),
-    amount: '', currency, payment_method: 'havale',
+    amount: '', payment_method: 'havale',
     bank_account: '', reference_no: '', note: '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
+
+  useEffect(() => {
+    if (currency === 'TRY') return
+    let alive = true
+    fetchDoviz().then(kurData => { if (alive && kurData) setDoviz({ usd: kurData.usd, eur: kurData.eur, date: kurData.date }) })
+    return () => { alive = false }
+  }, [currency])
+
+  const exchangeRate = currency === 'TRY' ? 1 : currency === 'USD' ? doviz.usd : doviz.eur
+  const rateReady = exchangeRate != null
   const amount = Number(form.amount) || 0
+  const amountTry = rateReady ? amount * exchangeRate : null
   const exceeds = amount > remaining
-  const invalidAmount = amount <= 0 || exceeds
+  const invalidAmount = amount <= 0 || exceeds || !rateReady
   const after = Math.max(0, remaining - amount)
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }))
 
@@ -57,7 +73,8 @@ export default function OdemeEkleModal({ invoice, onClose, onSaved }) {
       invoice_id: invoice.id,
       payment_date: form.payment_date,
       amount,
-      currency: form.currency,
+      currency,
+      exchange_rate: exchangeRate || 1,
       payment_method: form.payment_method,
       bank_account: form.bank_account.trim() || null,
       reference_no: form.reference_no.trim() || null,
@@ -91,7 +108,7 @@ export default function OdemeEkleModal({ invoice, onClose, onSaved }) {
               <input required min="0.01" step="0.01" type="number" style={{ ...field, borderColor: exceeds ? '#DC2626' : undefined }} value={form.amount} onChange={e => set('amount', e.target.value)} />
               {exceeds && <small style={{ color: '#DC2626' }}>Kalan tutarı ({formatPaymentCurrency(remaining, currency)}) aşamazsınız.</small>}
             </div>
-            <div><label style={label}>Para Birimi *</label><select style={field} value={form.currency} onChange={e => set('currency', e.target.value)}>{['TRY', 'USD', 'EUR'].map(v => <option key={v}>{v}</option>)}</select></div>
+            <div><label style={label}>Para Birimi</label><input disabled style={{ ...field, background: 'var(--color-bg)', color: 'var(--color-muted)' }} value={currency} /></div>
             <div><label style={label}>Ödeme Yöntemi *</label><select style={field} value={form.payment_method} onChange={e => set('payment_method', e.target.value)}>{METHODS.map(([v, n]) => <option key={v} value={v}>{n}</option>)}</select></div>
             <div><label style={label}>Banka/Hesap</label><input style={field} value={form.bank_account} onChange={e => set('bank_account', e.target.value)} /></div>
             <div><label style={label}>Referans/İşlem No</label><input style={field} placeholder="örn. TRX-849201" value={form.reference_no} onChange={e => set('reference_no', e.target.value)} /></div>
@@ -100,8 +117,14 @@ export default function OdemeEkleModal({ invoice, onClose, onSaved }) {
           <div style={{ marginTop: 14, padding: 14, borderRadius: 10, background: 'var(--color-bg)', display: 'grid', gap: 5, fontSize: 12.5 }}>
             <div className="payment-summary-row"><span>Fatura toplamı</span><b>{formatPaymentCurrency(invoice.total_amount, currency)}</b></div>
             <div className="payment-summary-row"><span>Önceden ödenen</span><b>{formatPaymentCurrency(invoice.paid_amount, currency)}</b></div>
-            <div className="payment-summary-row"><span>Bu ödeme</span><b>{formatPaymentCurrency(amount, form.currency)}</b></div>
+            <div className="payment-summary-row"><span>Bu ödeme</span><b>{formatPaymentCurrency(amount, currency)}</b></div>
             <div className="payment-summary-row" style={{ paddingTop: 5, borderTop: '1px solid var(--color-border-md)' }}><span>Ödeme sonrası kalan</span><b>{formatPaymentCurrency(after, currency)}</b></div>
+            {currency !== 'TRY' && (
+              <div className="payment-summary-row" style={{ paddingTop: 5, borderTop: '1px solid var(--color-border-md)', color: 'var(--color-muted)' }}>
+                <span>{rateReady ? `1 ${currency} = ${formatPaymentCurrency(exchangeRate, 'TRY')} (TCMB, ${doviz.date || '—'})` : 'Kur yükleniyor…'}</span>
+                <b>{rateReady ? `≈ ${formatPaymentCurrency(amountTry, 'TRY')}` : ''}</b>
+              </div>
+            )}
           </div>
           {error && <p style={{ color: '#DC2626', fontSize: 12.5, margin: '12px 0 0' }}>{error}</p>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 9, marginTop: 18 }}>

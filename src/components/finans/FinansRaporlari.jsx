@@ -55,7 +55,8 @@ export default function FinansRaporlari({ defaultProjectId = '' }) {
     ...transactions.map(tx => ({
       id: tx.id, project_id: tx.project_id, supplier_id: tx.supplier_id, currency: tx.currency,
       invoice_date: tx.transaction_date, total_amount: tx.amount, total_amount_try: tx.amount, paid_amount: tx.paid_amount,
-      remaining_amount: tx.remaining_amount, source: 'faturasiz', category: 'diger',
+      paid_amount_try: tx.paid_amount, remaining_amount: tx.remaining_amount, remaining_amount_try: tx.remaining_amount,
+      source: 'faturasiz', category: 'diger',
     })),
   ], [invoices, transactions])
 
@@ -66,17 +67,18 @@ export default function FinansRaporlari({ defaultProjectId = '' }) {
     if (month && record.invoice_date && !record.invoice_date.startsWith(month)) return false
     return true
   })
-  // total_amount_try (TRY karşılığı) kullanılır — aksi halde USD/EUR faturalar
-  // TRY faturalarla aynı toplamda karışır (bkz. CLAUDE.md "Bilinen açık noktalar").
+  // total/paid/remaining hep TRY karşılığı (_try alanları) kullanılır — aksi
+  // halde USD/EUR faturalar TRY faturalarla aynı toplamda karışır (bkz.
+  // CLAUDE.md "Bilinen açık noktalar").
   const total = filtered.reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)
-  const paid = filtered.reduce((sum, record) => sum + Number(record.paid_amount || 0), 0)
-  const remaining = filtered.reduce((sum, record) => sum + Number(record.remaining_amount || 0), 0)
+  const paid = filtered.reduce((sum, record) => sum + Number(record.paid_amount_try ?? record.paid_amount ?? 0), 0)
+  const remaining = filtered.reduce((sum, record) => sum + Number(record.remaining_amount_try ?? record.remaining_amount ?? 0), 0)
   const paymentRate = total ? Math.round(paid / total * 100) : 0
   const projectRows = projects.map(project => {
     const list = filtered.filter(record => record.project_id === project.id)
     const invoiced = list.filter(record => record.source === 'fatura').reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)
     const invoiceless = list.filter(record => record.source === 'faturasiz').reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)
-    const projectPaid = list.reduce((sum, record) => sum + Number(record.paid_amount || 0), 0)
+    const projectPaid = list.reduce((sum, record) => sum + Number(record.paid_amount_try ?? record.paid_amount ?? 0), 0)
     const rate = (invoiced + invoiceless) > 0 ? Math.round(projectPaid / (invoiced + invoiceless) * 100) : 0
     return { id: project.id, name: project.name, invoiced, invoiceless, paid: projectPaid, remaining: (invoiced + invoiceless) - projectPaid, rate }
   }).filter(row => row.invoiced || row.invoiceless)
