@@ -1562,61 +1562,16 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**18.08.2026 — Frontend ölü kod temizliği (yalnızca kod, DB/migration yok).**
+**18.08.2026 — Genel Bakış "Toplam Güç" kırpılma düzeltmesi (yalnızca kod).**
 
-Yöntem: `eslint.config.js`'e geçici olarak `no-unused-vars` eklenip (ve
-`@eslint/js` `recommended` kuralları) `npm run lint` çalıştırıldı, bulgular
-tek tek `Grep` ile dosya genelinde gerçekten kullanılmadığı doğrulandıktan
-SONRA silindi, sonra config eski haline döndürüldü (bu geçici config hiç
-commit edilmedi). **Kritik not:** bu projede `eslint.config.js` yalnızca
-`react-hooks`/`react-refresh` kurallarını yüklüyor, `eslint-plugin-react`
-(`jsx-uses-vars`) yok — bu yüzden `no-unused-vars` JSX'te `<Bileşen/>` olarak
-kullanılan HER import'u (büyük harfli isimlerin neredeyse tamamı) yanlışlıkla
-"unused" işaretliyor. ~150 uyarının büyük çoğunluğu bu yüzden yanlış pozitifti
-(`Grep`'le tek tek doğrulanıp elenmedi); yalnızca gerçekten hiçbir yerde
-(JSX dahil) referansı olmayan değişken/fonksiyon/import'lar kaldırıldı:
-- `AgentChat.jsx`: kullanılmayan `EXCEL_TYPES` sabiti
-- `FinansRaporlari.jsx`: kullanılmayan `projectMap`/`supplierMap`
-- `TicketListesi.jsx`: eski, hiçbir JSX elemanına bağlı olmayan takvim-popup
-  kalıntısı (`calPos`/`openCal`/`calRef`/`calBtnRef`/`showCal` state+effect+fonksiyon,
-  `useRef` importu da düştü) + `false && (...)` ile kalıcı olarak devre dışı
-  bırakılmış severity alt-filtre buton grubu (`SEVERITY_OPTIONS` importu da düştü)
-- `ProjeTabFinansSidebar.jsx`: kullanılmayan `sapmaColor` (yerine zaten `durum.color` kullanılıyordu)
-- `ProjeDetay.jsx`: kullanılmayan `periodBtn`/`periodBtnActive` stil objeleri (yalnızca
-  `periodNavBtn` gerçekten kullanılıyordu) + hiçbir yerde okunmayan `loading` state
-  (yalnızca `setLoading` çağrılıyordu, render `detayLoading`'e bakıyordu)
-- `DailyReportList.jsx`: kullanılmayan `weekAgoStr()`/`FILTER_LABEL`/`DATE_INPUT`
-- `Yetkisiz.jsx`: kullanılmayan `role` destructure
-- `YeniProjeWizard.jsx`: kullanılmayan `goNext` (yalnızca `goBack` gerçekten kullanılıyordu)
-- `FaturaOlusturModal.jsx`: kullanılmayan `effectiveProjectName` (yalnızca
-  `effectiveProjectId` ve `linkedRequest.project_name` gerçekten kullanılıyordu)
-- `SantiyeSefiDashboard.jsx`: gereksiz regex escape (`\/` → `/`, karakter sınıfı içinde gereksiz)
-- `eslint.config.js`: kullanılmayan `@eslint/js` importu
-
-Her silme öncesi `Grep` ile tam dosya taraması yapıldı (yalnızca import satırı
-değil), sonra gerçek (geri alınmış) eslint config'le `npm run lint` + `npm run
-build` hatasız geçti, ayrıca çalışan dev sunucusunda (localhost:5173) Tickets
-ve Finans sayfaları Playwright ile açılıp konsol hatası olmadığı doğrulandı.
-
-**Ek olarak (kullanıcı kararıyla) `TicketListesi.jsx`'teki iki büyük gizli UI
-bloğu da tamamen kaldırıldı:** her ikisi de `display: 'none'` ile kalıcı
-olarak gizlenmiş, hiçbir kullanıcının erişemediği tam bloklardı — (1) "Tarih
-Seç" özel takvim ikonu + native date input (yalnızca bu MANUEL giriş yolu
-gizliydi; `dateFilter` state'i ve dış `filterDateProp` prop'uyla set edilme
-yolu KORUNDU, hâlâ çalışıyor), (2) tam bir "Filtrele" dropdown'u — Sıralama
-(tarih/aciliyet) + Cins filtresi + Sıfırla butonu. İkinci blokla birlikte
-yalnızca bu gizli menüden erişilebilen `sortMode`/`categoryFilter`/
-`severityFilter`/`showFilterMenu` state'leri, bunlara bağlı sorgu filtreleri
-(`categoryFilter`/`severityFilter` dal), client-side severity sort mantığı
-(`SEVERITY_ORDER` kullanan iki satır) ve `ascending` hesaplaması da tamamen
-kaldırıldı — sıralama artık sabit `ascending: false` (eskiden zaten hep bu
-değerdi, çünkü sortMode'u değiştirecek tek UI gizliydi). `SEVERITY_ORDER`
-importu bu dosyadan düştü (başka yerde — `ProjeTabRiskler.jsx` — hâlâ
-kullanılıyor, `utils/ticketSeverity.js`'ten silinmedi). `filterSeverity` (dış
-prop, deep-link için) ve `filterStatus`/`statusTab`/`viewTab` gibi GERÇEKTEN
-erişilebilir filtreler değişmedi. Değişiklik sonrası `npm run lint`/`npm run
-build` hatasız, Tickets sayfası Playwright'ta görsel olarak birebir aynı
-(bu bloklar zaten hiç görünmüyordu) ve konsol hatasız doğrulandı.
-
-DB tarafında ayrıca bilinen ölü/orphan nesne taraması bu turda YAPILMADI
-(yalnızca frontend kapsamındaydı) — istenirse ayrı bir tur gerekir.
+`TabGenel.jsx`'in "Proje Özeti" kartındaki "Toplam Güç" satırı, aynı karttaki
+diğer tüm satırlardan (Kritik Risk vb.) farklı olarak etikette
+`whiteSpace:'nowrap'+overflow:'hidden'+textOverflow:'ellipsis'`, değerde
+`whiteSpace:'nowrap'+flexShrink:0` taşıyordu — bu, satırdaki tüm sıkışmayı
+etikete yıkıp "Toplam G…" gibi kırpılmış, değeri (`27.03 MWp`) ise tam
+gösteren tutarsız bir görünüme yol açıyordu. Düzeltme: bu satıra özel stil
+kaldırıldı, satır artık karttaki diğer satırlarla birebir aynı (düz
+`<span>`/`<strong>`, gerekirse iki satıra sararak tam metni gösterir).
+1440×900 görünümde Playwright ile doğrulandı, `npm run lint` temiz.
+`.genel-kpi-grid`'in 6 kolonlu sabit grid'i (`Dashboard.css`) kasıtlı bir
+önceki tasarım kararı — dokunulmadı.

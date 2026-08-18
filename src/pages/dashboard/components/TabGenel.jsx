@@ -285,8 +285,8 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
           <p className="stat-note">Toplam Proje</p>
           <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, gap: 6 }}>
-              <span style={{ color: 'var(--color-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Toplam Güç</span>
-              <strong style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{loading ? '…' : `${(displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000).toFixed(2)} MWp`}</strong>
+              <span style={{ color: 'var(--color-muted)' }}>Toplam Güç</span>
+              <strong>{loading ? '…' : `${(displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000).toFixed(2)} MWp`}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, gap: 6 }}>
               <span style={{ color: 'var(--color-muted)' }}>Kritik Risk</span>
