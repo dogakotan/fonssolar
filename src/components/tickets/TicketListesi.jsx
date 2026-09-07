@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import YeniTicketModal from './YeniTicketModal'
@@ -8,6 +8,9 @@ import { SEVERITY_META as SEVERITY } from '../../utils/ticketSeverity'
 import { CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
 import { fetchProfileNames } from '../../utils/profileNames'
 import { useUrlSyncedSelection } from '../../hooks/useUrlSyncedSelection'
+import { useHighlightRow } from '../../hooks/useHighlightRow'
+import { useToast } from '../../hooks/useToast'
+import Toast from '../ui/Toast'
 
 const TH = { height: 24, boxSizing: 'border-box', padding: '0 12px', lineHeight: '24px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', whiteSpace: 'nowrap', verticalAlign: 'middle' }
 const TD = { height: 64, boxSizing: 'border-box', padding: '0 12px', fontSize: 12.5, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
@@ -169,6 +172,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   // Açık ticket detay modalının id'sini adres çubuğuna yansıtır.
   useUrlSyncedSelection(selected?.id ?? null, onSelectedTicketChange)
   const [quickAction, setQuickAction]       = useState(null)
+  const { toast, showToast } = useToast()
   const isProjectManager = role === 'proje_yoneticisi'
   const canManage = isAdmin || isProjectManager
   // Satın Alma sekmesindeki Talepler/Onay Bekleyenler ayrımıyla aynı desen — yönetici
@@ -179,26 +183,35 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     if (filterDateProp) setDateFilter(filterDateProp)
   }, [filterDateProp])
 
-  // Dışarıdan (örn. Günlük Rapor'daki "Ticket açıldı" rozeti) belirli bir
-  // ticket'a doğrudan gitme — mevcut filtrelerden bağımsız, tek satırı çekip açar.
+  // Dışarıdan (örn. Bildirimler/zil, Günlük Rapor'daki "Ticket açıldı" rozeti)
+  // belirli bir ticket'a gidince artık modal açmıyoruz — yerel filtreler (durum
+  // sekmesi/tarih/onay sekmesi) hedefi gizliyorsa sıfırlanır, bulununca
+  // useHighlightRow satırı vurgular (kullanıcı isteği, 04.09.2026). Bu sayfada
+  // (fatura/satın alma listelerinin aksine) ayrı bir realtime aboneliği yok —
+  // kullanıcı sayfa zaten açıkken bildirim geldiyse `tickets` o ticket'tan ÖNCE
+  // çekilmiş olabilir. Filtreler zaten varsayılandaysa vazgeçmeden ÖNCE bir kez
+  // `fetchTickets()` ile tazeleyip tekrar deniyoruz (04.09.2026'da bulunan bug —
+  // öncesinde ilk denemede bulunamayınca sessizce vazgeçiyordu).
+  const retriedTicketRef = useRef(null)
   useEffect(() => {
-    if (!openTicketId) return
-    let alive = true
-    supabase
-      .from('tickets')
-      .select('*')
-      .eq('id', openTicketId)
-      .maybeSingle()
-      .then(async ({ data }) => {
-        if (!alive) return
-        if (data) {
-          const [enriched] = await withProfileNames([data])
-          if (alive) setSelected(enriched)
-        }
-        onOpenedTicket?.()
-      })
-    return () => { alive = false }
-  }, [openTicketId, onOpenedTicket])
+    if (!openTicketId) { retriedTicketRef.current = null; return }
+    if (tickets.some(t => t.id === openTicketId)) return
+    if (loading) return
+    if (statusTab !== 'all' || viewTab !== 'all' || dateFilter) {
+      setStatusTab('all'); setViewTab('all'); setDateFilter('')
+      return
+    }
+    if (retriedTicketRef.current !== openTicketId) {
+      retriedTicketRef.current = openTicketId
+      fetchTickets()
+      return
+    }
+    showToast('Bu bildirim artık mevcut olmayan (veya erişemediğiniz) bir ticket\'a işaret ediyor.', 'error')
+    onOpenedTicket?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTicketId, tickets, loading, statusTab, viewTab, dateFilter, onOpenedTicket])
+
+  const { highlightedId, rowRef } = useHighlightRow(openTicketId, tickets, t => t.id, onOpenedTicket)
 
   // Listeyi belirleyen tüm değerler açıkça dependency'de; fetchTickets'in render-başına
   // değişen referansını eklemek gereksiz istek döngüsü yaratır.
@@ -358,6 +371,8 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                   return (
                     <tr
                       key={t.id}
+                      ref={rowRef(t.id)}
+                      className={highlightedId === t.id ? 'row-highlight-flash' : undefined}
                       onClick={() => setSelected(t)}
                       style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer', background: 'transparent' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg)'}
@@ -447,7 +462,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
               const sv = SEVERITY[t.severity] || SEVERITY['orta']
               const ca = CATEGORY[t.category] || CATEGORY['genel']
               return (
-                <div key={t.id} className="tl-card" onClick={() => setSelected(t)}>
+                <div key={t.id} ref={rowRef(t.id)} className={`tl-card${highlightedId === t.id ? ' row-highlight-flash' : ''}`} onClick={() => setSelected(t)}>
                   <div className="tl-card-head">
                     <span className="tl-card-title">{t.description || t.title}</span>
                     <span className="tl-card-num">#{idx + 1}</span>
@@ -514,6 +529,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
           onDone={() => { setQuickAction(null); fetchTickets(); onNewTicket?.() }}
         />
       )}
+      <Toast toast={toast} />
     </div>
   )
 }

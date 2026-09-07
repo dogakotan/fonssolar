@@ -193,10 +193,17 @@ test.describe.serial('İş planından manuel ilerleme', () => {
     await page.getByText('İş Planı', { exact: true }).first().click()
     await expect(page.getByText('Gantt İş Planı', { exact: true })).toBeVisible()
     await page.getByText(task.task_name, { exact: false }).first().click()
-    await expect(page.getByRole('button', { name: '+ İlerleme Gir', exact: true })).toBeVisible()
+    // 02.09.2026: ilerleme girme/durum güncelleme Genel (Gantt) görünümünden kaldırıldı,
+    // "Detaylı İş Planı" görünümüne taşındı — Genel'de artık yalnızca salt-okunur detay +
+    // yönlendirme ipucu var (bkz. CLAUDE.md, TabIsPlan.jsx/TabIsPlaniDetay.jsx).
+    await expect(page.getByText('İlerleme girmek / durum güncellemek için "Detaylı İş Planı" görünümüne geçin.', { exact: true })).toBeVisible()
     if (riskTask?.task_name) {
       await expect(page.getByText(new RegExp(`${riskTask.task_name} \\(.+\\)`)).first()).toBeVisible()
     }
+
+    await page.getByRole('button', { name: 'Detaylı İş Planı', exact: true }).click()
+    const detailRow = page.getByRole('row').filter({ hasText: task.task_name })
+    await expect(detailRow.getByRole('button', { name: '+ İlerleme Gir', exact: true })).toBeVisible()
 
     await page.getByText('Tickets', { exact: true }).first().click()
     await page.getByRole('button', { name: '+ Yeni Ticket', exact: true }).click()

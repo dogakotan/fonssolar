@@ -1,18 +1,32 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useUrlSyncedSelection } from '../../../hooks/useUrlSyncedSelection'
+import { useHighlightRow } from '../../../hooks/useHighlightRow'
+import { useToast } from '../../../hooks/useToast'
+import Toast from '../../../components/ui/Toast'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import YeniTalepModal from '../../../components/satin-alma/YeniTalepModal'
 import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
 import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModal'
+import { ProcessStageHoverBox } from '../../../components/satin-alma/ProcessStageHoverBox'
 import Pager from '../../../components/ui/Pager'
 import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
 import { requestNo } from '../../../utils/purchaseRequestNo'
+
+// Yeni 3 aşamalı akışın 4 ara durumu (teklif_toplama/pazarlik_onay_bekliyor/
+// pazarlik/siparis) — eski akışla aynı dropdown'da, satin_alindi'den önce sıralı.
+const NEW_FLOW_STATUS_FILTERS = [
+  { value: 'teklif_toplama', label: 'Teklif Toplama' },
+  { value: 'pazarlik_onay_bekliyor', label: 'Pazarlık Onayı Bekliyor' },
+  { value: 'pazarlik', label: 'Pazarlık' },
+  { value: 'siparis', label: 'Sipariş' },
+]
 
 const STATUS_FILTERS = [
   { value: 'all', label: 'Tüm Durumlar' },
   { value: 'bekliyor', label: 'Talep Oluşturuldu' },
   { value: 'onaylandi', label: 'Proje Yöneticisinde' },
+  ...NEW_FLOW_STATUS_FILTERS,
   { value: 'satin_alindi', label: 'Fatura Bekleniyor' },
   { value: 'fatura_onay_bekliyor', label: 'Fatura Onayda' },
   { value: 'faturasi_kesildi', label: 'Fatura Kesildi' },
@@ -24,6 +38,7 @@ const PROJECT_MANAGER_STATUS_FILTERS = [
   { value: 'all', label: 'Tüm Durumlar' },
   { value: 'bekliyor', label: 'Talep Oluşturuldu' },
   { value: 'onaylandi', label: 'Proje Yöneticisinde' },
+  ...NEW_FLOW_STATUS_FILTERS,
   { value: 'invoice_waiting', label: 'Fatura Bekleniyor' },
   { value: 'faturasi_kesildi', label: 'Fatura Kesildi' },
   { value: 'red_edildi', label: 'Reddedildi' },
@@ -78,6 +93,10 @@ const RISK_STATE_META = {
 const PROCESS_STATUS_META = {
   bekliyor:             { color: 'var(--color-primary)', label: 'Talep Oluşturuldu' },
   onaylandi:            { color: 'var(--color-warning)', label: 'Proje Yöneticisinde' },
+  teklif_toplama:        { color: 'var(--color-primary)', label: 'Teklif Toplama' },
+  pazarlik_onay_bekliyor:{ color: 'var(--color-warning)', label: 'Pazarlık Onayı Bekliyor' },
+  pazarlik:              { color: 'var(--color-primary)', label: 'Pazarlık' },
+  siparis:               { color: 'var(--color-primary)', label: 'Sipariş' },
   satin_alindi:         { color: 'var(--color-warning)', label: 'Fatura Bekleniyor' },
   fatura_bekliyor:      { color: 'var(--color-warning)', label: 'Fatura Bekleniyor' },
   fatura_onay_bekliyor: { color: 'var(--color-primary)', label: 'Fatura Onayda' },
@@ -89,6 +108,10 @@ const PROCESS_STATUS_META = {
 const SITE_CHIEF_PROCESS_STATUS_META = {
   bekliyor:             { color: 'var(--color-primary)', label: 'Talep Oluşturuldu' },
   onaylandi:            { color: 'var(--color-warning)', label: 'İşleme Alındı' },
+  teklif_toplama:        { color: 'var(--color-warning)', label: 'İşleme Alındı' },
+  pazarlik_onay_bekliyor:{ color: 'var(--color-warning)', label: 'İşleme Alındı' },
+  pazarlik:              { color: 'var(--color-warning)', label: 'İşleme Alındı' },
+  siparis:               { color: 'var(--color-warning)', label: 'İşleme Alındı' },
   satin_alindi:         { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
   fatura_bekliyor:      { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
   fatura_onay_bekliyor: { color: 'var(--color-success)', label: 'İşlem Tamamlandı' },
@@ -160,6 +183,7 @@ export default function TabSatinAlmaTalepListesi({
   const [completeDraft, setCompleteDraft] = useState(null)
   const [suppliers, setSuppliers] = useState([])
   const [page, setPage] = useState(0)
+  const { toast, showToast } = useToast()
 
   const canCreate = role === 'santiye_sefi' || role === 'proje_yoneticisi'
   const canInvoice = isMuhasebe
@@ -177,20 +201,6 @@ export default function TabSatinAlmaTalepListesi({
     if (!canCompleteProcurement) return
     supabase.from('suppliers').select('id, name').order('name').then(({ data }) => setSuppliers(data || []))
   }, [canCompleteProcurement])
-
-  // Dışarıdan (Bildirimler sayfasından) belirli bir talebe doğrudan gitme —
-  // mevcut filtrelerden bağımsız, tek talebi id ile çekip açar (TicketListesi'nin
-  // openTicketId deseniyle aynı).
-  useEffect(() => {
-    if (!openRequestId) return
-    let alive = true
-    supabase.rpc('get_purchase_request_detail', { p_id: openRequestId }).then(({ data }) => {
-      if (!alive) return
-      if (data?.authorized && data?.request) setSelected(data.request)
-      onOpenedRequest?.()
-    })
-    return () => { alive = false }
-  }, [openRequestId, onOpenedRequest])
 
   // Üst bileşen (ProjeTabSatinAlma) procurement_items'i zaten tek bir RPC ile getirdiyse
   // burada aynı tabloyu ikinci kez sorgulamak yerine o veriden malzeme planını hesaplıyoruz.
@@ -358,12 +368,12 @@ export default function TabSatinAlmaTalepListesi({
     // içindeki diğer kişilerin (yönetici vb.) talepleri gösterilmez.
     if (siteChiefView && request.requested_by !== user?.id) return false
     const normalized = normalizeStatus(request.status)
-    if (fixedStatus) return normalized === fixedStatus
+    if (fixedStatus) return Array.isArray(fixedStatus) ? fixedStatus.includes(normalized) : normalized === fixedStatus
     if (onlyPending) return true
     if (statusFilter === 'all') return true
     if (siteChiefView) {
       if (statusFilter === 'created') return normalized === 'bekliyor'
-      if (statusFilter === 'processing') return normalized === 'onaylandi'
+      if (statusFilter === 'processing') return ['onaylandi', 'teklif_toplama', 'pazarlik_onay_bekliyor', 'pazarlik', 'siparis'].includes(normalized)
       if (statusFilter === 'completed') return ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(normalized)
       return true
     }
@@ -376,9 +386,47 @@ export default function TabSatinAlmaTalepListesi({
   const safePage = Math.min(page, totalPages - 1)
   const pageRows = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE)
 
+  // Dışarıdan (Bildirimler sayfasından) belirli bir talebe gidince artık modal
+  // açmıyoruz — yalnızca ilgili satırın görünür olmasını sağlıyoruz (durum filtresi
+  // kilitli değilse 'Tüm Durumlar'a döner, satırın bulunduğu sayfaya geçer),
+  // vurgulamayı useHighlightRow yapıyor (kullanıcı isteği, 04.09.2026 — öncesinde
+  // doğrudan TalepDetayModal açılıyordu).
+  // Hedef `requests` içinde hiç yoksa (bildirim ölü — kayıt silinmiş) önceden
+  // sessizce hiçbir şey olmuyordu (07.09.2026'da bulunan bug — kullanıcı günlerce
+  // "tıklayınca hiçbir şey olmuyor" sanıyordu, aslında rastgele bildirimlerin
+  // çoğu artık var olmayan kayda işaret ediyordu). Artık bir kez `fetchData()`
+  // ile tazeleyip tekrar deniyor, hâlâ yoksa tıklamanın sessizce kaybolmaması
+  // için bir toast gösterip openRequestId'yi tüketiyor.
+  const retriedRequestRef = useRef(null)
+  useEffect(() => {
+    if (!openRequestId) { retriedRequestRef.current = null; return }
+    const target = requests.find(r => r.id === openRequestId)
+    if (!target) {
+      if (loading) return
+      if (retriedRequestRef.current !== openRequestId) {
+        retriedRequestRef.current = openRequestId
+        fetchData()
+        return
+      }
+      showToast('Bu bildirim artık mevcut olmayan bir talebe işaret ediyor.', 'error')
+      onOpenedRequest?.()
+      return
+    }
+    if (!fixedStatus && statusFilter !== 'all') { setStatusFilter('all'); return }
+    const idx = filtered.findIndex(r => r.id === openRequestId)
+    if (idx === -1) { onOpenedRequest?.(); return }
+    const targetPage = Math.floor(idx / PAGE_SIZE)
+    if (page !== targetPage) setPage(targetPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openRequestId, requests, fixedStatus, statusFilter, filtered, page, loading])
+
+  const { highlightedId, rowRef } = useHighlightRow(openRequestId, pageRows, r => r.id, onOpenedRequest)
+
   const emptyText = fixedStatus === 'onaylandi'
     ? 'Proje yöneticisinde bekleyen satın alma talebi yok.'
-    : onlyPending
+    : Array.isArray(fixedStatus)
+      ? 'Teklif/pazarlık/sipariş sürecinde satın alma talebi yok.'
+      : onlyPending
       ? 'Onay bekleyen satın alma talebi yok.'
       : isMuhasebe
         ? 'Faturalanacak satın alma talebi yok.'
@@ -468,6 +516,8 @@ export default function TabSatinAlmaTalepListesi({
                 return (
                   <tr
                     key={request.id}
+                    ref={rowRef(request.id)}
+                    className={highlightedId === request.id ? 'row-highlight-flash' : undefined}
                     onClick={() => setSelected(request)}
                     style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}
                     onMouseEnter={event => { event.currentTarget.style.background = 'var(--color-bg)' }}
@@ -495,11 +545,20 @@ export default function TabSatinAlmaTalepListesi({
                       </span>
                     </td>
                     <td style={{ ...TD, minWidth: 150, whiteSpace: 'nowrap' }}>
-                      <ProcessStatusBadge status={request.status} isSiteChief={siteChiefView} />
+                      {/* Süreç hover-kutusu yalnızca Teklif/Pazarlık/Sipariş listesinde (fixedStatus
+                          dizi olduğunda) — o listede talebin tam olarak hangi ara aşamada olduğunu
+                          satıra tıklamadan görmek isteniyor (kullanıcı isteği, 04.09.2026). */}
+                      {Array.isArray(fixedStatus) ? (
+                        <ProcessStageHoverBox status={request.status}>
+                          <ProcessStatusBadge status={request.status} isSiteChief={siteChiefView} />
+                        </ProcessStageHoverBox>
+                      ) : (
+                        <ProcessStatusBadge status={request.status} isSiteChief={siteChiefView} />
+                      )}
                     </td>
                     {showActions && (
                     <td style={{ ...TD, minWidth: projectId ? 180 : 128, whiteSpace: 'nowrap' }}>
-                      {siteChiefView && isPending && request.requested_by === user?.id ? (
+                      {(isPending || normalizedStatus === 'teklif_toplama') && request.requested_by === user?.id ? (
                         <button
                           onClick={event => deleteOwnPendingRequest(event, request)}
                           disabled={actionLoading === request.id}
@@ -644,6 +703,7 @@ export default function TabSatinAlmaTalepListesi({
           onSaved={() => { fetchData(); onChanged?.() }}
         />
       )}
+      <Toast toast={toast} />
     </div>
   )
 }

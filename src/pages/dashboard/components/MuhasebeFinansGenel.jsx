@@ -27,7 +27,7 @@ export default function MuhasebeFinansGenel({ onNavigate, projectId = '' }) {
     const [invoiceResult, overviewResult, paymentResult, projectResult, supplierResult] = await Promise.all([
       supabase.rpc('get_invoices_list', { p_project_id: null, p_filter_date: null }),
       supabase.from('v_invoice_payment_overview').select('*'),
-      supabase.from('invoice_payments').select('id, invoice_id, amount, currency, payment_date, created_at, is_cancelled').eq('is_cancelled', false),
+      supabase.from('invoice_payments').select('id, invoice_id, amount, amount_try, currency, payment_date, created_at, is_cancelled').eq('is_cancelled', false),
       supabase.from('projects').select('id, name'),
       supabase.from('suppliers').select('id, name'),
     ])
@@ -74,14 +74,14 @@ export default function MuhasebeFinansGenel({ onNavigate, projectId = '' }) {
       value: sum(scopedPayments.filter(payment => {
         const paymentDate = new Date(payment.payment_date)
         return paymentDate.getMonth() === date.getMonth() && paymentDate.getFullYear() === date.getFullYear()
-      }), 'amount'),
+      }), 'amount_try'),
     }
   })
   const maxMonthly = Math.max(...monthly.map(item => item.value), 1)
   const debtParts = [
-    { label: 'Ödeme Bekleyen', value: sum(waiting, 'remaining_amount'), color: '#2563EB' },
-    { label: 'Kısmen Ödenen', value: sum(partial, 'remaining_amount'), color: '#7C3AED' },
-    { label: 'Vadesi Geçen', value: sum(overdue, 'remaining_amount'), color: '#EF4444' },
+    { label: 'Ödeme Bekleyen', value: sum(waiting, 'remaining_amount_try'), color: '#2563EB' },
+    { label: 'Kısmen Ödenen', value: sum(partial, 'remaining_amount_try'), color: '#7C3AED' },
+    { label: 'Vadesi Geçen', value: sum(overdue, 'remaining_amount_try'), color: '#EF4444' },
   ]
   const debtTotal = debtParts.reduce((total, item) => total + item.value, 0) || 1
   let cursor = 0
@@ -93,7 +93,7 @@ export default function MuhasebeFinansGenel({ onNavigate, projectId = '' }) {
 
   const projectRows = projects.map(project => {
     const rows = scopedOverview.filter(invoice => invoice.project_id === project.id)
-    return { ...project, billed: sum(rows, 'total_amount'), paid: sum(rows, 'paid_amount'), remaining: sum(rows, 'remaining_amount') }
+    return { ...project, billed: sum(rows, 'total_amount_try'), paid: sum(rows, 'paid_amount_try'), remaining: sum(rows, 'remaining_amount_try') }
   }).filter(project => project.billed > 0).sort((a, b) => b.billed - a.billed).slice(0, 5)
   const critical = [...open].filter(invoice => invoice.due_date).sort((a, b) => a.due_date.localeCompare(b.due_date)).slice(0, 5)
 
@@ -101,10 +101,10 @@ export default function MuhasebeFinansGenel({ onNavigate, projectId = '' }) {
     <div className="finance-overview">
       <DataStatusBanner error={error} refreshing={loading && overview.length > 0} onRetry={fetchData} />
       <div className="finance-overview-metrics">
-        <Metric title="Toplam Faturalanan" value={loading ? '…' : money(sum(monthInvoices, 'total_amount'))} note="Bu ay" tone="blue" icon="▣" />
-        <Metric title="Toplam Ödenen" value={loading ? '…' : money(sum(monthPayments, 'amount'))} note="Bu ay" tone="green" icon="✓" />
-        <Metric title="Kalan Borç" value={loading ? '…' : money(sum(open, 'remaining_amount'))} note={`${open.length} açık fatura`} tone="orange" icon="◴" />
-        <Metric title="Vadesi Geçen" value={loading ? '…' : money(sum(overdue, 'remaining_amount'))} note={`${overdue.length} fatura`} tone="red" icon="!" />
+        <Metric title="Toplam Faturalanan" value={loading ? '…' : money(sum(monthInvoices, 'total_amount_try'))} note="Bu ay" tone="blue" icon="▣" />
+        <Metric title="Toplam Ödenen" value={loading ? '…' : money(sum(monthPayments, 'amount_try'))} note="Bu ay" tone="green" icon="✓" />
+        <Metric title="Kalan Borç" value={loading ? '…' : money(sum(open, 'remaining_amount_try'))} note={`${open.length} açık fatura`} tone="orange" icon="◴" />
+        <Metric title="Vadesi Geçen" value={loading ? '…' : money(sum(overdue, 'remaining_amount_try'))} note={`${overdue.length} fatura`} tone="red" icon="!" />
       </div>
       <div className="finance-overview-charts">
         <section className="finance-overview-panel">

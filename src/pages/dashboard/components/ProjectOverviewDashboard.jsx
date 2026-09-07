@@ -134,25 +134,6 @@ function getWeatherMeta(value) {
   return WEATHER_META[direct] || WEATHER_META[normalizeWeatherKey(value)] || { label: value || 'Kayıt yok', emoji: '🌡️' }
 }
 
-function getRange(dateText, period) {
-  const base = new Date(`${dateText}T00:00:00`)
-  if (period === 'weekly') {
-    const day = base.getDay()
-    const diff = day === 0 ? -6 : 1 - day
-    const start = new Date(base)
-    start.setDate(base.getDate() + diff)
-    const end = new Date(start)
-    end.setDate(start.getDate() + 6)
-    return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) }
-  }
-  if (period === 'monthly') {
-    const start = new Date(base.getFullYear(), base.getMonth(), 1)
-    const end = new Date(base.getFullYear(), base.getMonth() + 1, 0)
-    return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) }
-  }
-  return { start: dateText, end: dateText }
-}
-
 function calcPlannedAt(tasks, dateText) {
   const date = new Date(`${dateText}T00:00:00`)
   const dated = tasks.filter(t => t.start_date && t.due_date)

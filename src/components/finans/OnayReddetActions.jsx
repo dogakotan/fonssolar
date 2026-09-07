@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { toUserMessage } from '../../utils/errors'
 
 const BTN = {
   onayla:   { bg: 'var(--color-success-bg)', color: 'var(--color-success-text)', label: '✓ Onayla' },
@@ -80,10 +81,17 @@ export default function OnayReddetActions({ invoiceId, onDone, layout = 'compact
   const [mode, setMode] = useState(null) // yalnızca compact: null | 'duzeltme' | 'reddet'
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
 
+  // error kontrolsüz bırakılırsa (ör. project_id=NULL "genel harcama" faturasında
+  // cost_allocations NOT NULL ihlali gibi bir trigger hatası) satır güncellenmez
+  // ama onDone yine de çağrılıp modal kapanırdı — kullanıcıya butonun "hiçbir şey
+  // yapmadığı" izlenimini veriyordu (2026-09-02'de bulunan bug). Artık hata varsa
+  // modal kapanmıyor, mesaj gösteriliyor.
   async function submit(status, noteOverride) {
     setBusy(true)
-    await supabase
+    setErr('')
+    const { error } = await supabase
       .from('invoice_approvals')
       .update({
         status,
@@ -94,6 +102,7 @@ export default function OnayReddetActions({ invoiceId, onDone, layout = 'compact
       .eq('invoice_id', invoiceId)
       .eq('status', 'bekliyor')
     setBusy(false)
+    if (error) { setErr(toUserMessage(error)); return }
     setMode(null)
     setNote('')
     onDone?.()
@@ -128,6 +137,9 @@ export default function OnayReddetActions({ invoiceId, onDone, layout = 'compact
             Düzeltme İste/Reddet için yukarıya bir gerekçe yazmanız gerekir.
           </p>
         )}
+        {err && (
+          <p style={{ margin: '8px 0 0', fontSize: 12.5, color: 'var(--color-danger-text)' }}>{err}</p>
+        )}
       </div>
     )
   }
@@ -148,18 +160,19 @@ export default function OnayReddetActions({ invoiceId, onDone, layout = 'compact
           {busy ? '…' : 'Reddi Onayla'}
         </button>
         <button
-          onClick={() => { setMode(null); setNote('') }}
+          onClick={() => { setMode(null); setNote(''); setErr('') }}
           style={{ background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '5px 10px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
         >
           İptal
         </button>
+        {err && <span style={{ fontSize: 11.5, color: 'var(--color-danger-text)', width: '100%' }}>{err}</span>}
       </div>
     )
   }
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <button onClick={() => submit('onaylandı')} disabled={busy} style={btnStyle(BTN.onayla)}>
           {busy ? '…' : BTN.onayla.label}
         </button>
@@ -169,6 +182,7 @@ export default function OnayReddetActions({ invoiceId, onDone, layout = 'compact
         <button onClick={() => setMode('reddet')} disabled={busy} style={btnStyle(BTN.reddet)}>
           {BTN.reddet.label}
         </button>
+        {err && <span style={{ fontSize: 11.5, color: 'var(--color-danger-text)' }}>{err}</span>}
       </div>
       {mode === 'duzeltme' && (
         <DuzeltmeIsteModal

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase, signOut } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -8,6 +8,7 @@ import TabGenel from './components/TabGenel'
 import MuhasebeGenelOzet from './components/MuhasebeGenelOzet'
 import TabProjeler from './components/TabProjeler'
 import TabSatinAlma from './components/TabSatinAlma'
+import TabTeklifPazarlikSiparis from './components/TabTeklifPazarlikSiparis'
 import ProjeTabSatinAlma from './components/ProjeTabSatinAlma'
 import TabFinans from './components/TabFinans'
 import TabOdemeler from './components/TabOdemeler'
@@ -28,6 +29,7 @@ const TABS = {
   genel:            { title: 'Genel Bakış',      subtitle: 'Proje özeti ve aktif görevler' },
   projeler:         { title: 'Projeler',          subtitle: 'Tüm GES projeleri' },
   'satin-alma':     { title: 'Bekleyenler',       subtitle: 'Tedarik talepleri ve siparişler' },
+  'teklif-pazarlik-siparis': { title: 'Teklif / Pazarlık / Sipariş', subtitle: 'Teklif toplama, pazarlık onayı ve sipariş süreci' },
   finans:           { title: 'Finans',            subtitle: 'Fatura yönetimi ve maliyet takibi' },
   odemeler:         { title: 'Ödemeler',          subtitle: 'Ödeme takibi ve tedarikçi bakiyeleri' },
   tickets:          { title: 'Ticket Sistemi',    subtitle: 'Sahadan yöneticiye hata bildirimi' },
@@ -59,7 +61,22 @@ export default function Dashboard() {
   // yeniden mount OLMASIN diye, ayrı <Route> girdileri olsaydı React bunları farklı
   // ağaç konumu sayıp remount edebilirdi). Adres çubuğunun geçerli görünümü
   // yansıtması + yenilemede/geri-ileri'de korunması için tek doğruluk kaynağı bu.
-  const pathSegments = location.pathname.replace(/^\/dashboard\/?/, '').split('/').filter(Boolean)
+  // `useMemo` ile `location.pathname` değişmediği sürece AYNI array referansı
+  // korunuyor — memoize edilmeden bu her render'da (ör. openRequestId gibi bir
+  // state değişip Dashboard yeniden render olduğunda) YENİ bir dizi üretiyordu,
+  // bu da aşağıdaki URL-senkron efektinin (satır ~150, deps'inde pathSegments
+  // var) location GERÇEKTEN değişmediği hâlde her seferinde yeniden çalışmasına
+  // yol açıyordu. Bildirimden bir kayda gidince (openRequestId vb. set edilip
+  // useHighlightRow ~300ms sonra onOpenedRequest ile null'a çekince) Dashboard
+  // yeniden render oluyor → pathSegments yeni referans → efekt yeniden çalışıp
+  // URL'de hâlâ duran `?talep=` parametresini tekrar okuyup openRequestId'yi
+  // AYNI id'ye geri set ediyordu — sonsuz bir 300ms'lik id→null→id döngüsü
+  // (04.09.2026'da useHighlightRow'un vurguyu hiç söndürmediği/`onConsumed`'ın
+  // hiç kalıcı olmadığı bug'ı araştırılırken bulundu; kök neden burada).
+  const pathSegments = useMemo(
+    () => location.pathname.replace(/^\/dashboard\/?/, '').split('/').filter(Boolean),
+    [location.pathname]
+  )
   const [sidebarOpen,         setSidebarOpen]         = useState(false)
   const [activeTab,           setActiveTab]           = useState(() => {
     const urlTab = pathSegments[0]
@@ -81,6 +98,7 @@ export default function Dashboard() {
   const [invoiceProjectId,    setInvoiceProjectId]     = useState(null)
   const [initialProjectTab,   setInitialProjectTab]    = useState(() => (pathSegments[0] === 'projeler' ? pathSegments[2] || null : null))
   const [initialReportId,     setInitialReportId]      = useState(null)
+  const [initialChangeRequestId, setInitialChangeRequestId] = useState(null)
 
   // Kısıtlı roller → başlangıç sekmesi (yalnızca gerçek bir GİRİŞ/rol
   // değişiminde — supabase.auth.onAuthStateChange her tetiklendiğinde
@@ -178,12 +196,20 @@ export default function Dashboard() {
   }
 
   // Bildirimler'den bir malzeme miktarı değişikliği bildirimine tıklanınca: ilgili
-  // projenin ProjeDetay'ına, doğrudan Malzeme Listesi sekmesiyle açık şekilde git
-  // (tek kayıt detay modalı yok, en azından doğru yere götürür). Proje adı bildirimde
+  // projenin ProjeDetay'ına, doğrudan Malzeme Listesi sekmesiyle açık şekilde git.
+  // 04.09.2026'ya kadar burada duruyordu (yalnızca sekmeyi açıyordu, spesifik kaydı
+  // değil) — artık değişiklik talebinin id'si de taşınıyor, ProjeTabFaturaKesilecekler
+  // bununla bağlı procurement_items satırını bulup kendi geçmiş/detay modalını
+  // otomatik açıyor (bkz. initialChangeRequestId/onOpenedChangeRequest). Talep
+  // henüz var olmayan bir kaleme "yeni malzeme" ekliyorsa (procurement_item_id
+  // null) açılacak bir kayıt yok — bu durumda hâlâ yalnızca sekmeye gidilir, bu
+  // kalıcı bir sınırlama (Bekleyen Değişiklikler paneli zaten sayfanın en üstünde).
+  // Proje adı bildirimde
   // yok — ProjeDetay zaten kendi projesini RPC'den çekiyor, header'daki kısa süreli
   // başlık için burada ayrıca hızlıca çekilir.
-  function goToProjectTab(id, tab, reportId = null) {
+  function goToProjectTab(id, tab, reportId = null, changeRequestId = null) {
     setInitialReportId(reportId)
+    setInitialChangeRequestId(changeRequestId)
     navigate(`/dashboard/projeler/${id}/${tab}`)
   }
 
@@ -342,7 +368,13 @@ export default function Dashboard() {
             <h2>{headerTitle}</h2>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexShrink: 0 }}>
-            <NotificationBell onNavigate={handleTabChange} />
+            <NotificationBell
+              onGoToTicket={goToTicket}
+              onOpenReport={goToReport}
+              onGoToRequest={goToRequest}
+              onGoToInvoice={goToInvoice}
+              onGoToMalzemeListesi={(projectId, changeRequestId) => goToProjectTab(projectId, 'malzeme-listesi', null, changeRequestId)}
+            />
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }} className="desk-only">
               <div style={{
                 width: 36, height: 36, borderRadius: '50%',
@@ -389,7 +421,7 @@ export default function Dashboard() {
             onOpenReport={goToReport}
             onGoToRequest={goToRequest}
             onGoToInvoice={goToInvoice}
-            onGoToMalzemeListesi={(projectId) => goToProjectTab(projectId, 'malzeme-listesi')}
+            onGoToMalzemeListesi={(projectId, changeRequestId) => goToProjectTab(projectId, 'malzeme-listesi', null, changeRequestId)}
           />
         )}
         {/* proje_yoneticisi 2026-07-21'de admin gibi aggregate (scopeProjectId=null → "Tüm
@@ -410,6 +442,8 @@ export default function Dashboard() {
             onTabChange={(tab) => navigate(`/dashboard/projeler/${selectedProjectId}/${tab}`, { replace: true })}
             initialReportId={initialReportId}
             onOpenedReport={() => setInitialReportId(null)}
+            initialChangeRequestId={initialChangeRequestId}
+            onOpenedChangeRequest={() => setInitialChangeRequestId(null)}
             openRequestId={openRequestId}
             onOpenedRequest={() => setOpenRequestId(null)}
             onSelectedRequestChange={(id) => syncEntityParam('talep', id)}
@@ -429,6 +463,9 @@ export default function Dashboard() {
         )}
         {activeTab === 'satin-alma'   && role !== 'santiye_sefi' && role !== 'proje_yoneticisi' && (
           <TabSatinAlma openRequestId={openRequestId} onOpenedRequest={() => setOpenRequestId(null)} onSelectedRequestChange={(id) => syncEntityParam('talep', id)} />
+        )}
+        {activeTab === 'teklif-pazarlik-siparis' && (isAdmin || role === 'proje_yoneticisi') && (
+          <TabTeklifPazarlikSiparis />
         )}
         {activeTab === 'finans'       && (
           <TabFinans

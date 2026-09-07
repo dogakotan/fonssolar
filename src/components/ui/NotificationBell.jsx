@@ -3,14 +3,6 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { dedupeNotifications, notificationDisplay } from '../../utils/notifications'
 
-const ENTITY_TAB = {
-  purchase_request: 'satin-alma',
-  invoice: 'finans',
-  ticket: 'tickets',
-  daily_report: 'rapor-listesi',
-  daily_report_reminder: 'daily-report',
-}
-
 // Günlük rapor hatırlatması: ilk gelişte (okunmamış + pending) sarı, okunup rapor hâlâ
 // girilmediyse normal zemine döner, rapor girilince (resolved) yeşil zeminli gösterilir.
 function reminderTone(n) {
@@ -31,7 +23,7 @@ function timeAgo(iso) {
   return `${day} gün önce`
 }
 
-export default function NotificationBell({ onNavigate }) {
+export default function NotificationBell({ onGoToTicket, onOpenReport, onGoToRequest, onGoToInvoice, onGoToMalzemeListesi }) {
   const { user } = useAuth()
   const [items, setItems] = useState([])
   const [unread, setUnread] = useState(0)
@@ -46,9 +38,13 @@ export default function NotificationBell({ onNavigate }) {
     // dedupeNotifications mantığıyla ama limit(200) kullanıyor) düşük çıkıyordu.
     // Aynı üst sınır (200) + aynı dedup burada da kullanılıyor ki iki sayı hep
     // eşleşsin; açılır listede yalnızca ilk 30'u gösteriyoruz (kasıtlı sade).
+    // Tarayıcı önbelleği aynı URL'e giden bu sorguyu eski (okunmamış) haliyle
+    // döndürebiliyordu (bkz. TabBildirimler.jsx'teki aynı not) — zararsız,
+    // sonucu değiştirmeyen bir `.neq` filtresi URL'i her çağrıda benzersiz kılar.
     const { data } = await supabase
       .from('notifications')
       .select('id, project_id, entity_type, entity_id, event_type, title, body, is_read, created_at')
+      .neq('id', crypto.randomUUID())
       .order('created_at', { ascending: false })
       .limit(200)
     const uniqueItems = dedupeNotifications(data || [])
@@ -93,11 +89,35 @@ export default function NotificationBell({ onNavigate }) {
     load()
   }
 
+  // TabBildirimler.jsx'teki handleClick ile aynı entity_type → sayfa eşlemesi
+  // (deep-link'in tek kaynağı orada, bkz. index.jsx'teki goToTicket/goToRequest/
+  // goToInvoice/goToReport/goToProjectTab) — zil de artık genel bir sekmeye
+  // değil doğrudan ilgili kayda götürüyor.
   async function handleClick(n) {
     if (!n.is_read) await markRead(n.id)
     setOpen(false)
-    const tab = ENTITY_TAB[n.entity_type]
-    if (tab && onNavigate) onNavigate(tab)
+    switch (n.entity_type) {
+      case 'ticket':
+        onGoToTicket?.(n.entity_id)
+        break
+      case 'daily_report':
+        onOpenReport?.(n.entity_id, n.project_id)
+        break
+      case 'daily_report_reminder':
+        onOpenReport?.(n.entity_id)
+        break
+      case 'purchase_request':
+        onGoToRequest?.(n.entity_id)
+        break
+      case 'invoice':
+        onGoToInvoice?.(n.entity_id, n.project_id)
+        break
+      case 'procurement_item_change_request':
+        onGoToMalzemeListesi?.(n.project_id, n.entity_id)
+        break
+      default:
+        break
+    }
     load()
   }
 

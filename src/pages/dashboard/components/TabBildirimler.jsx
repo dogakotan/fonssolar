@@ -68,9 +68,17 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
   async function load() {
     if (!user?.id) return
     setLoading(true)
+    // PostgREST GET yanıtları hiçbir Cache-Control/ETag header'ı taşımıyor — bu sorgu
+    // her zaman birebir aynı URL'e gittiğinden tarayıcı bunu buluşsal (heuristic)
+    // önbellekten cevaplayabiliyor: arada gerçek bir okundu-işaretleme (PATCH) olsa
+    // bile liste eski (okunmamış) haliyle görünmeye devam ediyordu (04.09.2026'da
+    // procurement_monthly_plan'da bulunan aynı kök neden). `.neq('id', <rastgele
+    // uuid>)` sonuç kümesini değiştirmeyen (hiçbir gerçek satır bu id'ye eşit
+    // olamaz) ama URL'i her çağrıda benzersiz kılan zararsız bir önbellek-kırıcı.
     const { data } = await supabase
       .from('notifications')
       .select('id, project_id, entity_type, entity_id, event_type, title, body, is_read, created_at')
+      .neq('id', crypto.randomUUID())
       .order('created_at', { ascending: false })
       .limit(200)
     const uniqueItems = dedupeNotifications(data || [])
@@ -176,7 +184,7 @@ export default function TabBildirimler({ onGoToTicket, onOpenReport, onGoToReque
         onGoToInvoice?.(n.entity_id, n.project_id)
         break
       case 'procurement_item_change_request':
-        onGoToMalzemeListesi?.(n.project_id)
+        onGoToMalzemeListesi?.(n.project_id, n.entity_id)
         break
       default:
         break

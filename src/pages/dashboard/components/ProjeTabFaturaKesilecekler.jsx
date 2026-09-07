@@ -1,21 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import { toUserMessage as translateError } from '../../../utils/errors'
-import Pager from '../../../components/ui/Pager'
-
-const PAGE_SIZE = 10
+import { useHighlightRow } from '../../../hooks/useHighlightRow'
+import { useToast } from '../../../hooks/useToast'
+import Toast from '../../../components/ui/Toast'
 const ROW_HEIGHT = 44
 const HEADER_HEIGHT = 24
 
 const TH = { height: HEADER_HEIGHT, boxSizing: 'border-box', padding: '0 14px', lineHeight: `${HEADER_HEIGHT}px`, textAlign: 'left', fontSize: 9.5, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', verticalAlign: 'middle' }
 const TD = { height: ROW_HEIGHT, boxSizing: 'border-box', padding: '0 14px', fontSize: 13, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
-// Uzun malzeme/kategori adları satır sarmasına (dolayısıyla satır yüksekliğinin
-// içerik uzunluğuna göre değişmesine) sebep oluyordu — tek satıra sabitlenip
-// taşan kısım "…" ile kesiliyor, tam metin title tooltip'inde görünür.
-const TD_TRUNCATE = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 280 }
 
-// Malzeme adı kesildiğinde (TD_TRUNCATE) tam metni görebilmek için üzerine
+// Malzeme adı kesildiğinde tam metni görebilmek için üzerine
 // gelince çıkan küçük bir balon — native `title` tooltip'i yerine (gecikmeli/
 // küçük/tarayıcıya göre değişken) kendi temamıza uygun, anında görünen bir
 // tooltip. `overflow:hidden` yalnızca metni saran iç span'da — balon onun
@@ -272,6 +268,73 @@ function BekleyenDegisikliklerPanel({ items, onReviewed }) {
   )
 }
 
+// "Miktar Artışı — Onay Bekliyor: X → Y" satır-içi rozeti öncesinde her zaman tam
+// metin gösteriyordu — çok kalem birden bekleyen değişikliğe sahip olunca (bkz.
+// ekran görüntüsü, 04.09.2026) PLANLANAN MİKTAR kolonu aşırı genişleyip tabloyu
+// dağıtıyordu. BomEslesmeRozeti'yle (ProjeTabAylikPlan.jsx) aynı fikir: kompakt
+// bir simge, tıklanınca detayı gösteren fixed-position bir kutu açılır.
+function MiktarArtisiRozeti({ pendingChange, unit }) {
+  const [open, setOpen] = useState(false)
+  const [popoverStyle, setPopoverStyle] = useState(null)
+  const ref = useRef(null)
+  const btnRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onOutside(e) {
+      if (ref.current && !ref.current.contains(e.target) && !(btnRef.current && btnRef.current.contains(e.target))) setOpen(false)
+    }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [open])
+
+  function toggle(e) {
+    e.stopPropagation()
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setPopoverStyle({ top: rect.bottom + 6, left: Math.min(rect.left, window.innerWidth - 260) })
+    }
+    setOpen(v => !v)
+  }
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block', verticalAlign: 'middle' }}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        title="Miktar artışı onay bekliyor — detay için tıklayın"
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 18, height: 18, borderRadius: '50%', border: '1px solid #FDE68A',
+          background: '#FEF3C7', color: '#92400E', fontSize: 11, fontWeight: 800,
+          cursor: 'pointer', lineHeight: 1, flexShrink: 0, fontFamily: 'inherit',
+        }}
+      >↑</button>
+      {open && popoverStyle && (
+        <div
+          ref={ref}
+          onClick={e => e.stopPropagation()}
+          style={{
+            position: 'fixed', top: popoverStyle.top, left: popoverStyle.left, zIndex: 1200, width: 240,
+            background: '#111827', color: '#fff', borderRadius: 10, padding: '10px 12px',
+            fontSize: 12, lineHeight: 1.5, boxShadow: '0 8px 20px rgba(0,0,0,.25)',
+          }}
+        >
+          <p style={{ margin: '0 0 4px', fontWeight: 700 }}>Miktar Artışı — Onay Bekliyor</p>
+          <p style={{ margin: '0 0 4px', color: '#CBD5E1' }}>
+            {formatQty(pendingChange.old_planned_qty)} → {formatQty(pendingChange.new_planned_qty)} {unit}
+          </p>
+          {pendingChange.requester_name && (
+            <p style={{ margin: '0 0 4px', color: '#CBD5E1' }}>Talep eden: {pendingChange.requester_name}</p>
+          )}
+          <p style={{ margin: 0, color: '#CBD5E1' }}>{pendingChange.note || 'Gerekçe girilmedi'}</p>
+        </div>
+      )}
+    </span>
+  )
+}
+
 function MalzemeGecmisiModal({ row, projectId, onClose }) {
   const [timeline, setTimeline] = useState([])
   const [loading, setLoading] = useState(true)
@@ -369,18 +432,82 @@ function MalzemeGecmisiModal({ row, projectId, onClose }) {
   )
 }
 
-export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pendingChanges = [], onPendingChanged, projectId }) {
+export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pendingChanges = [], onPendingChanged, projectId, openChangeRequestId, onOpenedChangeRequest }) {
   const { isAdmin, role } = useAuth()
-  const [page, setPage] = useState(0)
   const [editingRow, setEditingRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [showNewMaterial, setShowNewMaterial] = useState(false)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  // Kategori başlıklarına tıklanınca o grup kapanıp açılabilsin diye (04.09.2026,
+  // kullanıcı isteği) — kapalı olan kategori adlarının kümesi. Varsayılan: hepsi açık.
+  const [collapsedCategories, setCollapsedCategories] = useState(() => new Set())
+  function toggleCategory(category) {
+    setCollapsedCategories(prev => {
+      const next = new Set(prev)
+      if (next.has(category)) next.delete(category)
+      else next.add(category)
+      return next
+    })
+  }
 
   const canRequest = isAdmin || role === 'proje_yoneticisi'
   const canReview = isAdmin
   const pending = canRequest ? pendingChanges : []
+  const { toast, showToast } = useToast()
+
+  // Bildirimler'den bir malzeme miktarı değişikliği bildirimine tıklanınca artık modal
+  // açmıyoruz (04.09.2026, kullanıcı kararı — öncesinde doğrudan MalzemeGecmisiModal
+  // açılıyordu) — yalnızca talebin bağlı olduğu procurement_items satırını bulup,
+  // gerekirse arama/kategori filtresini temizleyip kategorisini açıp, listede o satırı
+  // vurguluyoruz (bkz. useHighlightRow). "Yeni malzeme" talepleri (procurement_item_id
+  // null) için henüz gerçek bir satır yok — bu durumda hâlâ yalnızca sayfaya gelinir.
+  const [highlightItemId, setHighlightItemId] = useState(null)
+  // Kullanıcı bu sayfada zaten açıkken bildirim geldiyse `rows` (üst bileşenden
+  // gelen prop) henüz o kalemin eklenmesinden ÖNCEki hâliyle donmuş olabilir —
+  // `useDashboardData`'nın kendi visibilitychange/60sn yenileme dışında bu
+  // sayfada ayrı bir realtime aboneliği yok. Hedef `rows`'ta bulunamazsa
+  // vazgeçmeden ÖNCE `onPendingChanged` (üst bileşenin `refetch`'i) ile bir kez
+  // tazeleyip tekrar deniyoruz (04.09.2026'da bulunan bug — öncesinde ilk
+  // denemede bulunamayınca sessizce vazgeçiyordu).
+  const retriedChangeRequestRef = useRef(null)
+  useEffect(() => {
+    if (!openChangeRequestId) { retriedChangeRequestRef.current = null; return }
+    let alive = true
+    supabase.from('procurement_item_change_requests').select('id, procurement_item_id')
+      .eq('id', openChangeRequestId).maybeSingle().then(({ data }) => {
+        if (!alive) return
+        const target = data?.procurement_item_id ? rows.find(r => r.id === data.procurement_item_id) : null
+        if (target) {
+          const rowCategory = target.category || 'Diğer'
+          setSearch('')
+          setCategoryFilter('')
+          setCollapsedCategories(prev => {
+            if (!prev.has(rowCategory)) return prev
+            const next = new Set(prev)
+            next.delete(rowCategory)
+            return next
+          })
+          setHighlightItemId(target.id)
+        } else if (!loading) {
+          if (data?.procurement_item_id && retriedChangeRequestRef.current !== openChangeRequestId) {
+            retriedChangeRequestRef.current = openChangeRequestId
+            onPendingChanged?.()
+            return
+          }
+          // rows tazelendi/tam yüklendi ama hâlâ eşleşme yok — ya "yeni malzeme"
+          // talebi (henüz gerçek bir satır yok, bu normal — sessizce yalnızca
+          // sayfaya gelinir) ya da `data` da null (değişiklik talebinin kendisi
+          // silinmiş) — yalnızca bu ikinci durumda toast gösteriyoruz.
+          if (!data) {
+            showToast('Bu bildirim artık mevcut olmayan bir değişiklik talebine işaret ediyor.', 'error')
+          }
+          onOpenedChangeRequest?.()
+        }
+      })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openChangeRequestId, rows, loading])
 
   // Onaya gönderilmiş yeni malzeme talepleri henüz gerçek bir procurement_items satırı
   // değil — ayrı bir kutuda gizli kalmasın diye listeye "Bekliyor" rozetli sanal bir satır
@@ -401,13 +528,24 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
   const allRows = allRowsUnfiltered
     .filter(row => !searchTerm || (row.material || '').toLocaleLowerCase('tr').includes(searchTerm))
     .filter(row => !categoryFilter || row.category === categoryFilter)
-  const totalPagesAll = Math.max(1, Math.ceil(allRows.length / PAGE_SIZE))
-  const safePageAll = Math.min(page, totalPagesAll - 1)
-  const pageRowsAll = allRows.slice(safePageAll * PAGE_SIZE, safePageAll * PAGE_SIZE + PAGE_SIZE)
 
-  useEffect(() => { setPage(0) }, [allRows.length, searchTerm, categoryFilter])
+  // Kategoriler artık ayrı bir sütunda değil, Aylık Satın Alma Planı'yla aynı desende
+  // (bkz. ProjeTabAylikPlan.jsx'teki FragmentGroup) bir grup başlığı satırıyla belli
+  // ediliyor (04.09.2026, kullanıcı isteği — 175 kalemlik tam listede kategoriye göre
+  // gezinmek zorlaşmıştı, sayfalamanın kaldırılmasıyla ihtiyaç arttı). Sıralama
+  // MALZEME_KATEGORI_OPTS'taki kanonik sırayı takip eder, kategorisiz kalemler "Diğer"e düşer.
+  const categoryIndex = Object.fromEntries(MALZEME_KATEGORI_OPTS.map((k, i) => [k, i]))
+  const groupKeys = [...new Set(allRows.map(row => row.category || 'Diğer'))]
+    .sort((a, b) => (categoryIndex[a] ?? 99) - (categoryIndex[b] ?? 99) || a.localeCompare(b, 'tr'))
+  const sortedRows = groupKeys.flatMap(key => allRows.filter(row => (row.category || 'Diğer') === key))
+  const groupCounts = new Map(groupKeys.map(key => [key, sortedRows.filter(row => (row.category || 'Diğer') === key).length]))
 
   const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
+
+  const { highlightedId, rowRef } = useHighlightRow(highlightItemId, sortedRows, r => r.id, () => {
+    setHighlightItemId(null)
+    onOpenedChangeRequest?.()
+  })
 
   return (
     <div>
@@ -436,7 +574,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Malzeme ara…"
-            style={{ marginLeft: 'auto', width: 200, fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border-md)', color: 'var(--color-text)', background: 'var(--color-surface)', fontFamily: 'inherit' }}
+            style={{ marginLeft: 'auto', width: 280, fontSize: 13, padding: '8px 12px', borderRadius: 7, border: '1px solid var(--color-border-md)', color: 'var(--color-text)', background: 'var(--color-surface)', fontFamily: 'inherit' }}
           />
           <select
             value={categoryFilter}
@@ -472,31 +610,57 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
               <thead>
                 <tr>
-                  {['MALZEME', 'KATEGORİ', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN', ...(canRequest ? ['İŞLEM'] : []), ''].map((h, i) => (
+                  {['MALZEME', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN', ...(canRequest ? ['İŞLEM'] : []), ''].map((h, i) => (
                     <th key={h || `col-${i}`} style={{ ...TH, background: 'var(--color-surface)', boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)', width: h ? undefined : 28 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {pageRowsAll.map(row => {
+                {sortedRows.map((row, idx) => {
+                  const rowCategory = row.category || 'Diğer'
+                  const showCategoryHeader = idx === 0 || rowCategory !== (sortedRows[idx - 1].category || 'Diğer')
+                  const isCollapsed = collapsedCategories.has(rowCategory)
+                  const totalColumns = 4 + (canRequest ? 1 : 0) + 1
+                  const categoryHeader = showCategoryHeader && (
+                    <tr onClick={() => toggleCategory(rowCategory)} style={{ cursor: 'pointer' }}>
+                      <td colSpan={totalColumns} style={{ padding: '7px 14px', background: 'var(--color-bg)', fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-sub)', textTransform: 'uppercase', letterSpacing: '0.35px', borderBottom: '1px solid var(--color-border)', borderTop: idx === 0 ? 'none' : '1px solid var(--color-border)' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ display: 'inline-block', transition: 'transform .12s ease', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', fontSize: 9 }}>▾</span>
+                          {rowCategory}
+                          <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0, color: 'var(--color-muted)' }}>({groupCounts.get(rowCategory)})</span>
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                  if (isCollapsed) {
+                    return <Fragment key={row.id || row.material}>{categoryHeader}</Fragment>
+                  }
                   if (row.isPendingNew) {
                     return (
-                      <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border)', background: '#FFFBEB' }}>
-                        <MaterialNameCell name={row.material} style={{ fontWeight: 600, color: 'var(--color-text)' }} />
-                        <td style={TD}>—</td>
-                        <td style={TD} colSpan={canRequest ? 4 : 3}>
-                          <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                            Yeni Malzeme — Onay Bekliyor: {formatQty(row.planned)} {row.unit}
-                          </span>
-                        </td>
-                      </tr>
+                      <Fragment key={row.id}>
+                        {categoryHeader}
+                        <tr style={{ borderBottom: '1px solid var(--color-border)', background: '#FFFBEB' }}>
+                          <MaterialNameCell name={row.material} style={{ fontWeight: 600, color: 'var(--color-text)' }} />
+                          <td style={TD} colSpan={canRequest ? 3 : 2}>
+                            <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
+                              Yeni Malzeme — Onay Bekliyor: {formatQty(row.planned)} {row.unit}
+                            </span>
+                          </td>
+                        </tr>
+                      </Fragment>
                     )
                   }
                   const pendingChange = pendingByItemId.get(row.id)
                   return (
-                  <tr key={row.id || row.material} onClick={() => setDetailRow(row)} style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}>
+                  <Fragment key={row.id || row.material}>
+                    {categoryHeader}
+                    <tr
+                      ref={rowRef(row.id)}
+                      className={highlightedId === row.id ? 'row-highlight-flash' : undefined}
+                      onClick={() => setDetailRow(row)}
+                      style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}
+                    >
                     <MaterialNameCell name={row.material} style={{ fontWeight: 600, color: 'var(--color-text)' }} />
-                    <td style={{ ...TD, ...TD_TRUNCATE, maxWidth: 140 }} title={row.category || ''}>{row.category || '—'}</td>
                     <td style={TD}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                         <span>{formatQty(row.planned)} {row.unit}</span>
@@ -512,11 +676,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
                             +{formatQty(row.addedQty)} onaylı
                           </span>
                         )}
-                        {pendingChange && (
-                          <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
-                            Miktar Artışı — Onay Bekliyor: {formatQty(pendingChange.old_planned_qty)} → {formatQty(pendingChange.new_planned_qty)} {row.unit}
-                          </span>
-                        )}
+                        {pendingChange && <MiktarArtisiRozeti pendingChange={pendingChange} unit={row.unit} />}
                       </div>
                     </td>
                     <td style={{ ...TD, fontWeight: 600, color: 'var(--color-success)' }}>{formatQty(row.sent)} {row.unit}</td>
@@ -552,14 +712,12 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
                         >!</span>
                       )}
                     </td>
-                  </tr>
+                    </tr>
+                  </Fragment>
                   )
                 })}
               </tbody>
             </table>
-          </div>
-          <div style={{ padding: '4px 14px 12px' }}>
-            <Pager page={safePageAll} totalPages={totalPagesAll} onChange={setPage} />
           </div>
           </>
         )}
@@ -580,6 +738,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
           onSaved={() => onPendingChanged?.()}
         />
       )}
+      <Toast toast={toast} />
     </div>
   )
 }

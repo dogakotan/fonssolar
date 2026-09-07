@@ -21,6 +21,8 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
   test('proje yöneticisi satın alma talebinde proje seçmek zorundadır', async ({ page }) => {
     await loginUi(page, process.env.TEST_PROJEYONETICISI_EMAIL, process.env.TEST_PROJEYONETICISI_PASSWORD)
     await openMenu(page, 'Satın Alma')
+    // 03.09.2026: liste/filtreler artık Detay alt-sekmesinde (bkz. CLAUDE.md "Frontend yapısı").
+    await page.getByRole('button', { name: 'Detay', exact: true }).click()
     await expect(page.getByRole('option', { name: 'Fatura Bekleniyor', exact: true })).toHaveCount(1)
     await expect(page.getByRole('option', { name: 'Fatura Onayda', exact: true })).toHaveCount(0)
     await page.getByRole('button', { name: /Yeni Satın Alma Talebi/ }).click()
@@ -82,7 +84,9 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
       await openMenu(page, 'Projeler')
       await page.getByText('Ege Enerji İzmir GES TEST', { exact: true }).first().click()
       await page.getByRole('main').getByRole('button', { name: 'Satın Alma', exact: true }).click()
-      await page.getByRole('button', { name: 'Bekleyen', exact: true }).click()
+      // 04.09.2026: "Bekleyen" alt-sekmesi kaldırıldı (bkz. CLAUDE.md "Frontend
+      // yapısı") — onaylandi durumundaki talepler artık varsayılan "Talepler"
+      // sekmesinde aynı "Tamamlandı" satır aksiyonuyla görünüyor.
       await expect(page.getByRole('columnheader', { name: 'UYGUNLUK', exact: true })).toBeVisible()
       await expect(page.getByRole('columnheader', { name: 'İŞLEM DURUMU', exact: true })).toBeVisible()
 
@@ -140,12 +144,26 @@ test.describe('Satın alma dört rol ekran kabulü', () => {
       p_items: [{ name: marker, quantity: 1, unit: 'Adet', bom_item_id: null }],
     })
     expect(createError).toBeNull()
+    // 03.09.2026: yeni talepler artık 'teklif_toplama' ile başlıyor — admin'in "Onay
+    // Bekleyenler" kuyruğu şimdi bu talebi değil, teklifler yüklenip pazarlığa
+    // gönderildiğinde ('pazarlik_onay_bekliyor') gösteriyor (bkz. CLAUDE.md "Satın alma
+    // akışı" → 3 aşamalı süreç). Kuyrukta görünmesi için önce o aşamaya ilerletiliyor.
+    const { error: submitError } = await pm.rpc('submit_purchase_request_for_negotiation', { p_request_id: requestId })
+    expect(submitError).toBeNull()
 
     try {
       await loginUi(page, process.env.TEST_ADMIN_EMAIL, process.env.TEST_ADMIN_PASSWORD)
       await openMenu(page, 'Satın Alma')
+      // 03.09.2026: Satın Alma artık Genel (KPI özeti) sekmesiyle açılıyor, listeler
+      // Detay altına taşındı (bkz. CLAUDE.md "Frontend yapısı").
+      await page.getByRole('button', { name: 'Detay', exact: true }).click()
       await expect(page.getByRole('button', { name: 'Onay Bekleyenler', exact: true })).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Onayla', exact: true }).first()).toBeVisible()
+      // Not: yeni akış durumlarında (pazarlik_onay_bekliyor gibi) satır-içi Onayla/Reddet
+      // GÖSTERİLMEZ (bkz. TabSatinAlmaTalepListesi.jsx) — onay yalnızca aşağıdaki detay
+      // modalinde yapılır, bu yüzden burada genel bir liste-seviyesi "Onayla" butonu
+      // aranmıyor (03.09.2026'da eski akış demo verisi teklif_toplama'ya taşınınca bu
+      // genel kontrol kırılgan hale geldi — artık yalnızca bu testin KENDİ talebine
+      // özgü modal kontrolüne güveniliyor).
       await page.getByText(marker, { exact: true }).first().click()
       const requestDialog = page.getByRole('dialog', { name: 'Satın Alma Talebi' })
       await expect(requestDialog).toBeVisible()

@@ -8,7 +8,6 @@ import {
 } from '../../../utils/exportUtils'
 import TicketListesi from '../../../components/tickets/TicketListesi'
 import ProjeTabSatinAlma from './ProjeTabSatinAlma'
-import ProjeTabMalzemeListesi from './ProjeTabMalzemeListesi'
 import ProjeTabFinans from './ProjeTabFinans'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
@@ -614,7 +613,7 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 }
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, onTabChange, initialReportId, onOpenedReport, openRequestId, onOpenedRequest, onSelectedRequestChange, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange, openTicketId, onOpenedTicket, onSelectedTicketChange }) {
+export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, onTabChange, initialReportId, onOpenedReport, initialChangeRequestId, onOpenedChangeRequest, openRequestId, onOpenedRequest, onSelectedRequestChange, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange, openTicketId, onOpenedTicket, onSelectedTicketChange }) {
   // Öncelik: açık deep-link (initialTab, ör. bildirimden gelme/URL) > projeye özel
   // localStorage'da kalıcı son seçim > "Genel Proje" — aksi halde başka bir menü
   // öğesine geçip aynı projeye geri dönüldüğünde (bileşen unmount/remount
@@ -655,17 +654,26 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
     if (initialTab && initialTab !== tab) setTab(initialTab)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTab])
-  // Malzeme Listesi/Riskler tek sayfada iki alt-sekme — Genel Proje'deki Riskler
-  // kartından "Tümünü Gör" tıklanınca doğrudan Riskler alt-sekmesine düşsün diye.
-  // Aynı nedenle (unmount/remount) bu da projeye özel kalıcı.
-  const [malzemeSection, setMalzemeSection] = useState(() => {
-    try { return window.localStorage.getItem(`proje-detay-malzeme-section-${projectId}`) || 'malzeme' } catch { return 'malzeme' }
+  // Malzeme Listesi/Riskler artık ayrı bir üst-seviye sekme değil, Satın Alma'nın
+  // alt-sekmeleri (07.09.2026'da kullanıcı isteğiyle taşındı — bkz. ProjeTabSatinAlma.jsx
+  // içindeki TABS dizisi). Bu state ProjeTabSatinAlma'nın hangi alt-sekmede olduğunu
+  // kontrol eder (aynı localStorage anahtarı — ProjeTabSatinAlma önceden bunu kendi
+  // içinde tutuyordu, taşıma sırasında kullanıcının önceki tercihi kaybolmasın diye
+  // aynı anahtar kullanılmaya devam ediyor) — Genel Proje'deki Riskler kartından
+  // "Tümünü Gör" tıklanınca doğrudan Riskler alt-sekmesine düşsün diye de kullanılır.
+  const [satinAlmaSubTab, setSatinAlmaSubTab] = useState(() => {
+    try { return window.localStorage.getItem(`proje-satin-alma-active-subtab-${projectId}`) || 'talepler' } catch { return 'talepler' }
   })
   useEffect(() => {
-    try { window.localStorage.setItem(`proje-detay-malzeme-section-${projectId}`, malzemeSection) } catch {}
-  }, [malzemeSection, projectId])
+    try { window.localStorage.setItem(`proje-satin-alma-active-subtab-${projectId}`, satinAlmaSubTab) } catch {}
+  }, [satinAlmaSubTab, projectId])
+  // Bir malzeme değişikliği bildiriminden gelindiğinde ("Malzeme Listesi" alt-sekmesi,
+  // "Riskler" değil) — kullanıcı önceden Riskler'de kalmış olabilir.
+  useEffect(() => {
+    if (initialChangeRequestId) setSatinAlmaSubTab('malzeme')
+  }, [initialChangeRequestId])
   const goToTab = tabKey => {
-    if (tabKey === 'riskler') { setMalzemeSection('riskler'); setTab('malzeme-listesi') }
+    if (tabKey === 'riskler') { setSatinAlmaSubTab('riskler'); setTab('satin-alma') }
     else setTab(tabKey)
   }
   const [project, setProject]        = useState(null)
@@ -1177,8 +1185,8 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
 
   return (
     <div>
-      {/* Eylem çubuğu — altındaki alt-sekme şeridiyle (Malzeme Listesi/Riskler,
-          Finans, Satın Alma) tek bir bütün gibi görünmesi için boşluk sıkı tutulur. */}
+      {/* Eylem çubuğu — altındaki alt-sekme şeridiyle (Satın Alma'nın kendi alt-sekmeleri,
+          Finans) tek bir bütün gibi görünmesi için boşluk sıkı tutulur. */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'nowrap', overflowX: 'auto' }}>
         <button onClick={onBack} style={backBtn}>← Projelere Dön</button>
         <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'nowrap' }}>
@@ -1190,9 +1198,6 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           </button>
           <button onClick={() => setTab('satin-alma')} style={tab === 'satin-alma' ? tabBtnActive : tabBtn}>
             Satın Alma
-          </button>
-          <button onClick={() => setTab('malzeme-listesi')} style={tab === 'malzeme-listesi' ? tabBtnActive : tabBtn}>
-            Malzeme Listesi
           </button>
           {/* Finans: proje_yoneticisi de görür ama salt-okunur (bkz. FaturaListesi/OnayKuyrugu
               içindeki isAdmin/isMuhasebe'den türetilen canAct/readonly). Tickets: tüm roller
@@ -1325,7 +1330,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
                   >
                     {projectExcelLoading ? 'Excel hazırlanıyor…' : 'Proje Excelini İndir'}
                   </button>
-                  {!['tickets', 'satin-alma', 'malzeme-listesi', 'finans', 'gantt', 'raporlar'].includes(tab) && <>
+                  {!['tickets', 'satin-alma', 'finans', 'gantt', 'raporlar'].includes(tab) && <>
                   <div style={{ marginBottom: '0.625rem', padding: '6px 10px', background: '#FEF3C7', borderRadius: 6, fontSize: 11, color: '#92400E', fontWeight: 600 }}>
                     {getPeriodLabel(filterDate, filterMode)} raporu
                   </div>
@@ -1376,13 +1381,10 @@ export default function ProjeDetay({ projectId, projectName, onBack, selectedDat
           openRequestId={openRequestId}
           onOpenedRequest={onOpenedRequest}
           onSelectedRequestChange={onSelectedRequestChange}
-        />
-      ) : tab === 'malzeme-listesi' ? (
-        <ProjeTabMalzemeListesi
-          projectId={projectId}
-          filterDate={filterDate}
-          activeSection={malzemeSection}
-          onSectionChange={setMalzemeSection}
+          activeSubTab={satinAlmaSubTab}
+          onSubTabChange={setSatinAlmaSubTab}
+          openChangeRequestId={initialChangeRequestId}
+          onOpenedChangeRequest={onOpenedChangeRequest}
           onGoTab={setTab}
         />
       ) : tab === 'finans' ? (

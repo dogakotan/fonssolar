@@ -4,6 +4,9 @@ import { useAuth } from '../../context/AuthContext'
 import { riskBreakdownForItems, normalizeStatus, isAwaitingInvoice } from '../../utils/satinAlma'
 import { requestNo } from '../../utils/purchaseRequestNo'
 import FaturaOlusturModal from './FaturaOlusturModal'
+import TeklifPazarlikSiparisPanel from './TeklifPazarlikSiparisPanel'
+
+const NEW_FLOW_STAGES = ['teklif_toplama', 'pazarlik_onay_bekliyor', 'pazarlik', 'siparis']
 
 const fmtQty = (value) =>
   Number(value || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
@@ -50,23 +53,24 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const [supplierId, setSupplierId] = useState('')
   const [suppliers, setSuppliers] = useState([])
 
-  useEffect(() => {
-    async function load() {
-      const id = request?.id || talepId
-      if (!id) return
-      const { data, error } = await supabase.rpc('get_purchase_request_detail', { p_id: id })
-      const req = data?.authorized ? data.request : null
+  async function reload() {
+    const id = (data || request)?.id || talepId
+    if (!id) return
+    const { data: rpcData, error } = await supabase.rpc('get_purchase_request_detail', { p_id: id })
+    const req = rpcData?.authorized ? rpcData.request : null
 
-      if (!error && req) {
-        setData({ ...request, ...req })
-        setItems(req.items || request?.items || [])
-      }
+    if (!error && req) {
+      setData(prev => ({ ...(prev || request), ...req }))
+      setItems(req.items || request?.items || [])
     }
-    load()
-  }, [request, talepId])
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [request, talepId])
 
   const req = data || request || {}
   const status = normalizeStatus(req.status)
+  const isNewFlowStage = NEW_FLOW_STAGES.includes(status)
   const canReview = isAdmin && status === 'bekliyor'
   const canComplete = role === 'proje_yoneticisi' && status === 'onaylandi'
   const canAct = canReview || canComplete
@@ -95,7 +99,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const isRejected = status === 'red_edildi'
   const isProcurementCancelled = status === 'iptal'
   const isCancelled = isRejected || isProcurementCancelled
-  const siteChiefProcessing = status === 'onaylandi'
+  const siteChiefProcessing = status === 'onaylandi' || isNewFlowStage
   const siteChiefComplete = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const canInvoice = (isAdmin || isMuhasebe) && isAwaitingInvoice(req)
 
@@ -157,7 +161,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
         role="dialog"
         aria-modal="true"
         aria-labelledby="purchase-request-dialog-title"
-        style={{ width: 'min(680px, calc(100vw - 36px))', background: '#F8FAFC', borderRadius: 12, boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)', overflow: 'hidden' }}
+        style={{ width: 'min(680px, calc(100vw - 36px))', maxHeight: 'calc(100svh - 36px)', background: '#F8FAFC', borderRadius: 12, boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)', overflowY: 'auto', overflowX: 'hidden' }}
       >
         <header style={{ background: '#fff', borderBottom: '1px solid #E5E7EB', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -201,6 +205,31 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                     />
                     <Step done={siteChiefComplete} label="İşlem Tamamlandı" last />
                   </>
+                ) : isNewFlowStage ? (
+                  <>
+                    <Step done label="Talep Oluşturuldu" />
+                    <Step
+                      active={status === 'teklif_toplama'}
+                      done={['pazarlik_onay_bekliyor', 'pazarlik', 'siparis'].includes(status)}
+                      label="Teklif Toplama"
+                    />
+                    <Step
+                      active={status === 'pazarlik_onay_bekliyor'}
+                      done={['pazarlik', 'siparis'].includes(status)}
+                      label="Pazarlık Onayı"
+                    />
+                    <Step
+                      active={status === 'pazarlik'}
+                      done={status === 'siparis'}
+                      label="Pazarlık"
+                    />
+                    <Step
+                      active={status === 'siparis'}
+                      done={false}
+                      label="Sipariş"
+                      last
+                    />
+                  </>
                 ) : (
                   <>
                 <Step
@@ -235,6 +264,10 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
               </div>
             </section>
           </div>
+
+          {!siteChiefView && isNewFlowStage && (
+            <TeklifPazarlikSiparisPanel request={req} status={status} onUpdated={reload} />
+          )}
 
           {type === 'Malzeme' && !isMuhasebe && (
           <section style={CARD}>
