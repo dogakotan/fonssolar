@@ -23,11 +23,6 @@ const TAB_LABEL = {
 const ACCEPTED = '.pdf,.xlsx,.xls,.csv,.jpg,.jpeg,.png'
 const IMG_TYPES  = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const PDF_TYPE   = 'application/pdf'
-const EXCEL_TYPES = [
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-excel',
-  'text/csv',
-]
 
 // ─── Dosya → base64 ───────────────────────────────────────────────────────────
 function fileToBase64(file) {

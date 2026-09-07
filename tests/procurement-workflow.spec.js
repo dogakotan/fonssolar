@@ -67,7 +67,7 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
       .single()
     expect(created).toMatchObject({
       project_id: selectedProject.id,
-      status: 'talep_olusturuldu',
+      status: 'teklif_toplama',
       requested_by: pmId,
     })
 
@@ -97,7 +97,7 @@ test.describe.serial('Satın alma → tedarik → fatura workflow', () => {
     requestIds.push(requestId)
 
     const { data: initial } = await santiye.from('purchase_requests').select('status,project_id').eq('id', requestId).single()
-    expect(initial).toMatchObject({ status: 'talep_olusturuldu', project_id: projectId })
+    expect(initial).toMatchObject({ status: 'teklif_toplama', project_id: projectId })
 
     const muhasebeId = (await muhasebe.auth.getUser()).data.user.id
     const { error: earlyInvoiceError } = await muhasebe.from('invoices').insert({

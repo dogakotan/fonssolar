@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatPaymentCurrency, paymentErrorMessage } from './OdemeEkleModal'
+import { fetchDoviz } from '../../utils/exchangeRates'
 
 const METHODS = [['havale', 'Havale'], ['eft', 'EFT'], ['kredi_karti', 'Kredi Kartı'], ['nakit', 'Nakit'], ['cek', 'Çek'], ['diger', 'Diğer']]
 const today = () => new Date().toISOString().slice(0, 10)
@@ -11,21 +12,44 @@ export default function TedarikciOdemeModal({ rows, supplierMap, projectMap, onC
   const { user } = useAuth()
   const supplierIds = useMemo(() => [...new Set(rows.filter(row => Number(row.remaining_amount) > 0).map(row => row.supplier_id).filter(Boolean))], [rows])
   const [supplierId, setSupplierId] = useState(supplierIds[0] || '')
-  const [form, setForm] = useState({ payment_date: today(), amount: '', currency: 'TRY', payment_method: 'havale', bank_account: '', reference_no: '', note: '' })
+  const [form, setForm] = useState({ payment_date: today(), amount: '', payment_method: 'havale', bank_account: '', reference_no: '', note: '' })
   const [allocations, setAllocations] = useState({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
 
-  const invoices = useMemo(() => rows
-    .filter(row => row.supplier_id === supplierId && Number(row.remaining_amount) > 0)
-    .sort((a, b) => String(a.due_date || '').localeCompare(String(b.due_date || ''))), [rows, supplierId])
+  // Tek bir ödeme tutarı birden fazla faturaya bölüştürüldüğünden, bu dağıtım
+  // yalnızca AYNI para biriminden faturalar arasında anlamlı — biri diğerini
+  // seçmeyi engelleyen bir "Para Birimi" dropdown'u (kullanıcının faturayla
+  // uyuşmayan bir birim seçebildiği) bir kaynakta mismatch'e yol açardı (bkz.
+  // OdemeEkleModal.jsx'teki eşdeğer düzeltme). Para birimi artık seçilen
+  // tedarikçinin faturalarından otomatik türer, listede yalnızca o para
+  // biriminden açık faturalar gösterilir.
+  const supplierOpenInvoices = useMemo(() => rows
+    .filter(row => row.supplier_id === supplierId && Number(row.remaining_amount) > 0), [rows, supplierId])
+  const currency = supplierOpenInvoices[0]?.currency || 'TRY'
+  const excludedByCurrency = supplierOpenInvoices.length - supplierOpenInvoices.filter(row => (row.currency || 'TRY') === currency).length
+
+  useEffect(() => {
+    if (currency === 'TRY') return
+    let alive = true
+    fetchDoviz().then(kurData => { if (alive && kurData) setDoviz({ usd: kurData.usd, eur: kurData.eur, date: kurData.date }) })
+    return () => { alive = false }
+  }, [currency])
+
+  const exchangeRate = currency === 'TRY' ? 1 : currency === 'USD' ? doviz.usd : doviz.eur
+  const rateReady = exchangeRate != null
+
+  const invoices = useMemo(() => supplierOpenInvoices
+    .filter(row => (row.currency || 'TRY') === currency)
+    .sort((a, b) => String(a.due_date || '').localeCompare(String(b.due_date || ''))), [supplierOpenInvoices, currency])
   const totalDebt = invoices.reduce((sum, row) => sum + Number(row.remaining_amount || 0), 0)
   const overdue = invoices.filter(row => row.vade_durumu === 'vadesi_gecti')
   const overdueTotal = overdue.reduce((sum, row) => sum + Number(row.remaining_amount || 0), 0)
   const distributed = Object.values(allocations).reduce((sum, value) => sum + (Number(value) || 0), 0)
   const paymentTotal = Number(form.amount) || 0
   const undistributed = Math.max(0, paymentTotal - distributed)
-  const valid = paymentTotal > 0 && distributed === paymentTotal && distributed <= totalDebt
+  const valid = paymentTotal > 0 && distributed === paymentTotal && distributed <= totalDebt && rateReady
 
   useEffect(() => setAllocations({}), [supplierId])
 
@@ -57,7 +81,8 @@ export default function TedarikciOdemeModal({ rows, supplierMap, projectMap, onC
         invoice_id: invoice.id,
         payment_date: form.payment_date,
         amount: Number(allocations[invoice.id]),
-        currency: form.currency,
+        currency,
+        exchange_rate: exchangeRate || 1,
         payment_method: form.payment_method,
         bank_account: form.bank_account.trim() || null,
         reference_no: form.reference_no.trim() || null,
@@ -94,8 +119,10 @@ export default function TedarikciOdemeModal({ rows, supplierMap, projectMap, onC
               <label>Ödeme Tarihi *<input required type="date" value={form.payment_date} onChange={e => set('payment_date', e.target.value)} /></label>
               <div className="supplier-payment-split">
                 <label>Toplam Ödeme Tutarı *<input required min="0.01" max={totalDebt} step="0.01" type="number" value={form.amount} onChange={e => set('amount', e.target.value)} /></label>
-                <label>Para Birimi *<select value={form.currency} onChange={e => set('currency', e.target.value)}><option>TRY</option><option>USD</option><option>EUR</option></select></label>
+                <label>Para Birimi<input disabled value={currency} /></label>
               </div>
+              {currency !== 'TRY' && <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--color-muted)' }}>{rateReady ? `1 ${currency} = ${formatPaymentCurrency(exchangeRate, 'TRY')} (TCMB, ${doviz.date || '—'})` : 'Kur yükleniyor…'}</p>}
+              {excludedByCurrency > 0 && <p style={{ margin: '8px 0 0', fontSize: 10, color: 'var(--color-muted)' }}>Bu tedarikçinin {currency} dışındaki {excludedByCurrency} açık faturası bu dağıtıma dahil değil (farklı para birimi).</p>}
               <div className="supplier-payment-split">
                 <label>Ödeme Yöntemi *<select value={form.payment_method} onChange={e => set('payment_method', e.target.value)}>{METHODS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select></label>
                 <label>Banka / Hesap<input value={form.bank_account} onChange={e => set('bank_account', e.target.value)} /></label>
@@ -126,7 +153,7 @@ export default function TedarikciOdemeModal({ rows, supplierMap, projectMap, onC
               {!invoices.length && <p className="supplier-payment-empty">Bu tedarikçiye ait açık fatura bulunamadı.</p>}
             </section>
             <section className={`supplier-distribution-summary ${valid ? 'complete' : ''}`}>
-              <div><span><small>Toplam Ödeme</small><b>{formatPaymentCurrency(paymentTotal, form.currency)}</b></span><span><small>Faturalara Dağıtılan</small><b>{formatPaymentCurrency(distributed, form.currency)}</b></span><span><small>Dağıtılmayan</small><b>{formatPaymentCurrency(undistributed, form.currency)}</b></span></div>
+              <div><span><small>Toplam Ödeme</small><b>{formatPaymentCurrency(paymentTotal, currency)}</b></span><span><small>Faturalara Dağıtılan</small><b>{formatPaymentCurrency(distributed, currency)}</b></span><span><small>Dağıtılmayan</small><b>{formatPaymentCurrency(undistributed, currency)}</b></span></div>
               <p>{valid ? '✓ Ödeme tutarı tamamen dağıtıldı.' : 'Seçili faturalara dağıtılan tutar, toplam ödemeye eşit olmalı.'}</p>
             </section>
           </main>

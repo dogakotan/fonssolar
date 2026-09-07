@@ -4,6 +4,9 @@ import { useAuth } from '../../context/AuthContext'
 import { riskBreakdownForItems, normalizeStatus, isAwaitingInvoice } from '../../utils/satinAlma'
 import { requestNo } from '../../utils/purchaseRequestNo'
 import FaturaOlusturModal from './FaturaOlusturModal'
+import TeklifPazarlikSiparisPanel from './TeklifPazarlikSiparisPanel'
+
+const NEW_FLOW_STAGES = ['teklif_toplama', 'pazarlik_onay_bekliyor', 'pazarlik', 'siparis']
 
 const fmtQty = (value) =>
   Number(value || 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
@@ -47,27 +50,35 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const [saving, setSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [showFaturaModal, setShowFaturaModal] = useState(false)
+  const [supplierId, setSupplierId] = useState('')
+  const [suppliers, setSuppliers] = useState([])
 
-  useEffect(() => {
-    async function load() {
-      const id = request?.id || talepId
-      if (!id) return
-      const { data, error } = await supabase.rpc('get_purchase_request_detail', { p_id: id })
-      const req = data?.authorized ? data.request : null
+  async function reload() {
+    const id = (data || request)?.id || talepId
+    if (!id) return
+    const { data: rpcData, error } = await supabase.rpc('get_purchase_request_detail', { p_id: id })
+    const req = rpcData?.authorized ? rpcData.request : null
 
-      if (!error && req) {
-        setData({ ...request, ...req })
-        setItems(req.items || request?.items || [])
-      }
+    if (!error && req) {
+      setData(prev => ({ ...(prev || request), ...req }))
+      setItems(req.items || request?.items || [])
     }
-    load()
-  }, [request, talepId])
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [request, talepId])
 
   const req = data || request || {}
   const status = normalizeStatus(req.status)
+  const isNewFlowStage = NEW_FLOW_STAGES.includes(status)
   const canReview = isAdmin && status === 'bekliyor'
   const canComplete = role === 'proje_yoneticisi' && status === 'onaylandi'
   const canAct = canReview || canComplete
+
+  useEffect(() => {
+    if (!canComplete) return
+    supabase.from('suppliers').select('id, name').order('name').then(({ data }) => setSuppliers(data || []))
+  }, [canComplete])
   const breakdown = riskBreakdownForItems(items, materialPlan, requestedTotals)
   const description = req.description || req.request_note || req.notes || '-'
   const requester = req.requester_name || req.requested_by_name || req.created_by_name || '—'
@@ -88,17 +99,18 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const isRejected = status === 'red_edildi'
   const isProcurementCancelled = status === 'iptal'
   const isCancelled = isRejected || isProcurementCancelled
-  const siteChiefProcessing = status === 'onaylandi'
+  const siteChiefProcessing = status === 'onaylandi' || isNewFlowStage
   const siteChiefComplete = ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor', 'faturasi_kesildi'].includes(status)
   const canInvoice = (isAdmin || isMuhasebe) && isAwaitingInvoice(req)
 
-  async function updateStatus(nextStatus) {
+  async function updateStatus(nextStatus, supplierIdArg) {
     setSaving(true)
     setErrorMessage('')
 
     if (nextStatus === 'satin_alindi') {
       const { error } = await supabase.rpc('complete_project_manager_purchase_request', {
         p_request_id: req.id,
+        p_supplier_id: supplierIdArg || null,
       })
       setSaving(false)
       if (error) {
@@ -149,7 +161,7 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
         role="dialog"
         aria-modal="true"
         aria-labelledby="purchase-request-dialog-title"
-        style={{ width: 'min(680px, calc(100vw - 36px))', background: '#F8FAFC', borderRadius: 12, boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)', overflow: 'hidden' }}
+        style={{ width: 'min(680px, calc(100vw - 36px))', maxHeight: 'calc(100svh - 36px)', background: '#F8FAFC', borderRadius: 12, boxShadow: '0 24px 70px rgba(15, 23, 42, 0.28)', overflowY: 'auto', overflowX: 'hidden' }}
       >
         <header style={{ background: '#fff', borderBottom: '1px solid #E5E7EB', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -193,6 +205,31 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                     />
                     <Step done={siteChiefComplete} label="İşlem Tamamlandı" last />
                   </>
+                ) : isNewFlowStage ? (
+                  <>
+                    <Step done label="Talep Oluşturuldu" />
+                    <Step
+                      active={status === 'teklif_toplama'}
+                      done={['pazarlik_onay_bekliyor', 'pazarlik', 'siparis'].includes(status)}
+                      label="Teklif Toplama"
+                    />
+                    <Step
+                      active={status === 'pazarlik_onay_bekliyor'}
+                      done={['pazarlik', 'siparis'].includes(status)}
+                      label="Pazarlık Onayı"
+                    />
+                    <Step
+                      active={status === 'pazarlik'}
+                      done={status === 'siparis'}
+                      label="Pazarlık"
+                    />
+                    <Step
+                      active={status === 'siparis'}
+                      done={false}
+                      label="Sipariş"
+                      last
+                    />
+                  </>
                 ) : (
                   <>
                 <Step
@@ -227,6 +264,10 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
               </div>
             </section>
           </div>
+
+          {!siteChiefView && isNewFlowStage && (
+            <TeklifPazarlikSiparisPanel request={req} status={status} onUpdated={reload} />
+          )}
 
           {type === 'Malzeme' && !isMuhasebe && (
           <section style={CARD}>
@@ -291,12 +332,22 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
 
           {canAct && (
             <section style={{ ...CARD, padding: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 120px 120px', gap: 10, alignItems: 'center' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: canComplete ? '1fr 150px 120px 120px' : '1fr 120px 120px', gap: 10, alignItems: 'center' }}>
                 <span style={{ color: '#64748B', fontSize: 12.5 }}>
                   {canReview ? 'Yönetici kararını bu talep üzerinden verebilir.' : 'Proje yöneticisi işlemi tamamlayabilir veya talebi reddedebilir.'}
                 </span>
+                {canComplete && (
+                  <select
+                    value={supplierId}
+                    onChange={event => setSupplierId(event.target.value)}
+                    style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '9px 10px', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', width: '100%' }}
+                  >
+                    <option value="">Tedarikçisiz devam et</option>
+                    {suppliers.map(supplier => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                  </select>
+                )}
                 <button onClick={() => updateStatus(canReview ? 'reddedildi' : 'iptal')} disabled={saving || !note.trim()} style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: (saving || !note.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (saving || !note.trim()) ? 0.6 : 1 }}>Reddet</button>
-                <button onClick={() => updateStatus(canReview ? 'onaylandi' : 'satin_alindi')} disabled={saving} style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
+                <button onClick={() => updateStatus(canReview ? 'onaylandi' : 'satin_alindi', supplierId)} disabled={saving} style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
                   {saving ? 'Kaydediliyor…' : canReview ? 'Onayla' : 'Tamamlandı'}
                 </button>
               </div>

@@ -4,6 +4,9 @@ import { useAuth } from '../../../context/AuthContext'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import { toUserMessage as translateError } from '../../../utils/errors'
 import DataStatusBanner from '../../../components/ui/DataStatusBanner'
+import { StatusDot } from '../../../components/ui/Badge'
+import { PR_STATUS } from '../../../components/ui/StatusBadge'
+import { ProcessStageHoverBox } from '../../../components/satin-alma/ProcessStageHoverBox'
 import { MALZEME_KATEGORI_OPTS } from './ProjeTabFaturaKesilecekler'
 
 const HEADER_HEIGHT = 24
@@ -11,13 +14,6 @@ const ROW_HEIGHT = 44
 const TH = { height: HEADER_HEIGHT, boxSizing: 'border-box', padding: '0 14px', lineHeight: `${HEADER_HEIGHT}px`, textAlign: 'left', fontSize: 9.5, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', verticalAlign: 'middle' }
 const TD = { height: ROW_HEIGHT, boxSizing: 'border-box', padding: '0 14px', fontSize: 13, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
 const TD_TRUNCATE = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }
-
-const DURUM_OPTS = [
-  { v: 'planlandi', l: 'Planlandı', color: '#64748B', bg: '#F1F5F9' },
-  { v: 'siparis_verildi', l: 'Sipariş Verildi', color: '#B45309', bg: '#FEF3C7' },
-  { v: 'teslim_alindi', l: 'Teslim Alındı', color: '#166534', bg: '#DCFCE7' },
-]
-const DURUM_META = Object.fromEntries(DURUM_OPTS.map(o => [o.v, o]))
 
 const formatQty = (value) =>
   value === null || value === undefined || value === '' ? '—' : Number(value).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
@@ -404,9 +400,301 @@ function TopluKalemEkleModal({ projectId, defaultAyNo, procurementItems, onClose
   )
 }
 
-export default function ProjeTabAylikPlan({ projectId }) {
-  const { isMuhasebe } = useAuth()
-  const canEdit = !isMuhasebe
+// Planlandı durumundaki bir kalemden gerçek bir satın alma talebi oluşturur
+// (create_purchase_request_from_monthly_plan RPC'si, teklif_toplama aşamasından
+// başlar) — miktar/birim RPC'de zorunlu olduğundan (>0), plandaki değerler
+// varsayılan olarak gösterilse de burada teyit/düzeltme yapılabilir.
+function TalepOlusturModal({ plan, onClose, onCreated }) {
+  const [miktar, setMiktar] = useState(plan.miktar ?? '')
+  const [birim, setBirim] = useState(plan.birim || '')
+  const [not, setNot] = useState(plan.not_metni || '')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSaving(true)
+    setErr('')
+    const { error } = await supabase.rpc('create_purchase_request_from_monthly_plan', {
+      p_plan_id: plan.id,
+      p_quantity: miktar === '' ? null : Number(miktar),
+      p_unit: birim.trim() || null,
+      p_request_note: not.trim() || null,
+    })
+    setSaving(false)
+    if (error) { setErr(toUserMessage(error)); return }
+    onCreated()
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: 420, maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Talep Oluştur</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748B' }}>
+          <strong>{plan.kalem_adi}</strong> için gerçek bir satın alma talebi oluşturulur ve bu plan kalemi o talebe bağlanır — süreç Teklif Toplama aşamasından başlar.
+        </p>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            <div>
+              <label style={LABEL}>Miktar *</label>
+              <input required type="number" min="0.01" step="0.01" autoFocus value={miktar} onChange={e => setMiktar(e.target.value)} style={INPUT} />
+            </div>
+            <div>
+              <label style={LABEL}>Birim</label>
+              <input value={birim} onChange={e => setBirim(e.target.value)} placeholder="Adet" style={INPUT} />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <label style={LABEL}>Not</label>
+            <textarea value={not} onChange={e => setNot(e.target.value)} placeholder="Ek açıklama..."
+              style={{ ...INPUT, resize: 'vertical', minHeight: 60 }} />
+          </div>
+
+          {err && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{err}</p>}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button type="button" onClick={onClose} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Vazgeç
+            </button>
+            <button type="submit" disabled={saving || miktar === '' || Number(miktar) <= 0} style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: (saving || miktar === '' || Number(miktar) <= 0) ? 0.7 : 1 }}>
+              {saving ? 'Oluşturuluyor…' : 'Talebi Oluştur'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// Henüz bağlı bir talebi olmayan ("Planlandı") bir plan kalemine tıklanınca açılan
+// detay/düzenleme kutusu — 04.09.2026'da eklendi (kullanıcı isteği: bu satırlara
+// tıklayınca hiçbir şey açılmıyordu, yalnızca "Talep Oluştur" butonu vardı). Bağlı
+// bir talebi olan satırlar bu modala girmez — onlar zaten kendi rozetine tıklanınca
+// TalepDetayModal'ı açıyor (bkz. onOpenRequest), plan kaleminin kendisini bu noktadan
+// sonra düzenlemek anlamsız (kalem verisi zaten gerçek talebe kopyalandı).
+function PlanKalemiDetayModal({ plan, procurementItems, canEdit, onClose, onSaved, onDeleted }) {
+  const [form, setForm] = useState({
+    kategori: plan.kategori || '', kalem_adi: plan.kalem_adi || '', ozellik: plan.ozellik || '',
+    birim: plan.birim || '', miktar: plan.miktar ?? '', not_metni: plan.not_metni || '', ay_no: plan.ay_no || 1,
+  })
+  const [bomSearch, setBomSearch] = useState(() => {
+    const matched = plan.procurement_item_id ? procurementItems.find(i => i.id === plan.procurement_item_id) : null
+    return matched?.equipment || ''
+  })
+  const [bomMenuOpen, setBomMenuOpen] = useState(false)
+  const [selectedBom, setSelectedBom] = useState(() =>
+    plan.procurement_item_id ? procurementItems.find(i => i.id === plan.procurement_item_id) || null : null
+  )
+  const bomRef = useRef(null)
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!bomMenuOpen) return
+    function onOutside(e) { if (bomRef.current && !bomRef.current.contains(e.target)) setBomMenuOpen(false) }
+    document.addEventListener('mousedown', onOutside)
+    return () => document.removeEventListener('mousedown', onOutside)
+  }, [bomMenuOpen])
+
+  const setF = (field) => (e) => setForm(f => ({ ...f, [field]: e.target.value }))
+
+  const bomMatches = bomSearch.trim()
+    ? procurementItems.filter(p => (p.equipment || '').toLocaleLowerCase('tr').includes(bomSearch.trim().toLocaleLowerCase('tr'))).slice(0, 30)
+    : procurementItems.slice(0, 30)
+
+  function selectBom(item) {
+    setSelectedBom(item)
+    setBomSearch(item.equipment)
+    setBomMenuOpen(false)
+  }
+
+  function clearBom() {
+    setSelectedBom(null)
+    setBomSearch('')
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setSaving(true)
+    setErr('')
+    const { error } = await supabase.from('procurement_monthly_plan').update({
+      procurement_item_id: selectedBom?.id || null,
+      ay_no: Number(form.ay_no) || 1,
+      kategori: form.kategori || null,
+      kalem_adi: form.kalem_adi.trim(),
+      ozellik: form.ozellik.trim() || null,
+      birim: form.birim.trim() || null,
+      miktar: form.miktar === '' ? null : Number(form.miktar),
+      not_metni: form.not_metni.trim() || null,
+    }).eq('id', plan.id)
+    setSaving(false)
+    if (error) { setErr(toUserMessage(error)); return }
+    onSaved()
+    onClose()
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    setErr('')
+    const { error } = await supabase.from('procurement_monthly_plan').delete().eq('id', plan.id)
+    setDeleting(false)
+    if (error) { setErr(toUserMessage(error)); return }
+    onDeleted()
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: 480, maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Plan Kalemi Detayı</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748B' }}>
+          {canEdit ? 'Bu plan kalemini düzenleyebilir veya silebilirsiniz. Henüz bir talebe bağlı değil.' : 'Bu plan kaleminin detayları.'}
+        </p>
+
+        <form onSubmit={handleSubmit}>
+          <fieldset disabled={!canEdit} style={{ border: 'none', padding: 0, margin: 0 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+              <div>
+                <label style={LABEL}>Ay *</label>
+                <input required type="number" min="1" step="1" value={form.ay_no} onChange={setF('ay_no')} style={INPUT} />
+              </div>
+              <div>
+                <label style={LABEL}>Kategori</label>
+                <select value={form.kategori} onChange={setF('kategori')} style={{ ...INPUT, background: '#fff' }}>
+                  <option value="">Seçiniz</option>
+                  {MALZEME_KATEGORI_OPTS.map(opt => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={LABEL}>Kalem Adı *</label>
+              <input required value={form.kalem_adi} onChange={setF('kalem_adi')} placeholder="Örn: DC Solar Kablo" style={INPUT} />
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={LABEL}>Özellik</label>
+              <input value={form.ozellik} onChange={setF('ozellik')} placeholder="Örn: 4mm² tek damar" style={INPUT} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+              <div>
+                <label style={LABEL}>Birim</label>
+                <input value={form.birim} onChange={setF('birim')} placeholder="Örn: Metre, Adet" style={INPUT} />
+              </div>
+              <div>
+                <label style={LABEL}>Miktar</label>
+                <input type="number" min="0" step="0.01" value={form.miktar} onChange={setF('miktar')} style={INPUT} />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 14, position: 'relative' }} ref={bomRef}>
+              <label style={LABEL}>BOM'dan Eşleştir (opsiyonel)</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  value={bomSearch}
+                  onChange={e => { setBomSearch(e.target.value); setSelectedBom(null); setBomMenuOpen(true) }}
+                  onFocus={() => setBomMenuOpen(true)}
+                  placeholder="Malzeme listesinde ara…"
+                  style={{ ...INPUT, paddingRight: selectedBom ? 30 : 12 }}
+                />
+                {selectedBom && (
+                  <button
+                    type="button"
+                    onClick={clearBom}
+                    title="Eşleştirmeyi kaldır"
+                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}
+                  >✕</button>
+                )}
+              </div>
+              {bomMenuOpen && bomMatches.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, zIndex: 50,
+                  background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, maxHeight: 180,
+                  overflowY: 'auto', boxShadow: '0 12px 28px rgba(15,23,42,0.16)',
+                }}>
+                  {bomMatches.map(item => (
+                    <div
+                      key={item.id}
+                      onClick={() => selectBom(item)}
+                      style={{ padding: '8px 10px', fontSize: 13, cursor: 'pointer', color: '#111827', borderBottom: '1px solid #F3F4F6' }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+                      onMouseLeave={e => { e.currentTarget.style.background = '#fff' }}
+                    >
+                      {item.equipment}
+                      <span style={{ marginLeft: 6, fontSize: 11, color: '#9CA3AF' }}>({formatQty(item.planned_qty)} {item.unit})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={LABEL}>Not</label>
+              <textarea value={form.not_metni} onChange={setF('not_metni')} placeholder="Ek açıklama..."
+                style={{ ...INPUT, resize: 'vertical', minHeight: 60 }} />
+            </div>
+          </fieldset>
+
+          {err && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{err}</p>}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            {canEdit ? (
+              confirmDelete ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, color: '#991B1B' }}>Silinsin mi?</span>
+                  <button type="button" onClick={handleDelete} disabled={deleting} style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    {deleting ? '…' : 'Evet, Sil'}
+                  </button>
+                  <button type="button" onClick={() => setConfirmDelete(false)} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '7px 12px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Vazgeç
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(true)} style={{ background: 'transparent', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Sil
+                </button>
+              )
+            ) : <span />}
+
+            {canEdit && !confirmDelete && (
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" onClick={onClose} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Vazgeç
+                </button>
+                <button type="submit" disabled={saving || !form.kalem_adi.trim()} style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: (saving || !form.kalem_adi.trim()) ? 0.7 : 1 }}>
+                  {saving ? 'Kaydediliyor…' : 'Kaydet'}
+                </button>
+              </div>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+export default function ProjeTabAylikPlan({ projectId, onOpenRequest }) {
+  const { isAdmin, role } = useAuth()
+  // Ekleme/durum güncelleme yetkisi 04.09.2026'da proje yöneticisi + admin'e
+  // daraltıldı (kullanıcı kararı) — önceden muhasebe hariç herkes (şantiye
+  // şefi dahil) düzenleyebiliyordu. Diğer roller salt okunur görür (sekmenin
+  // kendisi zaten yalnızca admin/proje_yoneticisi'ye görünür, bkz.
+  // ProjeTabSatinAlma.jsx'teki canManageProcurement kapsamı).
+  const canEdit = isAdmin || role === 'proje_yoneticisi'
 
   const [plans, setPlans] = useState([])
   const [procurementItems, setProcurementItems] = useState([])
@@ -415,13 +703,17 @@ export default function ProjeTabAylikPlan({ projectId }) {
   const [ayNo, setAyNo] = useState(null)
   const [showAdd, setShowAdd] = useState(false)
   const [showBulkAdd, setShowBulkAdd] = useState(false)
-  const [savingId, setSavingId] = useState(null)
+  const [talepOlusturPlan, setTalepOlusturPlan] = useState(null)
+  const [detailPlan, setDetailPlan] = useState(null)
 
   const fetchPlans = useCallback(async () => {
     setLoading(true)
     setError(null)
     const [plansRes, itemsRes] = await Promise.all([
-      supabase.from('procurement_monthly_plan').select('*').eq('project_id', projectId).order('kategori').order('kalem_adi'),
+      // purchase_requests embed'i, bağlı bir talep varsa gerçek durumunu göstermek
+      // için (bkz. aşağıdaki DURUM kolonu) — bağımsız `durum` alanı artık yalnızca
+      // bağlantı kurulmadan önceki "Planlandı" hali için okunuyor.
+      supabase.from('procurement_monthly_plan').select('*, purchase_requests(id, status, request_no)').eq('project_id', projectId).order('kategori').order('kalem_adi'),
       supabase.from('procurement_items').select('id, equipment, spec_ref, planned_qty, unit').eq('project_id', projectId),
     ])
     if (plansRes.error) { setError(plansRes.error.message); setLoading(false); return }
@@ -431,7 +723,9 @@ export default function ProjeTabAylikPlan({ projectId }) {
   }, [projectId])
 
   useEffect(() => { fetchPlans() }, [fetchPlans])
-  useRealtimeRefresh(['procurement_monthly_plan'], fetchPlans, { enabled: !!projectId, filter: { column: 'project_id', value: projectId } })
+  // purchase_requests da dinleniyor — bağlı bir talebin durumu başka bir ekrandan
+  // (Talepler, Teklif/Pazarlık/Sipariş) değişirse buradaki rozet de tazelensin diye.
+  useRealtimeRefresh(['procurement_monthly_plan', 'purchase_requests'], fetchPlans, { enabled: !!projectId, filter: { column: 'project_id', value: projectId } })
 
   // Ay seçici yalnızca DB'de gerçekten kaydı olan ayları listeler — ay_no=2 için
   // hiç satır girilmeden dropdown'da "2. Ay" görünmez, ilk kayıt eklenince otomatik
@@ -449,18 +743,6 @@ export default function ProjeTabAylikPlan({ projectId }) {
   const categoryIndex = Object.fromEntries(MALZEME_KATEGORI_OPTS.map((k, i) => [k, i]))
   const groupKeys = [...new Set(monthPlans.map(p => p.kategori || 'Diğer'))]
     .sort((a, b) => (categoryIndex[a] ?? 99) - (categoryIndex[b] ?? 99) || a.localeCompare(b, 'tr'))
-
-  async function handleDurumChange(plan, newDurum) {
-    const prevDurum = plan.durum
-    setSavingId(plan.id)
-    setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, durum: newDurum } : p))
-    const { error: updateError } = await supabase.from('procurement_monthly_plan').update({ durum: newDurum }).eq('id', plan.id)
-    setSavingId(null)
-    if (updateError) {
-      setPlans(prev => prev.map(p => p.id === plan.id ? { ...p, durum: prevDurum } : p))
-      alert(toUserMessage(updateError))
-    }
-  }
 
   return (
     <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
@@ -518,8 +800,9 @@ export default function ProjeTabAylikPlan({ projectId }) {
                   rows={monthPlans.filter(p => (p.kategori || 'Diğer') === kategori)}
                   procurementById={procurementById}
                   canEdit={canEdit}
-                  savingId={savingId}
-                  onDurumChange={handleDurumChange}
+                  onOpenRequest={onOpenRequest}
+                  onCreateRequest={setTalepOlusturPlan}
+                  onOpenDetail={setDetailPlan}
                 />
               ))}
             </tbody>
@@ -545,6 +828,23 @@ export default function ProjeTabAylikPlan({ projectId }) {
           onSaved={fetchPlans}
         />
       )}
+      {talepOlusturPlan && (
+        <TalepOlusturModal
+          plan={talepOlusturPlan}
+          onClose={() => setTalepOlusturPlan(null)}
+          onCreated={fetchPlans}
+        />
+      )}
+      {detailPlan && (
+        <PlanKalemiDetayModal
+          plan={detailPlan}
+          procurementItems={procurementItems}
+          canEdit={canEdit}
+          onClose={() => setDetailPlan(null)}
+          onSaved={fetchPlans}
+          onDeleted={fetchPlans}
+        />
+      )}
     </div>
   )
 }
@@ -553,7 +853,7 @@ export default function ProjeTabAylikPlan({ projectId }) {
 // tek sebebi <tbody> içine doğrudan bir dizi <tr> döndürebilmek (React.Fragment
 // key gerektirdiğinden burada isimli bir bileşen kullanmak, ham bir dizi
 // map'lemekten daha temiz).
-function FragmentGroup({ kategori, rows, procurementById, canEdit, savingId, onDurumChange }) {
+function FragmentGroup({ kategori, rows, procurementById, canEdit, onOpenRequest, onCreateRequest, onOpenDetail }) {
   return (
     <>
       <tr>
@@ -563,9 +863,19 @@ function FragmentGroup({ kategori, rows, procurementById, canEdit, savingId, onD
       </tr>
       {rows.map(row => {
         const bomItem = row.procurement_item_id ? procurementById.get(row.procurement_item_id) : null
-        const durumMeta = DURUM_META[row.durum] || DURUM_OPTS[0]
+        // procurement_plan_id benzersiz index'e sahip olsa da PostgREST bu embed'i
+        // (purchase_requests → procurement_monthly_plan FK'sinin ters yönü) her
+        // zaman tek nesne olarak dönmeyebiliyor, canlıda dizi geldiği gözlendi —
+        // her iki şekli de güvenle ele alıyoruz.
+        const linkedRequest = Array.isArray(row.purchase_requests) ? row.purchase_requests[0] : row.purchase_requests
         return (
-          <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
+          <tr
+            key={row.id}
+            onClick={() => { if (linkedRequest) onOpenRequest?.(linkedRequest.id); else onOpenDetail?.(row) }}
+            style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer' }}
+            onMouseEnter={event => { event.currentTarget.style.background = 'var(--color-bg)' }}
+            onMouseLeave={event => { event.currentTarget.style.background = 'transparent' }}
+          >
             <td style={{ ...TD, fontWeight: 600, color: 'var(--color-text)' }}>
               <span style={{ ...TD_TRUNCATE, display: 'inline-block', verticalAlign: 'middle', maxWidth: 200 }} title={row.kalem_adi}>
                 {row.kalem_adi}
@@ -577,24 +887,36 @@ function FragmentGroup({ kategori, rows, procurementById, canEdit, savingId, onD
             <td style={TD}>{formatQty(row.miktar)}</td>
             <td style={{ ...TD, ...TD_TRUNCATE }} title={row.not_metni || ''}>{row.not_metni || '—'}</td>
             <td style={TD}>
-              {canEdit ? (
-                <select
-                  value={row.durum}
-                  disabled={savingId === row.id}
-                  onChange={e => onDurumChange(row, e.target.value)}
-                  style={{
-                    border: `1px solid ${durumMeta.color}33`, borderRadius: 7, padding: '4px 8px', fontSize: 11.5,
-                    fontWeight: 700, color: durumMeta.color, background: durumMeta.bg, fontFamily: 'inherit',
-                    cursor: savingId === row.id ? 'default' : 'pointer', opacity: savingId === row.id ? 0.6 : 1,
-                  }}
-                >
-                  {DURUM_OPTS.map(opt => <option key={opt.v} value={opt.v}>{opt.l}</option>)}
-                </select>
+              {/* Bağlı bir talep varsa (bkz. "Talep Oluştur") artık sabit 3 etiket değil,
+                  bağlı talebin GERÇEK durumu gösterilir — tıklanınca Satın Alma > Talepler'de
+                  o talebin detayı açılır (bkz. ProjeTabSatinAlma.jsx'teki openLinkedRequest). */}
+              {linkedRequest ? (
+                <ProcessStageHoverBox status={linkedRequest.status}>
+                  <button
+                    type="button"
+                    onClick={() => onOpenRequest?.(linkedRequest.id)}
+                    title={linkedRequest.request_no ? `Talebi görüntüle (${linkedRequest.request_no})` : 'Talebi görüntüle'}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    <StatusDot map={PR_STATUS} value={linkedRequest.status} />
+                  </button>
+                </ProcessStageHoverBox>
               ) : (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: durumMeta.color, fontSize: 12, fontWeight: 600 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: durumMeta.color, flexShrink: 0 }} />
-                  {durumMeta.l}
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#64748B', fontSize: 12, fontWeight: 600 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#64748B', flexShrink: 0 }} />
+                    Planlandı
+                  </span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={event => { event.stopPropagation(); onCreateRequest(row) }}
+                      style={{ background: 'none', border: '1px solid var(--color-primary)', color: 'var(--color-primary)', borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+                    >
+                      Talep Oluştur
+                    </button>
+                  )}
+                </div>
               )}
             </td>
           </tr>

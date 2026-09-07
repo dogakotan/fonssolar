@@ -180,7 +180,6 @@ export function BudgetUsageCard({ kpi }) {
 
 export default function ProjeTabFinansSidebar({ curve, dagilim, sapma, cpi, loading }) {
   const dagilimTotal = dagilim.reduce((s, item) => s + item.value, 0)
-  const sapmaColor = sapma.amount > 0 ? 'var(--color-danger)' : sapma.amount < 0 ? 'var(--color-success)' : 'var(--color-muted)'
   const durum = maliyetDurumu(sapma.pct)
   const actualToDate = sapma.plannedToDate + sapma.amount
   const sapmaText = sapma.amount === 0

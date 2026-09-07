@@ -95,7 +95,8 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   `TabTickets`, `TabKullanicilar`, `TabProjeYonetimi`, `TabSantiyeSefi`,
   `TabIsPlan`, `TabBildirimler`). Bu sayfaların KENDİ İÇİNDEKİ alt-sekmeleri
   (`TabFinans`/`TabSatinAlma`/`TabOdemeler`'in üst sekme çubuğu, `ProjeDetay`'ın
-  8 sekmesi + Malzeme Listesi'nin Malzeme/Riskler alt-sekmesi, proje içi
+  7 sekmesi + `ProjeTabSatinAlma`'nın Talepler/Malzeme Listesi/Riskler/Onay
+  Bekleyenler/Teklif-Pazarlık-Sipariş/Aylık Plan alt-sekmeleri, proje içi
   `ProjeTabFinans`/`ProjeTabSatinAlma`) de aynı `activeTab` deseniyle
   localStorage'da kalıcı (30.07.2026'da eklendi) — bu bileşenler `activeTab`
   değişince unmount/remount olduğundan (React conditional render), öncesinde
@@ -235,18 +236,20 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   alanları hiçbir yerde gösterilmiyor — `DailyReportDetail.jsx` yalnızca
   paketlenmiş `description`'ı "Genel Notlar" olarak gösteriyor, İSG/olay
   notları için ayrı bir UI yok.
-- `ProjeDetay.jsx`'in 8 sekmesi: Genel Proje, İş Planı, Satın Alma, Malzeme
-  Listesi, Finans, Ticket, Raporlar, Ekip — sekme bazlı rol gizleme yok, her
-  role görünür (Finans proje_yoneticisi için salt-okunur, Tickets tam yetkili).
-  Malzeme Listesi sekmesi kendi içinde iki alt-sekmeye ayrılır (`ProjeTabMalzemeListesi.jsx`
-  içindeki yerel `section` state'i): **Malzeme Listesi** (BOM/`ProjeTabFaturaKesilecekler.jsx`)
-  ve **Riskler** (`ProjeTabRiskler.jsx`) — ikisi tek sayfa, çünkü malzeme fazla
-  talebi riski doğrudan BOM'dan doğuyor. Riskler alt-sekmesi hem manuel hem
-  otomatik tüm riskleri satın alma talep listesiyle aynı temada (tablo + `Pager`,
-  satır boyu diğer listelerden daha dar — `TD height:46`) satır satır listeler,
-  satıra tıklamak açıklama/aksiyon/olasılık-etki + kapanma tarihini gösteren bir
-  modal açar (otomatik risklerde ilgili sekmeye — İş Planı/Satın Alma — giden bir
-  buton da içerir). Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kaynağı
+- `ProjeDetay.jsx`'in 7 sekmesi: Genel Proje, İş Planı, Satın Alma, Finans,
+  Ticket, Raporlar, Ekip — sekme bazlı rol gizleme yok, her role görünür
+  (Finans proje_yoneticisi için salt-okunur, Tickets tam yetkili). **Malzeme
+  Listesi ayrı bir üst-seviye sekme DEĞİL** (07.09.2026'ya kadar öyleydi,
+  kullanıcı isteğiyle kaldırıldı) — Satın Alma'nın alt-sekmelerinden ikisi
+  (bkz. hemen aşağıdaki madde): **Malzeme Listesi** (BOM/`ProjeTabFaturaKesilecekler.jsx`)
+  ve **Riskler** (`ProjeTabRiskler.jsx`) — ikisi malzeme fazla talebi riski
+  doğrudan BOM'dan doğduğu için birbirine yakın tutulur. Riskler alt-sekmesi
+  hem manuel hem otomatik tüm riskleri satın alma talep listesiyle aynı temada
+  (tablo + `Pager`, satır boyu diğer listelerden daha dar — `TD height:46`)
+  satır satır listeler, satıra tıklamak açıklama/aksiyon/olasılık-etki +
+  kapanma tarihini gösteren bir modal açar (otomatik risklerde ilgili sekmeye
+  — İş Planı/Satın Alma'nın kendi Talepler alt-sekmesi — giden bir buton da
+  içerir). Genel Proje (`ProjectOverviewDashboard.jsx`, tek veri kaynağı
   `get_project_by_date`) düzeni: üstte Proje Detayları/Genel İlerleme/
   Özet/Hava Durumu kartları; orta satırda eşit iki kart — **Projenin Gidişatı**
   (S-eğrisi çizgi grafiği) ve **Kategori Bazlı İlerleme** (yatay bullet/progress
@@ -259,17 +262,39 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   hem Riskler alt-sekmesindeki) tek tema kullanır: pill/arkaplan değil, nokta +
   kalın renkli metin (satın alma talep listesindeki `RiskBadge` — Uygun/Riskli/
   Listede Yok — ile aynı görsel dil). Kartın "Tümünü Gör" linki `ProjeDetay.jsx`'teki
-  `goToTab('riskler')` yardımcı fonksiyonu üzerinden Malzeme Listesi sekmesini AÇIP
-  içindeki `malzemeSection` state'ini `'riskler'`ye çeker (kendi başına bir üst-seviye
-  sekme değil); kart yalnızca `source==='otomatik'` riskleri gösterir (manuel riskler
-  kartta filtrelenir — bilinçli, kompakt tutmak için), Riskler alt-sekmesi ise hepsini
-  gösterir. Proje Excel içe/dışa aktar yalnızca Proje Yönetimi sayfasında; proje
-  detayının "Proje Excelini İndir" butonu tüm proje-erişimli rollerde görünür.
-- Şantiye şefi "Satın Alma" sekmesi sadeleştirilmiş (`<ProjeTabSatinAlma
-  siteChiefView />`, KPI/sidebar yok): yalnızca **Talepler** (`requested_by === user.id`
-  ile süzülü, onay/red butonu yok) ve **Malzeme Listesi**.
-  Satın Alma/Malzeme Listesi tabloları `PAGE_SIZE=10` + ortak `Pager` bileşeni
-  kullanır (iç-scroll kutusu değil).
+  `goToTab('riskler')` yardımcı fonksiyonu üzerinden Satın Alma sekmesini AÇIP
+  `ProjeTabSatinAlma`'nın kendi `activeSubTab` state'ini (`satinAlmaSubTab`,
+  ProjeDetay'da tutulur) `'riskler'`ye çeker; kart yalnızca `source==='otomatik'`
+  riskleri gösterir (manuel riskler kartta filtrelenir — bilinçli, kompakt
+  tutmak için), Riskler alt-sekmesi ise hepsini gösterir. Proje Excel içe/dışa
+  aktar yalnızca Proje Yönetimi sayfasında; proje detayının "Proje Excelini
+  İndir" butonu tüm proje-erişimli rollerde görünür.
+- **Satın Alma sekmesinin alt-sekmeleri (`ProjeTabSatinAlma.jsx`, tek TABS
+  dizisi):** Talepler, **Malzeme Listesi**, **Riskler** (rol kısıtı yok, tüm
+  roller — santiye_sefi dahil — görür), + admin'e özel Onay Bekleyenler,
+  + proje yöneticisi/admin'e özel Teklif / Pazarlık / Sipariş ve Aylık Satın
+  Alma Planı. Malzeme Listesi/Riskler 07.09.2026'da eski ayrı üst-seviye
+  "Malzeme Listesi" sekmesinden (`ProjeTabMalzemeListesi.jsx`, silindi) buraya
+  taşındı — kullanıcı isteğiyle, "Aylık Satın Alma Planı"nın 04.09.2026'da
+  aynı şekilde buraya taşınmasıyla aynı konsolidasyon yönünde (bkz.
+  `feedback_no_standalone_top_level_screens` hafıza notu). Malzeme Listesi
+  alt-sekmesi artık `ProjeTabSatinAlma`'nın zaten çektiği `get_satin_alma_overview`
+  verisinden `buildMaterialListRows` ile türetiliyor — ayrı bir ikinci
+  `get_satin_alma_overview` çağrısı (eski `ProjeTabMalzemeListesi.jsx`'in
+  yaptığı) artık yok. `activeSubTab`/`onSubTabChange` prop'ları kontrollüyse
+  (ProjeDetay her zaman kontrollü geçer) üst bileşenden gelir, yoksa (index.jsx'teki
+  şantiye şefi menü-seviyesi çağrısı gibi) projeye özel localStorage'da kalıcı
+  yerel state'e düşülür (`ProjeTabMalzemeListesi.jsx`'teki eski
+  activeSection/onSectionChange ile birebir aynı fikir).
+- Şantiye şefi "Satın Alma" sekmesi (`<ProjeTabSatinAlma siteChiefView />`):
+  alt-sekme şeridi 07.09.2026'ya kadar tamamen gizliydi (yalnızca Talepler
+  görünürdü) — artık şerit gösteriliyor, TABS dizisi zaten Onay Bekleyenler/
+  Teklif-Pazarlık-Sipariş/Aylık Plan'ı bu rolde filtrelediğinden yalnızca
+  **Talepler** (`requested_by === user.id` ile süzülü, onay/red butonu yok),
+  **Malzeme Listesi** ve **Riskler** kalıyor — bu üçü hem proje içi Satın
+  Alma'da hem menü-seviyesi (index.jsx, proje bağlamı dışı) çağrıda aynı
+  şekilde çalışır. Satın Alma/Malzeme Listesi tabloları `PAGE_SIZE=10` +
+  ortak `Pager` bileşeni kullanır (iç-scroll kutusu değil).
   İş Planı (`TabIsPlan.jsx`) kritik yol görselleştirmesi kullanmaz: plan bitiş
   tarihi geçmiş ve görev tamamlanmamışsa `Riskli`, aksi halde `Normal`. KPI
   şeridi 3 kart: Toplam Görev, Devam Eden, Riskli/Geciken.
@@ -412,6 +437,33 @@ değerlendirilir, fonksiyon SECURITY DEFINER olması bunu atlamaz).
 **Tek kalem kuralı:** bir satın alma talebi yalnızca tek bir kalem içerebilir
 — `create_purchase_request_with_items` RPC'sinde ve tablo trigger'ında
 (eşzamanlı ikinci kalem eklemeye karşı da) zorunlu kılınır.
+
+**Yeni Talep formu — "Bu ayın planından seç" kaldırıldı, kategori-önce
+malzeme filtresi eklendi (18.08.2026):** `YeniTalepModal.jsx`'teki aylık
+plandan kalem seçme bölümü (`procurement_monthly_plan` sorgusu + ilgili
+state/handler'lar) tamamen kaldırıldı — kullanıcı isteğiyle. Yerine, Tip
+alanının hemen altında (Malzeme seçilmeden ÖNCE) bir **Kategori** dropdown'u
+eklendi (`MALZEME_KATEGORI_OPTS`, `ProjeTabFaturaKesilecekler.jsx`'ten
+import — BOM'un "Yeni Malzeme Ekle" formuyla aynı sabit liste: Mobilizasyon/
+Hizmet/İş makineleri/Güvenlik/Elektrik/Mekanik/Hırdavat/Diğer). Bu, malzeme
+seçildikten SONRA bilgi amaçlı gösterilen bir alan değil — tersine, kategori
+seçilince Malzeme dropdown'undaki liste o kategoriye göre daralıyor
+(`filteredMaterialOptions`, `procurement_items.category` client-side filtre);
+kategori boş ("Tüm Kategoriler") bırakılırsa liste filtresiz kalır. Kategori
+değişince önceki malzeme seçimi sıfırlanır (artık listede olmayabilir).
+Listeden bir malzeme seçilirse (filtre boşken) kategori kalemin kendi
+`procurement_items.category`'sinden otomatik türer; "Diğer (Listede Yok)" ile
+serbest metin girilirse zaten seçilmiş olan kategori korunur. Bu değer
+`purchase_request_items.category` (yeni kolon,
+`20260818100000_add_category_to_purchase_request_items` migration'ı) kolonuna
+`create_purchase_request_with_items`'ın `p_items[0].material_category` alanı
+üzerinden yazılır — RPC imzası değişmedi, uçtan uca DB'de doğrulandı.
+**Not:** bazı eski BOM kayıtlarında `category` NULL (10 kayıt, test-izmir-ges-2026
+projesinde) — o projede bir kategori filtrelenince liste boş çıkabilir, bu
+veri eksikliği, UI bug'ı değil. `get_purchase_request_detail` (`to_jsonb(pri)`)
+bu alanı otomatik döndürür; `get_satin_alma_overview*` kalemleri elle
+`jsonb_build_object` ile kurduğundan bu alanı henüz döndürmüyor — bugüne kadar
+hiçbir ekran bunu göstermiyor, yalnızca kayıt altına alınıyor.
 
 **Proje yöneticisi tedarik adımı:** `onaylandi` ile fatura arasında zorunlu
 bir adım var — akış `ProjeTabSatinAlma.jsx` → `TabSatinAlmaTalepListesi.jsx`
@@ -816,11 +868,16 @@ pill-stil `<Badge>`'ten nokta+kalın-metin `<StatusDot>`'a geçirildi (bkz.
 "Satın alma akışı" altındaki not), aynı `BADGE_MAP`/`map`/`value` girdisini
 kullanır. Yönetici rolleri
 (`isManager`) fatura bildirimlerinde ek olarak "Adım X/2: ..." özeti görür.
-Bir bildirime tıklamak
-ilgili kaydı doğrudan açar (ticket/günlük rapor/satın alma talebi/fatura —
-her biri için `index.jsx`'te ayrı `open*Id` state zinciri); malzeme değişikliği
-bildirimi için tek kayıt modalı yok, ilgili projenin Malzeme Listesi sekmesine
-götürür (`goToProjectTab`). Her satırda bir silme butonu var (`.bildirim-delete`,
+Bir bildirime tıklamak ilgili sekmeye/listeye götürür ve ilgili satırı geçici
+olarak vurgular — **modal AÇMAZ** (04.09.2026'da kullanıcı kararıyla
+değiştirildi, bkz. "Son değişiklik" ve `src/hooks/useHighlightRow.js`); ticket/
+günlük rapor/satın alma talebi/fatura/malzeme değişikliği her biri için
+`index.jsx`'te ayrı `open*Id` state zinciri hâlâ var, yalnızca hedef bileşenin
+bu id'yle yaptığı şey değişti (RPC ile tek kaydı çekip modal açmak yerine, o
+liste zaten kendi verisinde hedefi arayıp filtre/sayfa/kategori-collapse
+sıfırlayıp scroll+flash yapıyor). Günlük rapor bildirimi hâlâ eski davranışta
+(kendi düzenleme modalini açar) — bu değişikliğin kapsamı yalnızca satın alma
+talebi/fatura/ticket/malzeme değişikliği. Her satırda bir silme butonu var (`.bildirim-delete`,
 `notifications` RLS'i zaten `recipient_id=auth.uid()` kendi kaydını silmeye
 izin veriyordu ama 29.07.2026'ya kadar bunu tetikleyecek bir UI yoktu —
 düzeltildi, satır artık `<button>` değil `role="button"` bir `<div>`
@@ -1150,22 +1207,62 @@ kolonları eklendi (`20260727090000_multicurrency_invoice_support` migration'ı)
 "Özet" kartı) `total_amount`/`amount` değil `total_amount_try` toplar — aksi
 halde bir USD faturası TRY faturalarıyla aynı sütunda sessizce toplanır.
 Yeni bir yer `SUM(invoices.total_amount)` yazarsa bu bir regresyon — `total_amount_try`
-kullanmalı. Ödeme takibi (`paid_amount`/`remaining_amount`/`invoice_payments`)
-kapsam dışı bırakıldı — fatura kendi para biriminde kalır, ödeme kurla
-dönüştürülmez (kullanıcı seçimi). `FaturaListesi.jsx`/`FaturaDetayModal.jsx`/
-`recentActivity` (`formatRecentActivity`) artık `inv.currency`'ye göre
-₺/$/€ gösteriyor — hardcoded TRY `Intl.NumberFormat` gördüğün yerde bu bir
-regresyon sinyali. `MuhasebeGenelOzet.jsx`'e (Genel Bakış, muhasebe) daha önce
-yalnızca admin/proje_yöneticisi'nin `TabFinans.jsx`'te gördüğü `KurCard`
+kullanmalı. `FaturaListesi.jsx`/`FaturaDetayModal.jsx`/`recentActivity`
+(`formatRecentActivity`) artık `inv.currency`'ye göre ₺/$/€ gösteriyor —
+hardcoded TRY `Intl.NumberFormat` gördüğün yerde bu bir regresyon sinyali.
+`MuhasebeGenelOzet.jsx`'e (Genel Bakış, muhasebe) daha önce yalnızca
+admin/proje_yöneticisi'nin `TabFinans.jsx`'te gördüğü `KurCard`
 (`ProjeTabFinansYanPanel.jsx`) eklendi — muhasebe artık kendi Genel Bakışında
 da güncel USD/EUR kurunu görüyor.
-**Bilinçli olarak kapsam dışı bırakıldı** (bkz. "Bilinen açık noktalar"):
-Tedarikçi bakiyesi (`TedarikciListesi.jsx`/`TedarikciDetayModal.jsx`) ve
-`FinansRaporlari.jsx` toplamları hâlâ ham `total_amount` topluyor — bir
-USD/EUR fatura tedarikçi bakiyesine girerse bu ikisi farklı para birimlerini
-karıştırabilir. Satın alma talebi (`purchase_requests.currency`) ve faturasız
-ödeme (`financial_transactions.currency`) formlarına da para birimi seçici
-eklenmedi (kullanıcı kararıyla yalnızca fatura oluşturma kapsamına alındı).
+
+**Ödeme anında kur yakalama (18.08.2026) — `paid_amount`/`remaining_amount`
+artık TRY'ye çevriliyor.** Önceki kısıtlama ("ödeme takibi kapsam dışı,
+`paid_amount`/`remaining_amount` faturanın kendi para biriminde kalır") tam
+kapatıldı. `invoice_payments.exchange_rate` (ödeme günündeki TCMB kuru,
+`OdemeEkleModal.jsx`/`TedarikciOdemeModal.jsx`'te `fetchDoviz()` ile otomatik
+çekilir, TRY'de her zaman 1) + generated `amount_try` kolonları eklendi
+(`invoice_payment_try_conversion` migration'ı); `invoices.paid_amount_try`/
+`remaining_amount_try` (düz, `paid_amount`/`remaining_amount` ile aynı
+desende `fn_invoice_payment_recalc()` tarafından bakımı yapılan kolonlar)
+eklendi, `v_invoice_payment_overview` bu ikisini de döndürüyor.
+`TedarikciListesi.jsx`/`TedarikciDetayModal.jsx`/`FinansRaporlari.jsx`'teki
+"Ödenen"/"Kalan" KPI toplamları artık `paid_amount_try`/`remaining_amount_try`
+kullanıyor (açık kayıt satırlarının KENDİSİ hâlâ kendi para biriminde
+gösterilir — yalnızca üstteki toplamlar TRY'ye çevrilir). **Bilinçli tasarım
+kararı:** kur kaynağı ödeme GÜNÜNÜN kuru (fatura oluşturma anındaki sabit
+`exchange_rate` değil) — gerçek nakit çıkışını yansıtır, ama bu yüzden
+`total_amount_try` (fatura anı kuru) ile `paid_amount_try` (ödeme anı kuru)
+farklı günlerin kurlarını karıştırabilir; bu, gerçekçi bir muhasebe
+sadeleştirmesi (realized/unrealized kur farkı ayrı izlenmiyor), regresyon değil.
+
+**Aynı turda kapatılan ek bir risk — ödeme para birimi artık faturayla
+kilitli.** `OdemeEkleModal.jsx`'te önceden ödeme için faturanın para
+biriminden BAĞIMSIZ bir "Para Birimi" dropdown'u vardı; ne frontend
+(`amount > remaining` ham karşılaştırma) ne de DB trigger'ı
+(`fn_invoice_payment_before_insert`/`fn_invoice_payment_recalc`, ikisi de
+`sum(amount)`/tutar karşılaştırmasını para birimi kontrolü yapmadan ham
+sayıyla yapıyordu) bunun fatura currency'siyle eşleştiğini doğruluyordu —
+biri yanlışlıkla farklı bir birim seçip ödeme girerse `paid_amount`/
+`remaining_amount`/durum sessizce bozulabilirdi (canlıda gerçekleşmiş bir
+mismatch YOKTU, kontrol edildi — yalnızca açık bir risk). Düzeltme: seçici
+kaldırıldı, ödeme her zaman faturanın kendi para biriminde (salt-okunur alan)
+girilir; `fn_invoice_payment_before_insert`'e ayrıca DB katmanında da
+`NEW.currency <> invoices.currency` reddeden bir savunma eklendi (defense-in-depth).
+Aynı sınıftan İKİNCİ bir örnek `TedarikciOdemeModal.jsx`'te (tedarikçiye toplu
+ödeme dağıtım sihirbazı) de bulundu — tek bir "Para Birimi" seçilip birden
+fazla faturaya dağıtılabiliyordu; orada da seçici kaldırılıp para birimi
+seçilen tedarikçinin açık faturalarından otomatik türetiliyor, farklı para
+biriminden faturalar o dağıtımdan otomatik hariç tutulup kullanıcıya
+bilgilendirme notu gösteriliyor (bir tedarikçinin TÜM açık faturaları aynı
+para biriminde olduğu sürece bu ayrım kullanıcıya hiç görünmez — bugüne kadar
+canlıda hep böyleydi, yalnızca 1 adet USD faturası var ve o hiç "açık" duruma
+geçmemişti).
+
+**Bilinçli olarak hâlâ kapsam dışı:** satın alma talebi
+(`purchase_requests.currency`) ve faturasız ödeme (`financial_transactions.currency`)
+formlarına para birimi seçici eklenmedi (kullanıcı kararıyla yalnızca fatura
+oluşturma/ödeme akışı kapsamına alındı, `financial_transactions.currency`
+pratikte hep TRY).
 
 ### İlerleme hesaplama modeli
 İlerleme tek kaynaktan, `project_tasks` üzerinden yürüyor: `target_qty`, `unit`,
@@ -1416,19 +1513,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
-- **Tedarikçi bakiyesi/Finans Raporları — kısmi düzeltildi (2026-07-31), tam
-  çözüm hâlâ açık.** `v_invoice_payment_overview` view'ına `total_amount_try`
-  eklendi (`20260731065903_add_total_amount_try_to_invoice_payment_overview`),
-  `TedarikciListesi.jsx`/`TedarikciDetayModal.jsx` (bakiye toplamı) ve
-  `FinansRaporlari.jsx` (proje/kategori toplamları) artık `total_amount_try ??
-  total_amount` kullanıyor — "toplam faturalanan" figürü artık TRY/USD/EUR
-  karışmıyor. **Ama `paid_amount`/`remaining_amount` kullanıcı kararıyla
-  kapsam dışı bırakıldı** — bunlar hâlâ faturanın kendi para biriminde
-  (ödeme tarihindeki kur farkını hesaba katmıyor), yani aynı ekranlardaki
-  "Ödenen"/"Kalan" toplamları bir tedarikçinin USD ve TRY faturaları
-  karışıksa hâlâ yanlış olabilir. Tam çözüm (ödeme anındaki kuru saklayıp
-  `paid_amount`'ı da TRY'ye çevirmek) ayrı, daha büyük bir görev — bkz.
-  "Çoklu para birimi desteği". Fark edilirse önce bu notu hatırlat.
+- ~~Tedarikçi bakiyesi/Finans Raporları — `paid_amount`/`remaining_amount`
+  TRY'ye çevrilmiyordu~~ — **tam çözüldü (18.08.2026).** Önceki kısmi düzeltme
+  (2026-07-31) yalnızca `total_amount_try`'yi kapsıyordu; şimdi `paid_amount`/
+  `remaining_amount` de TRY karşılıklarıyla (`paid_amount_try`/
+  `remaining_amount_try`) hesaplanıyor. Ayrıntı için "Çoklu para birimi
+  desteği" → "Ödeme anında kur yakalama" bölümüne bak.
 - **`complete_project_manager_purchase_request` RPC'si — düzeltildi (2026-07-31).**
   Artık opsiyonel bir `p_supplier_id` parametresi alıyor ve `supplier_id`'yi de
   yazıyor. `TabSatinAlmaTalepListesi.jsx`'teki "Tamamlandı" butonu artık tek
@@ -1439,11 +1529,14 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   tablosu, RLS zaten proje yöneticisine açık). `FaturaOlusturModal.jsx`'teki
   tedarikçi seçici hâlâ aynı şekilde çalışıyor (fatura kendi `supplier_id`'sini
   ayrıca alır) — bu ikisi birbirini geçersiz kılmaz, ikinci bir fırsat.
-  **Kalan tutarsızlık:** `TalepDetayModal.jsx`'in kendi "Tamamlandı" butonu
-  (proje detayı içinden talep açılıp tamamlanan yol) bu tedarikçi seçiciyi
-  içermiyor, hâlâ eski tek-parametreli `updateStatus('satin_alindi')` çağrısını
-  yapıyor — RPC'nin `p_supplier_id` varsayılanı `NULL` olduğundan hata vermiyor
-  ama o yoldan tamamlanan taleplerde tedarikçi hâlâ boş kalıyor.
+  ~~Kalan tutarsızlık: `TalepDetayModal.jsx`'in kendi "Tamamlandı" butonu bu
+  tedarikçi seçiciyi içermiyordu~~ — **düzeltildi (18.08.2026):**
+  `TalepDetayModal.jsx`'e de aynı opsiyonel tedarikçi `<select>`'i (aynı
+  "Tedarikçisiz devam et" varsayılanı) eklendi, `updateStatus()` artık
+  `p_supplier_id`'yi RPC'ye iletiyor. Uçtan uca gerçek RPC çağrısıyla
+  doğrulandı (test verisi geçici olarak tamamlanıp `supplier_id`/`status`
+  yazıldığı teyit edildikten sonra orijinal `onaylandi`/`NULL` haline
+  SQL'le geri alındı).
 - **Eski `procurement-*`/`accounting-scope`/`faz-e` testleri — DÜZELTİLDİ (2026-07-31).**
   `tests/procurement-workflow.spec.js`, `procurement-security.spec.js`,
   `procurement-two-initiators.spec.js`, `procurement-role-acceptance.spec.js`,
@@ -1530,45 +1623,159 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   oturumda 16 migration + 17 finans/muhasebe bileşen dosyası diske yazılmış
   ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
-
-
-
 ## Son değişiklik
 
-**04.08.2026 — Ölü kod temizliği (`procurement_items` + `daily_report_issues`)
-sonrası canlı regresyon bulundu ve düzeltildi.**
+**07.09.2026 (2. tur) — Dört ek iş: (A) "Teklif / Pazarlık / Sipariş" üst-seviye
+sidebar sayfası menüden kaldırıldı, (B) Satın Alma alt-sekme sırası değişti
+(Malzeme Listesi/Riskler artık en sonda), (C) `TabIsPlan.jsx`'in Gantt'ı artık
+GERÇEK çok seviyeli (iç içe, her seviyesi ayrı aç/kapa) grup hiyerarşisi
+destekliyor + Kaptan Demir Çelik (Adana GES-1) projesinin İş Planı bu yeni
+modelle, kullanıcının paylaştığı harici Gantt ekran görüntüsündeki yapıya
+(Elektriksel Bölüm › TR-1-3000 kVA › Inverter-1..9 › DC/AC) uygun şekilde
+dolduruldu, (D) grup satırlarının GÖRSEL stili de aynı referansa uydurulacak
+şekilde değişti — kategoriye göre renkli bant kaldırıldı, tüm projelerin
+Gantt'ında geçerli (paylaşılan bileşen).**
 
-Ölü kod temizliği iki adımda yapıldı: (1) `procurement_items`'taki 10 eski
-sipariş-takip kolonu (`status`/`priority`/`order_date`/`expected_delivery`/
-`actual_delivery`/`supplier`/`notes`/`updated_by`/`received_by`/`received_date`)
-`DROP COLUMN` edildi (`20260804091411_drop_unused_procurement_order_tracking_columns`);
-(2) `daily_report_issues` yazı yolu (`save_daily_report`'un `p_issues`
-parametresi + `fn_create_ticket_from_daily_report_issue()` INSERT trigger'ı)
-kaldırıldı (`20260804091950_remove_dead_daily_report_issues_write_path`, RPC
-imzası 15→14 parametreye düştü, `DailyReportForm.jsx`/`tests/manual-task-progress.spec.js`
-eşzamanlı güncellendi). Tablo ve verisi korundu, yalnızca yazı yolu kaldırıldı.
+**(D) Gantt grup satırları — düz/beyaz + tarih sütunlu (TÜM projelerde).**
+Kullanıcı aynı ekran görüntüsünü ikinci kez gösterip "görünüm olarak da aynı
+olsun" deyince (`AskUserQuestion` ile kapsam netleştirildi — bu paylaşılan
+bileşen olduğundan değişikliğin TÜM projelerin İş Planı'nı etkileyeceği
+açıkça belirtilip onaylandı), `.gantt-group-row`'un kategoriye göre renkli
+dolgun bandı (`tone-mavi/mor/turuncu/...`) tamamen kaldırıldı — artık görev
+satırlarıyla AYNI iki parçalı ızgarayı (`--left-width`/`--timeline-width`)
+kullanan, düz açık gri (`#f1f5f9`) arkaplanlı, kalın yazı + derinliğe göre
+artan girintiyle ayrılan tek bir tabloya dönüştü; grup satırında da artık
+görev satırlarıyla aynı sütunlarda (Başlangıç/Bitiş/Süre/İlerleme) o dalın
+TÜM alt görevlerini kapsayan agregat tarih aralığı gösteriliyor
+(`buildGroupTree`'nin `finalize` adımına eklenen `rangeStart`/`rangeEnd`,
+en erken `planned_start`/en geç `planned_end`). Görev satırlarının kendi
+renkli ilerleme çubuğu (`groupConfigFor(node.label).bar`) DEĞİŞMEDİ —
+yalnızca grup BAŞLIĞININ arkaplanı düzleşti. Yan etki: 3 haneli süre
+değerleri (ör. "123 gün", grup satırlarında görev satırlarından daha sık
+görülüyor) `Süre` sütununda satır kırılması yapıyordu — `W_DUR` 48→54px
+büyütüldü + `.gantt-task-left > span`/`.gantt-group-left > span`'a
+`white-space: nowrap` eklendi. Playwright'ta ekran görüntüsüyle referansla
+satır satır karşılaştırılarak doğrulandı, konsol hatası yok.
 
-**Kullanıcı canlıda bir hata ekran görüntüsüyle bildirdi:** proje_yoneticisi
-rolünde Satın Alma sayfası "Veri yüklenemedi" ile tamamen kırılmıştı.
-Postgres logunda `column pi.status does not exist` + `get_satin_alma_overview_all`
-400 bulundu — (1) adımındaki bağımlılık taraması eksikti: `get_satin_alma_overview`
-ve `get_satin_alma_overview_all_internal` hâlâ `procurement_items` çıktısında
-`'status', pi.status` döndürüyordu. `20260804094500_fix_satin_alma_overview_dropped_status_column`
-ile her iki fonksiyondan da bu alan kaldırıldı (frontend hiç okumuyordu, grep
-ile doğrulandı), `get_satin_alma_overview_all_internal()` çağrısıyla canlıda
-doğrulandı. Detay ve çıkarılan ders: bkz. "BOM planlanan miktar değişiklikleri"
-bölümündeki not.
+**(D2) Girinti/ok hizası düzeltmesi.** Kullanıcı ilk halini "içiçe geçik
+olmadı, yazılar dengesiz" diye tanımladı — kök neden: ok işareti (▾/▸) sabit
+"No" hücresindeydi, yalnızca metin `paddingLeft` ile kayıyordu; bu, derinlik
+arttıkça ok ile metnin görsel olarak kopmasına (staircase etkisinin
+bozulmasına) yol açıyordu. Düzeltme: ok artık isim hücresinin İÇİNDE, sabit
+11px genişlikli bir kutuda (`▾`/`▸` karakterlerinin doğal genişliği farklı
+olduğundan sabitlenmezse aynı derinlikteki satırlarda metin başlangıcı
+piksel piksel oynuyordu) — girinti adımı da (`GROUP_INDENT_PX`) 14→20px
+büyütüldü, daha belirgin bir merdiven görünümü için. Yakın plan ekran
+görüntüsüyle (`Elektriksel Bölüm → TR-1-3000 kVA → OG → OG01/02/03`)
+doğrulandı — her seviye kendi ok+metin bloğuyla bir öncekinden net şekilde
+içeri kaymış görünüyor.
 
-Üç migration da uygulanır uygulanmaz doğru versiyonla yerel dosyaya yazıldı
-(bkz. "Migration tracking boşluğu" — biriktirmeye eklenmedi).
+**(D3) Asıl eksik yer bulundu: `TabIsPlaniDetay.jsx` ("Detaylı İş Planı")
+hiç dokunulmamıştı.** Kullanıcı AYNI fotoğrafı tekrar gösterip "hiyerarşi
+hâlâ içiçe geçik değil, inverterler kendi içinde açılmalı, detaylı iş
+planını düzeltmen gerek" deyince fark edildi: `İş Planı` sekmesinin İKİ ayrı
+bölümü var — `Genel İş Planı` (Gantt, (C)/(D)/(D2)'de düzeltilen) ve
+`Detaylı İş Planı` (tam veri tablosu, `TabIsPlaniDetay.jsx`) — kullanıcı
+BAŞTAN BERİ ikincisine bakıyordu, o hâlâ eski tek-seviyeli `resolveGroup`
+gruplamasını kullanıyordu (Elektriksel Bölüm/TR-1-3000 kVA/Inverter-N hiç
+içiçe değil, her biri kendi tam-yol string'iyle YAN YANA ayrı birer grup
+gibi listeleniyordu) — üstüne (D)'deki CSS restyle'ı da bu bileşenin artık
+var olmayan `gantt-group-row tone-${cfg.tone}`/`<strong>`/`<small>`
+seçicilerine dayandığından header satırları sessizce BOZULMUŞTU (regresyon,
+fark edilmeden). Düzeltme: `TabIsPlan.jsx`'ten `buildGroupTree`/
+`collectNodeTasks`/`GROUP_INDENT_PX` export edilip `TabIsPlaniDetay.jsx`
+kendi `resolveGroup`+flat `grouped`/`groupKeys` mantığını tamamen bırakıp
+AYNI ağacı kullanacak şekilde yeniden yazıldı — `sortTreeTasks` (kullanıcının
+seçtiği plan tarihi/sapma/ilerleme/ad sıralamasını her düğümde ayrı ayrı
+uygular, grup sırasının kendisini etkilemez) + `buildDetayRows`/
+`buildDetayTaskRow` (Gantt'taki `renderGanttGroupNode`'un `<tr>/<td>`
+karşılığı, kendi satır-içi stiliyle — artık paylaşılan `.gantt-group-row`
+CSS'ine bağımlı değil, böylece Gantt'ın stilini değiştirmek bunu bir daha
+kırmaz). Her düğüm kendi tam-yol anahtarıyla bağımsız aç/kapa olduğundan
+Inverter-2..9 artık gerçekten birbirinden habersiz, ayrı ayrı genişletilebiliyor
+(canlıda test edilirken Inverter-2 kapatılıp Inverter-3 açık bırakıldı,
+ikisi birbirini etkilemedi). **Ders:** kullanıcı "bu görünüm hâlâ istediğim
+gibi değil" derse ve önceki düzeltme doğrulanmış görünüyorsa, önce kullanıcının
+GERÇEKTEN hangi ekranı/sekmeyi izlediğini sorgula — aynı sayfada görünüşte
+benzer iki ayrı bölüm (Genel/Detaylı) olabilir, biri düzeltilip diğeri
+unutulmuş olabilir. Playwright'ta canlı doğrulandı (Inverter-3 açılınca kendi
+AC/DC alt dalı + INV3- kodlu görevler doğru tarihlerle görünüyor, hedef
+miktarlar — 105.000 m, 35 adet — ilgili DC/AC gruplarında korunmuş), tam
+regresyon suite'i (66/66) geçti, konsol hatası yok.
 
-Aynı gün daha önce yapılan Supabase akışları denetimi (migration senkronu,
-security/performance advisors, edge fonksiyon encoding düzeltmesi, pg_cron
-sağlığı, `financial_transactions`→`cost_allocations` backfill) ilgili
-bölümlere (bkz. "Migration tracking boşluğu", "RPC katmanı", yukarısı)
-işlendi — özet: `get_profile_names` ve 4 fonksiyondan daha `anon`/`PUBLIC`
-EXECUTE kaldırıldı, `create-user`/`manage-user` edge fonksiyonlarındaki
-Türkçe karakter mojibake'i redeploy ile düzeltildi, 5+2 eksik migration
-dosyası (2'si en güncel, 5'i 07-24/07-30 tarihli) idempotent olarak repoya
-geri eklendi, 4 demo `financial_transactions` kaydının eksik `cost_allocations`
-karşılığı backfill edildi.
+**(A) Teklif/Pazarlık/Sipariş menüden kaldırıldı.** 03.09.2026'da ayrı bir
+üst-seviye sidebar sayfası (`TabTeklifPazarlikSiparis.jsx`, `index.jsx`'teki
+`teklif-pazarlik-siparis` sekmesi) olarak eklenmişti — kullanıcı kararıyla
+`role_sidebar_items`/`role_allowed_tabs`'tan (`20260907090000_remove_teklif_pazarlik_siparis_top_level_menu_item`
+migration'ı) silinerek menüden kaldırıldı. **Kod bilinçli olarak silinmedi**
+(sayfa/route/Sidebar.jsx item tanımı duruyor, yalnızca erişilemez) —
+`ProjeTabSatinAlma.jsx`'teki proje-içi "surec" alt-sekmesi zaten korunduğundan
+süreç oradan erişilmeye devam ediyor.
+
+**(B) `ProjeTabSatinAlma.jsx`'in TABS sırası** Talepler → (Onay Bekleyenler →
+Teklif/Pazarlık/Sipariş → Aylık Plan, role göre) → **Malzeme Listesi** →
+**Riskler** oldu (kullanıcı isteği — bu ikisi öncesinde Talepler'in hemen
+ardından geliyordu, artık en sonda).
+
+**(C) Gantt — gerçek çok seviyeli iç içe gruplama.** Öncesinde
+`project_tasks.group_label` tek seviyeli düz bir etiketti (`resolveGroup` tek
+bir string döner, `TabIsPlan.jsx` bunları tek bir aç/kapa seviyesiyle
+listeliyordu). Kullanıcı harici bir planlama aracından (screenshot) çok
+seviyeli bir WBS gösterip "fotoğraftaki hiyerarşiye uygun içe geçişler"
+istedi — bu, `group_label`'ın kendisini " › " ayracıyla çok segmentli bir yol
+olarak kodlamayı (ör. `"Elektriksel Bölüm › TR-1-3000 kVA › Inverter-3 ›
+DC"`) ve `TabIsPlan.jsx`'in bunu GERÇEK bir ağaç olarak render etmesini
+gerektirdi (ayraç geçmeyen eski etiketler — "Mekanik Bölüm", "KABUL" vb. —
+tek düğümlük bir dal gibi davranır, geriye dönük tam uyumlu, başka hiçbir
+projenin verisi dokunulmadı). Eklenenler (`TabIsPlan.jsx`):
+- `GROUP_PATH_DELIM` (`' › '`) + `groupPath(task)` — group_label'ı segmentlere
+  ayırır (boşsa `CATEGORY_FALLBACK_GROUP` fallback'i tek segment döner).
+- `buildGroupTree(tasks)` — düz task listesinden, her segment kendi düğümü
+  olacak şekilde çok seviyeli bir ağaç kurar; her seviyede kardeşler
+  GROUP_ORDER'a (yalnızca kök seviyede) veya en erken `planned_start`'a göre
+  sıralanır (`_diger` her zaman en sonda) — eski tek-seviyeli sıralama
+  mantığının (`knownGroupKeys`/`unknownGroupKeys`) doğrudan genellemesi.
+- `renderGanttGroupNode(node, ctx)` — düğümü ve tüm alt dallarını recursive
+  render eder; her seviye kendi tam-yol string'iyle (`collapsed` Set'inde)
+  bağımsız aç/kapa olur, derinlik arttıkça başlık/görev satırları
+  `GROUP_INDENT_PX` kadar daha içeri kayar. Üst düğümlerin görev sayısı/
+  ortalama ilerlemesi artık TÜM alt dalları kapsar (`collectNodeTasks`,
+  eskiden yalnızca doğrudan görevler sayılıyordu — üst başlıklar için daha
+  doğru bir toplam).
+- `GROUP_CONFIG`'e çok seviyeli dallarda son segment tek başına eşleşsin diye
+  birkaç kısa-ad girdisi eklendi (`'Elektriksel Bölüm'`, `'DC'`, `'AC'`,
+  `'OG'`, `'Güvenlik'`) — eşleşmeyenler (ör. `'TR-1-3000 kVA'`, `'Inverter-3'`)
+  zaten var olan `_diger` fallback'iyle gri ama kendi gerçek metniyle görünür.
+- `resolveGroup`/`groupFilter`/`allGroupNames` (tam group_label string'i
+  üzerinden çalışan filtre dropdown'u) DEĞİŞMEDİ — hâlâ tam yol string'iyle
+  eşleşiyor, yalnızca artık bazı seçenekler çok segmentli (uzun) görünüyor;
+  bu bilinçli olarak kozmetik bir eksiklik, dropdown'u kısaltma bu turun
+  kapsamına alınmadı.
+
+**Veri: Kaptan Demir Çelik (Adana GES-1) İş Planı.** Aynı oturumda üç adımda
+son haline getirildi: (1) DC/AC görevleri Inverter-1..9 için ayrı ayrı
+kopyalandı (tarihler aynı, hedef miktar hiçbirine yazılmadı); (2) TÜM
+`group_label`'lar çok-segmentli şemaya geçirildi; (3) **kullanıcı fotoğrafı
+tekrar gösterip "tamamen hiyerarşi de içerik de böyle olmalı" deyince**, ilk
+turda ayrı bir `DC (Toplam)`/`AC (Toplam)` dalında bırakılan (hedef miktarlı,
+105.000 m/35 adet vb.) orijinal görevlerin aslında fotoğraftaki Inverter-1'in
+KENDİ DC/AC alt dalı olduğu anlaşıldı (tarihleri Inverter-1 ile birebir
+örtüşüyor) — bu görevler `Inverter-1 › DC`/`Inverter-1 › AC`'ye taşındı
+(miktarlarıyla birlikte), (1)'de oluşturulan miktarsız INV1-DC*/INV1-AC*
+kopyaları artık gereksiz olduğundan silindi. Nihai ağaç: `Elektriksel Bölüm`
+→ `TR-1-3000 kVA` (Topraklama, OG, Inverter-1..9 — hiçbir ayrı "Toplam" dalı
+yok) + `Güvenlik` (eski Kamera Aydınlatma); `ENH`/`KABUL`/`Mekanik Bölüm`/
+`Şantiye Mobilizasyon` tek seviyeli. Her düğümün toplam süresi (min
+planned_start/max planned_end) fotoğraftaki karşılığıyla satır satır
+doğrulandı (ör. Topraklama 92 gün, OG 123 gün, Inverter-1 114 gün/DC alt dalı
+90 gün — hepsi birebir eşleşti). **Ders:** kullanıcı "harici bir referansa
+tamamen uygun" isteğinde, aradaki farkı yalnızca yapısal olarak makul
+görünen bir yorumla (ör. "miktarları güvenli tarafta ayrı tut") kapatmak
+yeterli değil — referansta o düğüm hiç yoksa (burada "Toplam" dalı), veri
+de tam o şekle getirilmeli, gerekirse önceki turun ürettiği ek düğümler
+geri alınmalı. Playwright'ta canlı doğrulandı (nested başlıklar görünüyor,
+üst seviye aç/kapa çalışıyor, "Toplam" düğümü kalmadığı, konsol hatası yok).
+`npm run lint`/`npm run build` temiz (yalnızca yeni export edilen
+`groupPath`/`buildGroupTree` için 2 ek `react-refresh/only-export-components`
+uyarısı, mevcut dosyadaki aynı kategoriden 9 uyarıyla aynı, hata değil).
+

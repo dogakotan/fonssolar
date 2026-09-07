@@ -36,31 +36,33 @@ export function notificationDisplay(notification, live) {
 
   switch (notification.entity_type) {
     case 'purchase_request':
+      // "created" olayında DB zaten talebin gerçek başlığını title'a gömüyor
+      // ('Yeni satın alma talebi: {title}') — burada jenerik bir metne ezmek
+      // birden fazla yeni talep bildirimini birbirinden ayırt edilemez hale
+      // getiriyordu (04.09.2026'da bulunan bug: iki farklı talep bildirimi
+      // ekranda birebir aynı görünüyordu). Yalnızca status_changed'te (aynı
+      // talep zaman içinde çok kez güncellenebildiğinden) normalize ediliyor.
+      if (notification.event_type === 'created') return { title: notification.title, body: notification.body }
       return {
-        title: notification.event_type === 'created'
-          ? 'Yeni satın alma talebi'
-          : 'Satın alma talebi güncellendi',
+        title: 'Satın alma talebi güncellendi',
         body: status
           ? `Güncel durum: ${purchaseStatusLabel(status)}`
           : notification.body,
       }
     case 'invoice':
+      if (notification.event_type === 'created') return { title: notification.title, body: notification.body }
       return {
-        title: notification.event_type === 'created'
-          ? 'Yeni fatura onay bekliyor'
-          : 'Fatura durumu güncellendi',
+        title: 'Fatura durumu güncellendi',
         body: status
           ? `Güncel durum: ${labelFromMap(INVOICE_STATUS, status)}`
           : notification.body,
       }
     case 'ticket':
-      if (['processed_by_project_manager', 'closed_by_project_manager', 'cancelled_by_project_manager'].includes(notification.event_type)) {
+      if (['created', 'processed_by_project_manager', 'closed_by_project_manager', 'cancelled_by_project_manager'].includes(notification.event_type)) {
         return { title: notification.title, body: notification.body }
       }
       return {
-        title: notification.event_type === 'created'
-          ? 'Yeni ticket oluşturuldu'
-          : 'Ticket durumu güncellendi',
+        title: 'Ticket durumu güncellendi',
         body: status
           ? `Güncel durum: ${labelFromMap(TK_STATUS, status)}`
           : notification.body,

@@ -33,12 +33,6 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function weekAgoStr() {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 function norm(value) {
   return String(value || '').toLocaleLowerCase('tr-TR')
 }
@@ -773,8 +767,6 @@ const TD = { padding: '10px 14px', textAlign: 'center', fontSize: 13, verticalAl
 const BTN_PRIMARY = { background: '#003B8E', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const BTN_GHOST = { background: 'none', color: '#003B8E', border: '1px solid #003B8E', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const BTN_SMALL = { background: '#EBF5FF', color: '#003B8E', border: '1px solid #BFDBFE', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
-const FILTER_LABEL = { fontSize: 12, color: '#6B7280', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }
-const DATE_INPUT = { border: '1px solid #E5E7EB', borderRadius: 8, padding: '5px 10px', fontSize: 12, fontFamily: 'inherit', outline: 'none' }
 const FILTER_BAR = {
   background: '#fff',
   border: '1px solid #f1f5f9',

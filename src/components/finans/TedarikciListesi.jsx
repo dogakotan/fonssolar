@@ -73,7 +73,8 @@ export default function TedarikciListesi({ projectId = '', openSupplierId, onOpe
     ...invoices.map(invoice => ({ ...invoice, remaining_amount: invoice.remaining_amount })),
     ...transactions.map(tx => ({
       supplier_id: tx.supplier_id, project_id: tx.project_id, total_amount: tx.amount, total_amount_try: tx.amount,
-      paid_amount: tx.paid_amount, remaining_amount: tx.remaining_amount, due_date: tx.due_date,
+      paid_amount: tx.paid_amount, paid_amount_try: tx.paid_amount,
+      remaining_amount: tx.remaining_amount, remaining_amount_try: tx.remaining_amount, due_date: tx.due_date,
       vade_durumu: ['odeme_bekliyor', 'kismen_odendi'].includes(tx.status) && tx.due_date
         ? (tx.due_date < today() ? 'vadesi_gecti' : tx.due_date <= in7Days() ? 'vadesi_yaklasiyor' : null)
         : null,
@@ -83,12 +84,13 @@ export default function TedarikciListesi({ projectId = '', openSupplierId, onOpe
   const rows = useMemo(() => suppliers.map(supplier => {
     const list = records.filter(record => record.supplier_id === supplier.id && (!projectId || record.project_id === projectId))
     const open = list.filter(record => Number(record.remaining_amount) > 0)
-    // total_amount_try (TRY karşılığı) kullanılır — aksi halde USD/EUR faturalar
-    // TRY faturalarla aynı toplamda karışır (bkz. CLAUDE.md "Bilinen açık noktalar").
+    // total/paid/remaining hep TRY karşılığı (_try alanları) kullanılır — aksi
+    // halde USD/EUR faturalar TRY faturalarla aynı toplamda karışır (bkz.
+    // CLAUDE.md "Bilinen açık noktalar").
     const total = list.reduce((sum, record) => sum + Number(record.total_amount_try ?? record.total_amount ?? 0), 0)
-    const paid = list.reduce((sum, record) => sum + Number(record.paid_amount || 0), 0)
-    const remaining = open.reduce((sum, record) => sum + Number(record.remaining_amount || 0), 0)
-    const overdue = open.filter(record => record.vade_durumu === 'vadesi_gecti').reduce((sum, record) => sum + Number(record.remaining_amount || 0), 0)
+    const paid = list.reduce((sum, record) => sum + Number(record.paid_amount_try ?? record.paid_amount ?? 0), 0)
+    const remaining = open.reduce((sum, record) => sum + Number(record.remaining_amount_try ?? record.remaining_amount ?? 0), 0)
+    const overdue = open.filter(record => record.vade_durumu === 'vadesi_gecti').reduce((sum, record) => sum + Number(record.remaining_amount_try ?? record.remaining_amount ?? 0), 0)
     const nearestDue = open.map(record => record.due_date).filter(Boolean).sort()[0] || null
     return { ...supplier, openCount: open.length, total, paid, remaining, overdue, nearestDue }
   }), [suppliers, records, projectId])

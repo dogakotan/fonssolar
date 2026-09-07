@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useUrlSyncedSelection } from '../../hooks/useUrlSyncedSelection'
+import { useHighlightRow } from '../../hooks/useHighlightRow'
+import { useToast } from '../../hooks/useToast'
+import Toast from '../ui/Toast'
 import { supabase } from '../../lib/supabase'
 import { useRealtimeRefresh } from '../../hooks/useRealtimeRefresh'
 import DataStatusBanner from '../ui/DataStatusBanner'
@@ -124,6 +127,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
   // Açık fatura detay modalının id'sini adres çubuğuna yansıtır.
   useUrlSyncedSelection(detayFatura?.id ?? null, onSelectedInvoiceChange)
   const [cancelling, setCancelling] = useState(null)
+  const { toast, showToast } = useToast()
 
   async function fetchInvoices() {
     setLoading(true)
@@ -147,25 +151,6 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
   useEffect(() => { fetchInvoices() }, [projectId, filterDate])
   useRealtimeRefresh(['invoices', { table: 'invoice_approvals', filterColumn: null }, { table: 'invoice_payments', filterColumn: null }], fetchInvoices)
 
-  // Dışarıdan (Bildirimler sayfasından) belirli bir faturaya doğrudan gitme —
-  // mevcut filtrelerden/sayfalamadan bağımsız, tek faturayı id ile çekip açar.
-  useEffect(() => {
-    if (!openInvoiceId) return
-    let alive = true
-    supabase
-      .from('invoices')
-      .select('*, suppliers(name), projects(name), purchase_requests!invoices_purchase_request_id_fkey(title)')
-      .eq('id', openInvoiceId)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (!alive) return
-        if (error) console.error('openInvoiceId fatura fetch error:', error)
-        if (data) setDetayFatura(data)
-        onOpenedInvoice?.()
-      })
-    return () => { alive = false }
-  }, [openInvoiceId, onOpenedInvoice])
-
   function selectTab(key) {
     setActiveTab(key)
     setFilterStatus(key)
@@ -184,6 +169,37 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
   })
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+
+  // Dışarıdan (Bildirimler sayfasından) belirli bir faturaya gidince artık modal
+  // açmıyoruz — filtreleri sıfırlayıp ilgili satırın bulunduğu sayfaya geçiyoruz,
+  // vurgulamayı useHighlightRow yapıyor (kullanıcı isteği, 04.09.2026).
+  const retriedInvoiceRef = useRef(null)
+  useEffect(() => {
+    if (!openInvoiceId) { retriedInvoiceRef.current = null; return }
+    const target = invoices.find(i => i.id === openInvoiceId)
+    if (!target) {
+      if (loading) return
+      if (retriedInvoiceRef.current !== openInvoiceId) {
+        retriedInvoiceRef.current = openInvoiceId
+        fetchInvoices()
+        return
+      }
+      showToast('Bu bildirim artık mevcut olmayan bir faturaya işaret ediyor.', 'error')
+      onOpenedInvoice?.()
+      return
+    }
+    if (filterStatus !== 'hepsi' || filterCategory !== 'hepsi' || search) {
+      setFilterStatus('hepsi'); setActiveTab('hepsi'); setFilterCategory('hepsi'); setSearch('')
+      return
+    }
+    const idx = filtered.findIndex(i => i.id === openInvoiceId)
+    if (idx === -1) { onOpenedInvoice?.(); return }
+    const targetPage = Math.floor(idx / PAGE_SIZE)
+    if (page !== targetPage) setPage(targetPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openInvoiceId, invoices, filterStatus, filterCategory, search, filtered, page, loading])
+
+  const { highlightedId, rowRef } = useHighlightRow(openInvoiceId, paged, i => i.id, onOpenedInvoice)
 
   const tabCounts = TABS.reduce((acc, t) => {
     acc[t.key] = t.key === 'hepsi' ? invoices.length : invoices.filter(i => i.status === t.key).length
@@ -230,7 +246,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
             <div className="invoice-table-wrap"><table className="invoice-modern-table"><thead><tr>{['Fatura', 'Tedarikçi', 'Proje', 'Fatura Tarihi', 'Vade', 'Genel Toplam', 'Onay Durumu', 'İşlem'].map(header => <th key={header}>{header}</th>)}</tr></thead>
               <tbody>{paged.map(inv => {
                 const meta = statusMeta(inv.status)
-                return <tr key={inv.id} onClick={() => openInvoice(inv)}>
+                return <tr key={inv.id} ref={rowRef(inv.id)} className={highlightedId === inv.id ? 'row-highlight-flash' : undefined} onClick={() => openInvoice(inv)}>
                   <td><b>{inv.invoice_no || '—'}</b><small>{inv.purchase_requests?.title || '—'}</small></td>
                   <td>{inv.suppliers?.name || '—'}</td><td>{inv.projects?.name || '—'}</td><td>{formatDate(inv.invoice_date)}</td><td>{formatDate(inv.due_date)}</td><td><strong>{formatCurrency(inv.total_amount, inv.currency)}</strong></td>
                   <td><span className="invoice-status-pill" style={{ color: meta.color, background: meta.bg, borderColor: meta.color }}>{meta.label}</span></td>
@@ -240,7 +256,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
             </table></div>
             <div className="invoice-mobile-list">{paged.map(inv => {
               const meta = statusMeta(inv.status)
-              return <article key={inv.id}><header><div><b>{inv.invoice_no || '—'}</b><small>{inv.purchase_requests?.title || '—'}</small></div><span className="invoice-status-pill" style={{ color: meta.color, background: meta.bg, borderColor: meta.color }}>{meta.label}</span></header><p>{inv.suppliers?.name || '—'}</p><p>{inv.projects?.name || '—'}</p><div><span>{formatDate(inv.invoice_date)}</span><span>{formatDate(inv.due_date)}</span><strong>{formatCurrency(inv.total_amount, inv.currency)}</strong></div><footer onClick={e => e.stopPropagation()}>{islemHucresi({ inv, isAdmin, isMuhasebe, canApprove, onEdit: i => { setEditingInvoice(i); setShowForm(true) }, onCancel: setCancelling, onOpen: setDetayFatura })}</footer></article>
+              return <article key={inv.id} ref={rowRef(inv.id)} className={highlightedId === inv.id ? 'row-highlight-flash' : undefined}><header><div><b>{inv.invoice_no || '—'}</b><small>{inv.purchase_requests?.title || '—'}</small></div><span className="invoice-status-pill" style={{ color: meta.color, background: meta.bg, borderColor: meta.color }}>{meta.label}</span></header><p>{inv.suppliers?.name || '—'}</p><p>{inv.projects?.name || '—'}</p><div><span>{formatDate(inv.invoice_date)}</span><span>{formatDate(inv.due_date)}</span><strong>{formatCurrency(inv.total_amount, inv.currency)}</strong></div><footer onClick={e => e.stopPropagation()}>{islemHucresi({ inv, isAdmin, isMuhasebe, canApprove, onEdit: i => { setEditingInvoice(i); setShowForm(true) }, onCancel: setCancelling, onOpen: setDetayFatura })}</footer></article>
             })}</div>
             <div className="invoice-pager"><span>{page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} / {filtered.length} fatura</span><Pager page={page} totalPages={totalPages} onChange={setPage} /></div>
           </>
@@ -268,6 +284,7 @@ export default function FaturaListesi({ projectId = null, filterDate = null, ope
       {showAddInvoice && (
         <FaturaOlusturModal defaultProjectId={projectId || ''} onClose={() => setShowAddInvoice(false)} onSaved={async () => { setShowAddInvoice(false); await fetchInvoices() }} />
       )}
+      <Toast toast={toast} />
     </>
   )
 }

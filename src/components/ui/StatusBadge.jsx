@@ -34,6 +34,13 @@ export const PR_STATUS = {
   satin_alindi:         { label: 'Fatura Bekleniyor',    tone: 'warning' },
   reddedildi:           { label: 'Reddedildi',            tone: 'danger' },
   iptal:                { label: 'İptal',                 tone: 'muted' },
+  // Yeni 3 aşamalı satın alma akışı (03.09.2026) — teklif_toplama/pazarlik_onay_bekliyor/
+  // pazarlik/siparis, satin_alindi'ye ulaşana kadarki ara aşamalar (bkz. CLAUDE.md "Satın
+  // alma akışı"). 'bekliyor' kovasına katılmıyorlar, kendi rozetleri var.
+  teklif_toplama:        { label: 'Teklif Toplama',        tone: 'primary' },
+  pazarlik_onay_bekliyor:{ label: 'Pazarlık Onayı Bekliyor', tone: 'warning' },
+  pazarlik:              { label: 'Pazarlık',              tone: 'primary' },
+  siparis:               { label: 'Sipariş',               tone: 'primary' },
 }
 
 export const SITE_CHIEF_PR_STATUS = {
@@ -42,6 +49,12 @@ export const SITE_CHIEF_PR_STATUS = {
   onay_bekliyor:        { label: 'Talep Oluşturuldu',  tone: 'primary' },
   bekliyor:             { label: 'Talep Oluşturuldu',  tone: 'primary' },
   onaylandi:            { label: 'İşleme Alındı',      tone: 'warning' },
+  // Yeni 3 aşamalı akışın 4 ara durumu da (satin_alindi'ye ulaşana kadar) şantiye şefi
+  // görünümünde tek bir "İşleme Alındı" etiketine sadeleşir — bu görünüm bilinçli olarak sade.
+  teklif_toplama:       { label: 'İşleme Alındı',      tone: 'warning' },
+  pazarlik_onay_bekliyor: { label: 'İşleme Alındı',    tone: 'warning' },
+  pazarlik:             { label: 'İşleme Alındı',      tone: 'warning' },
+  siparis:              { label: 'İşleme Alındı',      tone: 'warning' },
   satin_alindi:         { label: 'İşlem Tamamlandı',   tone: 'success' },
   fatura_bekliyor:      { label: 'İşlem Tamamlandı',   tone: 'success' },
   fatura_onay_bekliyor: { label: 'İşlem Tamamlandı',   tone: 'success' },

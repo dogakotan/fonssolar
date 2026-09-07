@@ -46,8 +46,8 @@ test.describe.serial('Satın alma eşzamanlılık ve idempotency', () => {
   test('çakışan yönetici kararlarından yalnız biri uygulanır', async () => {
     const requestId = await createRequest('ADMIN')
     const results = await Promise.all([
-      adminA.from('purchase_requests').update({ status: 'onaylandi', approved_by: adminId, approved_at: new Date().toISOString() }).eq('id', requestId).eq('status', 'talep_olusturuldu').select('id'),
-      adminB.from('purchase_requests').update({ status: 'reddedildi' }).eq('id', requestId).eq('status', 'talep_olusturuldu').select('id'),
+      adminA.from('purchase_requests').update({ status: 'onaylandi', approved_by: adminId, approved_at: new Date().toISOString() }).eq('id', requestId).eq('status', 'teklif_toplama').select('id'),
+      adminB.from('purchase_requests').update({ status: 'reddedildi' }).eq('id', requestId).eq('status', 'teklif_toplama').select('id'),
     ])
     expect(results.filter(result => result.data?.length === 1)).toHaveLength(1)
     const { data } = await adminA.from('purchase_requests').select('status').eq('id', requestId).single()

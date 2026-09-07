@@ -4,10 +4,13 @@ import { useAuth } from '../../context/AuthContext'
 import YeniTicketModal from './YeniTicketModal'
 import TicketDetayModal from './TicketDetayModal'
 import SiteChiefTicketDetayModal from './SiteChiefTicketDetayModal'
-import { SEVERITY_META as SEVERITY, SEVERITY_ORDER, SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
+import { SEVERITY_META as SEVERITY } from '../../utils/ticketSeverity'
 import { CATEGORY_META as CATEGORY } from '../../utils/ticketStatus'
 import { fetchProfileNames } from '../../utils/profileNames'
 import { useUrlSyncedSelection } from '../../hooks/useUrlSyncedSelection'
+import { useHighlightRow } from '../../hooks/useHighlightRow'
+import { useToast } from '../../hooks/useToast'
+import Toast from '../ui/Toast'
 
 const TH = { height: 24, boxSizing: 'border-box', padding: '0 12px', lineHeight: '24px', textAlign: 'left', fontSize: 9.5, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.35px', whiteSpace: 'nowrap', verticalAlign: 'middle' }
 const TD = { height: 64, boxSizing: 'border-box', padding: '0 12px', fontSize: 12.5, color: 'var(--color-text-sub)', verticalAlign: 'middle' }
@@ -163,20 +166,13 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
   const [tickets, setTickets]               = useState([])
   const [loading, setLoading]               = useState(true)
   const [statusTab, setStatusTab]           = useState('all')
-  const [sortMode, setSortMode]             = useState('date_desc')    // date_desc | date_asc | sev_desc | sev_asc
-  const [severityFilter, setSeverityFilter] = useState('all')          // sub-filter when severity sort active
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [showFilterMenu, setShowFilterMenu] = useState(false)
   const [dateFilter, setDateFilter]         = useState('')
-  const [showCal, setShowCal]               = useState(false)
-  const [calPos, setCalPos]                 = useState({ top: 0, right: 0 })
-  const calRef    = useRef(null)
-  const calBtnRef = useRef(null)
   const [showNew, setShowNew]               = useState(false)
   const [selected, setSelected]             = useState(null)
   // Açık ticket detay modalının id'sini adres çubuğuna yansıtır.
   useUrlSyncedSelection(selected?.id ?? null, onSelectedTicketChange)
   const [quickAction, setQuickAction]       = useState(null)
+  const { toast, showToast } = useToast()
   const isProjectManager = role === 'proje_yoneticisi'
   const canManage = isAdmin || isProjectManager
   // Satın Alma sekmesindeki Talepler/Onay Bekleyenler ayrımıyla aynı desen — yönetici
@@ -187,57 +183,48 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     if (filterDateProp) setDateFilter(filterDateProp)
   }, [filterDateProp])
 
-  // Dışarıdan (örn. Günlük Rapor'daki "Ticket açıldı" rozeti) belirli bir
-  // ticket'a doğrudan gitme — mevcut filtrelerden bağımsız, tek satırı çekip açar.
+  // Dışarıdan (örn. Bildirimler/zil, Günlük Rapor'daki "Ticket açıldı" rozeti)
+  // belirli bir ticket'a gidince artık modal açmıyoruz — yerel filtreler (durum
+  // sekmesi/tarih/onay sekmesi) hedefi gizliyorsa sıfırlanır, bulununca
+  // useHighlightRow satırı vurgular (kullanıcı isteği, 04.09.2026). Bu sayfada
+  // (fatura/satın alma listelerinin aksine) ayrı bir realtime aboneliği yok —
+  // kullanıcı sayfa zaten açıkken bildirim geldiyse `tickets` o ticket'tan ÖNCE
+  // çekilmiş olabilir. Filtreler zaten varsayılandaysa vazgeçmeden ÖNCE bir kez
+  // `fetchTickets()` ile tazeleyip tekrar deniyoruz (04.09.2026'da bulunan bug —
+  // öncesinde ilk denemede bulunamayınca sessizce vazgeçiyordu).
+  const retriedTicketRef = useRef(null)
   useEffect(() => {
-    if (!openTicketId) return
-    let alive = true
-    supabase
-      .from('tickets')
-      .select('*')
-      .eq('id', openTicketId)
-      .maybeSingle()
-      .then(async ({ data }) => {
-        if (!alive) return
-        if (data) {
-          const [enriched] = await withProfileNames([data])
-          if (alive) setSelected(enriched)
-        }
-        onOpenedTicket?.()
-      })
-    return () => { alive = false }
-  }, [openTicketId, onOpenedTicket])
+    if (!openTicketId) { retriedTicketRef.current = null; return }
+    if (tickets.some(t => t.id === openTicketId)) return
+    if (loading) return
+    if (statusTab !== 'all' || viewTab !== 'all' || dateFilter) {
+      setStatusTab('all'); setViewTab('all'); setDateFilter('')
+      return
+    }
+    if (retriedTicketRef.current !== openTicketId) {
+      retriedTicketRef.current = openTicketId
+      fetchTickets()
+      return
+    }
+    showToast('Bu bildirim artık mevcut olmayan (veya erişemediğiniz) bir ticket\'a işaret ediyor.', 'error')
+    onOpenedTicket?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTicketId, tickets, loading, statusTab, viewTab, dateFilter, onOpenedTicket])
+
+  const { highlightedId, rowRef } = useHighlightRow(openTicketId, tickets, t => t.id, onOpenedTicket)
 
   // Listeyi belirleyen tüm değerler açıkça dependency'de; fetchTickets'in render-başına
   // değişen referansını eklemek gereksiz istek döngüsü yaratır.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchTickets() }, [statusTab, sortMode, severityFilter, categoryFilter, dateFilter, refreshKey, propProjectId, filterStatus, filterSeverity, isAdmin, role, authProjectId, user?.id, viewTab])
-
-  useEffect(() => {
-    function handler(e) {
-      if (calRef.current && !calRef.current.contains(e.target) && !calBtnRef.current?.contains(e.target))
-        setShowCal(false)
-    }
-    if (showCal) document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [showCal])
-
-  function openCal() {
-    if (calBtnRef.current) {
-      const r = calBtnRef.current.getBoundingClientRect()
-      setCalPos({ top: r.bottom + 6, right: window.innerWidth - r.right })
-    }
-    setShowCal(v => !v)
-  }
+  useEffect(() => { fetchTickets() }, [statusTab, dateFilter, refreshKey, propProjectId, filterStatus, filterSeverity, isAdmin, role, authProjectId, user?.id, viewTab])
 
   async function fetchTickets() {
     setLoading(true)
-    const ascending = sortMode === 'date_asc'
     const dateColumn = statusTab === 'sonuclandi' ? 'resolved_at' : 'created_at'
     let q = supabase
       .from('tickets')
       .select('*')
-      .order(dateColumn, { ascending, nullsFirst: false })
+      .order(dateColumn, { ascending: false, nullsFirst: false })
 
     // Status filtresi — "Onay Bekleyenler" sekmesi işleme alınmayı bekleyen
     // (gönderildi/açık) ticket'lara sabit filtrelenir, dropdown'daki durum
@@ -250,12 +237,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
       q = q.eq('workflow_stage', statusTab)
     }
 
-    // Severity sub-filtre (severity sort aktifken seçilebilir)
     if (filterSeverity && filterSeverity !== 'all') q = q.eq('severity', filterSeverity)
-    else if (severityFilter !== 'all') q = q.eq('severity', severityFilter)
-
-    // Category filtresi
-    if (categoryFilter !== 'all') q = q.eq('category', categoryFilter)
 
     // Tarih filtresi
     if (dateFilter) {
@@ -286,10 +268,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
     const { data, error } = await q
     if (error) console.error('TicketListesi fetch error:', error)
 
-    let result = await withProfileNames(data || [])
-    // Severity sort: client-side
-    if (sortMode === 'sev_desc') result = result.sort((a, b) => (SEVERITY_ORDER[b.severity] || 0) - (SEVERITY_ORDER[a.severity] || 0))
-    if (sortMode === 'sev_asc')  result = result.sort((a, b) => (SEVERITY_ORDER[a.severity] || 0) - (SEVERITY_ORDER[b.severity] || 0))
+    const result = await withProfileNames(data || [])
 
     setTickets(result)
     setLoading(false)
@@ -339,147 +318,6 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
             <option value="sonuclandi">Sonuçlandı</option>
           </select>
           )}
-
-          {/* Severity sub-butonlar — sadece severity sort aktifse */}
-          {false && (sortMode === 'sev_desc' || sortMode === 'sev_asc') && (
-            <div className="tl-toolbar-sev" style={{ display: 'flex', gap: 4 }}>
-              {[{ key: 'all', label: 'Tümü' }, ...SEVERITY_OPTIONS.map(o => ({ key: o.value, label: o.label }))].map(s => (
-                <button
-                  key={s.key}
-                  onClick={() => setSeverityFilter(s.key)}
-                  style={{
-                    border: `1px solid ${severityFilter === s.key ? '#185FA5' : '#E5E7EB'}`,
-                    borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: severityFilter === s.key ? 600 : 400,
-                    fontFamily: 'inherit', cursor: 'pointer',
-                    background: severityFilter === s.key ? '#EFF6FF' : '#fff',
-                    color: severityFilter === s.key ? '#185FA5' : '#6B7280',
-                  }}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Tarih Seç — sadece ikon */}
-          <div style={{ position: 'relative', display: 'none', alignItems: 'center' }}>
-            <label style={{
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 34, height: 34,
-              border: `1px solid ${dateFilter ? '#185FA5' : '#E5E7EB'}`,
-              borderRadius: 8,
-              background: dateFilter ? '#EFF6FF' : '#fff',
-              color: dateFilter ? '#185FA5' : '#6B7280',
-            }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-              <input
-                type="date"
-                value={dateFilter}
-                onChange={e => setDateFilter(e.target.value)}
-                style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer', top: 0, left: 0 }}
-              />
-            </label>
-            {dateFilter && (
-              <button
-                onClick={() => setDateFilter('')}
-                style={{ position: 'absolute', right: -8, top: -8, background: '#185FA5', border: 'none', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: 11, lineHeight: 1, padding: 0 }}
-              >×</button>
-            )}
-          </div>
-
-          {/* Filtrele butonu */}
-          <div style={{ position: 'relative', display: 'none' }}>
-            {showFilterMenu && (
-              <div style={{ position: 'fixed', inset: 0, zIndex: 50 }} onClick={() => setShowFilterMenu(false)} />
-            )}
-            <button
-              onClick={() => setShowFilterMenu(v => !v)}
-              style={{
-                border: `1px solid ${sortMode !== 'date_desc' || categoryFilter !== 'all' ? '#185FA5' : '#E5E7EB'}`,
-                borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 500,
-                fontFamily: 'inherit', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-                background: sortMode !== 'date_desc' || categoryFilter !== 'all' ? '#EFF6FF' : '#fff',
-                color: sortMode !== 'date_desc' || categoryFilter !== 'all' ? '#185FA5' : '#374151',
-              }}
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
-              Filtrele
-              {(sortMode !== 'date_desc' || categoryFilter !== 'all') && (
-                <span style={{ background: '#185FA5', color: '#fff', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700 }}>
-                  {(sortMode !== 'date_desc' ? 1 : 0) + (categoryFilter !== 'all' ? 1 : 0)}
-                </span>
-              )}
-            </button>
-
-            {showFilterMenu && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 100,
-                background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12,
-                boxShadow: '0 8px 32px rgba(0,0,0,0.12)', padding: '16px 18px', minWidth: 240,
-              }}>
-                {/* Sıralama */}
-                <p style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 10px' }}>Sıralama</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
-                  {[
-                    { key: 'date_desc', label: 'Yeniden Eskiye' },
-                    { key: 'date_asc',  label: 'Eskiden Yeniye' },
-                    { key: 'sev_desc',  label: 'Aciliyet: Yüksek → Düşük' },
-                    { key: 'sev_asc',   label: 'Aciliyet: Düşük → Yüksek' },
-                  ].map(opt => (
-                    <button
-                      key={opt.key}
-                      onClick={() => { setSortMode(opt.key); if (!opt.key.startsWith('sev')) setSeverityFilter('all') }}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8, border: 'none',
-                        padding: '6px 10px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit',
-                        fontSize: 13, fontWeight: sortMode === opt.key ? 600 : 400,
-                        color: sortMode === opt.key ? '#185FA5' : '#374151',
-                        background: sortMode === opt.key ? '#EFF6FF' : 'transparent',
-                        textAlign: 'left', width: '100%',
-                      }}
-                    >
-                      <span style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${sortMode === opt.key ? '#185FA5' : '#D1D5DB'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        {sortMode === opt.key && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#185FA5', display: 'block' }} />}
-                      </span>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Cins filtresi */}
-                <p style={{ fontSize: 10, fontWeight: 700, color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.5px', margin: '0 0 10px', borderTop: '1px solid #F3F4F6', paddingTop: 12 }}>Cins</p>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {[{ key: 'all', label: 'Tümü' }, { key: 'genel', label: 'Genel' }, { key: 'elektrik', label: 'Elektrik' }, { key: 'mekanik', label: 'Mekanik' }].map(c => (
-                    <button
-                      key={c.key}
-                      onClick={() => setCategoryFilter(c.key)}
-                      style={{
-                        border: `1px solid ${categoryFilter === c.key ? '#185FA5' : '#E5E7EB'}`,
-                        borderRadius: 6, padding: '5px 12px', fontSize: 12, fontWeight: categoryFilter === c.key ? 600 : 400,
-                        fontFamily: 'inherit', cursor: 'pointer',
-                        background: categoryFilter === c.key ? '#EFF6FF' : '#fff',
-                        color: categoryFilter === c.key ? '#185FA5' : '#6B7280',
-                      }}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Sıfırla */}
-                {(sortMode !== 'date_desc' || categoryFilter !== 'all') && (
-                  <button
-                    onClick={() => { setSortMode('date_desc'); setCategoryFilter('all'); setSeverityFilter('all'); setShowFilterMenu(false) }}
-                    style={{ marginTop: 14, width: '100%', padding: '7px', border: '1px solid #E5E7EB', borderRadius: 7, background: '#F9FAFB', color: '#6B7280', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
-                  >
-                    Filtreleri Sıfırla
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
 
           {!isAdmin && (
             <button
@@ -533,6 +371,8 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
                   return (
                     <tr
                       key={t.id}
+                      ref={rowRef(t.id)}
+                      className={highlightedId === t.id ? 'row-highlight-flash' : undefined}
                       onClick={() => setSelected(t)}
                       style={{ borderBottom: '1px solid var(--color-border)', cursor: 'pointer', background: 'transparent' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg)'}
@@ -622,7 +462,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
               const sv = SEVERITY[t.severity] || SEVERITY['orta']
               const ca = CATEGORY[t.category] || CATEGORY['genel']
               return (
-                <div key={t.id} className="tl-card" onClick={() => setSelected(t)}>
+                <div key={t.id} ref={rowRef(t.id)} className={`tl-card${highlightedId === t.id ? ' row-highlight-flash' : ''}`} onClick={() => setSelected(t)}>
                   <div className="tl-card-head">
                     <span className="tl-card-title">{t.description || t.title}</span>
                     <span className="tl-card-num">#{idx + 1}</span>
@@ -689,6 +529,7 @@ export default function TicketListesi({ onNewTicket, refreshKey, projectId: prop
           onDone={() => { setQuickAction(null); fetchTickets(); onNewTicket?.() }}
         />
       )}
+      <Toast toast={toast} />
     </div>
   )
 }

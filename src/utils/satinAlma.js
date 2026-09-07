@@ -6,9 +6,12 @@ export const toNumber = (value) => {
 export const materialKey = (value) =>
   String(value || '').trim().toLocaleLowerCase('tr-TR').replace(/\s+/g, ' ')
 
-// purchase_requests_status_check (Supabase) yalnızca şu değerlere izin verir:
-// talep_olusturuldu, fiyat_girildi, onay_bekliyor, onaylandi, reddedildi, satin_alindi,
-// fatura_bekliyor, fatura_onay_bekliyor, faturasi_kesildi, iptal.
+// purchase_requests_status_check (Supabase) artık 14 değere izin verir: eski 10 değer
+// (talep_olusturuldu, fiyat_girildi, onay_bekliyor, onaylandi, reddedildi, satin_alindi,
+// fatura_bekliyor, fatura_onay_bekliyor, faturasi_kesildi, iptal) + yeni 3 aşamalı akışın
+// 4 değeri (teklif_toplama, pazarlik_onay_bekliyor, pazarlik, siparis — 03.09.2026).
+// Yeni 4 değer bilinçli olarak 'bekliyor' kovasına KATILMAZ — onaylandi/satin_alindi gibi
+// kendi bucket'ları var, aksi halde hangi aşamada olduğu bilgisi kaybolurdu.
 export const normalizeStatus = (status) => {
   const value = String(status || '').trim().toLocaleLowerCase('tr-TR').replace(/\s+/g, '_')
   if (!value || ['bekliyor', 'beklemede', 'talep_olusturuldu', 'talep_oluşturuldu', 'fiyat_girildi', 'onay_bekliyor'].includes(value)) return 'bekliyor'
@@ -19,6 +22,10 @@ export const normalizeStatus = (status) => {
   if (['fatura_onay_bekliyor'].includes(value)) return 'fatura_onay_bekliyor'
   if (['fatura_kesildi', 'faturası_kesildi', 'faturasi_kesildi', 'tamamlandı', 'tamamlandi'].includes(value)) return 'faturasi_kesildi'
   if (['iptal', 'cancelled'].includes(value)) return 'iptal'
+  if (['teklif_toplama'].includes(value)) return 'teklif_toplama'
+  if (['pazarlik_onay_bekliyor'].includes(value)) return 'pazarlik_onay_bekliyor'
+  if (['pazarlik'].includes(value)) return 'pazarlik'
+  if (['siparis'].includes(value)) return 'siparis'
   return value
 }
 
@@ -37,6 +44,10 @@ export const statusLabel = (status) => ({
   fatura_onay_bekliyor: 'Fatura Onayda',
   faturasi_kesildi: 'Fatura Kesildi',
   iptal: 'İptal Edildi',
+  teklif_toplama: 'Teklif Toplama',
+  pazarlik_onay_bekliyor: 'Pazarlık Onayı Bekliyor',
+  pazarlik: 'Pazarlık',
+  siparis: 'Sipariş',
 })[normalizeStatus(status)] || String(status || 'Durum yok').replace(/_/g, ' ')
 
 // Talep satın alındı (proje yöneticisi tedarikçi/satın alma bilgisini girdi) ama henüz

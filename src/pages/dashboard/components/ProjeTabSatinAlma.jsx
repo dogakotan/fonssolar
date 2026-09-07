@@ -1,36 +1,56 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../../context/AuthContext'
-import { fetchDoviz } from '../../../utils/exchangeRates'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
-import { classifyMaterials, classifyRequestTypes, normalizeStatus } from '../../../utils/satinAlma'
-import ProjeTabSatinAlmaStats from './ProjeTabSatinAlmaStats'
 import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
-import ProjeTabSatinAlmaSidebar from './ProjeTabSatinAlmaSidebar'
+import ProjeTabAylikPlan from './ProjeTabAylikPlan'
+import ProjeTabFaturaKesilecekler from './ProjeTabFaturaKesilecekler'
+import ProjeTabRiskler from './ProjeTabRiskler'
+import { buildMaterialListRows } from '../../../utils/satinAlma'
 
-export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView = false, procurementManagerView = false, openRequestId, onOpenedRequest, onSelectedRequestChange }) {
+// activeSubTab/onSubTabChange kontrollüyse (ProjeDetay — Genel Proje'deki Riskler
+// kartından "riskler" alt-sekmesine deep-link yapabilsin ve bildirimden gelen bir
+// malzeme değişikliği "malzeme" alt-sekmesini zorlayabilsin diye) üst bileşenden
+// gelir; yoksa (ör. index.jsx'teki şantiye şefi menü-seviyesi çağrısı) yerel,
+// projeye özel localStorage'da kalıcı state'e düşülür (bkz. TabFinans.jsx'teki
+// aynı desen) — ProjeTabMalzemeListesi.jsx'teki activeSection/onSectionChange
+// ile birebir aynı fikir.
+export default function ProjeTabSatinAlma({
+  projectId, filterDate, siteChiefView = false,
+  openRequestId, onOpenedRequest, onSelectedRequestChange,
+  activeSubTab, onSubTabChange,
+  openChangeRequestId, onOpenedChangeRequest,
+  onGoTab,
+}) {
   const { isAdmin, role } = useAuth()
   const canManageProcurement = isAdmin || role === 'proje_yoneticisi'
-  // Sekme seçimi projeye özel olarak localStorage'da kalıcı — aksi halde başka
-  // bir menü öğesine geçip aynı projeye geri dönüldüğünde (ProjeDetay unmount/
-  // remount olduğundan) her seferinde varsayılana dönüyordu (bkz. TabFinans.jsx'teki
-  // aynı desen; anahtar projectId'ye göre ayrıştırılıyor).
-  const defaultTab = procurementManagerView ? 'tedarik' : 'talepler'
-  const [tab, setTab] = useState(() => {
+  const defaultTab = 'talepler'
+  const [localTab, setLocalTab] = useState(() => {
     try { return window.localStorage.getItem(`proje-satin-alma-active-subtab-${projectId}`) || defaultTab } catch { return defaultTab }
   })
+  const tab = activeSubTab ?? localTab
+  const setTab = onSubTabChange ?? setLocalTab
   useEffect(() => {
-    try { window.localStorage.setItem(`proje-satin-alma-active-subtab-${projectId}`, tab) } catch {}
-  }, [tab, projectId])
-  const [doviz, setDoviz] = useState({ usd: null, eur: null, date: null })
+    if (activeSubTab !== undefined) return
+    try { window.localStorage.setItem(`proje-satin-alma-active-subtab-${projectId}`, localTab) } catch {}
+  }, [localTab, projectId, activeSubTab])
 
-  // Bildirimler'den belirli bir talebe gidilince (proje yöneticisi görünümü varsayılan olarak
-  // "tedarik" sekmesinde açılıyor) talep detayının render edildiği sekmeye zorla geç.
+  // Bildirimler'den belirli bir talebe gidilince talep detayının render edildiği sekmeye zorla geç.
   useEffect(() => {
     if (openRequestId) setTab('talepler')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openRequestId])
+
+  // Aylık plandan "Talep Oluştur" ile bağlanan bir talebe tıklanınca da aynı yoldan
+  // Talepler sekmesine geçip detay modalını açıyoruz — openRequestId dış (bildirim)
+  // kaynaklı olduğundan, bunun için ayrı bir yerel state kullanılıyor.
+  const [planLinkedRequestId, setPlanLinkedRequestId] = useState(null)
+  function openLinkedRequest(requestId) {
+    setPlanLinkedRequestId(requestId)
+    setTab('talepler')
+  }
 
   const { data: overview, loading, refreshing, error, refetch } = useDashboardData(
     'get_satin_alma_overview',
@@ -38,9 +58,17 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
     { enabled: !!projectId }
   )
   const authorized = overview?.authorized ?? true
-  const requests = overview?.requests || []
   const procurement = overview?.procurement_items || []
+  const pendingChanges = overview?.pending_changes || []
   const refresh = refetch
+  // Malzeme Listesi alt-sekmesi için — 07.09.2026'da Malzeme Listesi/Riskler
+  // buraya taşınana kadar bu hesaplama ProjeTabMalzemeListesi.jsx'te ayrı bir
+  // get_satin_alma_overview çağrısıyla yapılıyordu (aynı veri iki kez çekiliyordu);
+  // artık burada zaten yüklü olan `overview`'dan türetiliyor.
+  const overviewRequests = overview?.requests || []
+  const materialDateBoundary = new Date((filterDate || new Date().toISOString().split('T')[0]) + 'T23:59:59')
+  const materialRequestsUntilDate = overviewRequests.filter(request => !request.created_at || new Date(request.created_at) <= materialDateBoundary)
+  const materialRows = buildMaterialListRows(procurement, materialRequestsUntilDate)
   // TabSatinAlmaTalepListesi kendi get_purchase_requests_list RPC çağrısını yapıyor
   // (bu overview'dan bağımsız) — bu yüzden overview.requests'in Realtime ile tazelenmesi
   // liste tablosuna yansımaz. refreshKey'i bump ederek çocuk bileşenin kendi fetchData'sını
@@ -55,44 +83,35 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
     { enabled: true, filter: projectId ? { column: 'project_id', value: projectId } : undefined }
   )
 
-  useEffect(() => {
-    if (siteChiefView || procurementManagerView) return // Şantiye şefi / proje yöneticisi görünümünde döviz kartı (sidebar) gösterilmiyor.
-    let alive = true
-    // TCMB kur servisi yavaş/erişilemez olabilir; ana veriyi bekletmemesi için ayrı yükleniyor.
-    fetchDoviz().then(kurData => {
-      if (alive && kurData) setDoviz({ usd: kurData.usd, eur: kurData.eur, date: kurData.date })
-    })
-    return () => { alive = false }
-  }, [siteChiefView, procurementManagerView])
-
-  const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const pendingRequests = requests.filter(r => normalizeStatus(r.status) === 'bekliyor')
-  const tedarik = classifyMaterials(procurement, pendingRequests)
-  const dagilim = classifyRequestTypes(requests)
-  const kpi = {
-    pending: pendingRequests.length,
-    risky: tedarik.excess,
-    invoicePending: requests.filter(r => ['satin_alindi', 'fatura_bekliyor', 'fatura_onay_bekliyor'].includes(normalizeStatus(r.status))).length,
-    monthOpened: requests.filter(r => r.created_at && new Date(r.created_at) >= monthStart).length,
-  }
-
-  const TABS = procurementManagerView
-    ? [
-        { key: 'tedarik', label: 'Bekleyen' },
-      ]
-    : [
-        { key: 'talepler', label: 'Talepler' },
-        ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
-        ...(canManageProcurement ? [{ key: 'tedarik', label: 'Bekleyen' }] : []),
-      ]
+  // "Bekleyen" (fixedStatus="onaylandi") sekmesi 04.09.2026'da kaldırıldı — bu
+  // durumdaki talepler zaten "Talepler" sekmesinde de görünüyor ve proje
+  // yöneticisi için aynı "Tamamlandı" satır aksiyonunu gösteriyor
+  // (TabSatinAlmaTalepListesi.jsx'teki canCompleteProcurement satır mantığı
+  // fixedStatus'tan bağımsız çalışır) — bu sekme yalnızca aynı verinin filtreli
+  // bir tekrarıydı, kullanıcı kararıyla kaldırıldı.
+  // "Aylık Satın Alma Planı" 04.09.2026'da Malzeme Listesi sekmesinden buraya
+  // taşındı (bkz. ProjeTabAylikPlan.jsx) — proje yöneticisinin aylık satın alma
+  // planlamasını Satın Alma bağlamında yapması için, kullanıcı kararıyla.
+  // 'surec' ile aynı görünürlük kapsamını kullanır. "Malzeme Listesi"/"Riskler"
+  // de 07.09.2026'da eski ayrı üst-seviye "Malzeme Listesi" sekmesinden (artık
+  // kaldırıldı, bkz. ProjeDetay.jsx) buraya taşındı — ikisi de rol kısıtı olmadan
+  // (siteChiefView dahil tüm roller) görünür, tek fark siteChiefView'da
+  // Onay Bekleyenler/Teklif-Pazarlık-Sipariş/Aylık Plan'ın hâlâ gizli kalması.
+  const TABS = [
+    { key: 'talepler', label: 'Talepler' },
+    ...(isAdmin ? [{ key: 'onay', label: 'Onay Bekleyenler' }] : []),
+    ...(canManageProcurement ? [{ key: 'surec', label: 'Teklif / Pazarlık / Sipariş' }] : []),
+    ...(canManageProcurement ? [{ key: 'aylik-plan', label: 'Aylık Satın Alma Planı' }] : []),
+    { key: 'malzeme', label: 'Malzeme Listesi' },
+    { key: 'riskler', label: 'Riskler' },
+  ]
 
   // localStorage'dan gelen sekme farklı bir rolden/görünümden kalmış olabilir —
   // geçerli değilse varsayılana düş (bkz. TabFinans.jsx'teki aynı desen).
   useEffect(() => {
     if (!TABS.some(t => t.key === tab)) setTab(defaultTab)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, canManageProcurement, procurementManagerView])
+  }, [isAdmin, canManageProcurement])
 
   if (!loading && !authorized) {
     return <UnauthorizedScopeNotice />
@@ -101,18 +120,12 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
   return (
     <div>
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
-      {!siteChiefView && !procurementManagerView && (
-        <div className="sa-overview-grid">
-          <ProjeTabSatinAlmaStats kpi={kpi} loading={loading} />
-          <ProjeTabSatinAlmaSidebar
-            tedarik={tedarik}
-            dagilim={dagilim}
-            doviz={doviz}
-            hideMaterialTotal={role === 'proje_yoneticisi'}
-          />
-        </div>
-      )}
-      {!siteChiefView && !procurementManagerView && <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
+      {/* Şantiye şefi görünümünde de artık bu şerit gösteriliyor (07.09.2026'ya kadar
+          tamamen gizliydi, yalnızca Talepler görünürdü) — Malzeme Listesi/Riskler
+          buraya taşınınca şantiye şefinin bunlara erişebilmesi için TABS zaten
+          Onay Bekleyenler/Teklif-Pazarlık-Sipariş/Aylık Plan'ı bu rolde filtreliyor,
+          yalnızca Talepler/Malzeme Listesi/Riskler kalıyor. */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '2px solid var(--color-border-md)' }}>
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             background: 'none', border: 'none', padding: '10px 22px',
@@ -125,7 +138,7 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
             {t.label}
           </button>
         ))}
-      </div>}
+      </div>
       {tab === 'talepler' && (
         <TabSatinAlmaTalepListesi
           projectId={projectId}
@@ -134,22 +147,42 @@ export default function ProjeTabSatinAlma({ projectId, filterDate, siteChiefView
           procurement={procurement}
           refreshKey={refreshKey}
           siteChiefView={siteChiefView}
-          openRequestId={openRequestId}
-          onOpenedRequest={onOpenedRequest}
+          openRequestId={openRequestId || planLinkedRequestId}
+          onOpenedRequest={() => { onOpenedRequest?.(); setPlanLinkedRequestId(null) }}
           onSelectedRequestChange={onSelectedRequestChange}
         />
       )}
+      {tab === 'malzeme' && (
+        <ProjeTabFaturaKesilecekler
+          rows={materialRows}
+          loading={loading}
+          pendingChanges={pendingChanges}
+          onPendingChanged={refresh}
+          projectId={projectId}
+          openChangeRequestId={openChangeRequestId}
+          onOpenedChangeRequest={onOpenedChangeRequest}
+        />
+      )}
+      {tab === 'riskler' && (
+        <ProjeTabRiskler
+          projectId={projectId}
+          onGoTab={target => { if (target === 'satin-alma') setTab('talepler'); else onGoTab?.(target) }}
+        />
+      )}
       {tab === 'onay' && isAdmin && <TabSatinAlmaOnayKuyrugu projectId={projectId} filterDate={filterDate} onChanged={refresh} procurement={procurement} refreshKey={refreshKey} />}
-      {tab === 'tedarik' && canManageProcurement && (
+      {tab === 'surec' && canManageProcurement && (
         <TabSatinAlmaTalepListesi
           projectId={projectId}
           filterDate={filterDate}
           onChanged={refresh}
           procurement={procurement}
           refreshKey={refreshKey}
-          fixedStatus="onaylandi"
-          listTitle="Bekleyen Talepler"
+          fixedStatus={['teklif_toplama', 'pazarlik_onay_bekliyor', 'pazarlik', 'siparis']}
+          listTitle="Teklif / Pazarlık / Sipariş Süreci"
         />
+      )}
+      {tab === 'aylik-plan' && canManageProcurement && (
+        <ProjeTabAylikPlan projectId={projectId} onOpenRequest={openLinkedRequest} />
       )}
     </div>
   )

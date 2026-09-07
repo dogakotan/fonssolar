@@ -4,6 +4,7 @@ import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import { useAuth } from '../../../context/AuthContext'
+import TabIsPlaniDetay from './TabIsPlaniDetay'
 
 // Gantt grupları project_tasks.group_label kolonundan DOĞRUDAN gelir — bu
 // kolon serbest metin (admin elle giriyor, ör. "KABUL", "ENH", "Mekanik
@@ -41,7 +42,7 @@ const CATEGORY_FALLBACK_GROUP = {
 // "Elektriksel — AC" gibi birden çok yazım DB'de bir arada duruyor) burada
 // hepsi ayrı ayrı, kendi başlıkları altında listelenir — birbirine
 // eşitlenmez (farklı group_label = farklı başlık, her zaman).
-const GROUP_ORDER = [
+export const GROUP_ORDER = [
   'Projelendirme & İzinler',
   'Şantiye Hazırlık',
   'Mobilizasyon',
@@ -50,6 +51,7 @@ const GROUP_ORDER = [
   'Mekanik',
   'Mekanik Bölüm',
   'Topraklama',
+  'Elektriksel Bölüm',
   'Elektriksel — DC',
   'Elektrik DC',
   'Elektriksel — AC',
@@ -61,6 +63,90 @@ const GROUP_ORDER = [
   'Devreye Alma',
   'KABUL',
 ]
+
+// group_label içinde bu ayraç geçiyorsa çok seviyeli (Elektriksel Bölüm ›
+// TR-1-3000 kVA › Inverter-3 › DC gibi) gerçek iç içe geçmiş bir Gantt dalı
+// olarak render edilir — ayraç yoksa (eski tek seviyeli etiketler, ör.
+// "Mekanik Bölüm") tek düğümlük bir dal gibi davranır, geriye dönük uyumlu.
+export const GROUP_PATH_DELIM = ' › '
+
+export function groupPath(task) {
+  const label = (task.group_label || '').trim()
+  if (!label) return [CATEGORY_FALLBACK_GROUP[task.category] || '_diger']
+  return label.split(GROUP_PATH_DELIM).map(s => s.trim()).filter(Boolean)
+}
+
+// Bir grup düğümündeki (kendi + tüm alt dallardaki) görevleri toplar —
+// üst seviye başlıkların (ör. "Elektriksel Bölüm") görev sayısı/ortalama
+// ilerlemesi tüm alt dalları kapsasın diye.
+export function collectNodeTasks(node) {
+  return node.tasks.concat(...node.childList.map(collectNodeTasks))
+}
+
+// Düz task listesinden group_label'a göre çok seviyeli bir ağaç kurar.
+// TabIsPlan'daki tek seviyeli grup mantığının (grouped/groupKeys) yerine
+// geçer — bilinen (GROUP_ORDER'da olan) kök segmentler sabit sırada, diğerleri
+// (ör. yeni bir group_label) en erken planned_start'a göre sıralanır; aynı
+// mantık her seviyede (kardeşler arasında) tekrarlanır.
+export function buildGroupTree(tasks) {
+  const topMap = new Map()
+  tasks.forEach(task => {
+    const path = groupPath(task)
+    let map = topMap
+    let acc = []
+    path.forEach((segment, i) => {
+      acc = [...acc, segment]
+      const key = acc.join(GROUP_PATH_DELIM)
+      if (!map.has(key)) map.set(key, { key, label: segment, depth: i, tasks: [], children: new Map() })
+      const node = map.get(key)
+      if (i === path.length - 1) node.tasks.push(task)
+      map = node.children
+    })
+  })
+
+  function finalize(map) {
+    return [...map.values()].map(node => {
+      const childList = finalize(node.children)
+      const withChildren = { ...node, childList }
+      // Grup başlığının kendi Başlangıç/Bitiş/Süre sütunları — tüm alt
+      // dallardaki (kendi + iç içe geçmiş) görevlerin en erken planned_start /
+      // en geç planned_end'i, harici planlama aracındaki gibi grup satırında
+      // da tarih göstermek için (07.09.2026'da eklendi).
+      let rangeStart = null
+      let rangeEnd = null
+      collectNodeTasks(withChildren).forEach(t => {
+        if (t.planned_start && (!rangeStart || t.planned_start < rangeStart)) rangeStart = t.planned_start
+        if (t.planned_end && (!rangeEnd || t.planned_end > rangeEnd)) rangeEnd = t.planned_end
+      })
+      return { ...withChildren, rangeStart, rangeEnd }
+    })
+  }
+
+  function earliestStart(node) {
+    return node.rangeStart ? new Date(node.rangeStart).getTime() : Infinity
+  }
+
+  function sortLevel(arr, isTop) {
+    arr.sort((a, b) => {
+      if (a.label === '_diger') return 1
+      if (b.label === '_diger') return -1
+      if (isTop) {
+        const ai = GROUP_ORDER.indexOf(a.label)
+        const bi = GROUP_ORDER.indexOf(b.label)
+        if (ai !== -1 && bi !== -1) return ai - bi
+        if (ai !== -1) return -1
+        if (bi !== -1) return 1
+      }
+      const diff = earliestStart(a) - earliestStart(b)
+      if (diff) return diff
+      return a.label.localeCompare(b.label, 'tr', { numeric: true, sensitivity: 'base' })
+    })
+    arr.forEach(node => sortLevel(node.childList, false))
+    return arr
+  }
+
+  return sortLevel(finalize(topMap), true)
+}
 
 const GROUP_CONFIG = {
   'Projelendirme & İzinler': { tone: 'blue', bar: '#5b8def', label: 'PROJELENDİRME & İZİNLER' },
@@ -81,6 +167,14 @@ const GROUP_CONFIG = {
   'Satın Alma': { tone: 'slate', bar: '#64748b', label: 'SATIN ALMA' },
   'Devreye Alma': { tone: 'rose', bar: '#ea7d8c', label: 'DEVREYE ALMA' },
   'KABUL': { tone: 'rose', bar: '#d94f64', label: 'KABUL' },
+  // Çok seviyeli (Elektriksel Bölüm › ... › Inverter-3 › DC gibi) dallarda
+  // son segment tek başına burada aranır — TR-1-3000 kVA/Inverter-N gibi
+  // bilinmeyenler _diger fallback'iyle kendi metnini gösterir, yeterli.
+  'Elektriksel Bölüm': { tone: 'sky', bar: '#3f86d8', label: 'ELEKTRİKSEL BÖLÜM' },
+  'DC': { tone: 'amber', bar: '#f4b344', label: 'DC' },
+  'AC': { tone: 'sky', bar: '#77aae6', label: 'AC' },
+  'OG': { tone: 'teal', bar: '#4fbda7', label: 'OG' },
+  'Güvenlik': { tone: 'green', bar: '#2f9668', label: 'GÜVENLİK' },
   '_diger': { tone: 'slate', bar: '#94a3b8', label: 'DİĞER' },
 }
 
@@ -88,7 +182,7 @@ const GROUP_CONFIG = {
 // group_label gelirse (ör. admin ileride yeni bir isim yazarsa) kırılmadan
 // _diger'in rengiyle ama KENDİ gerçek metniyle gösterilir — "DİĞER" gibi
 // yanıltıcı bir jenerik etiket YAZILMAZ, admin'in yazdığı metin korunur.
-function groupConfigFor(groupKey) {
+export function groupConfigFor(groupKey) {
   if (GROUP_CONFIG[groupKey]) return GROUP_CONFIG[groupKey]
   if (groupKey === '_diger') return GROUP_CONFIG._diger
   return { ...GROUP_CONFIG._diger, label: groupKey }
@@ -102,37 +196,116 @@ const STATUS_LABELS = {
   iptal: 'İptal',
 }
 
-// Adim2IsKalemleri.jsx'teki wizard durum düzenleyicisiyle aynı 5 değer —
-// yalnız target_qty'si olmayan (miktarla ölçülemeyen, kilometre taşı) iş
-// kalemlerinde gösterilen durum güncelleme seçici için.
-const MILESTONE_STATUS_OPTIONS = [
-  { v: 'beklemede', l: 'Beklemede' },
-  { v: 'devam_ediyor', l: 'Devam Ediyor' },
-  { v: 'tamamlandi', l: 'Tamamlandı' },
-  { v: 'askida', l: 'Askıda' },
-  { v: 'iptal', l: 'İptal' },
-]
-
 const W_NO = 42
 const W_NAME = 170
 const W_START = 72
 const W_END = 72
-const W_DUR = 48
+const W_DUR = 54
 const W_PROGRESS = 64
 const W_WEEK = 20
+export const GROUP_INDENT_PX = 20
 
-function resolveGroup(task) {
+// Bir grup düğümünü (ve fotoğraftaki hiyerarşiye uygun şekilde açılıp
+// kapanabilen tüm alt dallarını) recursive olarak render eder — derinlik
+// arttıkça hem başlık satırı hem altındaki görev satırları biraz daha içeri
+// kayar, her seviye kendi collapsed-state'iyle (tam yol string'i, ör.
+// "Elektriksel Bölüm › TR-1-3000 kVA › Inverter-3") bağımsız aç/kapa yapılır.
+function renderGanttGroupNode(node, ctx) {
+  const { collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen } = ctx
+  const isOpen = !collapsed.has(node.key)
+  const allTasks = collectNodeTasks(node)
+  const avg = allTasks.length
+    ? Math.round(allTasks.reduce((sum, task) => sum + Number(task.progress_pct || 0), 0) / allTasks.length)
+    : 0
+  const groupDuration = node.rangeStart && node.rangeEnd ? daysBetween(node.rangeStart, node.rangeEnd) : null
+
+  return (
+    <div key={node.key} className="gantt-group">
+      <button className="gantt-group-row" onClick={() => toggleGroup(node.key)}>
+        <span className="gantt-group-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
+          <span />
+          {/* Ok işareti girinti ile birlikte kayar (aynı hücrede, metnin hemen
+              solunda) — önceden ok sabit "No" hücresinde, yalnızca metin kayıyordu,
+              bu da derinlik arttıkça ok ile metnin görsel olarak kopmasına
+              (kullanıcının "dengesiz" dediği görünüme) yol açıyordu. */}
+          <span className="gantt-group-name" style={{ paddingLeft: node.depth * GROUP_INDENT_PX }}>
+            <span className="gantt-group-toggle">{isOpen ? '▾' : '▸'}</span>
+            {node.label}
+          </span>
+          <span>{node.rangeStart ? fmtDate(node.rangeStart) : '-'}</span>
+          <span>{node.rangeEnd ? fmtDate(node.rangeEnd) : '-'}</span>
+          <span>{groupDuration !== null ? `${groupDuration} gün` : '-'}</span>
+          <span className="gantt-progress-cell">
+            <i><em style={{ '--progress': `${avg}%`, '--bar-color': '#94a3b8' }} /></i>
+            <b>%{avg}</b>
+          </span>
+        </span>
+        <span className="gantt-group-timeline" />
+      </button>
+
+      {isOpen && node.childList.map(child => renderGanttGroupNode(child, ctx))}
+
+      {isOpen && node.tasks.map((task, index) => {
+        // Görev satırının kendi rengi (ilerleme çubuğu/bar) — grup başlığının
+        // artık düz/beyaz olması bunu etkilemiyor, yalnızca görev satırında
+        // hâlâ kategoriye göre renkli kalıyor (bkz. GROUP_CONFIG).
+        const cfg = groupConfigFor(node.label)
+        const barLeft = timelineOffsetPct(task.planned_start, timelineStart, timelineUnits)
+        const barEnd = timelineOffsetPct(task.planned_end, timelineStart, timelineUnits) + (100 / timelineUnits)
+        const barWidth = Math.max(1.2, barEnd - barLeft)
+        const duration = daysBetween(task.planned_start, task.planned_end)
+        const pct = Math.round(Number(task.progress_pct || 0))
+        const isLate = isTaskLate(task, today)
+        const isSelected = task.id === selectedTaskId
+
+        return (
+          <button
+            key={task.id}
+            className={`gantt-task-row${isSelected ? ' selected' : ''}`}
+            onClick={() => { setSelectedTaskId(task.id); setPanelOpen(true) }}
+          >
+            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
+              <span className="gantt-code">
+                {task.task_code || index + 1}
+              </span>
+              <span className={`gantt-name${isLate ? ' late' : ''}`} style={{ paddingLeft: (node.depth + 1) * GROUP_INDENT_PX }}>
+                {task.task_name || '-'}
+                {isLate ? ` (${riskSeverityLabel(task)})` : ''}
+              </span>
+              <span>{fmtDate(task.planned_start)}</span>
+              <span className={isLate ? 'late' : ''}>{fmtDate(task.planned_end)}</span>
+              <span>{duration} gün</span>
+              <span className="gantt-progress-cell">
+                <i><em style={{ '--progress': `${pct}%`, '--bar-color': cfg.bar }} /></i>
+                <b>%{pct}</b>
+              </span>
+            </span>
+            <span
+              className={`gantt-bar${isLate ? ' late' : ''}`}
+              style={{ '--bar-left': `${barLeft}%`, '--bar-width': `${barWidth}%`, '--bar-color': cfg.bar, '--progress': `${pct}%` }}
+              title={`${task.task_name || ''} - ${fmtDate(task.planned_start)} / ${fmtDate(task.planned_end)}`}
+            >
+              <i />
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+export function resolveGroup(task) {
   const label = (task.group_label || '').trim()
   if (label) return label
   return CATEGORY_FALLBACK_GROUP[task.category] || '_diger'
 }
 
-function fmtDate(date) {
+export function fmtDate(date) {
   if (!date) return '-'
   return new Date(date).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-function daysBetween(start, end) {
+export function daysBetween(start, end) {
   if (!start || !end) return 0
   return Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1)
 }
@@ -226,17 +399,17 @@ function deriveTaskStatusAt(task, pct, date) {
   return task.status || 'bekliyor'
 }
 
-function isTaskLate(task, today) {
+export function isTaskLate(task, today) {
   if (!task.planned_end) return false
   if (task.status === 'tamamlandi' || task.status === 'iptal') return false
   return new Date(task.planned_end) < today
 }
 
-function statusLabel(status) {
+export function statusLabel(status) {
   return STATUS_LABELS[status] || status?.replace(/_/g, ' ') || '-'
 }
 
-function riskSeverityLabel(task) {
+export function riskSeverityLabel(task) {
   const severity = String(task?.risk_severity || 'orta').toLocaleLowerCase('tr-TR')
   return {
     düşük: 'Düşük',
@@ -254,11 +427,21 @@ function pctFromDailyProgress(targetQty, dailyRows) {
   return Math.min(100, Math.round((dailyDone / targetQty) * 100))
 }
 
+// Genel İş Planı (Gantt, görsel zaman çizelgesi) ve Detaylı İş Planı (tam
+// veri tablosu + plan/gerçekleşen sapma) — Malzeme Listesi/Riskler alt-sekme
+// deseniyle aynı fikir, tek sayfada iki bölüm. Proje-özel localStorage anahtarı
+// (projectId ile sonlandırılmış) — farklı bir proje açmak önceki projenin
+// seçtiği bölümü miras almasın diye.
+function readSection(projectId) {
+  try { return window.localStorage.getItem(`is-plani-active-section-${projectId}`) || 'gantt' } catch { return 'gantt' }
+}
+
 export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily', siteChiefView = false }) {
   const { role } = useAuth()
   const [tasks, setTasks] = useState([])
   const [project, setProject] = useState(null)
   const [siteChief, setSiteChief] = useState(null)
+  const [section, setSection] = useState(() => readSection(projectId))
   // Görev bazlı "Kümülatif/Günlük İlerleme" hesaplamak için ham veriler tutulur —
   // önceden tek bir proje-geneli yüzde hesaplanıp HER görevin detay panelinde
   // aynı (yanlış) sayı gösteriliyordu, task_id ile filtrelenmediği için.
@@ -270,7 +453,6 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const [groupFilter, setGroupFilter] = useState('all')
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [panelOpen, setPanelOpen] = useState(true)
-  const [progressTask, setProgressTask] = useState(null)
   const topScrollRef = useRef(null)
   const bottomScrollRef = useRef(null)
   const bodyScrollRef = useRef(null)
@@ -279,6 +461,11 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     () => getEffectiveFilterDate(filterDate, reportPeriod),
     [filterDate, reportPeriod]
   )
+
+  useEffect(() => { setSection(readSection(projectId)) }, [projectId])
+  useEffect(() => {
+    try { window.localStorage.setItem(`is-plani-active-section-${projectId}`, section) } catch { /* yok say */ }
+  }, [section, projectId])
 
   const { data: ganttData, loading: ganttLoading, refreshing, error, refetch } = useDashboardData(
     'get_project_gantt',
@@ -441,10 +628,34 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     return <UnauthorizedScopeNotice />
   }
 
+  const sectionToggle = (
+    <SectionToggle section={section} onChange={setSection} />
+  )
+
+  // Detaylı İş Planı Gantt'ın planned_start/planned_end zorunluluğuna bağlı
+  // değil (tarihsiz görevleri de satır olarak gösterir) — bu yüzden withDates
+  // boş olsa (Gantt'ın çizecek hiç barı olmasa) bile bu bölüm kendi başına render edilir.
+  if (section === 'detay') {
+    return (
+      <div className="gantt-page">
+        <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+        {sectionToggle}
+        <TabIsPlaniDetay
+          tasks={tasks}
+          today={today}
+          allGroupNames={allGroupNames}
+          canAddProgress={canAddProgress}
+          onProgressSaved={refetch}
+        />
+      </div>
+    )
+  }
+
   if (withDates.length === 0) {
     return (
       <div className="gantt-page">
         <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+        {sectionToggle}
         <KpiStrip total={tasks.length} devam={kpis.ongoing} risky={kpis.risky} />
         <GanttShell
           project={project}
@@ -473,24 +684,12 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const showToday = today.getTime() >= projStartTs && today.getTime() <= projEndTs
   const todayOffsetPct = showToday ? timelineOffsetPct(today, timelineStart, timelineUnits) : 0
 
-  const grouped = {}
-  withDates.forEach(task => {
-    const key = resolveGroup(task)
-    if (!grouped[key]) grouped[key] = []
-    grouped[key].push(task)
-  })
-  Object.values(grouped).forEach(items => {
-    items.sort((a, b) => new Date(a.planned_start).getTime() - new Date(b.planned_start).getTime())
-  })
-  // GROUP_ORDER'da tanımlı olmayan (ör. ileride admin'in yazacağı yeni bir
-  // group_label) bir grup çıkarsa listeden SESSİZCE düşmesin diye en erken
-  // planned_start'a göre sıralanıp bilinen gruplardan sonra, '_diger'den
-  // önce eklenir — her group_label kendi başlığıyla görünür garantisi.
-  const knownGroupKeys = GROUP_ORDER.filter(key => grouped[key])
-  const unknownGroupKeys = Object.keys(grouped)
-    .filter(key => key !== '_diger' && !GROUP_ORDER.includes(key))
-    .sort((a, b) => new Date(grouped[a][0].planned_start).getTime() - new Date(grouped[b][0].planned_start).getTime())
-  const groupKeys = [...knownGroupKeys, ...unknownGroupKeys, ...(grouped._diger ? ['_diger'] : [])]
+  // Tek seviyeli düz gruplamanın yerine — group_label'da " › " ayracı geçen
+  // görevler (ör. "Elektriksel Bölüm › TR-1-3000 kVA › Inverter-3 › DC") artık
+  // gerçek, çok seviyeli, her seviyesi ayrı ayrı açılıp kapanabilen bir dal
+  // olarak render ediliyor (bkz. buildGroupTree). Ayraç geçmeyen eski
+  // etiketler (ör. "Mekanik Bölüm") tek düğümlük bir dal gibi davranır.
+  const topGroupNodes = buildGroupTree(withDates)
   const leftWidth = W_NO + W_NAME + W_START + W_END + W_DUR + W_PROGRESS
   const timelineWidth = weeks.length * W_WEEK
   const minWidth = leftWidth + timelineWidth
@@ -562,6 +761,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   return (
     <div className="gantt-page">
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+      {sectionToggle}
       <KpiStrip total={tasks.length} devam={kpis.ongoing} risky={kpis.risky} />
 
       <div className={`gantt-workspace${panelOpen ? ' has-panel' : ''}`}>
@@ -617,67 +817,9 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                   </div>
                 )}
 
-                {groupKeys.map(groupKey => {
-                  const cfg = groupConfigFor(groupKey)
-                  const items = grouped[groupKey] || []
-                  const isOpen = !collapsed.has(groupKey)
-                  const avg = items.length
-                    ? Math.round(items.reduce((sum, task) => sum + Number(task.progress_pct || 0), 0) / items.length)
-                    : 0
-
-                  return (
-                    <div key={groupKey} className="gantt-group">
-                      <button className={`gantt-group-row tone-${cfg.tone}`} onClick={() => toggleGroup(groupKey)}>
-                        <span className="gantt-group-toggle">{isOpen ? '▾' : '▸'}</span>
-                        <strong>{cfg.label}</strong>
-                        <small>{items.length} görev | %{avg}</small>
-                      </button>
-
-                      {isOpen && items.map((task, index) => {
-                        const cfg = groupConfigFor(resolveGroup(task))
-                        const barLeft = timelineOffsetPct(task.planned_start, timelineStart, timelineUnits)
-                        const barEnd = timelineOffsetPct(task.planned_end, timelineStart, timelineUnits) + (100 / timelineUnits)
-                        const barWidth = Math.max(1.2, barEnd - barLeft)
-                        const duration = daysBetween(task.planned_start, task.planned_end)
-                        const pct = Math.round(Number(task.progress_pct || 0))
-                        const isLate = isTaskLate(task, today)
-                        const isSelected = task.id === selectedTaskId
-
-                        return (
-                          <button
-                            key={task.id}
-                            className={`gantt-task-row${isSelected ? ' selected' : ''}`}
-                            onClick={() => { setSelectedTaskId(task.id); setPanelOpen(true) }}
-                          >
-                            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
-                              <span className="gantt-code">
-                                {task.task_code || index + 1}
-                              </span>
-                              <span className={`gantt-name${isLate ? ' late' : ''}`}>
-                                {task.task_name || '-'}
-                                {isLate ? ` (${riskSeverityLabel(task)})` : ''}
-                              </span>
-                              <span>{fmtDate(task.planned_start)}</span>
-                              <span className={isLate ? 'late' : ''}>{fmtDate(task.planned_end)}</span>
-                              <span>{duration} gün</span>
-                              <span className="gantt-progress-cell">
-                                <i><em style={{ '--progress': `${pct}%`, '--bar-color': cfg.bar }} /></i>
-                                <b>%{pct}</b>
-                              </span>
-                            </span>
-                            <span
-                              className={`gantt-bar${isLate ? ' late' : ''}`}
-                              style={{ '--bar-left': `${barLeft}%`, '--bar-width': `${barWidth}%`, '--bar-color': cfg.bar, '--progress': `${pct}%` }}
-                              title={`${task.task_name || ''} - ${fmtDate(task.planned_start)} / ${fmtDate(task.planned_end)}`}
-                            >
-                              <i />
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )
-                })}
+                {topGroupNodes.map(node => renderGanttGroupNode(node, {
+                  collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen,
+                }))}
               </div>
               </div>
             </div>
@@ -698,25 +840,38 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
             siteChief={siteChief}
             isRisky={selectedTask ? isTaskLate(selectedTask, today) : false}
             siteChiefView={siteChiefView}
-            canAddProgress={canAddProgress}
-            onAddProgress={() => setProgressTask(selectedTask)}
-            onStatusUpdated={refetch}
             onClose={() => setPanelOpen(false)}
           />
         ) : (
           <button className="gantt-panel-reopen" onClick={() => setPanelOpen(true)}>Görev Detayı</button>
         )}
       </div>
-      {progressTask && (
-        <ProgressEntryModal
-          task={progressTask}
-          onClose={() => setProgressTask(null)}
-          onSaved={() => {
-            setProgressTask(null)
-            refetch()
-          }}
-        />
-      )}
+    </div>
+  )
+}
+
+const IS_PLANI_SECTIONS = [
+  { key: 'gantt', label: 'Genel İş Planı' },
+  { key: 'detay', label: 'Detaylı İş Planı' },
+]
+
+// ProjeTabSatinAlma.jsx'teki alt-sekme şeridiyle aynı görsel dil (altı çizgili
+// pill, ayrı bir dosya/CSS class'ı gerekmiyor).
+function SectionToggle({ section, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--color-border-md)' }}>
+      {IS_PLANI_SECTIONS.map(s => (
+        <button key={s.key} onClick={() => onChange(s.key)} style={{
+          background: 'none', border: 'none', padding: '10px 22px',
+          fontSize: 14, fontWeight: section === s.key ? 600 : 400,
+          color: section === s.key ? 'var(--color-primary)' : 'var(--color-muted)',
+          cursor: 'pointer', fontFamily: 'inherit',
+          borderBottom: section === s.key ? '2px solid var(--color-primary)' : '2px solid transparent',
+          marginBottom: -2,
+        }}>
+          {s.label}
+        </button>
+      ))}
     </div>
   )
 }
@@ -813,7 +968,7 @@ function KpiIcon({ name }) {
   )
 }
 
-function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefView, canAddProgress, onAddProgress, onStatusUpdated, onClose }) {
+function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefView, onClose }) {
   if (!task) {
     return (
       <aside className="gantt-detail-panel">
@@ -865,177 +1020,11 @@ function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefV
             <strong className={tone ? `tone-${tone}` : ''}>{value}</strong>
           </div>
         ))}
-        {canAddProgress && Number(task.target_qty || 0) > 0 && (
-          <button
-            type="button"
-            onClick={onAddProgress}
-            style={{
-              width: '100%', marginTop: 12, border: 'none', borderRadius: 9,
-              padding: '10px 12px', background: 'var(--color-primary)', color: '#fff',
-              fontFamily: 'inherit', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-            }}
-          >
-            + İlerleme Gir
-          </button>
-        )}
-        {/* Ölçülebilir hedefi (target_qty) olmayan kilometre taşı işler (ör. Trafo
-            Enerjilendirme, SCADA İşlemleri) miktarla ilerleme giremez — bunun yerine
-            doğrudan durum güncellenir (bkz. set_task_milestone_status RPC). */}
-        {canAddProgress && !(Number(task.target_qty || 0) > 0) && (
-          <MilestoneStatusControl task={task} onSaved={onStatusUpdated} />
-        )}
+        <p style={{ margin: '12px 0 0', fontSize: 11.5, color: 'var(--color-muted)', lineHeight: 1.5 }}>
+          İlerleme girmek / durum güncellemek için "Detaylı İş Planı" görünümüne geçin.
+        </p>
       </div>
     </aside>
   )
 }
 
-function MilestoneStatusControl({ task, onSaved }) {
-  const [status, setStatus] = useState(task.status)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-
-  useEffect(() => { setStatus(task.status) }, [task.id, task.status])
-
-  async function handleChange(event) {
-    const next = event.target.value
-    const previous = status
-    setStatus(next)
-    setSaving(true)
-    setError('')
-    const { error: rpcError } = await supabase.rpc('set_task_milestone_status', {
-      p_task_id: task.id,
-      p_status: next,
-    })
-    setSaving(false)
-    if (rpcError) {
-      setError(rpcError.message || 'Durum güncellenemedi.')
-      setStatus(previous)
-      return
-    }
-    onSaved?.()
-  }
-
-  return (
-    <div style={{ marginTop: 12, padding: 10, borderRadius: 9, border: '1px solid var(--color-border-md)', background: 'var(--color-bg)' }}>
-      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--color-muted)', marginBottom: 6 }}>
-        Durum Güncelle {saving && '· kaydediliyor…'}
-      </label>
-      <select
-        value={status}
-        onChange={handleChange}
-        disabled={saving}
-        style={{
-          width: '100%', border: '1px solid var(--color-border-md)', borderRadius: 8,
-          padding: '8px 10px', font: 'inherit', fontSize: 12.5, fontWeight: 600,
-          color: 'var(--color-text)', background: '#fff', cursor: saving ? 'wait' : 'pointer',
-        }}
-      >
-        {MILESTONE_STATUS_OPTIONS.map(opt => (
-          <option key={opt.v} value={opt.v}>{opt.l}</option>
-        ))}
-      </select>
-      {error && <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--color-danger)', fontWeight: 600 }}>{error}</p>}
-    </div>
-  )
-}
-
-function ProgressEntryModal({ task, onClose, onSaved }) {
-  const [quantity, setQuantity] = useState('')
-  const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const remaining = Math.max(0, Number(task.target_qty || 0) - Number(task.total_progress || 0))
-
-  async function save() {
-    const qty = Number(String(quantity).replace(',', '.'))
-    if (!Number.isFinite(qty) || qty <= 0) {
-      setError('İlerleme miktarı sıfırdan büyük olmalıdır.')
-      return
-    }
-    if (qty > remaining && !note.trim()) {
-      setError('Hedef aşımı için açıklama girin.')
-      return
-    }
-
-    setSaving(true)
-    setError('')
-    const { error: rpcError } = await supabase.rpc('add_task_progress', {
-      p_task_id: task.id,
-      p_qty: qty,
-      p_note: note.trim() || null,
-      p_report_date: new Date().toISOString().slice(0, 10),
-    })
-    setSaving(false)
-    if (rpcError) {
-      setError(rpcError.message || 'İlerleme kaydedilemedi.')
-      return
-    }
-    onSaved()
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="İlerleme Gir"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(15,23,42,.45)',
-        display: 'grid', placeItems: 'center', padding: 16,
-      }}
-      onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}
-    >
-      <div style={{ width: 'min(460px, 100%)', background: '#fff', borderRadius: 14, boxShadow: '0 24px 70px rgba(15,23,42,.28)', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-          <div>
-            <h3 style={{ margin: 0, fontSize: 16, color: 'var(--color-text)' }}>İlerleme Gir</h3>
-            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-muted)' }}>{task.task_code} · {task.task_name}</p>
-          </div>
-          <button type="button" onClick={onClose} style={{ border: 'none', background: 'none', fontSize: 22, color: 'var(--color-muted)', cursor: 'pointer' }}>×</button>
-        </div>
-        <div style={{ padding: 18, display: 'grid', gap: 14 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-            {[
-              ['Hedef', `${Number(task.target_qty || 0).toLocaleString('tr-TR')} ${task.unit || ''}`],
-              ['Tamamlanan', `${Number(task.total_progress || 0).toLocaleString('tr-TR')} ${task.unit || ''}`],
-              ['Kalan', `${remaining.toLocaleString('tr-TR')} ${task.unit || ''}`],
-            ].map(([label, value]) => (
-              <div key={label} style={{ padding: 10, borderRadius: 9, background: 'var(--color-bg)' }}>
-                <span style={{ display: 'block', fontSize: 10.5, color: 'var(--color-muted)' }}>{label}</span>
-                <strong style={{ display: 'block', marginTop: 3, fontSize: 12.5, color: 'var(--color-text)' }}>{value}</strong>
-              </div>
-            ))}
-          </div>
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--color-text-sub)' }}>
-            Bugünkü İlerleme ({task.unit || 'birim'})
-            <input
-              type="number"
-              min="0"
-              step="any"
-              value={quantity}
-              onChange={event => setQuantity(event.target.value)}
-              autoFocus
-              style={{ border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '10px 11px', font: 'inherit' }}
-            />
-          </label>
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: 'var(--color-text-sub)' }}>
-            Not
-            <textarea
-              rows={3}
-              value={note}
-              onChange={event => setNote(event.target.value)}
-              placeholder="Yapılan işi veya hedef aşımı nedenini yazın"
-              style={{ border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '10px 11px', font: 'inherit', resize: 'vertical' }}
-            />
-          </label>
-          {error && <p style={{ margin: 0, fontSize: 12, color: 'var(--color-danger)', fontWeight: 600 }}>{error}</p>}
-        </div>
-        <div style={{ padding: '12px 18px', borderTop: '1px solid var(--color-border)', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button type="button" onClick={onClose} disabled={saving} style={{ border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '9px 14px', background: '#fff', cursor: 'pointer' }}>İptal</button>
-          <button type="button" onClick={save} disabled={saving} style={{ border: 'none', borderRadius: 8, padding: '9px 14px', background: 'var(--color-primary)', color: '#fff', fontWeight: 700, cursor: 'pointer', opacity: saving ? .65 : 1 }}>
-            {saving ? 'Kaydediliyor…' : 'İlerlemeyi Kaydet'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}

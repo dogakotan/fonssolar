@@ -12,113 +12,6 @@ import { useWeather } from '../../../hooks/useWeather'
 import { useAuth } from '../../../context/AuthContext'
 import { dateFilter } from '../../../utils/exportUtils'
 
-function dateTr(iso) {
-  if (!iso) return ''
-  const [y, m, d] = String(iso).split('T')[0].split('-')
-  return y && m && d ? `${d}.${m}.${y}` : String(iso)
-}
-
-function toIsoDate(date) {
-  const d = new Date(date)
-  d.setHours(12, 0, 0, 0)
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
-
-function parseIsoDate(iso) {
-  const [y, m, d] = String(iso).split('-').map(Number)
-  return new Date(y, (m || 1) - 1, d || 1)
-}
-
-function getPeriodRange(type, filterDate) {
-  const base = filterDate ? parseIsoDate(filterDate) : new Date()
-  base.setHours(12, 0, 0, 0)
-
-  if (type === 'gunluk') {
-    const day = filterDate || toIsoDate(base)
-    return { start: day, end: day, label: 'GÜNLÜK' }
-  }
-
-  if (type === 'haftalik') {
-    if (filterDate) {
-      const day = base.getDay() || 7
-      const start = new Date(base)
-      start.setDate(base.getDate() - day + 1)
-      const end = new Date(start)
-      end.setDate(start.getDate() + 6)
-      return { start: toIsoDate(start), end: toIsoDate(end), label: 'HAFTALIK' }
-    }
-    const end = new Date(base)
-    end.setDate(base.getDate() - 1)
-    const start = new Date(base)
-    start.setDate(base.getDate() - 7)
-    return { start: toIsoDate(start), end: toIsoDate(end), label: 'HAFTALIK' }
-  }
-
-  if (filterDate) {
-    const start = new Date(base.getFullYear(), base.getMonth(), 1, 12)
-    const end = new Date(base.getFullYear(), base.getMonth() + 1, 0, 12)
-    return { start: toIsoDate(start), end: toIsoDate(end), label: 'AYLIK' }
-  }
-
-  const prev = new Date(base.getFullYear(), base.getMonth() - 1, 1, 12)
-  const start = new Date(prev.getFullYear(), prev.getMonth(), 1, 12)
-  const end = new Date(prev.getFullYear(), prev.getMonth() + 1, 0, 12)
-  return { start: toIsoDate(start), end: toIsoDate(end), label: 'AYLIK' }
-}
-
-function sumBy(rows, predicate) {
-  return (rows || []).filter(predicate).reduce((sum, row) => sum + Number(row.count || 0), 0)
-}
-
-function norm(value) {
-  return String(value || '').toLowerCase()
-}
-
-function isBadWeather(weatherValue) {
-  return ['yağmurlu', 'yagmurlu', 'karlı', 'karli', 'fırtınalı', 'firtinali'].includes(norm(weatherValue))
-}
-
-function shortId(id) {
-  return String(id || '').slice(0, 8)
-}
-
-// ─────────────────────────────────────────────────────────
-//  Yardımcı
-// ─────────────────────────────────────────────────────────
-const TYPE_LABEL = {
-  arazi_ges:            'Arazi GES',
-  endustriyel_cati_ges: 'Endüstriyel Çatı GES',
-  evsel_ges:            'Evsel GES',
-}
-
-function fmt(n) { return Number(n || 0).toLocaleString('tr-TR') }
-function fmtMoney(n) { return Number(n || 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) }
-function fmtDate(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
-
-// ─────────────────────────────────────────────────────────
-//  S-Eğrisi Hesaplama
-// ─────────────────────────────────────────────────────────
-function calcPlannedAt(tasks, date) {
-  const valid = tasks.filter(t => t.planned_start && t.planned_end)
-  if (!valid.length) return 0
-  const ts = date.getTime()
-  const sum = valid.reduce((acc, t) => {
-    const s = new Date(t.planned_start).getTime()
-    const e = new Date(t.planned_end).getTime()
-    if (ts < s) return acc
-    if (ts >= e) return acc + 100
-    if (e === s) return acc
-    return acc + ((ts - s) / (e - s)) * 100
-  }, 0)
-  return sum / valid.length
-}
-
 // ─────────────────────────────────────────────────────────
 //  Proje Listesi (projectId yokken)
 // ─────────────────────────────────────────────────────────
@@ -151,9 +44,6 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
   const pendingInvoices     = summary?.pending_invoices ?? null
   const recentNotifications = summary?.recent_notifications ?? []
 
-  // Riskli gecikmeler — yalnızca iç yönetici dashboard'u, vw_delayed_tasks (personel adı dahil) hiçbir export'a gitmez.
-  const { data: delayedData } = useDashboardData('get_delayed_tasks_scoped', { p_project_id: scopeProjectId })
-  const delayedTasks = delayedData?.tasks ?? []
   const approvalRef = useRef(null)
   const calRef      = useRef(null)
   const calBtnRef   = useRef(null)
@@ -285,8 +175,8 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
           <p className="stat-note">Toplam Proje</p>
           <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 8, marginTop: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, gap: 6 }}>
-              <span style={{ color: 'var(--color-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Toplam Güç</span>
-              <strong style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{loading ? '…' : `${(displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000).toFixed(2)} MWp`}</strong>
+              <span style={{ color: 'var(--color-muted)' }}>Toplam Güç</span>
+              <strong>{loading ? '…' : `${(displayProjects.reduce((s, p) => s + (p.capacity_kwp || 0), 0) / 1000).toFixed(2)} MWp`}</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginTop: 4, gap: 6 }}>
               <span style={{ color: 'var(--color-muted)' }}>Kritik Risk</span>
@@ -396,30 +286,6 @@ function ProjectListView({ scopeProjectId, onSelectProject, selectedDate, setSel
                   color: 'var(--color-text)', fontWeight: 500,
                 }}>
                   {n.title}
-                </div>
-              ))
-            }
-          </div>
-        </div>
-
-        {/* KPI: Riskli Gecikmeler — sadece yönetici dashboard'u, export'a girmez */}
-        <div className="stat-card" style={{ borderTop: '3px solid #ef4444' }}>
-          <p className="stat-label">⏰ Riskli Gecikmeler</p>
-          <p className="stat-value" style={{ color: delayedTasks.length > 0 ? '#dc2626' : undefined }}>
-            {delayedTasks.length}
-          </p>
-          <div style={{ maxHeight: 100, overflowY: 'auto', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {delayedTasks.length === 0
-              ? <p style={{ fontSize: 11, color: 'var(--color-muted)', margin: 0 }}>Gecikmiş görev yok</p>
-              : delayedTasks.slice(0, 6).map(t => (
-                <div key={t.id} style={{
-                  fontSize: 10, padding: '4px 6px', borderRadius: 6,
-                  background: '#f8fafc',
-                  borderLeft: `3px solid ${t.delaySeverity === 'kritik' ? '#ef4444' : t.delaySeverity === 'yüksek' ? '#f59e0b' : '#94a3b8'}`,
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  color: 'var(--color-text)', fontWeight: 500,
-                }}>
-                  {t.taskName} · {t.daysOverdue}g {!scopeProjectId ? `· ${t.projectName}` : ''}
                 </div>
               ))
             }

@@ -115,7 +115,10 @@ test.describe.serial('Şantiye şefi ve proje yöneticisi satın alma akışlar�
 
   test('şantiye şefi: düzeltme istenen fatura düzenlenir, yeniden gönderilir ve onaylanır', async () => {
     const requestId = await createRequest(santiye, santiyeId, siteProjectId, 'SITE_FULL', 'malzeme')
-    await expectNotification(admin, requestId)
+    // 03.09.2026: create_purchase_request_with_items artık 'teklif_toplama' ile insert
+    // ediyor — trg_notify_purchase_request_insert bu durumda admin'i değil proje
+    // yöneticisini bildiriyor (teklif toplama PM'in işi, bkz. CLAUDE.md "Satın alma akışı").
+    await expectNotification(pm, requestId)
     await approveRequest(requestId)
     await expectNotification(pm, requestId)
     await procure(requestId)
@@ -155,8 +158,10 @@ test.describe.serial('Şantiye şefi ve proje yöneticisi satın alma akışlar�
   test('proje yöneticisi: farklı proje, fatura reddi sonrası talep otomatik satın alındıya döner ve yeniden faturalanabilir', async () => {
     const requestId = await createRequest(pm, pmId, alternateProjectId, 'PM_FULL')
     expect((await pm.from('purchase_requests').select('project_id,status').eq('id', requestId).single()).data)
-      .toMatchObject({ project_id: alternateProjectId, status: 'talep_olusturuldu' })
-    await expectNotification(admin, requestId)
+      .toMatchObject({ project_id: alternateProjectId, status: 'teklif_toplama' })
+    // PM burada hem talep sahibi hem hedef rol — notify_role kendi requested_by'ını hariç
+    // tuttuğundan (bkz. notification-realtime.spec.js notu) PM kendi talebinden bildirim
+    // almaz; bu adımda ayrıca bir bildirim beklenmiyor.
     await approveRequest(requestId)
     await expectNotification(pm, requestId)
     await procure(requestId)

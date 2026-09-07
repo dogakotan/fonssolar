@@ -580,6 +580,16 @@
   to   { transform: translateY(0); }
 }
 
+/* Bildirimden gelince listede ilgili satırı modal açmadan işaret eder (bkz.
+   useHighlightRow) — birkaç saniye sarı zeminden şeffafa söner. */
+@keyframes rowHighlightFade {
+  0%   { background-color: var(--color-warning-bg, #FEF3C7); }
+  100% { background-color: transparent; }
+}
+.row-highlight-flash {
+  animation: rowHighlightFade 2.6s ease-out;
+}
+
 /* ≤768px: ortalanmış kutu yerine alttan açılan bottom-sheet */
 @media (max-width: 768px) {
   .gr-overlay {
@@ -1237,18 +1247,34 @@
 .gantt-months span { grid-column: span var(--month-span); display: flex; align-items: center; justify-content: center; color: #475569; font-size: .62rem; font-weight: 800; text-transform: capitalize; border-right: 1px solid #e2e8f0; }
 .gantt-month-ticks span { background: #fbfdff; }
 .gantt-body { position: relative; }
-.gantt-group-row { width: 100%; min-height: 27px; border: 0; border-bottom: 1px solid rgba(255,255,255,.45); display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; align-items: center; color: #fff; cursor: pointer; font: inherit; text-align: left; }
-.gantt-group-row strong { font-size: .62rem; font-weight: 850; }
-.gantt-group-row small { padding-right: .7rem; font-size: .58rem; font-weight: 700; opacity: .9; white-space: nowrap; }
-.gantt-group-toggle { text-align: center; font-size: .76rem; }
-.gantt-group-row.tone-blue { background: #5b8def; }
-.gantt-group-row.tone-green { background: #35a36f; }
-.gantt-group-row.tone-purple { background: #8b5cf6; }
-.gantt-group-row.tone-amber { background: #dc8f22; }
-.gantt-group-row.tone-sky { background: #3f86d8; }
-.gantt-group-row.tone-teal { background: #14927f; }
-.gantt-group-row.tone-rose { background: #d94f64; }
-.gantt-group-row.tone-slate { background: #64748b; }
+/* Grup başlık satırları artık görev satırlarıyla AYNI tek tabloda, aynı
+   sütun ızgarasında (No/İsim/Başlangıç/Bitiş/Süre/İlerleme) — harici bir
+   planlama aracından referans alınan düz/beyaz + tarih sütunlu görünüm
+   (07.09.2026, kullanıcı kararı). Kategoriye göre renkli bant (eski
+   tone-mavi/mor/turuncu vb.) kaldırıldı; ayrım artık yalnızca kalın yazı +
+   derinliğe göre artan girinti ile yapılıyor — görev satırlarındaki renkli
+   ilerleme çubuğu/bar (bkz. groupConfigFor) değişmedi, yalnızca grup
+   BAŞLIĞININ kendi arkaplanı düzleşti. */
+.gantt-group-row { width: 100%; min-height: 28px; padding: 0; border: 0; border-bottom: 1px solid #e2e8f0; display: grid; grid-template-columns: var(--left-width) minmax(var(--timeline-width), 1fr); background: #f1f5f9; color: var(--color-text); cursor: pointer; font: inherit; text-align: left; }
+.gantt-group-row:hover { background: #e8eef5; }
+.gantt-group-left {
+  display: grid;
+  grid-template-columns: var(--w-no) var(--w-name) var(--w-start) var(--w-end) var(--w-dur) var(--w-progress);
+  min-width: 0;
+  background: inherit;
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  box-shadow: 1px 0 0 #e2e8f0;
+}
+.gantt-group-left > span { min-width: 0; display: flex; align-items: center; padding: 0 .34rem; color: #475569; font-size: .6rem; font-weight: 750; white-space: nowrap; border-right: 1px solid #e2e8f0; }
+/* Ok işareti artık isim hücresinin İÇİNDE, girintiyle birlikte kayan sabit
+   genişlikli bir kutu — ▾/▸ karakterlerinin doğal genişliği farklı
+   olduğundan sabitlenmezse aynı derinlikteki satırlarda metin başlangıcı
+   birkaç piksel oynar, "dengesiz" görünüme yol açardı. */
+.gantt-group-name { display: flex; align-items: center; gap: .3rem; color: var(--color-text) !important; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-group-toggle { flex: 0 0 11px; width: 11px; text-align: center; font-size: .66rem; color: #64748b; }
+.gantt-group-timeline { grid-column: 2; }
 .gantt-task-row { width: 100%; min-height: 30px; padding: 0; border: 0; border-bottom: 1px solid #eef2f7; background: #fff; color: var(--color-text); font: inherit; text-align: left; cursor: pointer; position: relative; }
 .gantt-task-row:nth-child(odd) { background: #fbfdff; }
 .gantt-task-row:hover, .gantt-task-row.selected { background: #f2f7ff; }
@@ -1273,6 +1299,7 @@
   padding: 0 .34rem;
   color: #475569;
   font-size: .6rem;
+  white-space: nowrap;
   border-right: 1px solid #eef2f7;
 }
 .gantt-code { justify-content: center; color: var(--color-primary) !important; font-weight: 800; gap: .25rem; }
@@ -1314,13 +1341,6 @@
 .gantt-panel-reopen { align-self: start; padding: .7rem .9rem; border: 1px solid #dbeafe; border-radius: .75rem; background: #eff6ff; color: var(--color-primary); font-size: .78rem; font-weight: 800; }
 
 /* ── Satın Alma özet kart ızgarası ── */
-.sa-overview-grid {
-  display: grid;
-  grid-template-columns: 1.25fr 1.25fr 1.25fr .65fr;
-  gap: 12px;
-  align-items: stretch;
-  margin-bottom: 14px;
-}
 .sa-summary-card,
 .sa-panel-card {
   background: var(--color-surface);
@@ -1556,7 +1576,6 @@
   .gantt-kpi-strip    { grid-template-columns: repeat(2, 1fr); }
   .gantt-workspace.has-panel { grid-template-columns: 1fr; }
   .gantt-detail-panel { position: static; max-height: none; min-height: 0; }
-  .sa-overview-grid { grid-template-columns: repeat(3, 1fr); }
   .finans-panel-grid { grid-template-columns: repeat(2, 1fr); }
   .finans-row2-grid { grid-template-columns: repeat(2, 1fr); }
 }
@@ -1575,7 +1594,6 @@
   .gantt-kpi-icon { width: 46px; height: 46px; }
   .gantt-toolbar, .gantt-toolbar select { width: 100%; }
   .gantt-detail-row strong { max-width: 190px; }
-  .sa-overview-grid { grid-template-columns: 1fr; }
   .sa-metric-grid { grid-template-columns: 1fr; }
   .finans-panel-grid { grid-template-columns: 1fr; }
   .finans-ozet-card { grid-column: span 1; }
