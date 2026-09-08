@@ -1,29 +1,35 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { supabase, signOut } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { useScope } from '../../context/ScopeContext'
 import Sidebar from '../../components/layouts/Sidebar'
-import TabGenel from './components/TabGenel'
-import MuhasebeGenelOzet from './components/MuhasebeGenelOzet'
-import TabProjeler from './components/TabProjeler'
-import TabSatinAlma from './components/TabSatinAlma'
-import TabTeklifPazarlikSiparis from './components/TabTeklifPazarlikSiparis'
-import ProjeTabSatinAlma from './components/ProjeTabSatinAlma'
-import TabFinans from './components/TabFinans'
-import TabOdemeler from './components/TabOdemeler'
-import TabTickets from './components/TabTickets'
-import TabSantiyeSefi from './components/TabSantiyeSefi'
-import TabKullanicilar from './components/TabKullanicilar'
-import TabIsPlan from './components/TabIsPlan'
-import TabBildirimler from './components/TabBildirimler'
-import ProjeDetay from './components/ProjeDetay'
-import TabProjeYonetimi from './components/TabProjeYonetimi'
 import FloatingAgent from '../../components/agent/FloatingAgent'
 import NotificationBell from '../../components/ui/NotificationBell'
-import DailyReportForm from '../../components/daily-report/DailyReportForm'
-import DailyReportList from '../DailyReportList'
 import './Dashboard.css'
+
+// Aktif sekmeye göre yalnızca biri render edildiğinden (activeTab kontrollü
+// koşullu render, ayrı <Route>'lar değil — bkz. CLAUDE.md routing notu) her
+// sekme kendi chunk'ına ayrılabilir; kullanıcı yalnızca kullandığı sekmelerin
+// kodunu indirir. Tek bir Suspense sınırı yeterli çünkü aynı anda en fazla bir
+// tanesi mount olur.
+const TabGenel = lazy(() => import('./components/TabGenel'))
+const MuhasebeGenelOzet = lazy(() => import('./components/MuhasebeGenelOzet'))
+const TabProjeler = lazy(() => import('./components/TabProjeler'))
+const TabSatinAlma = lazy(() => import('./components/TabSatinAlma'))
+const TabTeklifPazarlikSiparis = lazy(() => import('./components/TabTeklifPazarlikSiparis'))
+const ProjeTabSatinAlma = lazy(() => import('./components/ProjeTabSatinAlma'))
+const TabFinans = lazy(() => import('./components/TabFinans'))
+const TabOdemeler = lazy(() => import('./components/TabOdemeler'))
+const TabTickets = lazy(() => import('./components/TabTickets'))
+const TabSantiyeSefi = lazy(() => import('./components/TabSantiyeSefi'))
+const TabKullanicilar = lazy(() => import('./components/TabKullanicilar'))
+const TabIsPlan = lazy(() => import('./components/TabIsPlan'))
+const TabBildirimler = lazy(() => import('./components/TabBildirimler'))
+const ProjeDetay = lazy(() => import('./components/ProjeDetay'))
+const TabProjeYonetimi = lazy(() => import('./components/TabProjeYonetimi'))
+const DailyReportForm = lazy(() => import('../../components/daily-report/DailyReportForm'))
+const DailyReportList = lazy(() => import('../DailyReportList'))
 
 const TABS = {
   genel:            { title: 'Genel Bakış',      subtitle: 'Proje özeti ve aktif görevler' },
@@ -397,6 +403,7 @@ export default function Dashboard() {
         </header>
 
         <div className="dash-content">
+        <Suspense fallback={<div style={{ padding: 24, color: 'var(--color-muted)', fontSize: 13 }}>Yükleniyor…</div>}>
         {activeTab === 'genel'        && role === 'santiye_sefi' && (
           <TabSantiyeSefi
             key={reportViewKey}
@@ -500,6 +507,7 @@ export default function Dashboard() {
             }}
           />
         )}
+        </Suspense>
         </div>
 
         {role === 'santiye_sefi' && showReportModal && (
@@ -522,12 +530,14 @@ export default function Dashboard() {
               onMouseDown={(e) => e.stopPropagation()}
             >
               <div style={{ padding: 18 }}>
-                <DailyReportForm
-                  className="daily-report-modal-form"
-                  reportId={editReportId || undefined}
-                  onBack={closeReportModal}
-                  onSaved={handleReportSaved}
-                />
+                <Suspense fallback={<div style={{ padding: 24, color: 'var(--color-muted)', fontSize: 13 }}>Yükleniyor…</div>}>
+                  <DailyReportForm
+                    className="daily-report-modal-form"
+                    reportId={editReportId || undefined}
+                    onBack={closeReportModal}
+                    onSaved={handleReportSaved}
+                  />
+                </Suspense>
               </div>
             </div>
           </div>

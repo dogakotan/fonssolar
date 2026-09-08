@@ -1625,8 +1625,15 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 - Repo hijyeni: ölü bileşenler (`TicketStats.jsx`, eski `ProjectDashboard`,
   `RealtimeStatusIndicator`), kullanılmayan CSS, orphan DB nesneleri
   (`work_packages`, `schedule_activities`, `vw_bom_tracking`, kalite kontrol
-  kalıntıları) düzenli olarak temizlendi. Bundle optimizasyonu (route bazlı
-  `React.lazy`, font asset'i statik dosyaya taşındı).
+  kalıntıları) düzenli olarak temizlendi. Bundle optimizasyonu: `React.lazy`
+  yalnızca Login↔Dashboard sınırında vardı (bu maddenin "route bazlı" ifadesi
+  yanıltıcıydı — tek route zaten `/dashboard/*`, bkz. routing notu); asıl
+  sekme bazlı bölme 08.09.2026'da eklendi (`index.jsx`'teki 16 ağır Tab*/
+  ProjeDetay/DailyReport* bileşeni artık `lazy()` + tek bir `Suspense` sınırı
+  ile — aynı anda yalnızca bir `activeTab` dalı mount olduğundan güvenli),
+  tek ~780 kB'lık `index-*.js` chunk'ı sekme başına 1-74 kB'lık parçalara
+  bölündü, `chunkSizeWarningLimit` uyarısı tamamen kayboldu. Font asset'i
+  statik dosyaya taşındı.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
@@ -1769,47 +1776,47 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**08.09.2026 — 3 aşamalı Teklif/Pazarlık/Sipariş akışının bağımsız kod
-incelemesi: eksik "İptal Et" yolu bulunup eklendi + yan bir storage bug'ı
-düzeltildi.**
+**08.09.2026 (2. tur) — Bundle-size uyarısı giderildi: sekme bazlı gerçek
+`React.lazy` bölme eklendi.**
 
-Bu akış (07.09.2026'da başka bir oturumda eklenmişti) hiç bağımsız bir
-inceleme görmemişti — para/onay akışı içeren hassas bir alan olduğundan
-kullanıcı isteğiyle taranıp gerçek bir bulgu çıkarıldı: plan dosyası
-("iptal her aşamadan PM/admin tarafından çağrılabilir") bunu açıkça
-öngörmüştü ama implementasyonda unutulmuştu — `pazarlik_onay_bekliyor`/
-`pazarlik`/`siparis`'e giren bir talep hiçbir UI yolundan durdurulamıyordu
-(ne "Talebi Sil" ne eski akışın "İptal Et"i bu 4 yeni duruma bağlıydı).
-Düzeltme: `cancel_purchase_request_negotiation_flow(p_request_id, p_note)`
-RPC'si eklendi (proje yöneticisi/admin, 4 aşamanın herhangi birinden,
-gerekçe zorunlu) + `TeklifPazarlikSiparisPanel.jsx`'in altına tüm aşamalarda
-ortak tek bir "İptal Et" bölümü eklendi. Ayrıntı için "Satın alma akışı"
-bölümündeki güncellenmiş durum zinciri açıklamasına bakılabilir (aynı turda
-o bölüm de genişletildi — daha önce yalnızca eski 10 durumluk zincir
-yazıyordu, yeni 4 aşamalı zincir hiç belgelenmemişti).
+`npm run build` "chunk 600 kB'ı geçiyor" uyarısı veriyordu — tek suçlu
+`index.jsx`, çünkü `React.lazy` yalnızca Login↔Dashboard sınırında vardı
+("Tamamlanan büyük görevler"deki "route bazlı React.lazy" ifadesi
+yanıltıcıydı, tek route zaten `/dashboard/*`). `index.jsx`'teki 16 ağır
+bileşen (`TabGenel`/`TabFinans`/`TabSatinAlma`/`ProjeDetay`/`TabProjeYonetimi`/
+`DailyReportForm` vb.) artık `lazy()` + `dash-content` sarmalayan TEK bir
+`Suspense` sınırı (+ `DailyReportForm` modalinin kendi ayrı `Suspense`'i)
+kullanıyor — aynı anda yalnızca bir `activeTab` dalı mount olduğundan bu
+güvenli. Sonuç: tek ~780 kB `index-*.js` chunk'ı sekme başına 1-74 kB'lık
+onlarca parçaya bölündü, `chunkSizeWarningLimit` uyarısı tamamen kayboldu.
+`ProjeDetay`'ın kendi içindeki `ProjeTab*` bileşenleri bu turda AYRICA lazy
+yapılmadı (zaten `ProjeDetay` ile birlikte tek chunk'ta geliyorlar — daha
+ince taneli bölme istenirse ayrı bir iş). Tam Playwright regresyon paketi
+(66/66) — sekmeler arası gezinmeyi zaten yoğun şekilde egzersiz ettiğinden —
+Suspense geçişinin hiçbir ekranı bozmadığını doğruladı (ilk koşuda 1-2 test
+`faz-e.spec.js`'in kendi eski test verisi kalıntısıyla başarısız oldu,
+kalıntı silinip tekrar koşulunca temiz geçti — kod değişikliğiyle ilgisizdi).
+`npm run lint`/`build` temiz.
 
-Doğrulama sırasında ikincil, ilgisiz bir bug daha bulunup düzeltildi:
-`src/utils/storageUrls.js`'teki `withSignedStorageUrls()` bir talebin
-dosyasız (yalnızca `storage_path=null`) teklifleri olduğunda
-`createSignedUrls([])`'u boş dizi ile çağırıp Supabase Storage'dan 400
-hatası alıyordu (fonksiyon hatayı yakalayıp `signed_url:null` döndürdüğünden
-UI çökmüyordu ama her render'da konsol hatası basıyordu) — bu, `add_purchase_offer`
-formunda dosya alanının opsiyonel olmasından dolayı gerçek/yaygın bir durum.
-Düzeltme: `paths.length===0` durumunda erken dönüş eklendi. Bu yardımcı 5
-farklı ekranda (ticket/rapor/proje fotoğrafları dahil) kullanıldığından
-düzeltme hepsini kapsıyor.
-
-**İncelenip yanlış alarm olduğu doğrulanan bir üçüncü nokta:**
+**1. tur (aynı gün) — 3 aşamalı Teklif/Pazarlık/Sipariş akışının bağımsız
+kod incelemesi: eksik "İptal Et" yolu bulunup eklendi + yan bir storage
+bug'ı düzeltildi.** Bu akış (07.09.2026'da başka bir oturumda eklenmişti)
+hiç bağımsız bir inceleme görmemişti — para/onay akışı içeren hassas bir
+alan olduğundan kullanıcı isteğiyle taranıp gerçek bir bulgu çıkarıldı:
+plan dosyası ("iptal her aşamadan PM/admin tarafından çağrılabilir") bunu
+açıkça öngörmüştü ama implementasyonda unutulmuştu —
+`pazarlik_onay_bekliyor`/`pazarlik`/`siparis`'e giren bir talep hiçbir UI
+yolundan durdurulamıyordu. Düzeltme: `cancel_purchase_request_negotiation_flow`
+RPC'si + `TeklifPazarlikSiparisPanel.jsx`'in altına ortak tek bir "İptal Et"
+bölümü eklendi (ayrıntı: "Satın alma akışı" bölümündeki güncellenmiş durum
+zinciri açıklaması — aynı turda o bölüm de tamamlandı, daha önce yalnızca
+eski 10 durumluk zincir yazıyordu). Doğrulama sırasında ikincil bir bug daha
+bulundu: `src/utils/storageUrls.js`'teki `withSignedStorageUrls()` dosyasız
+tekliflerde `createSignedUrls([])`'u boş dizi ile çağırıp Storage'dan 400
+hatası alıyordu — `paths.length===0` erken dönüşüyle düzeltildi (5 ekranı
+kapsıyor). İncelenip yanlış alarm çıkan bir üçüncü nokta:
 `create_purchase_request_from_monthly_plan`'ın `purchase_request_items.category`'ye
-`procurement_monthly_plan.kategori`'yi yazması ilk bakışta tutarsız
-görünmüştü (farklı iki taksonomi sanılmıştı) — DB'den gerçek değerler
-kontrol edilince `kategori` kolonunun zaten `MALZEME_KATEGORI_OPTS`'un
-birebir aynısı 8 değerlik seti kullandığı görüldü, kod doğru. Düzeltme
-yapılmadı.
-
-Canlı test verisiyle (test-izmir-ges-2026, "DEMO-İnvertör Bakım Hizmeti
-Örneği") uçtan uca doğrulandı — Playwright ekran görüntüsünde talep
-`iptal` durumuna geçip eski stepper'da "Tedarik İptal Edildi" adımını
-doğru gösterdi; test verisi ardından SQL'le orijinal durumuna geri alındı.
-`npm run lint`/`build` temiz, tam Playwright regresyon paketi (66/66) bu
-turdan önce ayrıca çalıştırılıp geçti.
+`procurement_monthly_plan.kategori`'yi yazması tutarsız sanılmıştı — gerçek
+değerler `MALZEME_KATEGORI_OPTS`'la birebir eşleşiyor, kod doğruydu,
+düzeltme yapılmadı. Canlı test verisiyle uçtan uca doğrulandı, test verisi
+SQL'le geri alındı.
