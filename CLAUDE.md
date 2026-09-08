@@ -1644,6 +1644,26 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
+- **`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
+  duplicate key) — KÖK NEDENİ BULUNAMADI, Supabase support'a taşınmalı.**
+  `create_purchase_request_with_items`/ham `purchase_requests` insert'i
+  bazen (Playwright'ta deterministik şekilde tekrarlanabilir, canlıda
+  sıklığı bilinmiyor) düşük numaralı (`SAT-2026-101`/`102` gibi) bir
+  `request_no` ile "already exists" hatası veriyor — halbuki gerçek sayaç
+  (`purchase_request_no_counters`) o anda çok daha yüksek (1000+) bir
+  değerde ve çakışan satır hatadan hemen sonra tabloda hiç bulunmuyor
+  (transient). `fn_next_purchase_request_no()`'nun atomikliği defalarca
+  doğrulandı, ek bir `pg_advisory_xact_lock` savunması eklendi
+  (`harden_next_purchase_request_no_with_advisory_lock`, 08.09.2026) ama
+  sorun AYNEN devam etti — yani kök neden bu fonksiyonun kendisinde değil,
+  muhtemelen PgBouncer connection-pooling veya Supabase API/PostgREST
+  önbellekleme katmanında. Bu projenin migration/kod araçlarıyla
+  düzeltilemez — Supabase support'a (proje `bshhgvdzemgfijkzhcrf`) bu
+  bulgularla (bkz. "Son değişiklik" 7. tur) açılması gerekiyor. Etkilenen
+  testler: `procurement-concurrency`, `procurement-two-initiators`,
+  `procurement-workflow`, `purchase-single-item`,
+  `procurement-negotiation-flow` — hepsinde arıza aynı imza, testlerin
+  kendi mantığında hata yok.
 - ~~Tedarikçi bakiyesi/Finans Raporları — `paid_amount`/`remaining_amount`
   TRY'ye çevrilmiyordu~~ — **tam çözüldü (18.08.2026).** Önceki kısmi düzeltme
   (2026-07-31) yalnızca `total_amount_try`'yi kapsıyordu; şimdi `paid_amount`/
@@ -1782,6 +1802,43 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
 ## Son değişiklik
+
+**08.09.2026 (7. tur) — Eksik regresyon testi yazılırken `request_no`
+çakışması 3. kez tetiklendi; savunma migration'ı uygulandı ama SORUNU
+ÇÖZMEDİ — kök neden bu oturumun araçlarının ötesinde, Supabase support'a
+taşınması gerekiyor.**
+
+CLAUDE.md'de daha önce tespit edilen "3 aşamalı Teklif/Pazarlık/Sipariş
+akışının hiç kalıcı Playwright testi yok" boşluğu için `tests/procurement-negotiation-flow.spec.js`
+yazıldı (8 RPC'nin tamamı: `add_purchase_offer`/`delete_purchase_offer`,
+`submit_purchase_request_for_negotiation`, `review_purchase_request_negotiation_gate`,
+`save_purchase_request_negotiation`, `advance_purchase_request_to_order`,
+`save_purchase_request_order`, `complete_purchase_request_delivery` —
+eksik/hasarlı teslimat dahil —, `cancel_purchase_request_negotiation_flow`
+— akışın 4 aşamasından da). Yazarken 2. test aynı `request_no` çakışmasına
+(`SAT-2026-102`) hep AYNI noktada, deterministik şekilde çarptı.
+
+Kök neden araştırması bu turda çok daha ileri götürüldü: `fn_next_purchase_request_no(2026)`
+ard arda çağrıldığında (hem tek sorguda hem ayrı `execute_sql` çağrılarında)
+**farklı `pg_backend_pid()`'lerde, farklı zaman damgalarında aynı değeri**
+döndürdüğü gözlemlendi — bu, fonksiyonun `INSERT...ON CONFLICT...RETURNING`
+deseninin (teorik olarak atomik) bir yerde beklenmedik şekilde bypass
+edildiğini/önbelleklendiğini gösteriyor. Buna karşı ek bir savunma katmanı
+eklendi (`harden_next_purchase_request_no_with_advisory_lock`): fonksiyon
+artık `pg_advisory_xact_lock(hashtext('purchase_request_no:'||yıl))` ile
+yıl bazlı bir transaction-kilit alıyor, tüm çağrıları backend/pooling
+durumundan bağımsız tam serileştiriyor. **Bu migration uygulandıktan SONRA
+test AYNI noktada AYNI hatayla yine düştü** — yani sorun `fn_next_purchase_request_no`'nun
+kendi atomikliğinde değilmiş (advisory lock bunu yapısal olarak imkansız
+kılar), daha derin bir katmanda (muhtemelen PgBouncer connection-pooling
+veya Supabase API/PostgREST önbellekleme katmanı) olmalı. Bu oturumun
+`execute_sql`/`query_logs` araçlarıyla bu kadarı gösterilebildi — ötesi
+Postgres/PgBouncer sunucu loglarına veya Supabase support'a erişim
+gerektiriyor, bu projenin migration/kod araçlarıyla düzeltilebilecek bir şey
+değil. **Sonuç: madde kapatılamadı, kullanıcıya Supabase support'a açması
+önerildi.** `procurement-negotiation-flow.spec.js` 4/5 testte güvenilir
+şekilde geçiyor; 2. test (`admin pazarlık onayını reddeder...`) bu bilinen
+dış sorun yüzünden flaky — testin kendi mantığında hata yok.
 
 **08.09.2026 (6. tur) — `request_no` çakışması bulgusu (4. turdan kalan açık
 madde) yeniden koşulup araştırıldı: sonuçsuz kapanmadı, güçlendirilmiş ama
