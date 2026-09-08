@@ -1783,6 +1783,39 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**08.09.2026 (5. tur) — Ölü test bildirimleri temizlendi + bulunan gerçek
+bug: `notifications` realtime'ında DELETE olayları hiç yayınlanmıyordu.**
+
+Kullanıcı Playwright regresyon paketinin biriktirdiği bildirimleri (bkz.
+"Bildirim sistemi" bölümündeki 31.07.2026 notu — testler kendi
+`purchase_requests`/`invoices` satırlarını `afterAll`'da temizler ama
+`notifications` satırlarını temizlemez) bildirim kutusundan silinmesini
+istedi. Toplam 1401 bildirimden 1174'ü artık var olmayan bir kayda
+(`purchase_request`/`invoice`/`procurement_item_change_request`/`daily_report`)
+bağlıydı — bunlar `entity_id`'nin ilgili tabloda karşılığı olmadığı satırlar
+olarak tespit edilip toplu silindi (günlük rapor hatırlatmaları — 2 gerçek
+test projesinin canlı cron bildirimleri — ve 2 ticket bildirimi dokunulmadan
+bırakıldı, ikisi de canlı kayıtlara bağlı).
+
+Kullanıcı sildikten sonra "arayüzde de gözükmemeli" dedi — araştırmada
+`notifications` tablosunun `REPLICA IDENTITY DEFAULT` olduğu bulundu: DELETE
+olayında WAL'a yalnızca birincil anahtar (`id`) yazılır, `recipient_id` eski
+satırda mevcut olmadığından `NotificationBell.jsx`/`TabBildirimler.jsx`'teki
+realtime kanallarının `recipient_id=eq.<id>` filtresi DELETE'te hiç
+değerlendirilemiyordu — açık bir sekme bir bildirim silindiğinde bunu asla
+öğrenemiyor, sayfa yenilenene kadar listede/rozette görünmeye devam
+ediyordu (yalnızca DELETE etkilendi; INSERT/UPDATE'te yeni satır zaten tüm
+kolonlarıyla mevcut olduğundan onlar hep doğru çalışıyordu — bu yüzden
+kullanıcının kendi "sil" butonu kendi sekmesinde her zaman doğru
+görünüyordu, sorun yalnızca başka bir sekme/cihazdaki veya bu türden toplu
+bir SQL silmesindeki DELETE'in canlı yayılmamasıydı). Düzeltme
+(`set_notifications_replica_identity_full`): `alter table public.notifications
+replica identity full` — davranış değişikliği yok, yalnızca eski satırın tüm
+kolonları WAL'a yazılıp filtrenin DELETE'te de doğru çalışmasını sağlıyor;
+`pg_class.relreplident='f'` ile doğrulandı. Bu turda kod tarafına dokunulmadı,
+`npm run lint`/`build`/regresyon paketi tekrar çalıştırılmadı (yalnızca veri
+temizliği + tek satırlık bir tablo ayarı).
+
 **08.09.2026 (4. tur) — CLAUDE.md'deki açık nokta listesi tükenince Supabase
 advisor (security+performance) proaktif taraması: 2 gerçek WARN düzeltildi,
 1 ilgisiz test bulgusu (araştırılıp bu turun kapsamı dışında bırakıldı).**
