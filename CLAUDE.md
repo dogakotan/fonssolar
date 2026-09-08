@@ -1783,6 +1783,58 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**08.09.2026 (4. tur) — CLAUDE.md'deki açık nokta listesi tükenince Supabase
+advisor (security+performance) proaktif taraması: 2 gerçek WARN düzeltildi,
+1 ilgisiz test bulgusu (araştırılıp bu turun kapsamı dışında bırakıldı).**
+
+Dokümante edilmiş "Bilinen açık noktalar" listesi bu noktada pratikte
+tükenmişti (yalnızca DB-SEC-006/Free plan ve 1 kurtarılamaz migration dosyası
+kaldı, ikisi de kapalı/kabul edilmiş). Bunun ötesinde proaktif olarak
+`get_advisors` (security+performance) çalıştırıldı. Security tarafında yeni
+bir bulgu yoktu (tamamı bu projenin bilinçli SECURITY DEFINER/authenticated
+mimarisi + zaten bilinen leaked-password-protection). Performance tarafında
+çoğu INFO seviyeli gürültü (küçük test veri setinde kullanılmayan index'ler)
+ama 2 gerçek `auth_rls_initplan` WARN'ı vardı: `profiles_select` ve
+`purchase_requests_delete` policy'leri `get_my_role()`/`auth.uid()`'i satır
+başına yeniden değerlendiriyordu — bu proje daha önce büyük bir initplan
+sarmalama turu yapmıştı (`db_perf_002_003_rls_initplan_and_policy_consolidation`,
+`rls_hardening_wrap_auth_uid_and_merge_pr_update_policies`) ama bu iki policy
+o turdan SONRA eklendi/güncellendi (`profiles_select` 31.07'de proje_yoneticisi
+için genişletildi, `purchase_requests_delete` 03.09'da teklif_toplama için
+güncellendi) ve sarmalama atlanmıştı. Düzeltme (`wrap_auth_calls_in_select_for_initplan_perf`,
+davranış değişmiyor, yalnızca `(select ...)` sarmalaması): her iki policy
+`DROP POLICY`/`CREATE POLICY` ile aynı mantıkla yeniden yazıldı, `pg_policies`
+üzerinden `qual` metninin gerçekten sarmalı hale geldiği doğrulandı.
+
+**Bu turda ayrıca ilgisiz bir test bulgusu ortaya çıktı, araştırıldı, kapsam
+dışı bırakıldı:** tam regresyon koşusunda 4 test (`procurement-concurrency`,
+`procurement-two-initiators`, `procurement-workflow`, `purchase-single-item`)
+`purchase_requests_request_no_key` üzerinde "SAT-2026-101 already exists"
+duplicate-key hatasıyla başarısız oldu. Bu, uygulanan RLS migration'ıyla
+YAPISAL OLARAK ilgisizdi (migration yalnızca SELECT/DELETE policy'lerini
+değiştiriyor, `purchase_requests` INSERT/`request_no` üretimine hiç
+dokunmuyor) — ayrıca `create_purchase_request_with_items` VE
+`create_purchase_request_from_monthly_plan`'ın ikisi de `request_no`'yu aynı
+kanıtlanabilir şekilde atomik `fn_next_purchase_request_no()`'dan
+(`INSERT ... ON CONFLICT (year) DO UPDATE ... RETURNING`, Postgres satır
+kilidiyle race-free) alıyor; sayaç şu an 1016'da (çarpışan "101" değerinin
+ÇOK ilerisinde) ve tabloda gerçek/aktif hiçbir çakışma/artık veri yok
+(doğrulandı). `playwright.config.js` zaten `workers:1`/`fullyParallel:false`
+— yani Playwright'ın kendisi tek worker'la tam seri çalışıyor, dosyalar
+arası bir yarış da mümkün değil. Bu haliyle en olası açıklama, test koşumu
+sırasında ayrı bir (Playwright dışı) sürecin — ör. bu oturumda paralel
+yürüyen bir manuel QA tarayıcı oturumunun — aynı paylaşılan test projesine
+eşzamanlı yazması; migration'la nedensellik kurulamadı, iki ayrı koşuda
+(tam paket + izole 4 dosya, `--workers=1`) aynı sınıf hatanın tekrarlanması
+dışında kanıt toplanamadı. Bu turun kapsamı dışında bırakıldı — kullanıcı
+isterse ayrı bir görev olarak (mümkünse hiçbir başka DB etkinliği olmadan)
+tekrar koşulup izlenebilir.
+
+`npm run lint`/`build` bu turda tekrar çalıştırılmadı (yalnızca RLS policy
+metni değişti, kod dokunulmadı); regresyon paketi 55/66 geçti, 4 başarısız
+(yukarıda açıklanan ilgisiz `request_no` bulgusu), 7 koşulmadı (başarısızlık
+sonrası dosya sırası nedeniyle atlandı, ilgisiz).
+
 **08.09.2026 (3. tur) — Ödeme Takibi/Tedarikçiler bağımsız kod incelemesi:
 ödeme eklemede eksik satır kilidi (yarış durumu) bulunup düzeltildi.**
 
