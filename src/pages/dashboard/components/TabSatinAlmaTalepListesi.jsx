@@ -558,6 +558,14 @@ export default function TabSatinAlmaTalepListesi({
                       ) : (
                         <ProcessStatusBadge status={request.status} isSiteChief={siteChiefView} />
                       )}
+                      {['eksik', 'hasarli'].includes(request.delivery_status) && (
+                        <span
+                          title={request.delivery_note || ''}
+                          style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, padding: '1px 6px' }}
+                        >
+                          {request.delivery_status === 'eksik' ? 'Eksik Teslimat' : 'Hasarlı Teslimat'}
+                        </span>
+                      )}
                     </td>
                     {showActions && (
                     <td style={{ ...TD, minWidth: projectId ? 180 : 128, whiteSpace: 'nowrap' }}>

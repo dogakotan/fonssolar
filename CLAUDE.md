@@ -1622,10 +1622,29 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `ApprovalStepsHorizontal.jsx`'in CSS class'ını varsayıyorlardı. Hepsi güncel
   akışa göre yeniden yazıldı, artık hepsi geçiyor. Bu tarama sırasında gerçek bir
   **production bug** da bulundu ve düzeltildi (aşağıya bkz.).
-- **Tedarik/teslimat Faz 2 — henüz yapılmadı.** Proje sihirbazındaki tedarik
-  adımı bilinçli olarak Faz 1'e (yalnız proje_yoneticisi "Tamamladım" onayı)
-  sadeleştirildi. Tedarikçi, sipariş/teslimat tarihi, eksik/hasarlı teslimat
-  takibi gibi detaylar Faz 2 kapsamına ertelendi.
+- ~~Tedarik/teslimat Faz 2~~ — **kısmen kapandı (08.09.2026).** Proje
+  sihirbazındaki `Adim5Tedarik.jsx` hâlâ Faz 1 (yalnız proje_yoneticisi
+  "Tamamladım" onayı, proje-seviyesi tek bayrak) — buna dokunulmadı, çünkü
+  tedarikçi/sipariş/teslimat tarihi artık zaten TALEP bazında gerçek veriyle
+  tutuluyor (bkz. "Satın alma akışı" → 3 aşamalı Teklif/Pazarlık/Sipariş akışı,
+  07.09.2026). Faz 2'nin geriye kalan tek gerçek boşluğu — eksik/hasarlı
+  teslimat takibi — eklendi: `purchase_requests.delivery_status`
+  (`tam`/`eksik`/`hasarli`) + `delivery_note`, hem eski akışın
+  `complete_project_manager_purchase_request` hem yeni akışın
+  `complete_purchase_request_delivery` RPC'sine opsiyonel parametre olarak
+  eklendi (varsayılan `tam`, eksik/hasarlıda not RPC içinde de zorunlu —
+  savunma amaçlı, frontend zaten butonu disabled tutuyor).
+  `TalepDetayModal.jsx`'in "Tamamlandı" bölümü ve `TeklifPazarlikSiparisPanel.jsx`'in
+  "Teslim Alındı — Tamamla" bölümüne bu seçici eklendi; liste satırındaki hızlı
+  "Onayla" aksiyonu (`TabSatinAlmaTalepListesi.jsx`) kasıtlı olarak
+  değiştirilmedi (dar satır, varsayılan `tam` ile hızlı yol kalıyor — eksik/
+  hasarlı senaryosu detay modaline gidiyor, bu codebase'in "listede tekrar
+  göstermeye gerek yok" ilkesiyle tutarlı). Liste yalnızca eksik/hasarlı
+  olan talepler için `ProcessStatusBadge`'in yanına küçük kırmızı bir uyarı
+  rozeti (`Eksik Teslimat`/`Hasarlı Teslimat`) ekliyor — `get_purchase_requests_list(_internal)`
+  zaten `to_jsonb(pr)` kullandığından yeni kolonlar otomatik geldi, RPC
+  değişikliği gerekmedi. Canlı test verisiyle (test-izmir-ges-2026) uçtan uca
+  doğrulandı.
 - **DB-SEC-006 (leaked password protection):** Supabase Free plan'da
   desteklenmiyor, Pro plan gerektiriyor — teknik değil, ödeme kararı bekliyor.
 - **Realtime ölçek notu:** Mevcut 2 test projesi ölçeğinde sorun yok;
@@ -1697,35 +1716,41 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**07.09.2026 (4. tur) — Malzeme eşleştirme önerisi: benzerlik algoritması
-düzeltmesi (bir önceki turda eklenen özellik gerçek veride hiç öneri
-üretmiyordu).**
+**08.09.2026 — Tedarik/Teslimat Faz 2: eksik/hasarlı teslimat takibi
+eklendi.**
 
-Kullanıcı canlı bir projede (`kaptan-demir-adana-arazi-faz1`, "Kaptan Demir
-Çelik Adana GES-1") Malzeme Listesi'ne bakıp bir önceki turda eklenen
-"Eşleştirme Önerileri" panelinin hiç görünmediğini bildirdi (ekran görüntüsü
-aslında ilgisiz, önceden var olan bir özellikti — Aylık Satın Alma Planı'nın
-"Yeni Kalem Ekle" formundaki manuel "BOM'dan Eşleştir" arama kutusu — ama bu,
-gerçek veriyle bir doğrulama tetikledi). Kontrol edilince: `nameSimilarity()`'nin
-ilk sürümü saf tüm-string Levenshtein oranıydı; gerçek talep kalemi adları kısa/
-kolokyal ("TTR kablo") iken gerçek BOM adları uzun/teknik parantezli açıklamalar
-("3x2,5mm2 TTR Kablo Kamera Panosu ve Kamera Direği arası") olduğundan, uzunluk
-farkı skoru neredeyse her zaman %55 eşiğinin altına düşürüyordu (ölçülen: bu
-çift **%16**, "DC Solar Kablo Seti"↔"DC Kablo 4mm2 (75.000 mt)" **%24**) — özellik
-teknik olarak çalışıyordu (önceki turda kurgulanmış bir test verisiyle
-doğrulanmıştı) ama gerçek proje verisinde pratikte hiçbir öneri üretmiyordu.
-Düzeltme: `nameSimilarity` artık `max(tüm-string oranı, tokenSetSimilarity)` —
-yeni `tokenSetSimilarity()` kısa taraftaki her kelimeyi uzun taraftaki EN İYİ
-eşleşen kelimeyle karşılaştırıp ortalar (uzun tarafın fazladan kelimeleri skoru
-seyreltmez). Ayrıntı için "Malzeme eşleştirme önerisi (07.09.2026)" bölümüne
-bakılabilir (Satın alma akışı altında, bu düzeltme aynı bölüme eklendi).
+CLAUDE.md'nin "Bilinen açık noktalar" listesinden kullanıcıyla birlikte
+gözden geçirilen maddelerden biri buydu. İnceleme gösterdi ki Faz 2'nin
+orijinal kapsamı (tedarikçi/sipariş-teslimat tarihi) artık 07.09.2026'daki
+3 aşamalı Teklif/Pazarlık/Sipariş akışıyla talep bazında zaten karşılanıyor
+— gerçekten eksik olan tek parça eksik/hasarlı teslimat takibiydi, kullanıcı
+onayıyla yalnızca bu eklendi (proje sihirbazının Faz 1 checkbox'ına
+dokunulmadı).
 
-Doğrulama üç projenin gerçek (canlı) verisiyle yapıldı: `kaptan-demir-adana-
-arazi-faz1`'de "TTR kablo" artık **%100** ile doğru öneriliyor (Playwright'ta
-ekran görüntüsüyle doğrulandı), `test-izmir-ges-2026`'da "DC Solar Kablo Seti"
-**%56** ile eşiği geçiyor; kasıtlı olarak eşleşmemesi gereken 3 test kalemi
-("BOM Dışı Montaj/Saha Sarf Malzemesi" vb.) hâlâ **%16-31** aralığında kalıp
-öneri üretmiyor — yanlış-pozitif riski yaratmadan gerçek recall sorunu
-çözüldü. `nameSimilarity`'nin `satinAlma.js` dışında başka çağıranı yok (grep
-ile doğrulandı), değişiklik izole. Tam regresyon suite'i tekrar koşuldu,
-`npm run lint`/`build` temiz.
+`purchase_requests`'e `delivery_status` (`tam`/`eksik`/`hasarli`) +
+`delivery_note` eklendi (migration onayı alınıp uygulandı). İki tamamlama
+RPC'sine (`complete_project_manager_purchase_request` — eski akış,
+`complete_purchase_request_delivery` — yeni akış) opsiyonel parametre olarak
+eklendi; imza değiştiği için eski tek/iki-parametreli halleri `DROP FUNCTION`
+ile kaldırılıp aynı yetkilerle yeniden oluşturuldu (bu fonksiyonlarda daha
+önce de aynı desen uygulanmıştı, bkz. `complete_project_manager_purchase_request_add_supplier`).
+Eksik/hasarlı seçilince not RPC içinde de zorunlu (savunma amaçlı).
+
+`TalepDetayModal.jsx`'in "Tamamlandı" bölümü ve `TeklifPazarlikSiparisPanel.jsx`'in
+"Teslim Alındı — Tamamla" bölümüne teslimat durumu seçici + koşullu not alanı
+eklendi. Liste satırındaki hızlı "Onayla" aksiyonu (`TabSatinAlmaTalepListesi.jsx`)
+kasıtlı olarak değiştirilmedi — dar satırda yeni bir form açmak yerine
+varsayılan `tam` ile hızlı yol korundu, eksik/hasarlı senaryosu detay
+modaline yönlendiriliyor. Liste yalnızca eksik/hasarlı olan talepler için
+küçük kırmızı bir uyarı rozeti gösteriyor; `get_purchase_requests_list(_internal)`
+zaten `to_jsonb(pr)` kullandığından yeni kolonlar otomatik geldi, RPC
+değişikliği gerekmedi.
+
+Canlı test verisiyle (test-izmir-ges-2026, "Şantiye Ofisi Sarf Malzeme
+Talebi") uçtan uca doğrulandı: proje yöneticisi olarak talep tamamlanırken
+"Eksik" seçilip not girildi, RPC başarıyla yazdı, listede "Eksik Teslimat"
+rozeti Playwright ekran görüntüsüyle doğrulandı; test verisi ardından SQL'le
+orijinal durumuna geri alındı. `npm run lint`/`build` temiz.
+
+Ayrıntı için "Frontend yapısı" → proje sihirbazı/Faz 2 notuna ve "Bilinen
+açık noktalar" listesindeki güncellenen maddeye bakılabilir.
