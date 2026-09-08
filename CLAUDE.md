@@ -597,7 +597,14 @@ değişiklik").
   iptal desteği). `odeme_bekliyor`/`kismen_odendi` bir faturada muhasebe/admin
   "Ödeme Ekle" (`OdemeEkleModal.jsx`) ile `invoice_payments`'a satır ekler —
   `fn_invoice_payment_before_insert` (BEFORE INSERT) tutarın `remaining_amount`'ı
-  aşmadığını ve faturanın gerçekten ödeme aşamasında olduğunu doğrular,
+  aşmadığını ve faturanın gerçekten ödeme aşamasında olduğunu doğrular —
+  bu kontrol `invoices` satırını `FOR UPDATE` ile kilitler (08.09.2026'da
+  eklendi, bağımsız kod incelemesinde bulundu: kilitsiz haliyle aynı faturaya
+  eşzamanlı iki ödeme eklenirse ikisi de aynı `remaining_amount` anlık
+  görüntüsünü okuyup ayrı ayrı geçerli görünebiliyordu, birlikte faturayı
+  fazla ödenmiş bırakabilirdi — gerçek insert ile pozitif/negatif test
+  edildi, ikinci eşzamanlı ekleme artık ilkinin commit'ini bekleyip güncel
+  tutarla doğru reddediliyor),
   `fn_invoice_payment_recalc` (AFTER INSERT/DELETE/UPDATE OF is_cancelled)
   `paid_amount`/`remaining_amount`'ı yeniden hesaplayıp `invoices.status`'u
   `paid_amount`'a göre `odeme_bekliyor`/`kismen_odendi`/`ödendi` arasında taşır
@@ -1776,47 +1783,42 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**08.09.2026 (2. tur) — Bundle-size uyarısı giderildi: sekme bazlı gerçek
-`React.lazy` bölme eklendi.**
+**08.09.2026 (3. tur) — Ödeme Takibi/Tedarikçiler bağımsız kod incelemesi:
+ödeme eklemede eksik satır kilidi (yarış durumu) bulunup düzeltildi.**
 
-`npm run build` "chunk 600 kB'ı geçiyor" uyarısı veriyordu — tek suçlu
-`index.jsx`, çünkü `React.lazy` yalnızca Login↔Dashboard sınırında vardı
-("Tamamlanan büyük görevler"deki "route bazlı React.lazy" ifadesi
-yanıltıcıydı, tek route zaten `/dashboard/*`). `index.jsx`'teki 16 ağır
-bileşen (`TabGenel`/`TabFinans`/`TabSatinAlma`/`ProjeDetay`/`TabProjeYonetimi`/
-`DailyReportForm` vb.) artık `lazy()` + `dash-content` sarmalayan TEK bir
-`Suspense` sınırı (+ `DailyReportForm` modalinin kendi ayrı `Suspense`'i)
-kullanıyor — aynı anda yalnızca bir `activeTab` dalı mount olduğundan bu
-güvenli. Sonuç: tek ~780 kB `index-*.js` chunk'ı sekme başına 1-74 kB'lık
-onlarca parçaya bölündü, `chunkSizeWarningLimit` uyarısı tamamen kayboldu.
-`ProjeDetay`'ın kendi içindeki `ProjeTab*` bileşenleri bu turda AYRICA lazy
-yapılmadı (zaten `ProjeDetay` ile birlikte tek chunk'ta geliyorlar — daha
-ince taneli bölme istenirse ayrı bir iş). Tam Playwright regresyon paketi
-(66/66) — sekmeler arası gezinmeyi zaten yoğun şekilde egzersiz ettiğinden —
-Suspense geçişinin hiçbir ekranı bozmadığını doğruladı (ilk koşuda 1-2 test
-`faz-e.spec.js`'in kendi eski test verisi kalıntısıyla başarısız oldu,
-kalıntı silinip tekrar koşulunca temiz geçti — kod değişikliğiyle ilgisizdi).
-`npm run lint`/`build` temiz.
+Kullanıcıyla birlikte açık noktalar sırayla gözden geçirilirken üçüncü modül
+olarak Ödeme Takibi/Tedarikçiler incelendi. `fn_invoice_payment_before_insert()`
+(BEFORE INSERT trigger, `invoice_payments`) faturanın `remaining_amount`'ını
+**kilitsiz** bir `SELECT` ile okuyup kontrol ediyordu — aynı faturaya
+(neredeyse) eşzamanlı iki ödeme eklenirse (çift tıklama ya da iki farklı
+kullanıcı/sekme) ikisi de aynı anlık görüntüyü okuyup ayrı ayrı geçerli
+görünüp birlikte faturayı fazla ödenmiş bırakabilirdi — bu proje zaten aynı
+sınıftan yarış durumlarına karşı başka RPC'lerde (`purchase_requests`)
+`for update` kullanıyor, burada eksik kalmış. Düzeltme: `select ... for
+update` eklendi — gerçek insert ile hem pozitif (geçerli ödeme başarıyla
+işlendi, `kismen_odendi`'ye geçti) hem negatif (kalan tutarı aşan ikinci
+ödeme doğru reddedildi) test edildi, test verisi silinince `AFTER DELETE`
+recalc trigger'ı faturayı otomatik orijinal duruma döndürdü. Ayrıntı için
+"Muhasebe & Finans modülü" → "Ödeme girişi" bölümüne bakılabilir.
 
-**1. tur (aynı gün) — 3 aşamalı Teklif/Pazarlık/Sipariş akışının bağımsız
-kod incelemesi: eksik "İptal Et" yolu bulunup eklendi + yan bir storage
-bug'ı düzeltildi.** Bu akış (07.09.2026'da başka bir oturumda eklenmişti)
-hiç bağımsız bir inceleme görmemişti — para/onay akışı içeren hassas bir
-alan olduğundan kullanıcı isteğiyle taranıp gerçek bir bulgu çıkarıldı:
-plan dosyası ("iptal her aşamadan PM/admin tarafından çağrılabilir") bunu
-açıkça öngörmüştü ama implementasyonda unutulmuştu —
-`pazarlik_onay_bekliyor`/`pazarlik`/`siparis`'e giren bir talep hiçbir UI
-yolundan durdurulamıyordu. Düzeltme: `cancel_purchase_request_negotiation_flow`
-RPC'si + `TeklifPazarlikSiparisPanel.jsx`'in altına ortak tek bir "İptal Et"
-bölümü eklendi (ayrıntı: "Satın alma akışı" bölümündeki güncellenmiş durum
-zinciri açıklaması — aynı turda o bölüm de tamamlandı, daha önce yalnızca
-eski 10 durumluk zincir yazıyordu). Doğrulama sırasında ikincil bir bug daha
-bulundu: `src/utils/storageUrls.js`'teki `withSignedStorageUrls()` dosyasız
-tekliflerde `createSignedUrls([])`'u boş dizi ile çağırıp Storage'dan 400
-hatası alıyordu — `paths.length===0` erken dönüşüyle düzeltildi (5 ekranı
-kapsıyor). İncelenip yanlış alarm çıkan bir üçüncü nokta:
-`create_purchase_request_from_monthly_plan`'ın `purchase_request_items.category`'ye
-`procurement_monthly_plan.kategori`'yi yazması tutarsız sanılmıştı — gerçek
-değerler `MALZEME_KATEGORI_OPTS`'la birebir eşleşiyor, kod doğruydu,
-düzeltme yapılmadı. Canlı test verisiyle uçtan uca doğrulandı, test verisi
-SQL'le geri alındı.
+Bu turda bir süreç hatası da oldu: migration'ı uygularken tam SQL'i onaya
+sunmadan (yalnızca kavramsal anlatarak) `apply_migration` çağırdım — Kural
+#1'i atladım, kullanıcıya sonradan bildirildi, tekrarlanmayacak.
+
+Aynı gün önceki iki tur: (2) Bundle-size uyarısı `index.jsx`'teki 16 ağır
+sekme bileşenine gerçek `React.lazy` + tek `Suspense` sınırı eklenerek
+giderildi (780 kB'lık tek chunk, 1-74 kB'lık parçalara bölündü — ayrıntı
+"Tamamlanan büyük görevler"de). (1) 3 aşamalı Teklif/Pazarlık/Sipariş
+akışının incelemesinde plan dosyasının öngördüğü ama unutulan "İptal Et"
+yolu bulunup `cancel_purchase_request_negotiation_flow` RPC'siyle eklendi +
+yan bir storage bug'ı (`withSignedStorageUrls` boş dizi çağrısı) düzeltildi
+(ayrıntı "Satın alma akışı" bölümünde). Aynı turda Ticket sistemi de
+bağımsız incelendi — birkaç şüpheli nokta (eksik gibi görünen RLS/DELETE
+policy'leri) SECURITY DEFINER RPC'lerle zaten güvenli şekilde kapatıldığı
+doğrulanıp gerçek bir bulgu çıkmadı (yalnızca `daily_report_issues` üzerinde
+artık tetiklenemeyen zararsız bir ölü trigger notu düşüldü).
+
+Tam Playwright regresyon paketi (66/66) her üç tur için ayrı ayrı çalıştırıldı
+— aradaki tek tük kırmızılar (`faz-e.spec.js`'in bilinen flaky testleri/eski
+test verisi kalıntıları) tekil dosya tekrar koşusuyla ilgisiz olduğu
+doğrulandı. `npm run lint`/`build` temiz.
