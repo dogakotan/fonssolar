@@ -34,8 +34,11 @@ export default function TeklifPazarlikSiparisPanel({ request, status, onUpdated 
   const [loadingOffers, setLoadingOffers] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelNote, setCancelNote] = useState('')
 
   const isProjectManager = role === 'proje_yoneticisi'
+  const canCancel = isProjectManager || isAdmin
 
   useEffect(() => {
     supabase.from('suppliers').select('id, name').order('name').then(({ data }) => setSuppliers(data || []))
@@ -52,6 +55,21 @@ export default function TeklifPazarlikSiparisPanel({ request, status, onUpdated 
 
   async function refresh() {
     await onUpdated?.()
+  }
+
+  async function cancelRequest() {
+    setError('')
+    if (!cancelNote.trim()) { setError('İptal için açıklama girmelisiniz.'); return }
+    setSaving(true)
+    const { error: rpcError } = await supabase.rpc('cancel_purchase_request_negotiation_flow', {
+      p_request_id: request.id,
+      p_note: cancelNote.trim(),
+    })
+    setSaving(false)
+    if (rpcError) { setError(toUserMessage(rpcError)); return }
+    setCancelOpen(false)
+    setCancelNote('')
+    onUpdated?.()
   }
 
   return (
@@ -111,6 +129,35 @@ export default function TeklifPazarlikSiparisPanel({ request, status, onUpdated 
           setError={setError}
           onChanged={refresh}
         />
+      )}
+
+      {canCancel && (
+        <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 12, paddingTop: 10 }}>
+          {cancelOpen ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <textarea
+                value={cancelNote}
+                onChange={event => setCancelNote(event.target.value)}
+                placeholder="İptal gerekçesi (zorunlu)"
+                style={{ ...INPUT, height: 56, resize: 'none' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" onClick={() => { setCancelOpen(false); setCancelNote('') }} disabled={saving} style={{ ...BTN_GHOST, opacity: saving ? 0.7 : 1 }}>
+                  Vazgeç
+                </button>
+                <button type="button" onClick={cancelRequest} disabled={saving || !cancelNote.trim()} style={{ ...BTN_DANGER, opacity: (saving || !cancelNote.trim()) ? 0.6 : 1, cursor: !cancelNote.trim() ? 'not-allowed' : 'pointer' }}>
+                  {saving ? 'İptal ediliyor…' : 'İptali Onayla'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setCancelOpen(true)} style={BTN_DANGER}>
+                İptal Et
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </section>
   )

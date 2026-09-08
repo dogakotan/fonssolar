@@ -342,9 +342,54 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   otomatik ayarlanmaz, kullanıcı elle seçer.
 
 ### Satın alma akışı
-Durum zinciri: `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
+**Eski durum zinciri** (yalnızca 03.09.2026'dan önce oluşturulmuş eski
+talepler, geriye dönük uyumluluk için CHECK'te duruyor, yeni satır
+ÜRETMİYOR): `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
 → satin_alindi → fatura_bekliyor/fatura_onay_bekliyor → faturasi_kesildi`
-(+ `reddedildi`/`iptal`). `fatura_bekliyor` pratikte hiç üretilmez (yalnızca
+(+ `reddedildi`/`iptal`).
+
+**Yeni durum zinciri** (03.09.2026'dan beri TÜM yeni talepler bununla açılır —
+`create_purchase_request_with_items` doğrudan `teklif_toplama` ile insert
+eder): `teklif_toplama → pazarlik_onay_bekliyor → pazarlik → siparis →
+satin_alindi` (buradan sonrası — fatura akışı — iki zincir için de AYNI,
+hiç değişmedi). Üç aşama proje yöneticisi tarafından yürütülür, yalnızca
+pazarlığa geçiş kapısı admin onayı gerektirir:
+- **Teklif Toplama:** `add_purchase_offer`/`delete_purchase_offer` ile
+  `purchase_offers` tablosuna teklif eklenir/silinir (tedarikçi veya serbest
+  metin + tutar/para birimi/geçerlilik/not/opsiyonel dosya —
+  `teklif-ekleri` storage bucket'ı, `ticket-ekleri` ile birebir aynı RLS
+  deseni). 3'ten az teklifle "Pazarlığa Gönder" tıklanırsa yalnızca **uyarı**
+  gösterilir (siteye özel inline kutu, `window.confirm` değil), zorunlu
+  gerekçe istenmez — `submit_purchase_request_for_negotiation` durumu
+  `pazarlik_onay_bekliyor`'a çeker.
+- **Pazarlık Onayı (admin kapısı):** `review_purchase_request_negotiation_gate`
+  — onay `pazarlik`'e geçirir, red **`teklif_toplama`'ya geri döner** (terminal
+  değil — `reddedildi` gibi kalıcı bir son değil, PM teklifleri düzenleyip
+  tekrar gönderebilir), gerekçe redde zorunlu (`stage_rejection_note`).
+- **Pazarlık:** `save_purchase_request_negotiation` kazanan teklifi
+  (`selected_offer_id`) + nihai tutar/para birimi/notu kaydeder (durumu
+  değiştirmez, tekrar tekrar kaydedilebilir); `advance_purchase_request_to_order`
+  `selected_offer_id` doluyken `siparis`'e geçirir.
+- **Sipariş:** `save_purchase_request_order` kesin adet/birim fiyat/sipariş
+  tarihi/tedarikçiyi `purchase_request_items`/`purchase_requests`'e yazar
+  (`total_price` GENERATED kolon olduğundan elle SET edilmez — yalnızca
+  `quantity`/`unit_price` yazılır, 03.09.2026'da bulunan bug); ürün sahaya
+  ulaşınca `complete_purchase_request_delivery` (adet/fiyat girilmiş olma
+  şartıyla) `satin_alindi`'ye taşır — buradan sonra fatura akışı eski
+  zincirle birebir aynı.
+- **İptal (08.09.2026 eklendi):** `cancel_purchase_request_negotiation_flow`
+  — yalnızca proje yöneticisi/admin, yukarıdaki 4 aşamanın HERHANGİ birinden
+  çağrılabilir, gerekçe zorunlu, `iptal`e çeker (aylık plan bağlantısını
+  koparan trigger zaten bu durumu dinlediğinden ek kod gerekmedi). Plan
+  dosyasında ("iptal her aşamadan PM/admin tarafından çağrılabilir")
+  öngörülmüş ama ilk implementasyonda unutulmuştu — bir kod incelemesinde
+  bulunup eklendi: öncesinde `pazarlik_onay_bekliyor`/`pazarlik`/`siparis`'e
+  giren bir talep hiçbir şekilde durdurulamıyordu, `satin_alindi`'ye kadar
+  zorunlu ilerlemek gerekiyordu. `TeklifPazarlikSiparisPanel.jsx`'in altında
+  tüm aşamalarda ortak, tek bir "İptal Et" bölümü olarak eklendi (aşamaya özel
+  4 alt bileşenin her birine ayrı ayrı değil).
+
+Eski zincirin fatura kısmı: `fatura_bekliyor` pratikte hiç üretilmez (yalnızca
 DB constraint'in izin verdiği ama hiçbir RPC'nin yazmadığı bir değer, savunma
 amaçlı frontend gruplama listelerinde duruyor) — fatura oluşturulunca durum
 tek hamlede `fatura_onay_bekliyor`'a düşer ve muhasebe (adım 1) + yönetici
@@ -1724,41 +1769,47 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**08.09.2026 — "Bilinen açık noktalar" listesi kullanıcıyla sırayla gözden
-geçirildi: Tedarik/Teslimat Faz 2 kısmen kapatıldı, mini-importer maddesi
-bayat çıktı.**
+**08.09.2026 — 3 aşamalı Teklif/Pazarlık/Sipariş akışının bağımsız kod
+incelemesi: eksik "İptal Et" yolu bulunup eklendi + yan bir storage bug'ı
+düzeltildi.**
 
-Kullanıcıyla birlikte açık madde listesi tek tek ele alındı.
+Bu akış (07.09.2026'da başka bir oturumda eklenmişti) hiç bağımsız bir
+inceleme görmemişti — para/onay akışı içeren hassas bir alan olduğundan
+kullanıcı isteğiyle taranıp gerçek bir bulgu çıkarıldı: plan dosyası
+("iptal her aşamadan PM/admin tarafından çağrılabilir") bunu açıkça
+öngörmüştü ama implementasyonda unutulmuştu — `pazarlik_onay_bekliyor`/
+`pazarlik`/`siparis`'e giren bir talep hiçbir UI yolundan durdurulamıyordu
+(ne "Talebi Sil" ne eski akışın "İptal Et"i bu 4 yeni duruma bağlıydı).
+Düzeltme: `cancel_purchase_request_negotiation_flow(p_request_id, p_note)`
+RPC'si eklendi (proje yöneticisi/admin, 4 aşamanın herhangi birinden,
+gerekçe zorunlu) + `TeklifPazarlikSiparisPanel.jsx`'in altına tüm aşamalarda
+ortak tek bir "İptal Et" bölümü eklendi. Ayrıntı için "Satın alma akışı"
+bölümündeki güncellenmiş durum zinciri açıklamasına bakılabilir (aynı turda
+o bölüm de genişletildi — daha önce yalnızca eski 10 durumluk zincir
+yazıyordu, yeni 4 aşamalı zincir hiç belgelenmemişti).
 
-**1) Tedarik/Teslimat Faz 2 (kısmen kapandı).** İnceleme gösterdi ki Faz 2'nin
-orijinal kapsamı (tedarikçi/sipariş-teslimat tarihi) artık 07.09.2026'daki
-3 aşamalı Teklif/Pazarlık/Sipariş akışıyla talep bazında zaten karşılanıyor
-— gerçekten eksik olan tek parça eksik/hasarlı teslimat takibiydi, kullanıcı
-onayıyla yalnızca bu eklendi (proje sihirbazının Faz 1 checkbox'ına
-dokunulmadı). `purchase_requests`'e `delivery_status` (`tam`/`eksik`/`hasarli`)
-+ `delivery_note` eklendi (migration onayı alınıp uygulandı). İki tamamlama
-RPC'sine (`complete_project_manager_purchase_request` — eski akış,
-`complete_purchase_request_delivery` — yeni akış) opsiyonel parametre olarak
-eklendi; imza değiştiği için eski halleri `DROP FUNCTION` ile kaldırılıp aynı
-yetkilerle yeniden oluşturuldu (aynı desen daha önce de uygulanmıştı, bkz.
-`complete_project_manager_purchase_request_add_supplier`). Eksik/hasarlı
-seçilince not RPC içinde de zorunlu (savunma amaçlı). `TalepDetayModal.jsx`'in
-"Tamamlandı" bölümü ve `TeklifPazarlikSiparisPanel.jsx`'in "Teslim Alındı —
-Tamamla" bölümüne teslimat durumu seçici + koşullu not alanı eklendi. Liste
-satırındaki hızlı "Onayla" aksiyonu (`TabSatinAlmaTalepListesi.jsx`) kasıtlı
-olarak değiştirilmedi — varsayılan `tam` ile hızlı yol korundu, eksik/hasarlı
-senaryosu detay modaline yönlendiriliyor; liste yalnızca eksik/hasarlı
-talepler için küçük kırmızı bir uyarı rozeti gösteriyor (`get_purchase_requests_list(_internal)`
-zaten `to_jsonb(pr)` kullandığından RPC değişikliği gerekmedi). Canlı test
-verisiyle (test-izmir-ges-2026) uçtan uca doğrulandı, sonra orijinal duruma
-SQL'le geri alındı. `npm run lint`/`build` temiz.
+Doğrulama sırasında ikincil, ilgisiz bir bug daha bulunup düzeltildi:
+`src/utils/storageUrls.js`'teki `withSignedStorageUrls()` bir talebin
+dosyasız (yalnızca `storage_path=null`) teklifleri olduğunda
+`createSignedUrls([])`'u boş dizi ile çağırıp Supabase Storage'dan 400
+hatası alıyordu (fonksiyon hatayı yakalayıp `signed_url:null` döndürdüğünden
+UI çökmüyordu ama her render'da konsol hatası basıyordu) — bu, `add_purchase_offer`
+formunda dosya alanının opsiyonel olmasından dolayı gerçek/yaygın bir durum.
+Düzeltme: `paths.length===0` durumunda erken dönüş eklendi. Bu yardımcı 5
+farklı ekranda (ticket/rapor/proje fotoğrafları dahil) kullanıldığından
+düzeltme hepsini kapsıyor.
 
-**2) Manuel proje sihirbazı mini-importer (madde bayat çıktı, düzeltildi).**
-"Eski/dar kategori setiyle sınırlı" iddiası `src/utils/projectExcelImport.js`'teki
-`CAT_MAP` gerçek `task_category` enum'uyla (15 değer) karşılaştırılarak
-kontrol edildi — birebir eşleşme, eksik kategori yok. Muhtemelen kategori
-seti 10'dan 15'e genişletilirken bu dosya da güncellenmiş ama not
-düşülmemiş. Yalnızca dokümantasyon düzeltildi, kod değişikliği yapılmadı.
+**İncelenip yanlış alarm olduğu doğrulanan bir üçüncü nokta:**
+`create_purchase_request_from_monthly_plan`'ın `purchase_request_items.category`'ye
+`procurement_monthly_plan.kategori`'yi yazması ilk bakışta tutarsız
+görünmüştü (farklı iki taksonomi sanılmıştı) — DB'den gerçek değerler
+kontrol edilince `kategori` kolonunun zaten `MALZEME_KATEGORI_OPTS`'un
+birebir aynısı 8 değerlik seti kullandığı görüldü, kod doğru. Düzeltme
+yapılmadı.
 
-Ayrıntı için "Frontend yapısı" → proje sihirbazı/Faz 2 notuna ve "Bilinen
-açık noktalar" listesindeki güncellenen iki maddeye bakılabilir.
+Canlı test verisiyle (test-izmir-ges-2026, "DEMO-İnvertör Bakım Hizmeti
+Örneği") uçtan uca doğrulandı — Playwright ekran görüntüsünde talep
+`iptal` durumuna geçip eski stepper'da "Tedarik İptal Edildi" adımını
+doğru gösterdi; test verisi ardından SQL'le orijinal durumuna geri alındı.
+`npm run lint`/`build` temiz, tam Playwright regresyon paketi (66/66) bu
+turdan önce ayrıca çalıştırılıp geçti.

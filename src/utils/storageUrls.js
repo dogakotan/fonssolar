@@ -6,6 +6,8 @@ export async function withSignedStorageUrls(bucket, rows = []) {
   if (!rows.length) return []
 
   const paths = rows.map(row => row?.storage_path).filter(Boolean)
+  if (!paths.length) return rows.map(row => ({ ...row, signed_url: null }))
+
   const { data, error } = await supabase.storage
     .from(bucket)
     .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS)
