@@ -1783,6 +1783,36 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**08.09.2026 (6. tur) — `request_no` çakışması bulgusu (4. turdan kalan açık
+madde) yeniden koşulup araştırıldı: sonuçsuz kapanmadı, güçlendirilmiş ama
+hâlâ kesinleşmemiş bir ipucuyla açık bırakıldı.**
+
+4. turda bulunup kapsam dışı bırakılan `SAT-2026-101 already exists` hatası
+kullanıcı isteğiyle tekrar araştırıldı. Aynı 4 test dosyası
+(`procurement-concurrency`, `procurement-two-initiators`,
+`procurement-workflow`, `purchase-single-item`) yalnızca bunlarla, tamamen
+izole (`--workers=1`) tekrar koşuldu — **aynı sınıf hata yine üretildi**,
+bu kez `SAT-2026-102` üzerinde. Bu, bir önceki turda ihtimal olarak bırakılan
+"başka bir eşzamanlı yazıcı" hipotezini daha da güçlendirdi: `fn_next_purchase_request_no()`
+tekrar okunup atomikliği yeniden doğrulandı (yapısal olarak imkansız bir
+çakışma), sayacın bu koşum sırasında 1021→1025 temiz ilerlediği (çakışan
+"102" değeriyle hiç ilgisi olmadığı) doğrulandı, ve çakışan satırın koşum
+bittikten hemen sonra tabloda mevcut olmadığı (birinin onu tam o anda
+yaratıp hemen sildiği) teyit edildi. **Yeni kanıt:** `edge_logs` çakışma
+anının (11:10:20-28) etrafında incelendiğinde, Playwright'ın "node"
+trafiğinin arasına gerçek bir tarayıcıdan (`Chrome/150.0.0.0`, Windows)
+`notifications`/`profiles`/`get_my_role`/`get_my_projects` istekleri
+karıştığı görüldü — yani test koşarken aynı anda canlı uygulama bir
+tarayıcıda açık ve aynı paylaşılan Supabase projesine istek atıyordu; bu
+projenin "Playwright tek worker ⇒ tam izolasyon" varsayımını (bkz. 4. tur
+notu) geçersiz kılıyor, paylaşılan test DB'si canlı uygulama kullanımıyla
+hiç izole değil. Ancak tarayıcı trafiğinde tam o anda bir `purchase_requests`
+POST'u görülemedi — yani hangi mekanizmanın düşük numaralı `request_no`'yu
+ürettiği hâlâ kesin olarak gösterilemedi. Kesin kanıt için tarayıcı/uygulama
+tamamen kapalıyken testlerin tek başına koşulması gerekiyor — bu koşul
+sağlanmadan tekrar denenmedi. **Bu turda kod/migration değişikliği yapılmadı**,
+yalnızca araştırma; madde açık kalmaya devam ediyor.
+
 **08.09.2026 (5. tur) — Ölü test bildirimleri temizlendi + bulunan gerçek
 bug: `notifications` realtime'ında DELETE olayları hiç yayınlanmıyordu.**
 
