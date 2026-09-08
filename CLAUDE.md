@@ -585,20 +585,25 @@ değişiklik").
   proje_yoneticisi/muhasebe) — hangi rolün hangi spesifik geçişi yapabildiği
   bu trigger'da merkezi.
 
-**Faturalar liste teması:** `FaturaListesi.jsx` Satın Alma talep listesiyle
-(`TabSatinAlmaTalepListesi.jsx`) aynı görsel dili kullanır — sabit satır/başlık
-yüksekliği (`ROW_HEIGHT=64`/`HEADER_HEIGHT=24`), yapışkan (`sticky`) başlık,
-`var(--color-*)` token'ları, durum için nokta+kalın-metin rozeti (pill/arkaplan
-değil — `StatusDot`, `StatusBadge.jsx`'teki paylaşılan `INVOICE_STATUS`/`TONE`
-haritasından türetilir) ve ortak `Pager` bileşeni. Üstte `get_invoices_list`'in
-`stats` alanından 4 kart (Onay Bekleyen/Düzeltme Bekleyen/Bu Ay Onaylanan —
-olay bazlı, `invoice_approvals.reviewed_at`'tan/Ödeme Bekleyen), altında sekme
-çubuğu (Tümü/Taslak/Onay Bekleyen/Düzeltme Bekleyen/Onaylanan/Ödeme Bekleyen/
-Kısmen Ödendi/Ödendi/Reddedildi — `invoices_status_check`'teki 8 durumun tamamı
-birer sekme; `Kısmen Ödendi`/`Reddedildi` öncesinde sekme yoktu, yalnızca Durum
-dropdown'undan seçilebiliyordu, bu yüzden "Tümü" sekmesindeki toplam diğer
-sekmelerin toplamına eşit değildi — 30.07.2026'da bulunup düzeltildi, artık
-`hepsi` = sekmelerin toplamı garantili).
+**Faturalar liste teması (07.09.2026'da bir QA turunda düzeltilen dokümantasyon
+hatası — aşağıdaki madde önceden yanlış yazılmıştı, gerçek koddan doğrulandı):**
+`FaturaListesi.jsx` kendi ayrı CSS sınıf temasını kullanır (`.invoice-modern-table`/
+`.invoice-mobile-list`, `Dashboard.css`) — `var(--color-*)` token'ları ve ortak
+`Pager` bileşeni `TabSatinAlmaTalepListesi.jsx` ile ortak, ama satır/başlık
+**JS sabitli değil** (`ROW_HEIGHT`/`HEADER_HEIGHT` yok, satır yüksekliği CSS'te
+`td{height:55px}`), başlık **sticky değil**, ve durum rozeti **`StatusDot`
+(nokta+kalın-metin) DEĞİL** — klasik pill/arkaplan rozeti
+(`invoice-status-pill`, `StatusBadge.jsx`'teki paylaşılan `INVOICE_STATUS`/
+`TONE` haritasından renklendirilir). Yani 30.07.2026'da satın alma/ticket/
+bildirim tarafında yapılan nokta+kalın-metin `StatusDot` geçişi FaturaListesi'ni
+hiç kapsamamış. Üstte KPI kartı YOK (2026-07-28'de kaldırıldı, bkz. "Muhasebe &
+Finans modülü" → Faturalar bullet'ı) — doğrudan durum sekmesi çubuğu var: Tümü/
+Taslak/Onay Bekleyen/Düzeltme Bekleyen/Onaylanan/Ödeme Bekleyen/Kısmen Ödendi/
+Ödendi/Reddedildi (`invoices_status_check`'teki 8 durumun tamamı birer sekme;
+`Kısmen Ödendi`/`Reddedildi` öncesinde sekme yoktu, yalnızca Durum dropdown'undan
+seçilebiliyordu, bu yüzden "Tümü" sekmesindeki toplam diğer sekmelerin toplamına
+eşit değildi — 30.07.2026'da bulunup düzeltildi, artık `hepsi` = sekmelerin
+toplamı garantili).
 "İşlem" kolonu statü+role göre değişir (Düzenle/Gönder, İncele, Ödeme Gir,
 İptal Et, Görüntüle) — `FaturaFormModal.jsx` (taslak/düzeltme düzenleme +
 "Taslak Kaydet"/"Onaya Gönder", ödeme-takibi switch'i, inline "+ yeni
@@ -676,6 +681,71 @@ onay anında güncel `planned_qty`'yi talebin `old_planned_qty` anlık
 görüntüsüyle karşılaştırır; aradan otomatik aşım (veya başka bir onay)
 geçtiyse onayı sessizce ezmek yerine açık hatayla reddeder, admin talebi
 reddedip güncel miktarla yeniden değerlendirmek zorunda kalır.
+
+### Malzeme eşleştirme önerisi (07.09.2026)
+`purchase_request_items.bom_item_id` (`procurement_items(id)`'e FK) aslında
+09.07.2026'dan beri şemada vardı ve `YeniTalepModal.jsx`'te BOM dropdown'undan
+malzeme seçilince otomatik yazılıyordu — ama bir talep **"Diğer (Listede Yok)"**
+ile serbest metin girilirse (typo, kısaltma, farklı yazım) bu alan hep `NULL`
+kalıyordu ve tüm client-side hesaplamalar (Malzeme Listesi'nin Gönderilen/Kalan
+kolonları, Satın Alma'nın "Uygun/Riskli/Listede Yok" risk rozeti) yalnızca
+normalize edilmiş isim string'i (`materialKey`) üzerinden eşleşiyordu — küçük
+bir yazım farkı bile o talebi sonsuza kadar "Listede Yok" gösteriyordu ve
+miktarı hiçbir BOM kaleminin Gönderilen toplamına yansımıyordu.
+
+Malzeme Listesi'nde artık bir **"Eşleştirme Önerileri"** paneli var
+(`EslestirmeOnerileriPanel`, `ProjeTabFaturaKesilecekler.jsx`) — `bom_item_id`'si
+boş, kategorisi `malzeme`, durumu `reddedildi`/`iptal` olmayan her talep kalemi
+için `suggestBomMatches()` (`utils/satinAlma.js`, eşik varsayılan %55) BOM'daki
+en olası tek adayı önerir.
+
+**`nameSimilarity()` — ilk sürüm gerçek veriyle hiç öneri üretmiyordu, aynı gün
+düzeltildi.** İlk implementasyon saf tüm-string Levenshtein oranıydı
+(`1 - distance/maxLen`). Canlı bir projede (`kaptan-demir-adana-arazi-faz1`)
+kullanıcı "malzeme listesinde ara" ekranında bir BOM adı görüp eşleştirme
+önerisinin hiç çıkmadığını bildirdi — araştırmada, gerçek talep kalemi adları
+kısa/kolokyal ("TTR kablo") iken gerçek BOM adları uzun/teknik parantezli
+açıklamalar ("3x2,5mm2 TTR Kablo Kamera Panosu ve Kamera Direği arası"); saf
+tüm-string oranı uzunluk farkını doğrudan mesafeye eklediğinden bu tür (kısa
+talep adı, uzun BOM adı) çiftlerinde skor neredeyse her zaman %55 eşiğinin
+çok altında kalıyordu (ölçülen: "TTR kablo" ↔ yukarıdaki BOM adı **%16**,
+"DC Solar Kablo Seti" ↔ "DC Kablo 4mm2 (75.000 mt)" **%24**) — panel teknik
+olarak çalışıyordu ama gerçek projelerde pratikte hiç tetiklenmiyordu. Düzeltme:
+`nameSimilarity` artık `max(tüm-string oranı, tokenSetSimilarity)`.
+`tokenSetSimilarity` kısa olan tarafı kelimelere ayırıp her kelimeyi uzun
+taraftaki EN İYİ eşleşen kelimeyle karşılaştırır ve ortalamasını alır — uzun
+tarafın fazladan kelimeleri (kamera/panosu/arası gibi) skoru seyreltmez. Aynı
+gerçek verilerle doğrulandı: "TTR kablo" artık **%100**, "DC Solar Kablo Seti"
+**%56** (eşiği geçiyor); kasıtlı olarak eşleşmemesi gereken test kalemleri
+("BOM Dışı Montaj Sarf Malzemesi" vb.) **%16-31** aralığında kalmaya devam
+ediyor — yanlış-pozitif riski yaratmadan gerçek recall sorunu çözüldü. Canlı
+`kaptan-demir-adana-arazi-faz1` projesinde Playwright ile ekran görüntüsüyle
+doğrulandı (panel artık "TTR kablo → benzerlik %100" önerisini gösteriyor).
+Admin/proje yöneticisi **Onayla**'ya basarsa `link_purchase_request_item_to_bom`
+RPC'si (SECURITY DEFINER, aynı proje + henüz bağlantısız kalem şartıyla)
+`bom_item_id`'yi yazar ve `fn_recompute_auto_risks(project_id, false)`'u tetikler
+(artık doğru sayılan miktar planı aşıyorsa yeni bir `malzeme_fazla_talep` riski
+hemen açılabilsin diye — `false`: bu bir onay değil, mevcut açık riskleri
+kapatmaz). **Reddet yerine "Yoksay"** — kalıcı bir "bir daha gösterme" kaydı
+tutulmuyor, yalnızca bu oturumda gizlenir (bilinçli sadeleştirme).
+
+**Bu, `bom_item_id`'yi (varsa) isim string'ine tercih edecek şekilde tüm
+client-side eşleşme mantığını değiştirdi** — `materialMatchKey(item)`
+(`item.bom_item_id ? 'id:'+id : materialKey(item.name)`) artık
+`requestedTotalsByMaterial`/`classifyMaterials`/`riskBreakdownForItems`/
+`riskState`'in TÜMÜNDE kullanılıyor; `TabSatinAlmaTalepListesi.jsx`'teki
+`materialPlan`/`requestedTotals` Map'leri hem isim hem `id:<uuid>` anahtarıyla
+çift kayıtlı tutuluyor (bir talep kalemi bom_item_id ile linkliyse id
+anahtarından, değilse isim anahtarından okunur). `get_satin_alma_overview`/
+`get_satin_alma_overview_all_internal` bu yüzden kalem çıktısına `id`/
+`bom_item_id` eklendi (kolon zaten vardı, yalnızca RPC hiç döndürmüyordu).
+**Bilinçli sınırlama:** aynı BOM kalemi için hem doğrudan linkli hem de ismi
+tesadüfen eşleşen (henüz linksiz) birden fazla talep varsa, `riskState`/
+`riskBreakdownForItems`'ın kişi-bazlı bakışı bu ikisini AYRI ayrı sayar
+(yalnızca `buildMaterialListRows`'un malzeme-bazlı Gönderilen toplamı ikisini
+doğru şekilde birleştirir) — nadir bir kenar durum, bu turda düzeltilmedi.
+`useSantiyeData.js`'teki (şantiye şefi Genel Bakış kartı) eşdeğer hesaplama da
+bu turun kapsamı dışında bırakıldı, aynı desenle ayrı bir iş olarak yapılabilir.
 
 **`procurement_items`'taki eski sipariş-takip kolonları kaldırıldı (04.08.2026).**
 `status`/`priority`/`order_date`/`expected_delivery`/`actual_delivery`/
@@ -819,6 +889,8 @@ eklendi (`20260731180000`) — talep hâlâ `talep_olusturuldu`/`fiyat_girildi`/
 (`p_issues` id-bazlı upsert — ticket bağlantısı için kritik, bkz. Trigger
 zincirleri), `create_procurement_item_change_request`,
 `review_procurement_item_change_request`, `create_procurement_item_add_request`,
+`link_purchase_request_item_to_bom` (bir talep kalemini BOM'daki gerçek bir
+kaleme bağlar, bkz. "Malzeme eşleştirme önerisi"),
 `save_project_category_weights` (proje sihirbazındaki kategori ağırlıkları,
 tüm dağılımı tek transaction'da değiştirir), `set_project_procurement_completed`
 (proje sihirbazının tedarik/teslimat Faz 1 onayı, yalnızca proje_yoneticisi).
@@ -1625,157 +1697,35 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**07.09.2026 (2. tur) — Dört ek iş: (A) "Teklif / Pazarlık / Sipariş" üst-seviye
-sidebar sayfası menüden kaldırıldı, (B) Satın Alma alt-sekme sırası değişti
-(Malzeme Listesi/Riskler artık en sonda), (C) `TabIsPlan.jsx`'in Gantt'ı artık
-GERÇEK çok seviyeli (iç içe, her seviyesi ayrı aç/kapa) grup hiyerarşisi
-destekliyor + Kaptan Demir Çelik (Adana GES-1) projesinin İş Planı bu yeni
-modelle, kullanıcının paylaştığı harici Gantt ekran görüntüsündeki yapıya
-(Elektriksel Bölüm › TR-1-3000 kVA › Inverter-1..9 › DC/AC) uygun şekilde
-dolduruldu, (D) grup satırlarının GÖRSEL stili de aynı referansa uydurulacak
-şekilde değişti — kategoriye göre renkli bant kaldırıldı, tüm projelerin
-Gantt'ında geçerli (paylaşılan bileşen).**
+**07.09.2026 (4. tur) — Malzeme eşleştirme önerisi: benzerlik algoritması
+düzeltmesi (bir önceki turda eklenen özellik gerçek veride hiç öneri
+üretmiyordu).**
 
-**(D) Gantt grup satırları — düz/beyaz + tarih sütunlu (TÜM projelerde).**
-Kullanıcı aynı ekran görüntüsünü ikinci kez gösterip "görünüm olarak da aynı
-olsun" deyince (`AskUserQuestion` ile kapsam netleştirildi — bu paylaşılan
-bileşen olduğundan değişikliğin TÜM projelerin İş Planı'nı etkileyeceği
-açıkça belirtilip onaylandı), `.gantt-group-row`'un kategoriye göre renkli
-dolgun bandı (`tone-mavi/mor/turuncu/...`) tamamen kaldırıldı — artık görev
-satırlarıyla AYNI iki parçalı ızgarayı (`--left-width`/`--timeline-width`)
-kullanan, düz açık gri (`#f1f5f9`) arkaplanlı, kalın yazı + derinliğe göre
-artan girintiyle ayrılan tek bir tabloya dönüştü; grup satırında da artık
-görev satırlarıyla aynı sütunlarda (Başlangıç/Bitiş/Süre/İlerleme) o dalın
-TÜM alt görevlerini kapsayan agregat tarih aralığı gösteriliyor
-(`buildGroupTree`'nin `finalize` adımına eklenen `rangeStart`/`rangeEnd`,
-en erken `planned_start`/en geç `planned_end`). Görev satırlarının kendi
-renkli ilerleme çubuğu (`groupConfigFor(node.label).bar`) DEĞİŞMEDİ —
-yalnızca grup BAŞLIĞININ arkaplanı düzleşti. Yan etki: 3 haneli süre
-değerleri (ör. "123 gün", grup satırlarında görev satırlarından daha sık
-görülüyor) `Süre` sütununda satır kırılması yapıyordu — `W_DUR` 48→54px
-büyütüldü + `.gantt-task-left > span`/`.gantt-group-left > span`'a
-`white-space: nowrap` eklendi. Playwright'ta ekran görüntüsüyle referansla
-satır satır karşılaştırılarak doğrulandı, konsol hatası yok.
+Kullanıcı canlı bir projede (`kaptan-demir-adana-arazi-faz1`, "Kaptan Demir
+Çelik Adana GES-1") Malzeme Listesi'ne bakıp bir önceki turda eklenen
+"Eşleştirme Önerileri" panelinin hiç görünmediğini bildirdi (ekran görüntüsü
+aslında ilgisiz, önceden var olan bir özellikti — Aylık Satın Alma Planı'nın
+"Yeni Kalem Ekle" formundaki manuel "BOM'dan Eşleştir" arama kutusu — ama bu,
+gerçek veriyle bir doğrulama tetikledi). Kontrol edilince: `nameSimilarity()`'nin
+ilk sürümü saf tüm-string Levenshtein oranıydı; gerçek talep kalemi adları kısa/
+kolokyal ("TTR kablo") iken gerçek BOM adları uzun/teknik parantezli açıklamalar
+("3x2,5mm2 TTR Kablo Kamera Panosu ve Kamera Direği arası") olduğundan, uzunluk
+farkı skoru neredeyse her zaman %55 eşiğinin altına düşürüyordu (ölçülen: bu
+çift **%16**, "DC Solar Kablo Seti"↔"DC Kablo 4mm2 (75.000 mt)" **%24**) — özellik
+teknik olarak çalışıyordu (önceki turda kurgulanmış bir test verisiyle
+doğrulanmıştı) ama gerçek proje verisinde pratikte hiçbir öneri üretmiyordu.
+Düzeltme: `nameSimilarity` artık `max(tüm-string oranı, tokenSetSimilarity)` —
+yeni `tokenSetSimilarity()` kısa taraftaki her kelimeyi uzun taraftaki EN İYİ
+eşleşen kelimeyle karşılaştırıp ortalar (uzun tarafın fazladan kelimeleri skoru
+seyreltmez). Ayrıntı için "Malzeme eşleştirme önerisi (07.09.2026)" bölümüne
+bakılabilir (Satın alma akışı altında, bu düzeltme aynı bölüme eklendi).
 
-**(D2) Girinti/ok hizası düzeltmesi.** Kullanıcı ilk halini "içiçe geçik
-olmadı, yazılar dengesiz" diye tanımladı — kök neden: ok işareti (▾/▸) sabit
-"No" hücresindeydi, yalnızca metin `paddingLeft` ile kayıyordu; bu, derinlik
-arttıkça ok ile metnin görsel olarak kopmasına (staircase etkisinin
-bozulmasına) yol açıyordu. Düzeltme: ok artık isim hücresinin İÇİNDE, sabit
-11px genişlikli bir kutuda (`▾`/`▸` karakterlerinin doğal genişliği farklı
-olduğundan sabitlenmezse aynı derinlikteki satırlarda metin başlangıcı
-piksel piksel oynuyordu) — girinti adımı da (`GROUP_INDENT_PX`) 14→20px
-büyütüldü, daha belirgin bir merdiven görünümü için. Yakın plan ekran
-görüntüsüyle (`Elektriksel Bölüm → TR-1-3000 kVA → OG → OG01/02/03`)
-doğrulandı — her seviye kendi ok+metin bloğuyla bir öncekinden net şekilde
-içeri kaymış görünüyor.
-
-**(D3) Asıl eksik yer bulundu: `TabIsPlaniDetay.jsx` ("Detaylı İş Planı")
-hiç dokunulmamıştı.** Kullanıcı AYNI fotoğrafı tekrar gösterip "hiyerarşi
-hâlâ içiçe geçik değil, inverterler kendi içinde açılmalı, detaylı iş
-planını düzeltmen gerek" deyince fark edildi: `İş Planı` sekmesinin İKİ ayrı
-bölümü var — `Genel İş Planı` (Gantt, (C)/(D)/(D2)'de düzeltilen) ve
-`Detaylı İş Planı` (tam veri tablosu, `TabIsPlaniDetay.jsx`) — kullanıcı
-BAŞTAN BERİ ikincisine bakıyordu, o hâlâ eski tek-seviyeli `resolveGroup`
-gruplamasını kullanıyordu (Elektriksel Bölüm/TR-1-3000 kVA/Inverter-N hiç
-içiçe değil, her biri kendi tam-yol string'iyle YAN YANA ayrı birer grup
-gibi listeleniyordu) — üstüne (D)'deki CSS restyle'ı da bu bileşenin artık
-var olmayan `gantt-group-row tone-${cfg.tone}`/`<strong>`/`<small>`
-seçicilerine dayandığından header satırları sessizce BOZULMUŞTU (regresyon,
-fark edilmeden). Düzeltme: `TabIsPlan.jsx`'ten `buildGroupTree`/
-`collectNodeTasks`/`GROUP_INDENT_PX` export edilip `TabIsPlaniDetay.jsx`
-kendi `resolveGroup`+flat `grouped`/`groupKeys` mantığını tamamen bırakıp
-AYNI ağacı kullanacak şekilde yeniden yazıldı — `sortTreeTasks` (kullanıcının
-seçtiği plan tarihi/sapma/ilerleme/ad sıralamasını her düğümde ayrı ayrı
-uygular, grup sırasının kendisini etkilemez) + `buildDetayRows`/
-`buildDetayTaskRow` (Gantt'taki `renderGanttGroupNode`'un `<tr>/<td>`
-karşılığı, kendi satır-içi stiliyle — artık paylaşılan `.gantt-group-row`
-CSS'ine bağımlı değil, böylece Gantt'ın stilini değiştirmek bunu bir daha
-kırmaz). Her düğüm kendi tam-yol anahtarıyla bağımsız aç/kapa olduğundan
-Inverter-2..9 artık gerçekten birbirinden habersiz, ayrı ayrı genişletilebiliyor
-(canlıda test edilirken Inverter-2 kapatılıp Inverter-3 açık bırakıldı,
-ikisi birbirini etkilemedi). **Ders:** kullanıcı "bu görünüm hâlâ istediğim
-gibi değil" derse ve önceki düzeltme doğrulanmış görünüyorsa, önce kullanıcının
-GERÇEKTEN hangi ekranı/sekmeyi izlediğini sorgula — aynı sayfada görünüşte
-benzer iki ayrı bölüm (Genel/Detaylı) olabilir, biri düzeltilip diğeri
-unutulmuş olabilir. Playwright'ta canlı doğrulandı (Inverter-3 açılınca kendi
-AC/DC alt dalı + INV3- kodlu görevler doğru tarihlerle görünüyor, hedef
-miktarlar — 105.000 m, 35 adet — ilgili DC/AC gruplarında korunmuş), tam
-regresyon suite'i (66/66) geçti, konsol hatası yok.
-
-**(A) Teklif/Pazarlık/Sipariş menüden kaldırıldı.** 03.09.2026'da ayrı bir
-üst-seviye sidebar sayfası (`TabTeklifPazarlikSiparis.jsx`, `index.jsx`'teki
-`teklif-pazarlik-siparis` sekmesi) olarak eklenmişti — kullanıcı kararıyla
-`role_sidebar_items`/`role_allowed_tabs`'tan (`20260907090000_remove_teklif_pazarlik_siparis_top_level_menu_item`
-migration'ı) silinerek menüden kaldırıldı. **Kod bilinçli olarak silinmedi**
-(sayfa/route/Sidebar.jsx item tanımı duruyor, yalnızca erişilemez) —
-`ProjeTabSatinAlma.jsx`'teki proje-içi "surec" alt-sekmesi zaten korunduğundan
-süreç oradan erişilmeye devam ediyor.
-
-**(B) `ProjeTabSatinAlma.jsx`'in TABS sırası** Talepler → (Onay Bekleyenler →
-Teklif/Pazarlık/Sipariş → Aylık Plan, role göre) → **Malzeme Listesi** →
-**Riskler** oldu (kullanıcı isteği — bu ikisi öncesinde Talepler'in hemen
-ardından geliyordu, artık en sonda).
-
-**(C) Gantt — gerçek çok seviyeli iç içe gruplama.** Öncesinde
-`project_tasks.group_label` tek seviyeli düz bir etiketti (`resolveGroup` tek
-bir string döner, `TabIsPlan.jsx` bunları tek bir aç/kapa seviyesiyle
-listeliyordu). Kullanıcı harici bir planlama aracından (screenshot) çok
-seviyeli bir WBS gösterip "fotoğraftaki hiyerarşiye uygun içe geçişler"
-istedi — bu, `group_label`'ın kendisini " › " ayracıyla çok segmentli bir yol
-olarak kodlamayı (ör. `"Elektriksel Bölüm › TR-1-3000 kVA › Inverter-3 ›
-DC"`) ve `TabIsPlan.jsx`'in bunu GERÇEK bir ağaç olarak render etmesini
-gerektirdi (ayraç geçmeyen eski etiketler — "Mekanik Bölüm", "KABUL" vb. —
-tek düğümlük bir dal gibi davranır, geriye dönük tam uyumlu, başka hiçbir
-projenin verisi dokunulmadı). Eklenenler (`TabIsPlan.jsx`):
-- `GROUP_PATH_DELIM` (`' › '`) + `groupPath(task)` — group_label'ı segmentlere
-  ayırır (boşsa `CATEGORY_FALLBACK_GROUP` fallback'i tek segment döner).
-- `buildGroupTree(tasks)` — düz task listesinden, her segment kendi düğümü
-  olacak şekilde çok seviyeli bir ağaç kurar; her seviyede kardeşler
-  GROUP_ORDER'a (yalnızca kök seviyede) veya en erken `planned_start`'a göre
-  sıralanır (`_diger` her zaman en sonda) — eski tek-seviyeli sıralama
-  mantığının (`knownGroupKeys`/`unknownGroupKeys`) doğrudan genellemesi.
-- `renderGanttGroupNode(node, ctx)` — düğümü ve tüm alt dallarını recursive
-  render eder; her seviye kendi tam-yol string'iyle (`collapsed` Set'inde)
-  bağımsız aç/kapa olur, derinlik arttıkça başlık/görev satırları
-  `GROUP_INDENT_PX` kadar daha içeri kayar. Üst düğümlerin görev sayısı/
-  ortalama ilerlemesi artık TÜM alt dalları kapsar (`collectNodeTasks`,
-  eskiden yalnızca doğrudan görevler sayılıyordu — üst başlıklar için daha
-  doğru bir toplam).
-- `GROUP_CONFIG`'e çok seviyeli dallarda son segment tek başına eşleşsin diye
-  birkaç kısa-ad girdisi eklendi (`'Elektriksel Bölüm'`, `'DC'`, `'AC'`,
-  `'OG'`, `'Güvenlik'`) — eşleşmeyenler (ör. `'TR-1-3000 kVA'`, `'Inverter-3'`)
-  zaten var olan `_diger` fallback'iyle gri ama kendi gerçek metniyle görünür.
-- `resolveGroup`/`groupFilter`/`allGroupNames` (tam group_label string'i
-  üzerinden çalışan filtre dropdown'u) DEĞİŞMEDİ — hâlâ tam yol string'iyle
-  eşleşiyor, yalnızca artık bazı seçenekler çok segmentli (uzun) görünüyor;
-  bu bilinçli olarak kozmetik bir eksiklik, dropdown'u kısaltma bu turun
-  kapsamına alınmadı.
-
-**Veri: Kaptan Demir Çelik (Adana GES-1) İş Planı.** Aynı oturumda üç adımda
-son haline getirildi: (1) DC/AC görevleri Inverter-1..9 için ayrı ayrı
-kopyalandı (tarihler aynı, hedef miktar hiçbirine yazılmadı); (2) TÜM
-`group_label`'lar çok-segmentli şemaya geçirildi; (3) **kullanıcı fotoğrafı
-tekrar gösterip "tamamen hiyerarşi de içerik de böyle olmalı" deyince**, ilk
-turda ayrı bir `DC (Toplam)`/`AC (Toplam)` dalında bırakılan (hedef miktarlı,
-105.000 m/35 adet vb.) orijinal görevlerin aslında fotoğraftaki Inverter-1'in
-KENDİ DC/AC alt dalı olduğu anlaşıldı (tarihleri Inverter-1 ile birebir
-örtüşüyor) — bu görevler `Inverter-1 › DC`/`Inverter-1 › AC`'ye taşındı
-(miktarlarıyla birlikte), (1)'de oluşturulan miktarsız INV1-DC*/INV1-AC*
-kopyaları artık gereksiz olduğundan silindi. Nihai ağaç: `Elektriksel Bölüm`
-→ `TR-1-3000 kVA` (Topraklama, OG, Inverter-1..9 — hiçbir ayrı "Toplam" dalı
-yok) + `Güvenlik` (eski Kamera Aydınlatma); `ENH`/`KABUL`/`Mekanik Bölüm`/
-`Şantiye Mobilizasyon` tek seviyeli. Her düğümün toplam süresi (min
-planned_start/max planned_end) fotoğraftaki karşılığıyla satır satır
-doğrulandı (ör. Topraklama 92 gün, OG 123 gün, Inverter-1 114 gün/DC alt dalı
-90 gün — hepsi birebir eşleşti). **Ders:** kullanıcı "harici bir referansa
-tamamen uygun" isteğinde, aradaki farkı yalnızca yapısal olarak makul
-görünen bir yorumla (ör. "miktarları güvenli tarafta ayrı tut") kapatmak
-yeterli değil — referansta o düğüm hiç yoksa (burada "Toplam" dalı), veri
-de tam o şekle getirilmeli, gerekirse önceki turun ürettiği ek düğümler
-geri alınmalı. Playwright'ta canlı doğrulandı (nested başlıklar görünüyor,
-üst seviye aç/kapa çalışıyor, "Toplam" düğümü kalmadığı, konsol hatası yok).
-`npm run lint`/`npm run build` temiz (yalnızca yeni export edilen
-`groupPath`/`buildGroupTree` için 2 ek `react-refresh/only-export-components`
-uyarısı, mevcut dosyadaki aynı kategoriden 9 uyarıyla aynı, hata değil).
-
+Doğrulama üç projenin gerçek (canlı) verisiyle yapıldı: `kaptan-demir-adana-
+arazi-faz1`'de "TTR kablo" artık **%100** ile doğru öneriliyor (Playwright'ta
+ekran görüntüsüyle doğrulandı), `test-izmir-ges-2026`'da "DC Solar Kablo Seti"
+**%56** ile eşiği geçiyor; kasıtlı olarak eşleşmemesi gereken 3 test kalemi
+("BOM Dışı Montaj/Saha Sarf Malzemesi" vb.) hâlâ **%16-31** aralığında kalıp
+öneri üretmiyor — yanlış-pozitif riski yaratmadan gerçek recall sorunu
+çözüldü. `nameSimilarity`'nin `satinAlma.js` dışında başka çağıranı yok (grep
+ile doğrulandı), değişiklik izole. Tam regresyon suite'i tekrar koşuldu,
+`npm run lint`/`build` temiz.

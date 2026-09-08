@@ -68,9 +68,9 @@ export const GROUP_ORDER = [
 // TR-1-3000 kVA › Inverter-3 › DC gibi) gerçek iç içe geçmiş bir Gantt dalı
 // olarak render edilir — ayraç yoksa (eski tek seviyeli etiketler, ör.
 // "Mekanik Bölüm") tek düğümlük bir dal gibi davranır, geriye dönük uyumlu.
-export const GROUP_PATH_DELIM = ' › '
+const GROUP_PATH_DELIM = ' › '
 
-export function groupPath(task) {
+function groupPath(task) {
   const label = (task.group_label || '').trim()
   if (!label) return [CATEGORY_FALLBACK_GROUP[task.category] || '_diger']
   return label.split(GROUP_PATH_DELIM).map(s => s.trim()).filter(Boolean)
@@ -399,7 +399,7 @@ function deriveTaskStatusAt(task, pct, date) {
   return task.status || 'bekliyor'
 }
 
-export function isTaskLate(task, today) {
+function isTaskLate(task, today) {
   if (!task.planned_end) return false
   if (task.status === 'tamamlandi' || task.status === 'iptal') return false
   return new Date(task.planned_end) < today

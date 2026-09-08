@@ -1,23 +1,12 @@
-import { zipSync, strFromU8, strToU8 } from 'fflate'
+import { zipSync } from 'fflate'
 
-export const xmlEscape = value => String(value ?? '')
+const xmlEscape = value => String(value ?? '')
   .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&apos;')
-
-function columnName(index) {
-  let n = index + 1
-  let name = ''
-  while (n > 0) {
-    const rem = (n - 1) % 26
-    name = String.fromCharCode(65 + rem) + name
-    n = Math.floor((n - 1) / 26)
-  }
-  return name
-}
 
 function columnIndexFromAddress(address) {
   const col = address.match(/^[A-Z]+/)?.[0] || ''
@@ -69,17 +58,6 @@ export function setTemplateCell(xmlStr, address, value) {
   }
 
   return xmlStr.replace('</sheetData>', `<row r="${row}">${newCell}</row></sheetData>`)
-}
-
-export function fillTemplateSheet(files, sheetNumber, rows, startRow = 5) {
-  const path = `xl/worksheets/sheet${sheetNumber}.xml`
-  let xml = strFromU8(files[path])
-  rows.forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
-    if (value !== undefined) {
-      xml = setTemplateCell(xml, `${columnName(columnIndex)}${rowIndex + startRow}`, value)
-    }
-  }))
-  files[path] = strToU8(xml)
 }
 
 export async function fetchXlsxTemplate(paths) {

@@ -161,6 +161,8 @@ export default function ProjeTabSatinAlma({
           projectId={projectId}
           openChangeRequestId={openChangeRequestId}
           onOpenedChangeRequest={onOpenedChangeRequest}
+          requests={materialRequestsUntilDate}
+          procurement={procurement}
         />
       )}
       {tab === 'riskler' && (

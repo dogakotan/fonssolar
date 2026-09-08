@@ -68,11 +68,20 @@ export function materialName(row) {
   return row.equipment || row.material_name || row.name || ''
 }
 
+// Bir talep kalemi için eşleşme anahtarı: bom_item_id (kalıcı BOM bağlantısı,
+// bkz. "Malzeme eşleştirme önerisi") varsa doğrudan o BOM kaleminin id'sine
+// işaret eder — kalemin serbest metin adı ne olursa olsun doğru malzemeyle
+// eşleşir. Yoksa eski isim-bazlı (normalize edilmiş) anahtara düşer (geriye
+// dönük uyumluluk — henüz bir BOM kalemine bağlanmamış talepler).
+export function materialMatchKey(item) {
+  return item.bom_item_id ? `id:${item.bom_item_id}` : materialKey(item.name)
+}
+
 function requestedTotalsByMaterial(requests) {
   const totals = new Map()
   requests.forEach(request => {
     ;(request.items || request.purchase_request_items || []).forEach(item => {
-      const key = materialKey(item.name)
+      const key = materialMatchKey(item)
       if (!key) return
       totals.set(key, (totals.get(key) || 0) + toNumber(item.quantity))
     })
@@ -85,20 +94,23 @@ function requestedTotalsByMaterial(requests) {
 // "Onay Bekleyen" KPI'sıyla (aynı requests listesiyle) birebir tutarlı kalır.
 export function classifyMaterials(materials, requests) {
   const requestedByMaterial = requestedTotalsByMaterial(requests)
-  const plannedByMaterial = new Map(
-    materials.map(material => [materialKey(materialName(material)), toNumber(material.planned_qty ?? material.quantity)])
-  )
+  const plannedByMaterial = new Map()
+  materials.forEach(material => {
+    const qty = toNumber(material.planned_qty ?? material.quantity)
+    plannedByMaterial.set(materialKey(materialName(material)), qty)
+    plannedByMaterial.set(`id:${material.id}`, qty)
+  })
 
   return requests.reduce((acc, request) => {
     const items = request.items || request.purchase_request_items || []
     const type = requestType(request)
     const isMaterial = type === 'malzeme'
     const missing = type === 'diger' || (isMaterial && items.some(item => {
-      const key = materialKey(item.name)
+      const key = materialMatchKey(item)
       return (plannedByMaterial.get(key) || 0) <= 0
     }))
     const risky = isMaterial && items.some(item => {
-      const key = materialKey(item.name)
+      const key = materialMatchKey(item)
       const planned = plannedByMaterial.get(key) || 0
       const requested = requestedByMaterial.get(key) || 0
       return planned > 0 && requested > planned
@@ -125,8 +137,11 @@ export function buildMaterialListRows(materials, requests) {
     // Kanonik alan planned_qty (numeric) — eski quantity (text) yalnızca geriye
     // dönük uyumluluk için fallback, backend ikisini senkron tutuyor.
     const planned = toNumber(material.planned_qty ?? material.quantity)
-    const key = materialKey(materialName(material))
-    const sent = sentByMaterial.get(key) || 0
+    // Bu malzemeye hem doğrudan bom_item_id ile bağlı kalemlerin (id: anahtarı)
+    // hem de henüz bağlanmamış ama ismi tesadüfen eşleşen kalemlerin (isim
+    // anahtarı) toplamı — bir kalem materialMatchKey'e göre yalnızca BİRİNE
+    // düştüğünden (asla ikisine birden) çift sayım olmaz.
+    const sent = (sentByMaterial.get(`id:${material.id}`) || 0) + (sentByMaterial.get(materialKey(materialName(material))) || 0)
     return {
       id: material.id,
       material: materialName(material) || 'Malzeme',
@@ -146,7 +161,7 @@ export function buildMaterialListRows(materials, requests) {
 // "neden riskli" sorusuna cevap veren satır satır döküm çıkarır.
 export function riskBreakdownForItems(items, materialPlan, requestedTotals) {
   return (items || []).map(item => {
-    const key = materialKey(item.name)
+    const key = materialMatchKey(item)
     const planned = materialPlan.get(key) || 0
     const totalRequested = requestedTotals.get(key) || 0
     return {
@@ -171,6 +186,103 @@ export function riskState(items, materialPlan, requestedTotals, category) {
   if (breakdown.some(row => row.planned <= 0)) return 'listede_yok'
   if (breakdown.some(row => row.risky)) return 'riskli'
   return 'uygun'
+}
+
+// Levenshtein mesafesine dayalı, 0-1 arası normalize benzerlik oranı — küçük
+// projeler ölçeğinde (birkaç yüz BOM kalemi/talep) client-side hesaplamak
+// yeterince hızlı, ayrı bir Postgres fuzzy-match extension'ı (pg_trgm) gerekmiyor.
+function levenshteinDistance(a, b) {
+  if (a === b) return 0
+  if (!a.length) return b.length
+  if (!b.length) return a.length
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i += 1) {
+    const row = [i]
+    for (let j = 1; j <= b.length; j += 1) {
+      row[j] = a[i - 1] === b[j - 1]
+        ? prev[j - 1]
+        : 1 + Math.min(prev[j - 1], prev[j], row[j - 1])
+    }
+    prev = row
+  }
+  return prev[b.length]
+}
+
+function wholeStringSimilarity(a, b) {
+  const x = materialKey(a)
+  const y = materialKey(b)
+  if (!x || !y) return 0
+  const maxLen = Math.max(x.length, y.length)
+  if (!maxLen) return 1
+  return 1 - levenshteinDistance(x, y) / maxLen
+}
+
+function tokenize(text) {
+  return materialKey(text).split(' ').filter(Boolean)
+}
+
+// Gerçek BOM verisinde talep kalemi adı genelde kısa/kolokyal ("TTR kablo"),
+// BOM'daki kanonik ad ise uzun/teknik ("3x2,5mm2 TTR Kablo Kamera Panosu ve
+// Kamera Direği arası") — saf tüm-string Levenshtein'i uzunluk farkı yüzünden
+// bu çifti neredeyse hiç eşiğin üstüne çıkaramıyordu (gerçek proje verisiyle
+// doğrulandı, bkz. CLAUDE.md). Kısa olan tarafın her kelimesini uzun taraftaki
+// EN İYİ eşleşen kelimeyle karşılaştırıp ortalamasını alıyoruz — uzun tarafın
+// fazladan kelimeleri (kamera/panosu/arası gibi) skoru seyreltmiyor.
+function tokenSetSimilarity(a, b) {
+  const tokensA = tokenize(a)
+  const tokensB = tokenize(b)
+  if (!tokensA.length || !tokensB.length) return 0
+  const [shortTokens, longTokens] = tokensA.length <= tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA]
+  const total = shortTokens.reduce((sum, t) => {
+    const best = longTokens.reduce((max, u) => {
+      const score = 1 - levenshteinDistance(t, u) / Math.max(t.length, u.length)
+      return score > max ? score : max
+    }, 0)
+    return sum + best
+  }, 0)
+  return total / shortTokens.length
+}
+
+export function nameSimilarity(a, b) {
+  return Math.max(wholeStringSimilarity(a, b), tokenSetSimilarity(a, b))
+}
+
+// Malzeme Listesi'nde bir BOM kalemine henüz bağlanmamış (bom_item_id=null)
+// "malzeme" tipi, iptal/reddedilmemiş talep kalemleri için en olası BOM eşleşmesini
+// önerir — kullanıcı onaylarsa link_purchase_request_item_to_bom ile kalıcı
+// bağlanır. Yalnızca isim benzerliği eşiği (varsayılan %55) geçen ve aynı projeye
+// ait en iyi tek aday döndürülür; eşik altı hiçbir öneri üretilmez (rastgele
+// eşleşmeleri önlemek için — bu bir otomatik eşleştirme değil, öneri).
+export function suggestBomMatches(requests, materials, threshold = 0.55) {
+  const suggestions = []
+  requests.forEach(request => {
+    if (['reddedildi', 'red_edildi', 'iptal'].includes(normalizeStatus(request.status))) return
+    if (requestType(request) !== 'malzeme') return
+    ;(request.items || request.purchase_request_items || []).forEach(item => {
+      if (item.bom_item_id) return
+      if (!item.name) return
+      let best = null
+      materials.forEach(material => {
+        const score = nameSimilarity(item.name, materialName(material))
+        if (score >= threshold && (!best || score > best.score)) {
+          best = { candidateId: material.id, candidateName: materialName(material), candidateUnit: material.unit || '', score }
+        }
+      })
+      if (best) {
+        suggestions.push({
+          itemId: item.id,
+          requestId: request.id,
+          requestNo: request.request_no,
+          requestTitle: request.title,
+          typedName: item.name,
+          quantity: toNumber(item.quantity),
+          unit: item.unit || '',
+          ...best,
+        })
+      }
+    })
+  })
+  return suggestions.sort((a, b) => b.score - a.score)
 }
 
 export function requestType(request) {

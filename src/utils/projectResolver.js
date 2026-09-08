@@ -7,7 +7,7 @@ export function projectIdLabel(projectId) {
     .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
 }
 
-export function projectSearchTerm(projectId) {
+function projectSearchTerm(projectId) {
   return String(projectId || '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
