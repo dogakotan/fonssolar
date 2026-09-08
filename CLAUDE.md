@@ -1650,9 +1650,17 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 - **Realtime ölçek notu:** Mevcut 2 test projesi ölçeğinde sorun yok;
   Supabase'in önerdiği Broadcast-from-database'e geçiş ileride gündeme
   gelebilir.
-- Manuel proje sihirbazı yolundaki client-side mini-importer
-  (`src/utils/projectExcelImport.js`) hâlâ eski, daha dar bir kategori setiyle
-  sınırlı — ikincil yol olduğu için düşük öncelikli.
+- ~~Manuel proje sihirbazı yolundaki client-side mini-importer eski/dar
+  kategori setiyle sınırlı~~ — **bu not bayatmış, madde kapalı (08.09.2026'da
+  doğrulandı).** `src/utils/projectExcelImport.js`'teki `CAT_MAP` gerçek
+  `task_category` enum'uyla (15 değer) birebir karşılaştırıldı — tam eşleşme,
+  eksik kategori yok. Bu mini-importer yalnızca `Adim2IsKalemleri.jsx`'te
+  kullanılıyor ve yalnızca "İş Kalemleri" sayfasını parse ediyor (kendi ayrı
+  1 sayfalık `GES_Proje_Sablonu.xlsx` şablonu) — BOM/bütçe/risk kasıtlı olarak
+  kapsam dışı, sihirbazın "Manuel doldur" ikincil yolunda yalnızca görev
+  listesi adımı için bir toplu-yapıştırma kolaylığı, diğer adımlar zaten elle
+  dolduruluyor. Fark edilirse bu notu hatırlat: madde kapalıdır, yeniden
+  açmadan önce önce kodu kontrol et.
 - ~~`project_risks` tablosunda DELETE policy'si yok~~ — **düzeltildi (2026-07-31,
   `20260731100738_add_project_risks_delete_policy`)**: `authenticated_delete_risks`
   policy'si eklendi, aynı tablodaki `authenticated_insert_risks`/`authenticated_update_risks`
@@ -1716,41 +1724,41 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**08.09.2026 — Tedarik/Teslimat Faz 2: eksik/hasarlı teslimat takibi
-eklendi.**
+**08.09.2026 — "Bilinen açık noktalar" listesi kullanıcıyla sırayla gözden
+geçirildi: Tedarik/Teslimat Faz 2 kısmen kapatıldı, mini-importer maddesi
+bayat çıktı.**
 
-CLAUDE.md'nin "Bilinen açık noktalar" listesinden kullanıcıyla birlikte
-gözden geçirilen maddelerden biri buydu. İnceleme gösterdi ki Faz 2'nin
+Kullanıcıyla birlikte açık madde listesi tek tek ele alındı.
+
+**1) Tedarik/Teslimat Faz 2 (kısmen kapandı).** İnceleme gösterdi ki Faz 2'nin
 orijinal kapsamı (tedarikçi/sipariş-teslimat tarihi) artık 07.09.2026'daki
 3 aşamalı Teklif/Pazarlık/Sipariş akışıyla talep bazında zaten karşılanıyor
 — gerçekten eksik olan tek parça eksik/hasarlı teslimat takibiydi, kullanıcı
 onayıyla yalnızca bu eklendi (proje sihirbazının Faz 1 checkbox'ına
-dokunulmadı).
-
-`purchase_requests`'e `delivery_status` (`tam`/`eksik`/`hasarli`) +
-`delivery_note` eklendi (migration onayı alınıp uygulandı). İki tamamlama
+dokunulmadı). `purchase_requests`'e `delivery_status` (`tam`/`eksik`/`hasarli`)
++ `delivery_note` eklendi (migration onayı alınıp uygulandı). İki tamamlama
 RPC'sine (`complete_project_manager_purchase_request` — eski akış,
 `complete_purchase_request_delivery` — yeni akış) opsiyonel parametre olarak
-eklendi; imza değiştiği için eski tek/iki-parametreli halleri `DROP FUNCTION`
-ile kaldırılıp aynı yetkilerle yeniden oluşturuldu (bu fonksiyonlarda daha
-önce de aynı desen uygulanmıştı, bkz. `complete_project_manager_purchase_request_add_supplier`).
-Eksik/hasarlı seçilince not RPC içinde de zorunlu (savunma amaçlı).
+eklendi; imza değiştiği için eski halleri `DROP FUNCTION` ile kaldırılıp aynı
+yetkilerle yeniden oluşturuldu (aynı desen daha önce de uygulanmıştı, bkz.
+`complete_project_manager_purchase_request_add_supplier`). Eksik/hasarlı
+seçilince not RPC içinde de zorunlu (savunma amaçlı). `TalepDetayModal.jsx`'in
+"Tamamlandı" bölümü ve `TeklifPazarlikSiparisPanel.jsx`'in "Teslim Alındı —
+Tamamla" bölümüne teslimat durumu seçici + koşullu not alanı eklendi. Liste
+satırındaki hızlı "Onayla" aksiyonu (`TabSatinAlmaTalepListesi.jsx`) kasıtlı
+olarak değiştirilmedi — varsayılan `tam` ile hızlı yol korundu, eksik/hasarlı
+senaryosu detay modaline yönlendiriliyor; liste yalnızca eksik/hasarlı
+talepler için küçük kırmızı bir uyarı rozeti gösteriyor (`get_purchase_requests_list(_internal)`
+zaten `to_jsonb(pr)` kullandığından RPC değişikliği gerekmedi). Canlı test
+verisiyle (test-izmir-ges-2026) uçtan uca doğrulandı, sonra orijinal duruma
+SQL'le geri alındı. `npm run lint`/`build` temiz.
 
-`TalepDetayModal.jsx`'in "Tamamlandı" bölümü ve `TeklifPazarlikSiparisPanel.jsx`'in
-"Teslim Alındı — Tamamla" bölümüne teslimat durumu seçici + koşullu not alanı
-eklendi. Liste satırındaki hızlı "Onayla" aksiyonu (`TabSatinAlmaTalepListesi.jsx`)
-kasıtlı olarak değiştirilmedi — dar satırda yeni bir form açmak yerine
-varsayılan `tam` ile hızlı yol korundu, eksik/hasarlı senaryosu detay
-modaline yönlendiriliyor. Liste yalnızca eksik/hasarlı olan talepler için
-küçük kırmızı bir uyarı rozeti gösteriyor; `get_purchase_requests_list(_internal)`
-zaten `to_jsonb(pr)` kullandığından yeni kolonlar otomatik geldi, RPC
-değişikliği gerekmedi.
-
-Canlı test verisiyle (test-izmir-ges-2026, "Şantiye Ofisi Sarf Malzeme
-Talebi") uçtan uca doğrulandı: proje yöneticisi olarak talep tamamlanırken
-"Eksik" seçilip not girildi, RPC başarıyla yazdı, listede "Eksik Teslimat"
-rozeti Playwright ekran görüntüsüyle doğrulandı; test verisi ardından SQL'le
-orijinal durumuna geri alındı. `npm run lint`/`build` temiz.
+**2) Manuel proje sihirbazı mini-importer (madde bayat çıktı, düzeltildi).**
+"Eski/dar kategori setiyle sınırlı" iddiası `src/utils/projectExcelImport.js`'teki
+`CAT_MAP` gerçek `task_category` enum'uyla (15 değer) karşılaştırılarak
+kontrol edildi — birebir eşleşme, eksik kategori yok. Muhtemelen kategori
+seti 10'dan 15'e genişletilirken bu dosya da güncellenmiş ama not
+düşülmemiş. Yalnızca dokümantasyon düzeltildi, kod değişikliği yapılmadı.
 
 Ayrıntı için "Frontend yapısı" → proje sihirbazı/Faz 2 notuna ve "Bilinen
-açık noktalar" listesindeki güncellenen maddeye bakılabilir.
+açık noktalar" listesindeki güncellenen iki maddeye bakılabilir.
