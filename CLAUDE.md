@@ -1849,6 +1849,41 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**09.09.2026 (7. tur) — Genel İş Planı'nın grup KIRILIMI da (yalnızca stili
+değil) eskiye döndürüldü: Elektriksel görevler artık tek "Elektriksel Bölüm"
+grubunda, inverter/AC-DC bazında ayrı ayrı DEĞİL.**
+
+Bir önceki turdaki (6. tur) görsel/stil revert'i tek başına yetmedi —
+kullanıcı "verilerin de eskiye dönmesi lazım" diye belirtti. Kök neden:
+Kaptan Demir projesindeki 120 görevden 108'inin `group_label`'ı 07.09.2026'daki
+hiyerarşi özelliği için Detaylı İş Planı'na yönelik " › " ayraçlı çok seviyeli
+bir yol olarak DB'de duruyor (ör. "Elektriksel Bölüm › TR-1-3000 kVA ›
+Inverter-3 › AC" — gerçek WBS verisi, 11.08.2026'daki foto-yapı migration'larından
+geliyor, DEĞİŞTİRİLMEDİ). 6. turdaki flat render, grup anahtarı olarak hâlâ
+ham `resolveGroup(task)` (tam " › " string'i) kullandığından her inverter ×
+AC/DC kombinasyonu kendi başına ayrı, çirkin bir üst-seviye grup gibi
+görünüyordu (25 grup) — bu da kullanıcının "verileri Detaylı ile aynı
+yapmışsın" ilk şikayetinin gerçek kaynağıydı, yalnızca stil değil.
+
+Düzeltme: Genel İş Planı artık grup anahtarı olarak `groupPath(task)[0]`
+(yolun yalnızca İLK/üst segmenti) kullanıyor — `groupPath` zaten var olan,
+Detaylı'nın `buildGroupTree`'si için yazılmış bir yardımcı, yalnızca ilk
+elemanını almak yeterli. Bu, `resolveGroup`'un ayrıca (Detaylı için) tam yolu
+döndürmeye devam etmesiyle ÇAKIŞMIYOR — iki ayrı isim listesi var artık:
+`allGroupNames` (ham/tam, yalnızca `TabIsPlaniDetay`'e geçiriliyor, dropdown'da
+hâlâ 26 granüler seçenek) ve `topGroupNames` (yalnızca üst segment, Genel'in
+kendi filtre dropdown'ında ve gruplamasında kullanılıyor — 5 temiz grup:
+Şantiye Mobilizasyon/Mekanik Bölüm/Elektriksel Bölüm/ENH/KABUL). Görev
+satırının kendi ilerleme çubuğu rengi de (`groupConfigFor`) aynı üst segmente
+göre belirleniyor (öncesinde tam yol GROUP_CONFIG'te hiç eşleşmediğinden tüm
+Elektriksel görev satırları sessizce gri/_diger rengine düşüyordu — ayrıca
+bulunup düzeltilen bir bug). Kaptan Demir Çelik (Adana GES-1) projesinde
+admin hesabıyla gerçek verilerle Playwright'ta doğrulandı (Genel: 5 temiz üst
+grup, hiçbiri "Inverter" içermiyor; Detaylı: "Inverter" hâlâ görünüyor, 26
+granüler dropdown seçeneği değişmedi). DB'ye hiç dokunulmadı — WBS/group_label
+verisi olduğu gibi kaldı, yalnızca Genel'in bunu nasıl BUCKET'ladığı değişti.
+`npm run lint`/`build` temiz.
+
 **09.09.2026 (6. tur) — Genel İş Planı (Gantt) 07.09.2026'daki hiyerarşi
 değişikliğinden ÖNCEKİ tek-seviyeli/renkli görünümüne geri döndürüldü.**
 

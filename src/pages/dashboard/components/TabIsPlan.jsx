@@ -488,10 +488,21 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     return date
   }, [effectiveDate])
 
+  // Detaylı İş Planı'nın kendi filtresi/hiyerarşisi için TAM (ham, " › " dahil)
+  // group_label kümesi — Genel'in gruplaması bundan bağımsız, aşağıya bkz.
   const allGroupNames = useMemo(() => [...new Set(tasks.map(t => resolveGroup(t)))].sort(), [tasks])
+  // Genel İş Planı yalnızca ÜST SEVİYE segmenti (groupPath'in ilk elemanı)
+  // kullanır — bir görevin group_label'ı "Elektriksel Bölüm › TR-1-3000 kVA ›
+  // Inverter-3 › AC" gibi Detaylı için eklenmiş çok seviyeli bir yol olsa bile,
+  // Genel'de bu tüm inverter/AC-DC kırılımı TEK "Elektriksel Bölüm" grubuna
+  // toplanır (09.09.2026'da düzeltildi — kod tek-seviyeli hâline döndükten
+  // sonra hâlâ ham resolveGroup kullanılıyordu, bu da her inverter × AC/DC
+  // kombinasyonunu kendi başına ayrı, çirkin bir üst-seviye grup gibi
+  // gösteriyordu; kullanıcı "veriler de eskiye dönmeli" diye bildirdi).
+  const topGroupNames = useMemo(() => [...new Set(tasks.map(t => groupPath(t)[0]))].sort(), [tasks])
 
   const filteredTasks = useMemo(() => tasks.filter(task => {
-    if (groupFilter !== 'all' && resolveGroup(task) !== groupFilter) return false
+    if (groupFilter !== 'all' && groupPath(task)[0] !== groupFilter) return false
     if (statusFilter === 'devam') return task.status === 'devam_ediyor'
     if (statusFilter === 'tamamlandi') return task.status === 'tamamlandi'
     if (statusFilter === 'geciken') {
@@ -574,7 +585,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           setStatusFilter={setStatusFilter}
           groupFilter={groupFilter}
           setGroupFilter={setGroupFilter}
-          allGroupNames={allGroupNames}
+          allGroupNames={topGroupNames}
         >
           <p className="gantt-empty">
             {tasks.length === 0 ? 'Henüz iş kalemi eklenmemiş.' : 'Seçilen filtreye uyan tarihli iş kalemi bulunamadı.'}
@@ -601,7 +612,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   // Genel her zaman group_label'ın kendisini tek düğüm olarak gösterir.
   const grouped = {}
   withDates.forEach(task => {
-    const key = resolveGroup(task)
+    const key = groupPath(task)[0]
     if (!grouped[key]) grouped[key] = []
     grouped[key].push(task)
   })
@@ -698,7 +709,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           setStatusFilter={setStatusFilter}
           groupFilter={groupFilter}
           setGroupFilter={setGroupFilter}
-          allGroupNames={allGroupNames}
+          allGroupNames={topGroupNames}
         >
           <ScrollTrack
             className="gantt-edge-scroll gantt-top-scroll"
@@ -761,7 +772,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                       </button>
 
                       {isOpen && items.map((task, index) => {
-                        const taskCfg = groupConfigFor(resolveGroup(task))
+                        const taskCfg = groupConfigFor(groupPath(task)[0])
                         const barLeft = timelineOffsetPct(task.planned_start, timelineStart, timelineUnits)
                         const barEnd = timelineOffsetPct(task.planned_end, timelineStart, timelineUnits) + (100 / timelineUnits)
                         const barWidth = Math.max(1.2, barEnd - barLeft)
