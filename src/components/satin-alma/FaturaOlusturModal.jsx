@@ -31,6 +31,11 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
   const { user } = useAuth()
   const isLocked = !!request
   const [mode, setMode] = useState('faturali') // 'faturali' | 'faturasiz'
+  // PV Solution — GES projeleriyle ilişkisi olmayan genel harcamalar için
+  // (09.09.2026, kullanıcı isteği). Talep bağlantılı (isLocked) akış her
+  // zaman bir GES projesine bağlı olduğundan hep 'fons_solar' — seçici
+  // yalnızca genel giriş noktalarında (isLocked=false) gösterilir.
+  const [company, setCompany] = useState('fons_solar') // 'fons_solar' | 'pv_solution'
   const [suppliers, setSuppliers] = useState([])
   const [projects, setProjects] = useState([])
   const [pendingRequests, setPendingRequests] = useState([])
@@ -102,7 +107,11 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
         const picked = pendingRequests.find(r => r.id === selectedRequestId)
         return picked ? { ...picked, project_name: picked.projects?.name, supplier_name: picked.suppliers?.name } : null
       })()
-  const effectiveProjectId = linkedRequest?.project_id || manualProjectId
+  // PV Solution seçiliyken (yalnızca genel giriş noktalarında mümkün, isLocked
+  // akışı her zaman Fons Solar) proje/talep alanı hiç gösterilmez — bir GES
+  // projesine bağlanamaz.
+  const isPvSolution = !isLocked && company === 'pv_solution'
+  const effectiveProjectId = isPvSolution ? '' : (linkedRequest?.project_id || manualProjectId)
   const selectableRequests = manualProjectId ? pendingRequests.filter(r => r.project_id === manualProjectId) : pendingRequests
   const filteredRequests = (() => {
     const query = requestSearch.trim().toLocaleLowerCase('tr-TR')
@@ -123,8 +132,8 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
   const rateReady = exchangeRate != null
   const totalTry = rateReady ? total * exchangeRate : null
   const approvedTotal = Number(linkedRequest?.estimated_amount_incl_vat) || 0
-  const canSaveFaturali = form.invoice_no.trim() && form.invoice_date && amount > 0 && form.supplier_id && !!effectiveProjectId && rateReady
-  const canSaveFaturasiz = form.invoice_date && amount > 0 && (form.supplier_id || form.beneficiary_name.trim()) && form.description.trim() && !!effectiveProjectId
+  const canSaveFaturali = form.invoice_no.trim() && form.invoice_date && amount > 0 && form.supplier_id && (isPvSolution || !!effectiveProjectId) && rateReady
+  const canSaveFaturasiz = form.invoice_date && amount > 0 && (form.supplier_id || form.beneficiary_name.trim()) && form.description.trim() && (isPvSolution || !!effectiveProjectId)
   const canSave = mode === 'faturali' ? canSaveFaturali : canSaveFaturasiz
   // Vade tarihi girilirse fatura ödeme takibine alınır; girilmezse onaylandığında
   // doğrudan kapanır (peşin/hemen ödenmiş faturalar için) — ayrı bir manuel
@@ -146,7 +155,8 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
   async function insertInvoice() {
     const { data, error } = await supabase.from('invoices').insert({
       supplier_id: form.supplier_id,
-      project_id: effectiveProjectId,
+      company,
+      project_id: effectiveProjectId || null,
       purchase_request_id: linkedRequest?.id || null,
       invoice_no: form.invoice_no.trim(),
       invoice_date: form.invoice_date,
@@ -179,7 +189,8 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
       transaction_type: 'diger',
       supplier_id: form.supplier_id || null,
       beneficiary_name: form.supplier_id ? null : form.beneficiary_name.trim(),
-      project_id: effectiveProjectId,
+      company,
+      project_id: effectiveProjectId || null,
       purchase_request_id: linkedRequest?.id || null,
       transaction_date: form.invoice_date,
       due_date: form.due_date || null,
@@ -251,6 +262,20 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
         </header>
         <div className="invoice-wizard-content">
           <main>
+            {!isLocked && (
+              <section className="invoice-wizard-card linked">
+                <header><div><h3>Şirket <small>▣</small></h3></div></header>
+                <div className="invoice-mode-toggle">
+                  <button type="button" style={modeToggleBtn(company === 'fons_solar')} onClick={() => setCompany('fons_solar')}>Fons Solar</button>
+                  <button type="button" style={modeToggleBtn(company === 'pv_solution')} onClick={() => { setCompany('pv_solution'); setManualProjectId(''); setSelectedRequestId(''); setRequestSearch('') }}>PV Solution</button>
+                </div>
+                {isPvSolution && (
+                  <small style={{ display: 'block', marginTop: 10, color: 'var(--color-muted)', fontSize: 11 }}>
+                    PV Solution kayıtları herhangi bir GES projesine bağlanmaz.
+                  </small>
+                )}
+              </section>
+            )}
             {isLocked ? (
               <section className="invoice-wizard-card linked">
                 <header><div><h3>Bağlı Satın Alma Talebi <small>▣</small></h3></div></header>
@@ -266,7 +291,7 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
                   <div className="purchase-items"><table><thead><tr><th>Ürün</th><th>Açıklama</th><th>Miktar</th><th>Birim Fiyat</th><th>Tutar</th></tr></thead><tbody>{(request.items || []).slice(0, 4).map((item, index) => <tr key={item.id || index}><td>{item.name}</td><td>{item.description || '—'}</td><td>{item.quantity} {item.unit || ''}</td><td>{money(item.unit_price)}</td><td>{money(item.total_price || Number(item.quantity) * Number(item.unit_price))}</td></tr>)}</tbody></table></div>
                 </div>
               </section>
-            ) : (
+            ) : !isPvSolution && (
               <section className="invoice-wizard-card linked">
                 <header><div><h3>Proje ve Bağlı Talep <small>▣</small></h3></div></header>
                 <div className="invoice-form-grid two-col">
