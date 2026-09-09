@@ -22,6 +22,28 @@ function toUserMessage(error) {
   return translateError(error, { fallback: err => err?.message || 'Kaydedilemedi. Lütfen tekrar deneyin.' })
 }
 
+function parseLocalDate(value) {
+  const [year, month, day] = String(value || '').split('-').map(Number)
+  if (!year) return null
+  return new Date(year, (month || 1) - 1, day || 1)
+}
+
+// ay_no proje bazında yalnızca göreli bir sıra numarası (1, 2, 3…) — gerçek
+// takvim ayını/yılını hesaplamak için referans, projects.start_date DEĞİL,
+// İş Planı'nın (TabIsPlan.jsx'teki Gantt) kullandığı AYNI temel: project_tasks
+// içindeki en erken planned_start (kullanıcı isteğiyle 09.09.2026 düzeltildi —
+// ilk sürüm projects.start_date kullanıyordu, bu ikisi projeye göre
+// birbirinden sapabiliyor, Aylık Plan İş Planı'yla orantılı gitmeliydi).
+// Referans tarih yoksa (nadir, henüz Gantt'ı girilmemiş bir proje) sessizce
+// null döner.
+function monthDateLabel(referenceDate, ayNo) {
+  const base = parseLocalDate(referenceDate)
+  const n = Number(ayNo)
+  if (!base || !n || n < 1) return null
+  const target = new Date(base.getFullYear(), base.getMonth() + (n - 1), 1)
+  return target.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })
+}
+
 // procurement_items ile eşleştirilmiş bir plan kalemi için "BOM'da mevcut" rozeti —
 // tıklanınca eşleşen BOM kaydının (equipment/spec_ref/planned_qty) detayını küçük
 // bir popover'da gösterir. Dışarı tıklanınca kapanır.
@@ -95,7 +117,7 @@ const INPUT = {
 }
 const LABEL = { fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }
 
-function YeniPlanKalemiModal({ projectId, defaultAyNo, procurementItems, onClose, onSaved }) {
+function YeniPlanKalemiModal({ projectId, defaultAyNo, procurementItems, planReferenceDate, onClose, onSaved }) {
   const [form, setForm] = useState({
     kategori: '', kalem_adi: '', ozellik: '', birim: '', miktar: '', not_metni: '', ay_no: defaultAyNo || 1,
   })
@@ -167,6 +189,9 @@ function YeniPlanKalemiModal({ projectId, defaultAyNo, procurementItems, onClose
             <div>
               <label style={LABEL}>Ay *</label>
               <input required type="number" min="1" step="1" value={form.ay_no} onChange={setF('ay_no')} style={INPUT} />
+              {monthDateLabel(planReferenceDate, form.ay_no) && (
+                <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>→ {monthDateLabel(planReferenceDate, form.ay_no)}</p>
+              )}
             </div>
             <div>
               <label style={LABEL}>Kategori</label>
@@ -278,7 +303,7 @@ function makeBulkRow() {
 // satır çoğaltılmış hali: tek modalda birden çok kalem art arda girilip TEK
 // seferde kaydedilir. Excel'den içe aktarma kasıtlı olarak YOK (kullanıcı
 // kararı) — liste doğrudan bu ekrandan, elle giriliyor.
-function TopluKalemEkleModal({ projectId, defaultAyNo, procurementItems, onClose, onSaved }) {
+function TopluKalemEkleModal({ projectId, defaultAyNo, procurementItems, planReferenceDate, onClose, onSaved }) {
   const [ayNo, setAyNo] = useState(defaultAyNo || 1)
   const [rows, setRows] = useState(() => Array.from({ length: 8 }, makeBulkRow))
   const [saving, setSaving] = useState(false)
@@ -333,6 +358,9 @@ function TopluKalemEkleModal({ projectId, defaultAyNo, procurementItems, onClose
         <div style={{ marginBottom: 14 }}>
           <label style={LABEL}>Ay *</label>
           <input type="number" min="1" step="1" value={ayNo} onChange={e => setAyNo(e.target.value)} style={{ ...INPUT, width: 90 }} />
+          {monthDateLabel(planReferenceDate, ayNo) && (
+            <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>→ {monthDateLabel(planReferenceDate, ayNo)}</p>
+          )}
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -478,7 +506,7 @@ function TalepOlusturModal({ plan, onClose, onCreated }) {
 // bir talebi olan satırlar bu modala girmez — onlar zaten kendi rozetine tıklanınca
 // TalepDetayModal'ı açıyor (bkz. onOpenRequest), plan kaleminin kendisini bu noktadan
 // sonra düzenlemek anlamsız (kalem verisi zaten gerçek talebe kopyalandı).
-function PlanKalemiDetayModal({ plan, procurementItems, canEdit, onClose, onSaved, onDeleted }) {
+function PlanKalemiDetayModal({ plan, procurementItems, canEdit, planReferenceDate, onClose, onSaved, onDeleted }) {
   const [form, setForm] = useState({
     kategori: plan.kategori || '', kalem_adi: plan.kalem_adi || '', ozellik: plan.ozellik || '',
     birim: plan.birim || '', miktar: plan.miktar ?? '', not_metni: plan.not_metni || '', ay_no: plan.ay_no || 1,
@@ -568,6 +596,9 @@ function PlanKalemiDetayModal({ plan, procurementItems, canEdit, onClose, onSave
               <div>
                 <label style={LABEL}>Ay *</label>
                 <input required type="number" min="1" step="1" value={form.ay_no} onChange={setF('ay_no')} style={INPUT} />
+                {monthDateLabel(planReferenceDate, form.ay_no) && (
+                  <p style={{ margin: '4px 0 0', fontSize: 11, color: '#94A3B8' }}>→ {monthDateLabel(planReferenceDate, form.ay_no)}</p>
+                )}
               </div>
               <div>
                 <label style={LABEL}>Kategori</label>
@@ -698,6 +729,7 @@ export default function ProjeTabAylikPlan({ projectId, onOpenRequest }) {
 
   const [plans, setPlans] = useState([])
   const [procurementItems, setProcurementItems] = useState([])
+  const [planReferenceDate, setPlanReferenceDate] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [ayNo, setAyNo] = useState(null)
@@ -709,16 +741,24 @@ export default function ProjeTabAylikPlan({ projectId, onOpenRequest }) {
   const fetchPlans = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const [plansRes, itemsRes] = await Promise.all([
+    const [plansRes, itemsRes, earliestTaskRes, projectRes] = await Promise.all([
       // purchase_requests embed'i, bağlı bir talep varsa gerçek durumunu göstermek
       // için (bkz. aşağıdaki DURUM kolonu) — bağımsız `durum` alanı artık yalnızca
       // bağlantı kurulmadan önceki "Planlandı" hali için okunuyor.
       supabase.from('procurement_monthly_plan').select('*, purchase_requests(id, status, request_no)').eq('project_id', projectId).order('kategori').order('kalem_adi'),
       supabase.from('procurement_items').select('id, equipment, spec_ref, planned_qty, unit').eq('project_id', projectId),
+      // Ay 1'in hangi takvim ayına karşılık geldiği İş Planı'nın (TabIsPlan.jsx
+      // Gantt'ı) kullandığı AYNI referanstan (en erken planned_start) türetilir.
+      supabase.from('project_tasks').select('planned_start').eq('project_id', projectId)
+        .not('planned_start', 'is', null).order('planned_start', { ascending: true }).limit(1).maybeSingle(),
+      // Henüz hiç görevi (Gantt'ı) girilmemiş bir proje için son çare — projenin
+      // kendi start_date'i.
+      supabase.from('projects').select('start_date').eq('id', projectId).single(),
     ])
     if (plansRes.error) { setError(plansRes.error.message); setLoading(false); return }
     setPlans(plansRes.data || [])
     setProcurementItems(itemsRes.data || [])
+    setPlanReferenceDate(earliestTaskRes.data?.planned_start || projectRes.data?.start_date || null)
     setLoading(false)
   }, [projectId])
 
@@ -760,8 +800,10 @@ export default function ProjeTabAylikPlan({ projectId, onOpenRequest }) {
           style={{ marginLeft: 'auto', fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border-md)', color: 'var(--color-text)', background: 'var(--color-surface)', fontFamily: 'inherit', cursor: 'pointer' }}
         >
           {availableMonths.length === 0
-            ? <option value={1}>1. Ay</option>
-            : availableMonths.map(m => <option key={m} value={m}>{m}. Ay</option>)}
+            ? <option value={1}>1. Ay{monthDateLabel(planReferenceDate, 1) ? ` (${monthDateLabel(planReferenceDate, 1)})` : ''}</option>
+            : availableMonths.map(m => (
+                <option key={m} value={m}>{m}. Ay{monthDateLabel(planReferenceDate, m) ? ` (${monthDateLabel(planReferenceDate, m)})` : ''}</option>
+              ))}
         </select>
 
         {canEdit && (
@@ -815,6 +857,7 @@ export default function ProjeTabAylikPlan({ projectId, onOpenRequest }) {
           projectId={projectId}
           defaultAyNo={effectiveAyNo}
           procurementItems={procurementItems}
+          planReferenceDate={planReferenceDate}
           onClose={() => setShowAdd(false)}
           onSaved={fetchPlans}
         />
@@ -824,6 +867,7 @@ export default function ProjeTabAylikPlan({ projectId, onOpenRequest }) {
           projectId={projectId}
           defaultAyNo={effectiveAyNo}
           procurementItems={procurementItems}
+          planReferenceDate={planReferenceDate}
           onClose={() => setShowBulkAdd(false)}
           onSaved={fetchPlans}
         />
@@ -840,6 +884,7 @@ export default function ProjeTabAylikPlan({ projectId, onOpenRequest }) {
           plan={detailPlan}
           procurementItems={procurementItems}
           canEdit={canEdit}
+          planReferenceDate={planReferenceDate}
           onClose={() => setDetailPlan(null)}
           onSaved={fetchPlans}
           onDeleted={fetchPlans}
