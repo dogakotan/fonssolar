@@ -208,7 +208,12 @@ function EslestirmeOnerileriPanel({ suggestions, onLinked }) {
   )
 }
 
-function BekleyenDegisikliklerPanel({ items, onReviewed }) {
+// Ayrıca "Satın Alma > Onaylar" alt-sekmesinde (ProjeTabSatinAlma.jsx) tek başına
+// kullanılabilsin diye export edildi — o sekme yalnızca bu paneli, bu dosyanın Malzeme
+// Listesi tablosu olmadan gösterir (iki yerde de aynı review_procurement_item_change_request
+// aksiyonu, farklı bağlamda — bkz. BekleyenDegisikliklerPanel'in tek kalem üzerindeki eşdeğeri
+// olan MalzemeDetayModal için yukarıdaki yorum).
+export function BekleyenDegisikliklerPanel({ items, onReviewed }) {
   const [busyId, setBusyId] = useState(null)
   const [noteById, setNoteById] = useState({})
 
@@ -345,10 +350,11 @@ function MiktarArtisiRozeti({ pendingChange, unit }) {
 // (satır-içi "Düzenle" butonu → ayrı MiktarDuzenleModal, üstteki admin-only
 // BekleyenDegisikliklerPanel, ve bu modal yalnızca geçmişi gösteriyordu) —
 // kullanıcı isteğiyle (07.09.2026) malzemeye tıklayınca hepsi tek yerde.
-// BekleyenDegisikliklerPanel admin için hâlâ ayrıca duruyor (tüm kalemleri tek
-// ekranda toplu taramak için), bu modal aynı onay/red aksiyonunu tek bir kalem
-// bağlamında tekrar sunar — iki farklı iş akışı (toplu tarama / o an incelenen
-// kalem), aynı ekranın kopyası değil.
+// BekleyenDegisikliklerPanel (tüm kalemleri tek ekranda toplu taramak için)
+// artık burada değil, Satın Alma'nın "Onaylar" alt-sekmesinde (09.09.2026,
+// kullanıcı isteği) — bu modal aynı onay/red aksiyonunu tek bir kalem
+// bağlamında hâlâ sunar, o an incelenen kalem için ayrı sekmeye gitmeye gerek
+// kalmasın diye.
 function MalzemeDetayModal({ row, projectId, pendingChange, canRequest, canReview, onClose, onSaved }) {
   const [timeline, setTimeline] = useState([])
   const [loading, setLoading] = useState(true)
@@ -568,6 +574,9 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
   const [showNewMaterial, setShowNewMaterial] = useState(false)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  // "Değişiklik Talep Eden" filtresi (09.09.2026, kullanıcı isteği) — bekleyen bir
+  // değişiklik/ekleme talebi olan kalemleri talebi açan kişiye göre ayırt edebilmek için.
+  const [requesterFilter, setRequesterFilter] = useState('')
   // Kategori başlıklarına tıklanınca o grup kapanıp açılabilsin diye (04.09.2026,
   // kullanıcı isteği) — kapalı olan kategori adlarının kümesi. Varsayılan: hepsi açık.
   const [collapsedCategories, setCollapsedCategories] = useState(() => new Set())
@@ -588,7 +597,6 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
   // gözetim amacıyla her zaman onaylayabilir (fatura onay akışındaki desenle aynı).
   const canReviewItem = (item) => isAdmin || (role === 'proje_yoneticisi' && item?.approver_role === 'proje_yoneticisi')
   const pending = canRequest ? pendingChanges : []
-  const reviewablePending = pending.filter(canReviewItem)
   const { toast, showToast } = useToast()
   const bomMatchSuggestions = useMemo(
     () => (canRequest ? suggestBomMatches(requests, procurement) : []),
@@ -661,12 +669,23 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
     addedQty: 0,
     addedViaCount: 0,
     isPendingNew: true,
+    requesterName: item.requester_name || null,
   }))
+  const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
+  // "Değişiklik Talep Eden" filtresi (09.09.2026, kullanıcı isteği) — bir kalemin
+  // bekleyen değişiklik/ekleme talebini kimin açtığını satır bazında bulup, seçilen
+  // kişiye göre listeyi daraltır (yeni malzeme satırları için requesterName zaten
+  // yukarıda taşınıyor, mevcut kalemler için pendingByItemId'den okunur).
+  function rowRequesterName(row) {
+    return row.isPendingNew ? row.requesterName : (pendingByItemId.get(row.id)?.requester_name || null)
+  }
+  const pendingRequesterNames = [...new Set(pending.map(p => p.requester_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'))
   const searchTerm = search.trim().toLocaleLowerCase('tr')
   const allRowsUnfiltered = [...pendingNewRows, ...rows]
   const allRows = allRowsUnfiltered
     .filter(row => !searchTerm || (row.material || '').toLocaleLowerCase('tr').includes(searchTerm))
     .filter(row => !categoryFilter || row.category === categoryFilter)
+    .filter(row => !requesterFilter || rowRequesterName(row) === requesterFilter)
 
   // Kategoriler artık ayrı bir sütunda değil, Aylık Satın Alma Planı'yla aynı desende
   // (bkz. ProjeTabAylikPlan.jsx'teki FragmentGroup) bir grup başlığı satırıyla belli
@@ -678,8 +697,6 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
     .sort((a, b) => (categoryIndex[a] ?? 99) - (categoryIndex[b] ?? 99) || a.localeCompare(b, 'tr'))
   const sortedRows = groupKeys.flatMap(key => allRows.filter(row => (row.category || 'Diğer') === key))
   const groupCounts = new Map(groupKeys.map(key => [key, sortedRows.filter(row => (row.category || 'Diğer') === key).length]))
-
-  const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
 
   const { highlightedId, rowRef } = useHighlightRow(highlightItemId, sortedRows, r => r.id, () => {
     setHighlightItemId(null)
@@ -698,11 +715,12 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
         }
         .malz-tt-group:hover .malz-tt-bubble { visibility: visible; opacity: 1; }
       `}</style>
-      {/* Bekleyen değişiklik yokken "Bekleyen miktar değişikliği bulunmuyor" banner'ı
-          hiçbir bilgi taşımadan sayfada boşuna ~80px yer kaplıyordu — sığdırma
-          isteğiyle yalnızca gerçekten bekleyen bir şey varsa gösteriliyor artık. */}
+      {/* Bekleyen miktar değişikliklerinin toplu onay/red banner'ı buradan kaldırıldı
+          (09.09.2026, kullanıcı isteği) — artık yalnızca Satın Alma'nın "Onaylar"
+          alt-sekmesinde (bkz. ProjeTabSatinAlma.jsx, BekleyenDegisikliklerPanel oradan
+          da render ediliyor). Tek bir kalemin bekleyen değişikliğini onaylamak hâlâ
+          mümkün — o kalemin satırına tıklayıp MalzemeDetayModal'daki inline aksiyondan. */}
       {canRequest && bomMatchSuggestions.length > 0 && <EslestirmeOnerileriPanel suggestions={bomMatchSuggestions} onLinked={onPendingChanged} />}
-      {reviewablePending.length > 0 && <BekleyenDegisikliklerPanel items={reviewablePending} onReviewed={onPendingChanged} />}
 
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -726,6 +744,19 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
+          {pendingRequesterNames.length > 0 && (
+            <select
+              value={requesterFilter}
+              onChange={e => setRequesterFilter(e.target.value)}
+              title="Bekleyen bir değişiklik/ekleme talebi olan kalemleri talep edene göre filtrele"
+              style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border-md)', color: 'var(--color-text)', background: 'var(--color-surface)', fontFamily: 'inherit', cursor: 'pointer' }}
+            >
+              <option value="">Tüm Değişiklik Talep Edenler</option>
+              {pendingRequesterNames.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          )}
           {canRequest && (
             <button onClick={() => setShowNewMaterial(true)} style={{ background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               + Yeni Malzeme
@@ -737,7 +768,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>Yükleniyor…</div>
         ) : allRows.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>
-            {(searchTerm || categoryFilter) ? 'Aramanızla/filtrenizle eşleşen malzeme bulunamadı.' : 'Bu projeye ait malzeme listesi henüz eklenmemiş.'}
+            {(searchTerm || categoryFilter || requesterFilter) ? 'Aramanızla/filtrenizle eşleşen malzeme bulunamadı.' : 'Bu projeye ait malzeme listesi henüz eklenmemiş.'}
           </div>
         ) : (
           <>

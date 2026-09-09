@@ -749,6 +749,30 @@ her kalem için `isAdmin || (role==='proje_yoneticisi' && item.approver_role
 her ikisi de bu per-item kontrolü kullanır — proje yöneticisi yalnızca kendine
 yönlendirilmiş talepleri görür/onaylar).
 
+**"Onaylar" alt-sekmesi + Malzeme Listesi'nde "Talep Eden" filtresi
+(09.09.2026, kullanıcı isteği).** `ProjeTabSatinAlma.jsx`'in TABS dizisine
+Riskler'in hemen yanına `{key:'onaylar', label:'Onaylar'}` eklendi
+(`canManageProcurement` — admin/proje_yoneticisi — kapsamı, siteChiefView'da
+gizli). İçeriği, Malzeme Listesi'nin üstünde önceden duran
+`BekleyenDegisikliklerPanel` banner'ının AYNISI (`ProjeTabFaturaKesilecekler.jsx`'ten
+export edildi) — `reviewablePendingChanges` (aynı per-item `canReviewItem`
+mantığıyla `ProjeTabSatinAlma.jsx`'te ayrıca hesaplanır) kendisine geçirilir.
+**Banner Malzeme Listesi'nden KALDIRILDI** (09.09.2026, ikinci bir kullanıcı
+isteğiyle — toplu onay/red artık yalnızca "Onaylar" sekmesinde); tek bir
+kalemin bekleyen değişikliği hâlâ o kalemin satırına tıklayıp
+`MalzemeDetayModal`'ın inline onay/red bölümünden onaylanabilir (bu ayrı
+kalmaya devam ediyor — "o an incelenen kalem" bağlamı, toplu tarama değil).
+Malzeme Listesi'nin arama/kategori
+filtresinin yanına, bekleyen değişikliği olan kalemler varsa görünen bir
+"Talep Eden" `<select>`i eklendi (`pendingRequesterNames` — bekleyen
+taleplerin `requester_name` kümesi) — seçilince listeyi yalnızca o kişinin
+değişiklik/ekleme talep ettiği kalemlere daraltır (`rowRequesterName()`,
+yeni malzeme sanal satırları için `pending`'ten taşınan `requesterName`,
+mevcut kalemler için `pendingByItemId` üzerinden). Gerçek RPC + UI ile
+Osman Karadoğan → proje yöneticisi hesabı üzerinden uçtan uca Playwright'ta
+doğrulandı (Onaylar sekmesinde göründü, proje yöneticisi onaylayabildi,
+Malzeme Listesi'nde "Osman Karadoğan" filtresi doğru satırı gösterdi).
+
 İkisi/üçü aynı anda tetiklenebilir (bir kalem için hem bekleyen manuel talep
 hem otomatik aşım) — bu durumda `review_procurement_item_change_request`
 onay anında güncel `planned_qty`'yi talebin `old_planned_qty` anlık
@@ -1825,8 +1849,51 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**09.09.2026 — Malzeme değişikliği/ekleme taleplerinde onaylayıcı rol artık
-sabit admin değil (Osman Karadoğan/Cem Aslan → proje yöneticisi) + Aylık
+**09.09.2026 (4. tur) — Malzeme Listesi'nin üstündeki toplu onay/red banner'ı
+kaldırıldı, yalnızca "Onaylar" sekmesinde kaldı.**
+
+Kullanıcı isteği: bir önceki turda kasıtlı olarak iki yerde bırakılan
+`BekleyenDegisikliklerPanel` (Malzeme Listesi üstü + yeni "Onaylar" sekmesi)
+tekrarı istenmedi — Malzeme Listesi'ndeki render kaldırıldı
+(`ProjeTabFaturaKesilecekler.jsx`), artık toplu onay/red akışı yalnızca
+Satın Alma > Onaylar'da. Tek bir kalemin satırına tıklayınca açılan
+`MalzemeDetayModal`'ın kendi inline onay/red bölümü DEĞİŞMEDİ (ayrı bir
+kullanım deseni — o an incelenen kalem, toplu tarama değil). `npm run lint`/
+`build` temiz.
+
+**09.09.2026 (3. tur) — Osman Karadoğan'ın approver_role migration'ından ÖNCE
+açtığı, hâlâ `bekliyor` durumundaki 19 malzeme değişikliği talebi geriye
+dönük olarak proje yöneticisine yönlendirildi.**
+
+Kullanıcı isteği: bir önceki turdaki `approver_role` yönlendirmesi yalnızca
+BUNDAN SONRA açılacak talepleri kapsıyordu — Osman Karadoğan'ın migration'dan
+önce açtığı 19 `bekliyor` talep `approver_role='admin'` (kolonun varsayılanı)
+olarak kalmıştı. Veri-migration'ı bu 19 satırı `'proje_yoneticisi'`ye
+güncelledi + proje yöneticisi rolündeki 3 hesaba (`notify_role`) yeni bildirim
+gönderdi (oluşturuldukları anda approver_role henüz yoktu, yalnızca admin/Cem
+Aslan'a bildirim gitmişti — o bildirimler hâlâ geçerli, admin her zaman
+onaylayabildiğinden silinmedi/değiştirilmedi). Cem Aslan'ın bekleyen talebi
+yoktu, sorgu kapsamına dahildi ama 0 satır etkiledi. DB'de doğrulandı (19/19
+`approver_role='proje_yoneticisi'`, 57 yeni bildirim = 19×3 proje yöneticisi
+hesabı).
+
+**09.09.2026 (2. tur) — Satın Alma'ya Riskler'in yanına "Onaylar" alt-sekmesi
++ Malzeme Listesi'ne "Talep Eden" filtresi eklendi.**
+
+Kullanıcı isteği: malzeme değişikliği/ekleme onay kuyruğu (bir önceki turda
+approver_role ile proje yöneticisine de açılan) artık Malzeme Listesi'nin
+üstündeki bir banner'a gömülü kalmıyor — Riskler'in yanında ayrı, admin/proje
+yöneticisine açık bir "Onaylar" sekmesi var (aynı `BekleyenDegisikliklerPanel`
+bileşeni, export edilip iki yerde de kullanılıyor). Malzeme Listesi'ne ayrıca
+bekleyen bir değişikliği olan kalemleri talep edene göre filtreleyen bir
+dropdown eklendi. Gerçek Osman Karadoğan hesabıyla RPC çağrısı + proje
+yöneticisi hesabıyla UI'da uçtan uca Playwright'ta doğrulandı (geçici test
+dosyası, doğrulama sonrası silindi). Ayrıntı için "Malzeme listesi (BOM)
+planlanan miktar değişiklikleri" bölümüne bakılabilir. `npm run lint`/`build`
+temiz.
+
+**09.09.2026 (1. tur) — Malzeme değişikliği/ekleme taleplerinde onaylayıcı rol
+artık sabit admin değil (Osman Karadoğan/Cem Aslan → proje yöneticisi) + Aylık
 Plan'da kalem düzenlemede ay değişince görünüm de yeni aya geçiyor.**
 
 Kullanıcı isteği: Osman Karadoğan ve Cem Aslan admin hesaplarından açılan
