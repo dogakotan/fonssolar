@@ -205,6 +205,78 @@ const W_PROGRESS = 64
 const W_WEEK = 20
 export const GROUP_INDENT_PX = 20
 
+// Bir grup düğümünü (ve tüm alt dallarını) recursive olarak render eder —
+// Detaylı İş Planı'nın (TabIsPlaniDetay.jsx'teki buildDetayRows) AYNI
+// buildGroupTree ağacını kullandığı fonksiyonun Genel'e özgü hâli: burada
+// grup başlığı Detaylı'nın düz/beyaz + tarih sütunlu stili yerine Genel'in
+// kendi eski renkli/tone'lu, tarihsiz stilini kullanır (yalnızca toggle +
+// başlık + "X görev | %Y" özeti) — iki görünüm aynı veri hiyerarşisini
+// paylaşır, yalnızca görsel kimlikleri ayrışık kalır (09.09.2026).
+function renderGanttGroupNode(node, ctx) {
+  const { collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen } = ctx
+  const isOpen = !collapsed.has(node.key)
+  const allTasks = collectNodeTasks(node)
+  const avg = allTasks.length
+    ? Math.round(allTasks.reduce((sum, task) => sum + Number(task.progress_pct || 0), 0) / allTasks.length)
+    : 0
+  const cfg = groupConfigFor(node.label)
+
+  return (
+    <div key={node.key} className="gantt-group">
+      <button className={`gantt-group-row tone-${cfg.tone}`} onClick={() => toggleGroup(node.key)}>
+        <span className="gantt-group-toggle">{isOpen ? '▾' : '▸'}</span>
+        <strong style={{ paddingLeft: node.depth * GROUP_INDENT_PX }}>{cfg.label}</strong>
+        <small>{allTasks.length} görev | %{avg}</small>
+      </button>
+
+      {isOpen && node.childList.map(child => renderGanttGroupNode(child, ctx))}
+
+      {isOpen && node.tasks.map((task, index) => {
+        const taskCfg = groupConfigFor(node.label)
+        const barLeft = timelineOffsetPct(task.planned_start, timelineStart, timelineUnits)
+        const barEnd = timelineOffsetPct(task.planned_end, timelineStart, timelineUnits) + (100 / timelineUnits)
+        const barWidth = Math.max(1.2, barEnd - barLeft)
+        const duration = daysBetween(task.planned_start, task.planned_end)
+        const pct = Math.round(Number(task.progress_pct || 0))
+        const isLate = isTaskLate(task, today)
+        const isSelected = task.id === selectedTaskId
+
+        return (
+          <button
+            key={task.id}
+            className={`gantt-task-row${isSelected ? ' selected' : ''}`}
+            onClick={() => { setSelectedTaskId(task.id); setPanelOpen(true) }}
+          >
+            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
+              <span className="gantt-code">
+                {task.task_code || index + 1}
+              </span>
+              <span className={`gantt-name${isLate ? ' late' : ''}`} style={{ paddingLeft: (node.depth + 1) * GROUP_INDENT_PX }}>
+                {task.task_name || '-'}
+                {isLate ? ` (${riskSeverityLabel(task)})` : ''}
+              </span>
+              <span>{fmtDate(task.planned_start)}</span>
+              <span className={isLate ? 'late' : ''}>{fmtDate(task.planned_end)}</span>
+              <span>{duration} gün</span>
+              <span className="gantt-progress-cell">
+                <i><em style={{ '--progress': `${pct}%`, '--bar-color': taskCfg.bar }} /></i>
+                <b>%{pct}</b>
+              </span>
+            </span>
+            <span
+              className={`gantt-bar${isLate ? ' late' : ''}`}
+              style={{ '--bar-left': `${barLeft}%`, '--bar-width': `${barWidth}%`, '--bar-color': taskCfg.bar, '--progress': `${pct}%` }}
+              title={`${task.task_name || ''} - ${fmtDate(task.planned_start)} / ${fmtDate(task.planned_end)}`}
+            >
+              <i />
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function resolveGroup(task) {
   const label = (task.group_label || '').trim()
   if (label) return label
@@ -488,21 +560,19 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     return date
   }, [effectiveDate])
 
-  // Detaylı İş Planı'nın kendi filtresi/hiyerarşisi için TAM (ham, " › " dahil)
-  // group_label kümesi — Genel'in gruplaması bundan bağımsız, aşağıya bkz.
+  // Genel ve Detaylı İş Planı AYNI tam (ham, " › " dahil) group_label kümesini
+  // paylaşır — ikisi de çok seviyeli hiyerarşiyi (buildGroupTree) kullanır,
+  // yalnızca GÖRSEL STİLLERİ farklıdır (Genel: renkli/tone'lu başlık, tarih
+  // sütunu yok; Detaylı: düz/beyaz başlık + tarih sütunlu). 09.09.2026'da
+  // Genel'i tek-seviyeli düz gruplamaya indirgeyen bir ara adım denenmişti —
+  // bu, aynı isimdeki (ör. her inverter için tekrar eden "AC Kazı Açılması")
+  // görevleri alt başlıksız TEK bir kovaya yığıp ayırt edilemez hale
+  // getirdiğinden kullanıcı isteğiyle geri alındı; hiyerarşi Genel'de de
+  // korunuyor, yalnızca stili kendine özgü kalıyor.
   const allGroupNames = useMemo(() => [...new Set(tasks.map(t => resolveGroup(t)))].sort(), [tasks])
-  // Genel İş Planı yalnızca ÜST SEVİYE segmenti (groupPath'in ilk elemanı)
-  // kullanır — bir görevin group_label'ı "Elektriksel Bölüm › TR-1-3000 kVA ›
-  // Inverter-3 › AC" gibi Detaylı için eklenmiş çok seviyeli bir yol olsa bile,
-  // Genel'de bu tüm inverter/AC-DC kırılımı TEK "Elektriksel Bölüm" grubuna
-  // toplanır (09.09.2026'da düzeltildi — kod tek-seviyeli hâline döndükten
-  // sonra hâlâ ham resolveGroup kullanılıyordu, bu da her inverter × AC/DC
-  // kombinasyonunu kendi başına ayrı, çirkin bir üst-seviye grup gibi
-  // gösteriyordu; kullanıcı "veriler de eskiye dönmeli" diye bildirdi).
-  const topGroupNames = useMemo(() => [...new Set(tasks.map(t => groupPath(t)[0]))].sort(), [tasks])
 
   const filteredTasks = useMemo(() => tasks.filter(task => {
-    if (groupFilter !== 'all' && groupPath(task)[0] !== groupFilter) return false
+    if (groupFilter !== 'all' && resolveGroup(task) !== groupFilter) return false
     if (statusFilter === 'devam') return task.status === 'devam_ediyor'
     if (statusFilter === 'tamamlandi') return task.status === 'tamamlandi'
     if (statusFilter === 'geciken') {
@@ -585,7 +655,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           setStatusFilter={setStatusFilter}
           groupFilter={groupFilter}
           setGroupFilter={setGroupFilter}
-          allGroupNames={topGroupNames}
+          allGroupNames={allGroupNames}
         >
           <p className="gantt-empty">
             {tasks.length === 0 ? 'Henüz iş kalemi eklenmemiş.' : 'Seçilen filtreye uyan tarihli iş kalemi bulunamadı.'}
@@ -606,28 +676,14 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const showToday = today.getTime() >= projStartTs && today.getTime() <= projEndTs
   const todayOffsetPct = showToday ? timelineOffsetPct(today, timelineStart, timelineUnits) : 0
 
-  // Genel İş Planı (Gantt) tek seviyeli, düz gruplama kullanır (09.09.2026'da
-  // geri döndürüldü) — çok seviyeli hiyerarşik ağaç (buildGroupTree, " › "
-  // ayracına göre iç içe dallar) yalnızca Detaylı İş Planı'nda kullanılır,
-  // Genel her zaman group_label'ın kendisini tek düğüm olarak gösterir.
-  const grouped = {}
-  withDates.forEach(task => {
-    const key = groupPath(task)[0]
-    if (!grouped[key]) grouped[key] = []
-    grouped[key].push(task)
-  })
-  Object.values(grouped).forEach(items => {
-    items.sort((a, b) => new Date(a.planned_start).getTime() - new Date(b.planned_start).getTime())
-  })
-  // GROUP_ORDER'da tanımlı olmayan (ör. ileride admin'in yazacağı yeni bir
-  // group_label) bir grup çıkarsa listeden SESSİZCE düşmesin diye en erken
-  // planned_start'a göre sıralanıp bilinen gruplardan sonra, '_diger'den
-  // önce eklenir — her group_label kendi başlığıyla görünür garantisi.
-  const knownGroupKeys = GROUP_ORDER.filter(key => grouped[key])
-  const unknownGroupKeys = Object.keys(grouped)
-    .filter(key => key !== '_diger' && !GROUP_ORDER.includes(key))
-    .sort((a, b) => new Date(grouped[a][0].planned_start).getTime() - new Date(grouped[b][0].planned_start).getTime())
-  const groupKeys = [...knownGroupKeys, ...unknownGroupKeys, ...(grouped._diger ? ['_diger'] : [])]
+  // Genel İş Planı da Detaylı gibi çok seviyeli hiyerarşik ağacı kullanır
+  // (buildGroupTree, " › " ayracına göre iç içe dallar) — 09.09.2026'da bunu
+  // tek seviyeli düz gruplamaya indirgeyen bir ara adım, aynı isimdeki
+  // görevleri (ör. her inverter için tekrar eden "AC Kazı Açılması") tek bir
+  // ayırt edilemez kovaya yığdığından kullanıcı isteğiyle geri alındı — Genel
+  // yalnızca renderGanttGroupNode'un KENDİ (renkli/tarihsiz) başlık stiliyle
+  // render edilir, Detaylı'nın düz/beyaz+tarihli stili hiç kullanılmaz.
+  const topGroupNodes = buildGroupTree(withDates)
   const leftWidth = W_NO + W_NAME + W_START + W_END + W_DUR + W_PROGRESS
   const timelineWidth = weeks.length * W_WEEK
   const minWidth = leftWidth + timelineWidth
@@ -709,7 +765,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           setStatusFilter={setStatusFilter}
           groupFilter={groupFilter}
           setGroupFilter={setGroupFilter}
-          allGroupNames={topGroupNames}
+          allGroupNames={allGroupNames}
         >
           <ScrollTrack
             className="gantt-edge-scroll gantt-top-scroll"
@@ -755,67 +811,9 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                   </div>
                 )}
 
-                {groupKeys.map(groupKey => {
-                  const cfg = groupConfigFor(groupKey)
-                  const items = grouped[groupKey] || []
-                  const isOpen = !collapsed.has(groupKey)
-                  const avg = items.length
-                    ? Math.round(items.reduce((sum, task) => sum + Number(task.progress_pct || 0), 0) / items.length)
-                    : 0
-
-                  return (
-                    <div key={groupKey} className="gantt-group">
-                      <button className={`gantt-group-row tone-${cfg.tone}`} onClick={() => toggleGroup(groupKey)}>
-                        <span className="gantt-group-toggle">{isOpen ? '▾' : '▸'}</span>
-                        <strong>{cfg.label}</strong>
-                        <small>{items.length} görev | %{avg}</small>
-                      </button>
-
-                      {isOpen && items.map((task, index) => {
-                        const taskCfg = groupConfigFor(groupPath(task)[0])
-                        const barLeft = timelineOffsetPct(task.planned_start, timelineStart, timelineUnits)
-                        const barEnd = timelineOffsetPct(task.planned_end, timelineStart, timelineUnits) + (100 / timelineUnits)
-                        const barWidth = Math.max(1.2, barEnd - barLeft)
-                        const duration = daysBetween(task.planned_start, task.planned_end)
-                        const pct = Math.round(Number(task.progress_pct || 0))
-                        const isLate = isTaskLate(task, today)
-                        const isSelected = task.id === selectedTaskId
-
-                        return (
-                          <button
-                            key={task.id}
-                            className={`gantt-task-row${isSelected ? ' selected' : ''}`}
-                            onClick={() => { setSelectedTaskId(task.id); setPanelOpen(true) }}
-                          >
-                            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
-                              <span className="gantt-code">
-                                {task.task_code || index + 1}
-                              </span>
-                              <span className={`gantt-name${isLate ? ' late' : ''}`}>
-                                {task.task_name || '-'}
-                                {isLate ? ` (${riskSeverityLabel(task)})` : ''}
-                              </span>
-                              <span>{fmtDate(task.planned_start)}</span>
-                              <span className={isLate ? 'late' : ''}>{fmtDate(task.planned_end)}</span>
-                              <span>{duration} gün</span>
-                              <span className="gantt-progress-cell">
-                                <i><em style={{ '--progress': `${pct}%`, '--bar-color': taskCfg.bar }} /></i>
-                                <b>%{pct}</b>
-                              </span>
-                            </span>
-                            <span
-                              className={`gantt-bar${isLate ? ' late' : ''}`}
-                              style={{ '--bar-left': `${barLeft}%`, '--bar-width': `${barWidth}%`, '--bar-color': taskCfg.bar, '--progress': `${pct}%` }}
-                              title={`${task.task_name || ''} - ${fmtDate(task.planned_start)} / ${fmtDate(task.planned_end)}`}
-                            >
-                              <i />
-                            </span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )
-                })}
+                {topGroupNodes.map(node => renderGanttGroupNode(node, {
+                  collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen,
+                }))}
               </div>
               </div>
             </div>
