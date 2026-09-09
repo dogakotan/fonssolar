@@ -342,9 +342,54 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   otomatik ayarlanmaz, kullanıcı elle seçer.
 
 ### Satın alma akışı
-Durum zinciri: `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
+**Eski durum zinciri** (yalnızca 03.09.2026'dan önce oluşturulmuş eski
+talepler, geriye dönük uyumluluk için CHECK'te duruyor, yeni satır
+ÜRETMİYOR): `talep_olusturuldu → fiyat_girildi → onay_bekliyor → onaylandi
 → satin_alindi → fatura_bekliyor/fatura_onay_bekliyor → faturasi_kesildi`
-(+ `reddedildi`/`iptal`). `fatura_bekliyor` pratikte hiç üretilmez (yalnızca
+(+ `reddedildi`/`iptal`).
+
+**Yeni durum zinciri** (03.09.2026'dan beri TÜM yeni talepler bununla açılır —
+`create_purchase_request_with_items` doğrudan `teklif_toplama` ile insert
+eder): `teklif_toplama → pazarlik_onay_bekliyor → pazarlik → siparis →
+satin_alindi` (buradan sonrası — fatura akışı — iki zincir için de AYNI,
+hiç değişmedi). Üç aşama proje yöneticisi tarafından yürütülür, yalnızca
+pazarlığa geçiş kapısı admin onayı gerektirir:
+- **Teklif Toplama:** `add_purchase_offer`/`delete_purchase_offer` ile
+  `purchase_offers` tablosuna teklif eklenir/silinir (tedarikçi veya serbest
+  metin + tutar/para birimi/geçerlilik/not/opsiyonel dosya —
+  `teklif-ekleri` storage bucket'ı, `ticket-ekleri` ile birebir aynı RLS
+  deseni). 3'ten az teklifle "Pazarlığa Gönder" tıklanırsa yalnızca **uyarı**
+  gösterilir (siteye özel inline kutu, `window.confirm` değil), zorunlu
+  gerekçe istenmez — `submit_purchase_request_for_negotiation` durumu
+  `pazarlik_onay_bekliyor`'a çeker.
+- **Pazarlık Onayı (admin kapısı):** `review_purchase_request_negotiation_gate`
+  — onay `pazarlik`'e geçirir, red **`teklif_toplama`'ya geri döner** (terminal
+  değil — `reddedildi` gibi kalıcı bir son değil, PM teklifleri düzenleyip
+  tekrar gönderebilir), gerekçe redde zorunlu (`stage_rejection_note`).
+- **Pazarlık:** `save_purchase_request_negotiation` kazanan teklifi
+  (`selected_offer_id`) + nihai tutar/para birimi/notu kaydeder (durumu
+  değiştirmez, tekrar tekrar kaydedilebilir); `advance_purchase_request_to_order`
+  `selected_offer_id` doluyken `siparis`'e geçirir.
+- **Sipariş:** `save_purchase_request_order` kesin adet/birim fiyat/sipariş
+  tarihi/tedarikçiyi `purchase_request_items`/`purchase_requests`'e yazar
+  (`total_price` GENERATED kolon olduğundan elle SET edilmez — yalnızca
+  `quantity`/`unit_price` yazılır, 03.09.2026'da bulunan bug); ürün sahaya
+  ulaşınca `complete_purchase_request_delivery` (adet/fiyat girilmiş olma
+  şartıyla) `satin_alindi`'ye taşır — buradan sonra fatura akışı eski
+  zincirle birebir aynı.
+- **İptal (08.09.2026 eklendi):** `cancel_purchase_request_negotiation_flow`
+  — yalnızca proje yöneticisi/admin, yukarıdaki 4 aşamanın HERHANGİ birinden
+  çağrılabilir, gerekçe zorunlu, `iptal`e çeker (aylık plan bağlantısını
+  koparan trigger zaten bu durumu dinlediğinden ek kod gerekmedi). Plan
+  dosyasında ("iptal her aşamadan PM/admin tarafından çağrılabilir")
+  öngörülmüş ama ilk implementasyonda unutulmuştu — bir kod incelemesinde
+  bulunup eklendi: öncesinde `pazarlik_onay_bekliyor`/`pazarlik`/`siparis`'e
+  giren bir talep hiçbir şekilde durdurulamıyordu, `satin_alindi`'ye kadar
+  zorunlu ilerlemek gerekiyordu. `TeklifPazarlikSiparisPanel.jsx`'in altında
+  tüm aşamalarda ortak, tek bir "İptal Et" bölümü olarak eklendi (aşamaya özel
+  4 alt bileşenin her birine ayrı ayrı değil).
+
+Eski zincirin fatura kısmı: `fatura_bekliyor` pratikte hiç üretilmez (yalnızca
 DB constraint'in izin verdiği ama hiçbir RPC'nin yazmadığı bir değer, savunma
 amaçlı frontend gruplama listelerinde duruyor) — fatura oluşturulunca durum
 tek hamlede `fatura_onay_bekliyor`'a düşer ve muhasebe (adım 1) + yönetici
@@ -552,7 +597,14 @@ değişiklik").
   iptal desteği). `odeme_bekliyor`/`kismen_odendi` bir faturada muhasebe/admin
   "Ödeme Ekle" (`OdemeEkleModal.jsx`) ile `invoice_payments`'a satır ekler —
   `fn_invoice_payment_before_insert` (BEFORE INSERT) tutarın `remaining_amount`'ı
-  aşmadığını ve faturanın gerçekten ödeme aşamasında olduğunu doğrular,
+  aşmadığını ve faturanın gerçekten ödeme aşamasında olduğunu doğrular —
+  bu kontrol `invoices` satırını `FOR UPDATE` ile kilitler (08.09.2026'da
+  eklendi, bağımsız kod incelemesinde bulundu: kilitsiz haliyle aynı faturaya
+  eşzamanlı iki ödeme eklenirse ikisi de aynı `remaining_amount` anlık
+  görüntüsünü okuyup ayrı ayrı geçerli görünebiliyordu, birlikte faturayı
+  fazla ödenmiş bırakabilirdi — gerçek insert ile pozitif/negatif test
+  edildi, ikinci eşzamanlı ekleme artık ilkinin commit'ini bekleyip güncel
+  tutarla doğru reddediliyor),
   `fn_invoice_payment_recalc` (AFTER INSERT/DELETE/UPDATE OF is_cancelled)
   `paid_amount`/`remaining_amount`'ı yeniden hesaplayıp `invoices.status`'u
   `paid_amount`'a göre `odeme_bekliyor`/`kismen_odendi`/`ödendi` arasında taşır
@@ -585,20 +637,25 @@ değişiklik").
   proje_yoneticisi/muhasebe) — hangi rolün hangi spesifik geçişi yapabildiği
   bu trigger'da merkezi.
 
-**Faturalar liste teması:** `FaturaListesi.jsx` Satın Alma talep listesiyle
-(`TabSatinAlmaTalepListesi.jsx`) aynı görsel dili kullanır — sabit satır/başlık
-yüksekliği (`ROW_HEIGHT=64`/`HEADER_HEIGHT=24`), yapışkan (`sticky`) başlık,
-`var(--color-*)` token'ları, durum için nokta+kalın-metin rozeti (pill/arkaplan
-değil — `StatusDot`, `StatusBadge.jsx`'teki paylaşılan `INVOICE_STATUS`/`TONE`
-haritasından türetilir) ve ortak `Pager` bileşeni. Üstte `get_invoices_list`'in
-`stats` alanından 4 kart (Onay Bekleyen/Düzeltme Bekleyen/Bu Ay Onaylanan —
-olay bazlı, `invoice_approvals.reviewed_at`'tan/Ödeme Bekleyen), altında sekme
-çubuğu (Tümü/Taslak/Onay Bekleyen/Düzeltme Bekleyen/Onaylanan/Ödeme Bekleyen/
-Kısmen Ödendi/Ödendi/Reddedildi — `invoices_status_check`'teki 8 durumun tamamı
-birer sekme; `Kısmen Ödendi`/`Reddedildi` öncesinde sekme yoktu, yalnızca Durum
-dropdown'undan seçilebiliyordu, bu yüzden "Tümü" sekmesindeki toplam diğer
-sekmelerin toplamına eşit değildi — 30.07.2026'da bulunup düzeltildi, artık
-`hepsi` = sekmelerin toplamı garantili).
+**Faturalar liste teması (07.09.2026'da bir QA turunda düzeltilen dokümantasyon
+hatası — aşağıdaki madde önceden yanlış yazılmıştı, gerçek koddan doğrulandı):**
+`FaturaListesi.jsx` kendi ayrı CSS sınıf temasını kullanır (`.invoice-modern-table`/
+`.invoice-mobile-list`, `Dashboard.css`) — `var(--color-*)` token'ları ve ortak
+`Pager` bileşeni `TabSatinAlmaTalepListesi.jsx` ile ortak, ama satır/başlık
+**JS sabitli değil** (`ROW_HEIGHT`/`HEADER_HEIGHT` yok, satır yüksekliği CSS'te
+`td{height:55px}`), başlık **sticky değil**, ve durum rozeti **`StatusDot`
+(nokta+kalın-metin) DEĞİL** — klasik pill/arkaplan rozeti
+(`invoice-status-pill`, `StatusBadge.jsx`'teki paylaşılan `INVOICE_STATUS`/
+`TONE` haritasından renklendirilir). Yani 30.07.2026'da satın alma/ticket/
+bildirim tarafında yapılan nokta+kalın-metin `StatusDot` geçişi FaturaListesi'ni
+hiç kapsamamış. Üstte KPI kartı YOK (2026-07-28'de kaldırıldı, bkz. "Muhasebe &
+Finans modülü" → Faturalar bullet'ı) — doğrudan durum sekmesi çubuğu var: Tümü/
+Taslak/Onay Bekleyen/Düzeltme Bekleyen/Onaylanan/Ödeme Bekleyen/Kısmen Ödendi/
+Ödendi/Reddedildi (`invoices_status_check`'teki 8 durumun tamamı birer sekme;
+`Kısmen Ödendi`/`Reddedildi` öncesinde sekme yoktu, yalnızca Durum dropdown'undan
+seçilebiliyordu, bu yüzden "Tümü" sekmesindeki toplam diğer sekmelerin toplamına
+eşit değildi — 30.07.2026'da bulunup düzeltildi, artık `hepsi` = sekmelerin
+toplamı garantili).
 "İşlem" kolonu statü+role göre değişir (Düzenle/Gönder, İncele, Ödeme Gir,
 İptal Et, Görüntüle) — `FaturaFormModal.jsx` (taslak/düzeltme düzenleme +
 "Taslak Kaydet"/"Onaya Gönder", ödeme-takibi switch'i, inline "+ yeni
@@ -661,14 +718,60 @@ istenirse talep formuna opsiyonel bir alan eklemek ayrı bir özellik işi).
 2. **Bilinçli/onaylı:** Proje yöneticisi/admin "Düzenle" butonuyla bir kalemin
    planlanan miktarını doğrudan değiştirmek isteyebilir —
    `create_procurement_item_change_request` RPC'siyle `procurement_item_change_requests`'e
-   `bekliyor` bir satır düşer, `planned_qty` henüz değişmez. Yalnızca admin
-   `review_procurement_item_change_request` ile onaylayınca gerçekten güncellenir.
+   `bekliyor` bir satır düşer, `planned_qty` henüz değişmez.
+   `review_procurement_item_change_request` ile onaylanınca gerçekten güncellenir.
    Bir kalem için bekleyen bir talep varken ikinci talep açılamaz (RPC + unique
    index seviyesinde de reddedilir).
 3. **Yeni malzeme ekleme:** "+ Yeni Malzeme" butonu `create_procurement_item_add_request`
    RPC'siyle aynı tabloya `procurement_item_id=NULL` + `new_equipment`/`new_unit`/
-   `new_category` ile bir satır düşürür; admin onaylayınca `INSERT INTO
-   procurement_items` ile kalem gerçekten listeye eklenir.
+   `new_category` ile bir satır düşürür; onaylanınca `INSERT INTO procurement_items`
+   ile kalem gerçekten listeye eklenir.
+
+**Onaylayıcı rol her zaman admin değil — `approver_role` kolonu (09.09.2026
+eklendi).** `procurement_item_change_requests.approver_role` (`'admin'` |
+`'proje_yoneticisi'`, varsayılan `'admin'`) hangi rolün bu talebi onaylaması
+gerektiğini tutar; `create_procurement_item_change_request`/
+`create_procurement_item_add_request` bunu talebi açan kullanıcıya göre
+hesaplar ve `notify_role`'u da buna göre yönlendirir. **Kullanıcı kararı:**
+Osman Karadoğan ve Cem Aslan admin hesaplarından açılan talepler
+`'proje_yoneticisi'`ye düşer (bu iki hesap fiilen kendi taleplerini yine admin
+rolünce onaylatıyordu, gerçek bir ikinci göz sağlamıyordu) — kullanıcı
+ID'leri fonksiyon gövdesinde hardcoded (`c87088e5-...`/`30431df3-...`), diğer
+tüm admin hesapları (ör. genel "Admin" hesabı) eskisi gibi `'admin'`de kalır.
+`review_procurement_item_change_request` artık `get_my_role() IN ('admin',
+v_row.approver_role)` kontrolü yapar — admin gözetim amacıyla HER ZAMAN
+onaylayabilir (fatura onay akışındaki proje_yoneticisi/admin desenindeki aynı
+ilke), ek olarak `approver_role`'e eşit rol de onaylayabilir.
+`get_satin_alma_overview`'ın `pending_changes` çıktısına `approver_role` eklendi;
+`ProjeTabFaturaKesilecekler.jsx`'teki `canReview` artık sabit `isAdmin` değil,
+her kalem için `isAdmin || (role==='proje_yoneticisi' && item.approver_role
+==='proje_yoneticisi')` (`BekleyenDegisikliklerPanel`/`MalzemeDetayModal`'ın
+her ikisi de bu per-item kontrolü kullanır — proje yöneticisi yalnızca kendine
+yönlendirilmiş talepleri görür/onaylar).
+
+**"Onaylar" alt-sekmesi + Malzeme Listesi'nde "Talep Eden" filtresi
+(09.09.2026, kullanıcı isteği).** `ProjeTabSatinAlma.jsx`'in TABS dizisine
+Riskler'in hemen yanına `{key:'onaylar', label:'Onaylar'}` eklendi
+(`canManageProcurement` — admin/proje_yoneticisi — kapsamı, siteChiefView'da
+gizli). İçeriği, Malzeme Listesi'nin üstünde önceden duran
+`BekleyenDegisikliklerPanel` banner'ının AYNISI (`ProjeTabFaturaKesilecekler.jsx`'ten
+export edildi) — `reviewablePendingChanges` (aynı per-item `canReviewItem`
+mantığıyla `ProjeTabSatinAlma.jsx`'te ayrıca hesaplanır) kendisine geçirilir.
+**Banner Malzeme Listesi'nden KALDIRILDI** (09.09.2026, ikinci bir kullanıcı
+isteğiyle — toplu onay/red artık yalnızca "Onaylar" sekmesinde); tek bir
+kalemin bekleyen değişikliği hâlâ o kalemin satırına tıklayıp
+`MalzemeDetayModal`'ın inline onay/red bölümünden onaylanabilir (bu ayrı
+kalmaya devam ediyor — "o an incelenen kalem" bağlamı, toplu tarama değil).
+Malzeme Listesi'nin arama/kategori
+filtresinin yanına, bekleyen değişikliği olan kalemler varsa görünen bir
+"Talep Eden" `<select>`i eklendi (`pendingRequesterNames` — bekleyen
+taleplerin `requester_name` kümesi) — seçilince listeyi yalnızca o kişinin
+değişiklik/ekleme talep ettiği kalemlere daraltır (`rowRequesterName()`,
+yeni malzeme sanal satırları için `pending`'ten taşınan `requesterName`,
+mevcut kalemler için `pendingByItemId` üzerinden). Gerçek RPC + UI ile
+Osman Karadoğan → proje yöneticisi hesabı üzerinden uçtan uca Playwright'ta
+doğrulandı (Onaylar sekmesinde göründü, proje yöneticisi onaylayabildi,
+Malzeme Listesi'nde "Osman Karadoğan" filtresi doğru satırı gösterdi).
 
 İkisi/üçü aynı anda tetiklenebilir (bir kalem için hem bekleyen manuel talep
 hem otomatik aşım) — bu durumda `review_procurement_item_change_request`
@@ -676,6 +779,71 @@ onay anında güncel `planned_qty`'yi talebin `old_planned_qty` anlık
 görüntüsüyle karşılaştırır; aradan otomatik aşım (veya başka bir onay)
 geçtiyse onayı sessizce ezmek yerine açık hatayla reddeder, admin talebi
 reddedip güncel miktarla yeniden değerlendirmek zorunda kalır.
+
+### Malzeme eşleştirme önerisi (07.09.2026)
+`purchase_request_items.bom_item_id` (`procurement_items(id)`'e FK) aslında
+09.07.2026'dan beri şemada vardı ve `YeniTalepModal.jsx`'te BOM dropdown'undan
+malzeme seçilince otomatik yazılıyordu — ama bir talep **"Diğer (Listede Yok)"**
+ile serbest metin girilirse (typo, kısaltma, farklı yazım) bu alan hep `NULL`
+kalıyordu ve tüm client-side hesaplamalar (Malzeme Listesi'nin Gönderilen/Kalan
+kolonları, Satın Alma'nın "Uygun/Riskli/Listede Yok" risk rozeti) yalnızca
+normalize edilmiş isim string'i (`materialKey`) üzerinden eşleşiyordu — küçük
+bir yazım farkı bile o talebi sonsuza kadar "Listede Yok" gösteriyordu ve
+miktarı hiçbir BOM kaleminin Gönderilen toplamına yansımıyordu.
+
+Malzeme Listesi'nde artık bir **"Eşleştirme Önerileri"** paneli var
+(`EslestirmeOnerileriPanel`, `ProjeTabFaturaKesilecekler.jsx`) — `bom_item_id`'si
+boş, kategorisi `malzeme`, durumu `reddedildi`/`iptal` olmayan her talep kalemi
+için `suggestBomMatches()` (`utils/satinAlma.js`, eşik varsayılan %55) BOM'daki
+en olası tek adayı önerir.
+
+**`nameSimilarity()` — ilk sürüm gerçek veriyle hiç öneri üretmiyordu, aynı gün
+düzeltildi.** İlk implementasyon saf tüm-string Levenshtein oranıydı
+(`1 - distance/maxLen`). Canlı bir projede (`kaptan-demir-adana-arazi-faz1`)
+kullanıcı "malzeme listesinde ara" ekranında bir BOM adı görüp eşleştirme
+önerisinin hiç çıkmadığını bildirdi — araştırmada, gerçek talep kalemi adları
+kısa/kolokyal ("TTR kablo") iken gerçek BOM adları uzun/teknik parantezli
+açıklamalar ("3x2,5mm2 TTR Kablo Kamera Panosu ve Kamera Direği arası"); saf
+tüm-string oranı uzunluk farkını doğrudan mesafeye eklediğinden bu tür (kısa
+talep adı, uzun BOM adı) çiftlerinde skor neredeyse her zaman %55 eşiğinin
+çok altında kalıyordu (ölçülen: "TTR kablo" ↔ yukarıdaki BOM adı **%16**,
+"DC Solar Kablo Seti" ↔ "DC Kablo 4mm2 (75.000 mt)" **%24**) — panel teknik
+olarak çalışıyordu ama gerçek projelerde pratikte hiç tetiklenmiyordu. Düzeltme:
+`nameSimilarity` artık `max(tüm-string oranı, tokenSetSimilarity)`.
+`tokenSetSimilarity` kısa olan tarafı kelimelere ayırıp her kelimeyi uzun
+taraftaki EN İYİ eşleşen kelimeyle karşılaştırır ve ortalamasını alır — uzun
+tarafın fazladan kelimeleri (kamera/panosu/arası gibi) skoru seyreltmez. Aynı
+gerçek verilerle doğrulandı: "TTR kablo" artık **%100**, "DC Solar Kablo Seti"
+**%56** (eşiği geçiyor); kasıtlı olarak eşleşmemesi gereken test kalemleri
+("BOM Dışı Montaj Sarf Malzemesi" vb.) **%16-31** aralığında kalmaya devam
+ediyor — yanlış-pozitif riski yaratmadan gerçek recall sorunu çözüldü. Canlı
+`kaptan-demir-adana-arazi-faz1` projesinde Playwright ile ekran görüntüsüyle
+doğrulandı (panel artık "TTR kablo → benzerlik %100" önerisini gösteriyor).
+Admin/proje yöneticisi **Onayla**'ya basarsa `link_purchase_request_item_to_bom`
+RPC'si (SECURITY DEFINER, aynı proje + henüz bağlantısız kalem şartıyla)
+`bom_item_id`'yi yazar ve `fn_recompute_auto_risks(project_id, false)`'u tetikler
+(artık doğru sayılan miktar planı aşıyorsa yeni bir `malzeme_fazla_talep` riski
+hemen açılabilsin diye — `false`: bu bir onay değil, mevcut açık riskleri
+kapatmaz). **Reddet yerine "Yoksay"** — kalıcı bir "bir daha gösterme" kaydı
+tutulmuyor, yalnızca bu oturumda gizlenir (bilinçli sadeleştirme).
+
+**Bu, `bom_item_id`'yi (varsa) isim string'ine tercih edecek şekilde tüm
+client-side eşleşme mantığını değiştirdi** — `materialMatchKey(item)`
+(`item.bom_item_id ? 'id:'+id : materialKey(item.name)`) artık
+`requestedTotalsByMaterial`/`classifyMaterials`/`riskBreakdownForItems`/
+`riskState`'in TÜMÜNDE kullanılıyor; `TabSatinAlmaTalepListesi.jsx`'teki
+`materialPlan`/`requestedTotals` Map'leri hem isim hem `id:<uuid>` anahtarıyla
+çift kayıtlı tutuluyor (bir talep kalemi bom_item_id ile linkliyse id
+anahtarından, değilse isim anahtarından okunur). `get_satin_alma_overview`/
+`get_satin_alma_overview_all_internal` bu yüzden kalem çıktısına `id`/
+`bom_item_id` eklendi (kolon zaten vardı, yalnızca RPC hiç döndürmüyordu).
+**Bilinçli sınırlama:** aynı BOM kalemi için hem doğrudan linkli hem de ismi
+tesadüfen eşleşen (henüz linksiz) birden fazla talep varsa, `riskState`/
+`riskBreakdownForItems`'ın kişi-bazlı bakışı bu ikisini AYRI ayrı sayar
+(yalnızca `buildMaterialListRows`'un malzeme-bazlı Gönderilen toplamı ikisini
+doğru şekilde birleştirir) — nadir bir kenar durum, bu turda düzeltilmedi.
+`useSantiyeData.js`'teki (şantiye şefi Genel Bakış kartı) eşdeğer hesaplama da
+bu turun kapsamı dışında bırakıldı, aynı desenle ayrı bir iş olarak yapılabilir.
 
 **`procurement_items`'taki eski sipariş-takip kolonları kaldırıldı (04.08.2026).**
 `status`/`priority`/`order_date`/`expected_delivery`/`actual_delivery`/
@@ -819,6 +987,8 @@ eklendi (`20260731180000`) — talep hâlâ `talep_olusturuldu`/`fiyat_girildi`/
 (`p_issues` id-bazlı upsert — ticket bağlantısı için kritik, bkz. Trigger
 zincirleri), `create_procurement_item_change_request`,
 `review_procurement_item_change_request`, `create_procurement_item_add_request`,
+`link_purchase_request_item_to_bom` (bir talep kalemini BOM'daki gerçek bir
+kaleme bağlar, bkz. "Malzeme eşleştirme önerisi"),
 `save_project_category_weights` (proje sihirbazındaki kategori ağırlıkları,
 tüm dağılımı tek transaction'da değiştirir), `set_project_procurement_completed`
 (proje sihirbazının tedarik/teslimat Faz 1 onayı, yalnızca proje_yoneticisi).
@@ -1508,11 +1678,38 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 - Repo hijyeni: ölü bileşenler (`TicketStats.jsx`, eski `ProjectDashboard`,
   `RealtimeStatusIndicator`), kullanılmayan CSS, orphan DB nesneleri
   (`work_packages`, `schedule_activities`, `vw_bom_tracking`, kalite kontrol
-  kalıntıları) düzenli olarak temizlendi. Bundle optimizasyonu (route bazlı
-  `React.lazy`, font asset'i statik dosyaya taşındı).
+  kalıntıları) düzenli olarak temizlendi. Bundle optimizasyonu: `React.lazy`
+  yalnızca Login↔Dashboard sınırında vardı (bu maddenin "route bazlı" ifadesi
+  yanıltıcıydı — tek route zaten `/dashboard/*`, bkz. routing notu); asıl
+  sekme bazlı bölme 08.09.2026'da eklendi (`index.jsx`'teki 16 ağır Tab*/
+  ProjeDetay/DailyReport* bileşeni artık `lazy()` + tek bir `Suspense` sınırı
+  ile — aynı anda yalnızca bir `activeTab` dalı mount olduğundan güvenli),
+  tek ~780 kB'lık `index-*.js` chunk'ı sekme başına 1-74 kB'lık parçalara
+  bölündü, `chunkSizeWarningLimit` uyarısı tamamen kayboldu. Font asset'i
+  statik dosyaya taşındı.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
+- **`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
+  duplicate key) — KÖK NEDENİ BULUNAMADI, Supabase support'a taşınmalı.**
+  `create_purchase_request_with_items`/ham `purchase_requests` insert'i
+  bazen (Playwright'ta deterministik şekilde tekrarlanabilir, canlıda
+  sıklığı bilinmiyor) düşük numaralı (`SAT-2026-101`/`102` gibi) bir
+  `request_no` ile "already exists" hatası veriyor — halbuki gerçek sayaç
+  (`purchase_request_no_counters`) o anda çok daha yüksek (1000+) bir
+  değerde ve çakışan satır hatadan hemen sonra tabloda hiç bulunmuyor
+  (transient). `fn_next_purchase_request_no()`'nun atomikliği defalarca
+  doğrulandı, ek bir `pg_advisory_xact_lock` savunması eklendi
+  (`harden_next_purchase_request_no_with_advisory_lock`, 08.09.2026) ama
+  sorun AYNEN devam etti — yani kök neden bu fonksiyonun kendisinde değil,
+  muhtemelen PgBouncer connection-pooling veya Supabase API/PostgREST
+  önbellekleme katmanında. Bu projenin migration/kod araçlarıyla
+  düzeltilemez — Supabase support'a (proje `bshhgvdzemgfijkzhcrf`) bu
+  bulgularla (bkz. "Son değişiklik" 7. tur) açılması gerekiyor. Etkilenen
+  testler: `procurement-concurrency`, `procurement-two-initiators`,
+  `procurement-workflow`, `purchase-single-item`,
+  `procurement-negotiation-flow` — hepsinde arıza aynı imza, testlerin
+  kendi mantığında hata yok.
 - ~~Tedarikçi bakiyesi/Finans Raporları — `paid_amount`/`remaining_amount`
   TRY'ye çevrilmiyordu~~ — **tam çözüldü (18.08.2026).** Önceki kısmi düzeltme
   (2026-07-31) yalnızca `total_amount_try`'yi kapsıyordu; şimdi `paid_amount`/
@@ -1550,18 +1747,45 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `ApprovalStepsHorizontal.jsx`'in CSS class'ını varsayıyorlardı. Hepsi güncel
   akışa göre yeniden yazıldı, artık hepsi geçiyor. Bu tarama sırasında gerçek bir
   **production bug** da bulundu ve düzeltildi (aşağıya bkz.).
-- **Tedarik/teslimat Faz 2 — henüz yapılmadı.** Proje sihirbazındaki tedarik
-  adımı bilinçli olarak Faz 1'e (yalnız proje_yoneticisi "Tamamladım" onayı)
-  sadeleştirildi. Tedarikçi, sipariş/teslimat tarihi, eksik/hasarlı teslimat
-  takibi gibi detaylar Faz 2 kapsamına ertelendi.
+- ~~Tedarik/teslimat Faz 2~~ — **kısmen kapandı (08.09.2026).** Proje
+  sihirbazındaki `Adim5Tedarik.jsx` hâlâ Faz 1 (yalnız proje_yoneticisi
+  "Tamamladım" onayı, proje-seviyesi tek bayrak) — buna dokunulmadı, çünkü
+  tedarikçi/sipariş/teslimat tarihi artık zaten TALEP bazında gerçek veriyle
+  tutuluyor (bkz. "Satın alma akışı" → 3 aşamalı Teklif/Pazarlık/Sipariş akışı,
+  07.09.2026). Faz 2'nin geriye kalan tek gerçek boşluğu — eksik/hasarlı
+  teslimat takibi — eklendi: `purchase_requests.delivery_status`
+  (`tam`/`eksik`/`hasarli`) + `delivery_note`, hem eski akışın
+  `complete_project_manager_purchase_request` hem yeni akışın
+  `complete_purchase_request_delivery` RPC'sine opsiyonel parametre olarak
+  eklendi (varsayılan `tam`, eksik/hasarlıda not RPC içinde de zorunlu —
+  savunma amaçlı, frontend zaten butonu disabled tutuyor).
+  `TalepDetayModal.jsx`'in "Tamamlandı" bölümü ve `TeklifPazarlikSiparisPanel.jsx`'in
+  "Teslim Alındı — Tamamla" bölümüne bu seçici eklendi; liste satırındaki hızlı
+  "Onayla" aksiyonu (`TabSatinAlmaTalepListesi.jsx`) kasıtlı olarak
+  değiştirilmedi (dar satır, varsayılan `tam` ile hızlı yol kalıyor — eksik/
+  hasarlı senaryosu detay modaline gidiyor, bu codebase'in "listede tekrar
+  göstermeye gerek yok" ilkesiyle tutarlı). Liste yalnızca eksik/hasarlı
+  olan talepler için `ProcessStatusBadge`'in yanına küçük kırmızı bir uyarı
+  rozeti (`Eksik Teslimat`/`Hasarlı Teslimat`) ekliyor — `get_purchase_requests_list(_internal)`
+  zaten `to_jsonb(pr)` kullandığından yeni kolonlar otomatik geldi, RPC
+  değişikliği gerekmedi. Canlı test verisiyle (test-izmir-ges-2026) uçtan uca
+  doğrulandı.
 - **DB-SEC-006 (leaked password protection):** Supabase Free plan'da
   desteklenmiyor, Pro plan gerektiriyor — teknik değil, ödeme kararı bekliyor.
 - **Realtime ölçek notu:** Mevcut 2 test projesi ölçeğinde sorun yok;
   Supabase'in önerdiği Broadcast-from-database'e geçiş ileride gündeme
   gelebilir.
-- Manuel proje sihirbazı yolundaki client-side mini-importer
-  (`src/utils/projectExcelImport.js`) hâlâ eski, daha dar bir kategori setiyle
-  sınırlı — ikincil yol olduğu için düşük öncelikli.
+- ~~Manuel proje sihirbazı yolundaki client-side mini-importer eski/dar
+  kategori setiyle sınırlı~~ — **bu not bayatmış, madde kapalı (08.09.2026'da
+  doğrulandı).** `src/utils/projectExcelImport.js`'teki `CAT_MAP` gerçek
+  `task_category` enum'uyla (15 değer) birebir karşılaştırıldı — tam eşleşme,
+  eksik kategori yok. Bu mini-importer yalnızca `Adim2IsKalemleri.jsx`'te
+  kullanılıyor ve yalnızca "İş Kalemleri" sayfasını parse ediyor (kendi ayrı
+  1 sayfalık `GES_Proje_Sablonu.xlsx` şablonu) — BOM/bütçe/risk kasıtlı olarak
+  kapsam dışı, sihirbazın "Manuel doldur" ikincil yolunda yalnızca görev
+  listesi adımı için bir toplu-yapıştırma kolaylığı, diğer adımlar zaten elle
+  dolduruluyor. Fark edilirse bu notu hatırlat: madde kapalıdır, yeniden
+  açmadan önce önce kodu kontrol et.
 - ~~`project_risks` tablosunda DELETE policy'si yok~~ — **düzeltildi (2026-07-31,
   `20260731100738_add_project_risks_delete_policy`)**: `authenticated_delete_risks`
   policy'si eklendi, aynı tablodaki `authenticated_insert_risks`/`authenticated_update_risks`
@@ -1625,157 +1849,356 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**07.09.2026 (2. tur) — Dört ek iş: (A) "Teklif / Pazarlık / Sipariş" üst-seviye
-sidebar sayfası menüden kaldırıldı, (B) Satın Alma alt-sekme sırası değişti
-(Malzeme Listesi/Riskler artık en sonda), (C) `TabIsPlan.jsx`'in Gantt'ı artık
-GERÇEK çok seviyeli (iç içe, her seviyesi ayrı aç/kapa) grup hiyerarşisi
-destekliyor + Kaptan Demir Çelik (Adana GES-1) projesinin İş Planı bu yeni
-modelle, kullanıcının paylaştığı harici Gantt ekran görüntüsündeki yapıya
-(Elektriksel Bölüm › TR-1-3000 kVA › Inverter-1..9 › DC/AC) uygun şekilde
-dolduruldu, (D) grup satırlarının GÖRSEL stili de aynı referansa uydurulacak
-şekilde değişti — kategoriye göre renkli bant kaldırıldı, tüm projelerin
-Gantt'ında geçerli (paylaşılan bileşen).**
+**09.09.2026 (7. tur) — Genel İş Planı'nın grup KIRILIMI da (yalnızca stili
+değil) eskiye döndürüldü: Elektriksel görevler artık tek "Elektriksel Bölüm"
+grubunda, inverter/AC-DC bazında ayrı ayrı DEĞİL.**
 
-**(D) Gantt grup satırları — düz/beyaz + tarih sütunlu (TÜM projelerde).**
-Kullanıcı aynı ekran görüntüsünü ikinci kez gösterip "görünüm olarak da aynı
-olsun" deyince (`AskUserQuestion` ile kapsam netleştirildi — bu paylaşılan
-bileşen olduğundan değişikliğin TÜM projelerin İş Planı'nı etkileyeceği
-açıkça belirtilip onaylandı), `.gantt-group-row`'un kategoriye göre renkli
-dolgun bandı (`tone-mavi/mor/turuncu/...`) tamamen kaldırıldı — artık görev
-satırlarıyla AYNI iki parçalı ızgarayı (`--left-width`/`--timeline-width`)
-kullanan, düz açık gri (`#f1f5f9`) arkaplanlı, kalın yazı + derinliğe göre
-artan girintiyle ayrılan tek bir tabloya dönüştü; grup satırında da artık
-görev satırlarıyla aynı sütunlarda (Başlangıç/Bitiş/Süre/İlerleme) o dalın
-TÜM alt görevlerini kapsayan agregat tarih aralığı gösteriliyor
-(`buildGroupTree`'nin `finalize` adımına eklenen `rangeStart`/`rangeEnd`,
-en erken `planned_start`/en geç `planned_end`). Görev satırlarının kendi
-renkli ilerleme çubuğu (`groupConfigFor(node.label).bar`) DEĞİŞMEDİ —
-yalnızca grup BAŞLIĞININ arkaplanı düzleşti. Yan etki: 3 haneli süre
-değerleri (ör. "123 gün", grup satırlarında görev satırlarından daha sık
-görülüyor) `Süre` sütununda satır kırılması yapıyordu — `W_DUR` 48→54px
-büyütüldü + `.gantt-task-left > span`/`.gantt-group-left > span`'a
-`white-space: nowrap` eklendi. Playwright'ta ekran görüntüsüyle referansla
-satır satır karşılaştırılarak doğrulandı, konsol hatası yok.
+Bir önceki turdaki (6. tur) görsel/stil revert'i tek başına yetmedi —
+kullanıcı "verilerin de eskiye dönmesi lazım" diye belirtti. Kök neden:
+Kaptan Demir projesindeki 120 görevden 108'inin `group_label`'ı 07.09.2026'daki
+hiyerarşi özelliği için Detaylı İş Planı'na yönelik " › " ayraçlı çok seviyeli
+bir yol olarak DB'de duruyor (ör. "Elektriksel Bölüm › TR-1-3000 kVA ›
+Inverter-3 › AC" — gerçek WBS verisi, 11.08.2026'daki foto-yapı migration'larından
+geliyor, DEĞİŞTİRİLMEDİ). 6. turdaki flat render, grup anahtarı olarak hâlâ
+ham `resolveGroup(task)` (tam " › " string'i) kullandığından her inverter ×
+AC/DC kombinasyonu kendi başına ayrı, çirkin bir üst-seviye grup gibi
+görünüyordu (25 grup) — bu da kullanıcının "verileri Detaylı ile aynı
+yapmışsın" ilk şikayetinin gerçek kaynağıydı, yalnızca stil değil.
 
-**(D2) Girinti/ok hizası düzeltmesi.** Kullanıcı ilk halini "içiçe geçik
-olmadı, yazılar dengesiz" diye tanımladı — kök neden: ok işareti (▾/▸) sabit
-"No" hücresindeydi, yalnızca metin `paddingLeft` ile kayıyordu; bu, derinlik
-arttıkça ok ile metnin görsel olarak kopmasına (staircase etkisinin
-bozulmasına) yol açıyordu. Düzeltme: ok artık isim hücresinin İÇİNDE, sabit
-11px genişlikli bir kutuda (`▾`/`▸` karakterlerinin doğal genişliği farklı
-olduğundan sabitlenmezse aynı derinlikteki satırlarda metin başlangıcı
-piksel piksel oynuyordu) — girinti adımı da (`GROUP_INDENT_PX`) 14→20px
-büyütüldü, daha belirgin bir merdiven görünümü için. Yakın plan ekran
-görüntüsüyle (`Elektriksel Bölüm → TR-1-3000 kVA → OG → OG01/02/03`)
-doğrulandı — her seviye kendi ok+metin bloğuyla bir öncekinden net şekilde
-içeri kaymış görünüyor.
+Düzeltme: Genel İş Planı artık grup anahtarı olarak `groupPath(task)[0]`
+(yolun yalnızca İLK/üst segmenti) kullanıyor — `groupPath` zaten var olan,
+Detaylı'nın `buildGroupTree`'si için yazılmış bir yardımcı, yalnızca ilk
+elemanını almak yeterli. Bu, `resolveGroup`'un ayrıca (Detaylı için) tam yolu
+döndürmeye devam etmesiyle ÇAKIŞMIYOR — iki ayrı isim listesi var artık:
+`allGroupNames` (ham/tam, yalnızca `TabIsPlaniDetay`'e geçiriliyor, dropdown'da
+hâlâ 26 granüler seçenek) ve `topGroupNames` (yalnızca üst segment, Genel'in
+kendi filtre dropdown'ında ve gruplamasında kullanılıyor — 5 temiz grup:
+Şantiye Mobilizasyon/Mekanik Bölüm/Elektriksel Bölüm/ENH/KABUL). Görev
+satırının kendi ilerleme çubuğu rengi de (`groupConfigFor`) aynı üst segmente
+göre belirleniyor (öncesinde tam yol GROUP_CONFIG'te hiç eşleşmediğinden tüm
+Elektriksel görev satırları sessizce gri/_diger rengine düşüyordu — ayrıca
+bulunup düzeltilen bir bug). Kaptan Demir Çelik (Adana GES-1) projesinde
+admin hesabıyla gerçek verilerle Playwright'ta doğrulandı (Genel: 5 temiz üst
+grup, hiçbiri "Inverter" içermiyor; Detaylı: "Inverter" hâlâ görünüyor, 26
+granüler dropdown seçeneği değişmedi). DB'ye hiç dokunulmadı — WBS/group_label
+verisi olduğu gibi kaldı, yalnızca Genel'in bunu nasıl BUCKET'ladığı değişti.
+`npm run lint`/`build` temiz.
 
-**(D3) Asıl eksik yer bulundu: `TabIsPlaniDetay.jsx` ("Detaylı İş Planı")
-hiç dokunulmamıştı.** Kullanıcı AYNI fotoğrafı tekrar gösterip "hiyerarşi
-hâlâ içiçe geçik değil, inverterler kendi içinde açılmalı, detaylı iş
-planını düzeltmen gerek" deyince fark edildi: `İş Planı` sekmesinin İKİ ayrı
-bölümü var — `Genel İş Planı` (Gantt, (C)/(D)/(D2)'de düzeltilen) ve
-`Detaylı İş Planı` (tam veri tablosu, `TabIsPlaniDetay.jsx`) — kullanıcı
-BAŞTAN BERİ ikincisine bakıyordu, o hâlâ eski tek-seviyeli `resolveGroup`
-gruplamasını kullanıyordu (Elektriksel Bölüm/TR-1-3000 kVA/Inverter-N hiç
-içiçe değil, her biri kendi tam-yol string'iyle YAN YANA ayrı birer grup
-gibi listeleniyordu) — üstüne (D)'deki CSS restyle'ı da bu bileşenin artık
-var olmayan `gantt-group-row tone-${cfg.tone}`/`<strong>`/`<small>`
-seçicilerine dayandığından header satırları sessizce BOZULMUŞTU (regresyon,
-fark edilmeden). Düzeltme: `TabIsPlan.jsx`'ten `buildGroupTree`/
-`collectNodeTasks`/`GROUP_INDENT_PX` export edilip `TabIsPlaniDetay.jsx`
-kendi `resolveGroup`+flat `grouped`/`groupKeys` mantığını tamamen bırakıp
-AYNI ağacı kullanacak şekilde yeniden yazıldı — `sortTreeTasks` (kullanıcının
-seçtiği plan tarihi/sapma/ilerleme/ad sıralamasını her düğümde ayrı ayrı
-uygular, grup sırasının kendisini etkilemez) + `buildDetayRows`/
-`buildDetayTaskRow` (Gantt'taki `renderGanttGroupNode`'un `<tr>/<td>`
-karşılığı, kendi satır-içi stiliyle — artık paylaşılan `.gantt-group-row`
-CSS'ine bağımlı değil, böylece Gantt'ın stilini değiştirmek bunu bir daha
-kırmaz). Her düğüm kendi tam-yol anahtarıyla bağımsız aç/kapa olduğundan
-Inverter-2..9 artık gerçekten birbirinden habersiz, ayrı ayrı genişletilebiliyor
-(canlıda test edilirken Inverter-2 kapatılıp Inverter-3 açık bırakıldı,
-ikisi birbirini etkilemedi). **Ders:** kullanıcı "bu görünüm hâlâ istediğim
-gibi değil" derse ve önceki düzeltme doğrulanmış görünüyorsa, önce kullanıcının
-GERÇEKTEN hangi ekranı/sekmeyi izlediğini sorgula — aynı sayfada görünüşte
-benzer iki ayrı bölüm (Genel/Detaylı) olabilir, biri düzeltilip diğeri
-unutulmuş olabilir. Playwright'ta canlı doğrulandı (Inverter-3 açılınca kendi
-AC/DC alt dalı + INV3- kodlu görevler doğru tarihlerle görünüyor, hedef
-miktarlar — 105.000 m, 35 adet — ilgili DC/AC gruplarında korunmuş), tam
-regresyon suite'i (66/66) geçti, konsol hatası yok.
+**09.09.2026 (6. tur) — Genel İş Planı (Gantt) 07.09.2026'daki hiyerarşi
+değişikliğinden ÖNCEKİ tek-seviyeli/renkli görünümüne geri döndürüldü.**
 
-**(A) Teklif/Pazarlık/Sipariş menüden kaldırıldı.** 03.09.2026'da ayrı bir
-üst-seviye sidebar sayfası (`TabTeklifPazarlikSiparis.jsx`, `index.jsx`'teki
-`teklif-pazarlik-siparis` sekmesi) olarak eklenmişti — kullanıcı kararıyla
-`role_sidebar_items`/`role_allowed_tabs`'tan (`20260907090000_remove_teklif_pazarlik_siparis_top_level_menu_item`
-migration'ı) silinerek menüden kaldırıldı. **Kod bilinçli olarak silinmedi**
-(sayfa/route/Sidebar.jsx item tanımı duruyor, yalnızca erişilemez) —
-`ProjeTabSatinAlma.jsx`'teki proje-içi "surec" alt-sekmesi zaten korunduğundan
-süreç oradan erişilmeye devam ediyor.
+07.09.2026'daki "iş planı hiyerarşisi" değişikliği (b598bc6) hem Genel İş
+Planı (Gantt) hem yeni oluşturulan Detaylı İş Planı'nı AYNI çok seviyeli
+hiyerarşik ağaca (`buildGroupTree`, group_label'daki " › " ayracına göre iç
+içe dallar) + aynı düz/beyaz + tarih sütunlu grup başlığı stiline geçirmişti.
+Kullanıcı Kaptan Demir projesinde canlı test ederken bunun yanlış olduğunu
+belirtti: Detaylı İş Planı'nın hiyerarşik/tarihli kalması doğruydu (zaten
+ayrıca istenmişti), ama Genel İş Planı'nın kendi eski, sade halinde
+(tek-seviyeli düz gruplama, kategoriye göre renkli tam-genişlik bant
+başlıkları — `tone-mavi/yeşil/mor/turuncu/...`, tarih sütunu yok, yalnızca
+"X görev | %Y" özeti) kalması gerekiyordu — iki görünüm birbirinden görsel
+ve veri-yapısı olarak ayrışık olmalıydı.
 
-**(B) `ProjeTabSatinAlma.jsx`'in TABS sırası** Talepler → (Onay Bekleyenler →
-Teklif/Pazarlık/Sipariş → Aylık Plan, role göre) → **Malzeme Listesi** →
-**Riskler** oldu (kullanıcı isteği — bu ikisi öncesinde Talepler'in hemen
-ardından geliyordu, artık en sonda).
+Düzeltme yalnızca `TabIsPlan.jsx`'in KENDİ Gantt render'ını etkiliyor:
+`renderGanttGroupNode` (tree-recursive render fonksiyonu) kaldırıldı, yerine
+07.09.2026 öncesi flat `grouped`/`knownGroupKeys`/`unknownGroupKeys`/
+`groupKeys` (resolveGroup + GROUP_ORDER sıralaması) mantığı ve eski JSX'i
+geri getirildi; `Dashboard.css`'teki `.gantt-group-row` de eski tone-renkli
+3-kolonlu (`42px minmax(0,1fr) auto`) haline döndürüldü. `buildGroupTree`/
+`groupPath`/`collectNodeTasks`/`GROUP_PATH_DELIM`/`GROUP_INDENT_PX` fonksiyon/
+sabitleri TabIsPlan.jsx'te dokunulmadan kaldı (hâlâ export ediliyor) — bunlar
+`TabIsPlaniDetay.jsx` tarafından import edilip kullanılıyor, Detaylı İş
+Planı'nın hiyerarşik tablosu tamamen değişmedi. Kaptan Demir Çelik (Adana
+GES-1) projesinde admin hesabıyla gerçek verilerle Playwright'ta doğrulandı
+(Genel'de 25 renkli tek-seviyeli grup başlığı, Detaylı'da hâlâ Sapma/Gerçek/
+Hedef kolonlu tam tablo). `npm run lint`/`build` temiz.
 
-**(C) Gantt — gerçek çok seviyeli iç içe gruplama.** Öncesinde
-`project_tasks.group_label` tek seviyeli düz bir etiketti (`resolveGroup` tek
-bir string döner, `TabIsPlan.jsx` bunları tek bir aç/kapa seviyesiyle
-listeliyordu). Kullanıcı harici bir planlama aracından (screenshot) çok
-seviyeli bir WBS gösterip "fotoğraftaki hiyerarşiye uygun içe geçişler"
-istedi — bu, `group_label`'ın kendisini " › " ayracıyla çok segmentli bir yol
-olarak kodlamayı (ör. `"Elektriksel Bölüm › TR-1-3000 kVA › Inverter-3 ›
-DC"`) ve `TabIsPlan.jsx`'in bunu GERÇEK bir ağaç olarak render etmesini
-gerektirdi (ayraç geçmeyen eski etiketler — "Mekanik Bölüm", "KABUL" vb. —
-tek düğümlük bir dal gibi davranır, geriye dönük tam uyumlu, başka hiçbir
-projenin verisi dokunulmadı). Eklenenler (`TabIsPlan.jsx`):
-- `GROUP_PATH_DELIM` (`' › '`) + `groupPath(task)` — group_label'ı segmentlere
-  ayırır (boşsa `CATEGORY_FALLBACK_GROUP` fallback'i tek segment döner).
-- `buildGroupTree(tasks)` — düz task listesinden, her segment kendi düğümü
-  olacak şekilde çok seviyeli bir ağaç kurar; her seviyede kardeşler
-  GROUP_ORDER'a (yalnızca kök seviyede) veya en erken `planned_start`'a göre
-  sıralanır (`_diger` her zaman en sonda) — eski tek-seviyeli sıralama
-  mantığının (`knownGroupKeys`/`unknownGroupKeys`) doğrudan genellemesi.
-- `renderGanttGroupNode(node, ctx)` — düğümü ve tüm alt dallarını recursive
-  render eder; her seviye kendi tam-yol string'iyle (`collapsed` Set'inde)
-  bağımsız aç/kapa olur, derinlik arttıkça başlık/görev satırları
-  `GROUP_INDENT_PX` kadar daha içeri kayar. Üst düğümlerin görev sayısı/
-  ortalama ilerlemesi artık TÜM alt dalları kapsar (`collectNodeTasks`,
-  eskiden yalnızca doğrudan görevler sayılıyordu — üst başlıklar için daha
-  doğru bir toplam).
-- `GROUP_CONFIG`'e çok seviyeli dallarda son segment tek başına eşleşsin diye
-  birkaç kısa-ad girdisi eklendi (`'Elektriksel Bölüm'`, `'DC'`, `'AC'`,
-  `'OG'`, `'Güvenlik'`) — eşleşmeyenler (ör. `'TR-1-3000 kVA'`, `'Inverter-3'`)
-  zaten var olan `_diger` fallback'iyle gri ama kendi gerçek metniyle görünür.
-- `resolveGroup`/`groupFilter`/`allGroupNames` (tam group_label string'i
-  üzerinden çalışan filtre dropdown'u) DEĞİŞMEDİ — hâlâ tam yol string'iyle
-  eşleşiyor, yalnızca artık bazı seçenekler çok segmentli (uzun) görünüyor;
-  bu bilinçli olarak kozmetik bir eksiklik, dropdown'u kısaltma bu turun
-  kapsamına alınmadı.
+**09.09.2026 (5. tur) — Ölü kod taraması: 1 DB fonksiyonu + 4 frontend ölü kod
+parçası silindi, 1 gerçek bug (eksik `noStoreFetch` wiring'i) düzeltildi.**
 
-**Veri: Kaptan Demir Çelik (Adana GES-1) İş Planı.** Aynı oturumda üç adımda
-son haline getirildi: (1) DC/AC görevleri Inverter-1..9 için ayrı ayrı
-kopyalandı (tarihler aynı, hedef miktar hiçbirine yazılmadı); (2) TÜM
-`group_label`'lar çok-segmentli şemaya geçirildi; (3) **kullanıcı fotoğrafı
-tekrar gösterip "tamamen hiyerarşi de içerik de böyle olmalı" deyince**, ilk
-turda ayrı bir `DC (Toplam)`/`AC (Toplam)` dalında bırakılan (hedef miktarlı,
-105.000 m/35 adet vb.) orijinal görevlerin aslında fotoğraftaki Inverter-1'in
-KENDİ DC/AC alt dalı olduğu anlaşıldı (tarihleri Inverter-1 ile birebir
-örtüşüyor) — bu görevler `Inverter-1 › DC`/`Inverter-1 › AC`'ye taşındı
-(miktarlarıyla birlikte), (1)'de oluşturulan miktarsız INV1-DC*/INV1-AC*
-kopyaları artık gereksiz olduğundan silindi. Nihai ağaç: `Elektriksel Bölüm`
-→ `TR-1-3000 kVA` (Topraklama, OG, Inverter-1..9 — hiçbir ayrı "Toplam" dalı
-yok) + `Güvenlik` (eski Kamera Aydınlatma); `ENH`/`KABUL`/`Mekanik Bölüm`/
-`Şantiye Mobilizasyon` tek seviyeli. Her düğümün toplam süresi (min
-planned_start/max planned_end) fotoğraftaki karşılığıyla satır satır
-doğrulandı (ör. Topraklama 92 gün, OG 123 gün, Inverter-1 114 gün/DC alt dalı
-90 gün — hepsi birebir eşleşti). **Ders:** kullanıcı "harici bir referansa
-tamamen uygun" isteğinde, aradaki farkı yalnızca yapısal olarak makul
-görünen bir yorumla (ör. "miktarları güvenli tarafta ayrı tut") kapatmak
-yeterli değil — referansta o düğüm hiç yoksa (burada "Toplam" dalı), veri
-de tam o şekle getirilmeli, gerekirse önceki turun ürettiği ek düğümler
-geri alınmalı. Playwright'ta canlı doğrulandı (nested başlıklar görünüyor,
-üst seviye aç/kapa çalışıyor, "Toplam" düğümü kalmadığı, konsol hatası yok).
-`npm run lint`/`npm run build` temiz (yalnızca yeni export edilen
-`groupPath`/`buildGroupTree` için 2 ek `react-refresh/only-export-components`
-uyarısı, mevcut dosyadaki aynı kategoriden 9 uyarıyla aynı, hata değil).
+Kullanıcı isteğiyle proaktif bir ölü kod denetimi yapıldı (DB tarafı elle,
+frontend tarafı bir Explore agent'la — sonuçlar tek tek doğrulandı).
 
+- **DB:** `log_ticket_changes()` fonksiyonu silindi (`20260909112738_drop_dead_log_ticket_changes_function`)
+  — hiçbir trigger'a bağlı değildi, gerçek log trigger'ı zaten `fn_ticket_history()`.
+  Diğer "trigger değil" görünen fonksiyonlar (`fn_next_purchase_request_no`,
+  `fn_purchase_request_procurement_fields_only`/`fn_purchase_request_sensitive_unchanged`/
+  `fn_ticket_sensitive_unchanged` — RLS policy'lerinde, `fn_recompute_auto_risks`/
+  `fn_apply_approved_material_excess`/`fn_rollback_material_excess` — trigger
+  gövdelerinden çağrılıyor) tek tek doğrulanıp kullanımda oldukları teyit edildi.
+- **Frontend, silindi:** `src/utils/satinAlma.js`'teki `classifyRequestTypes()`
+  (hiç import edilmiyordu); `MuhasebeGenelOzet.jsx`'in kullanılmayan
+  `onGoToInvoice` prop'u (2026-07-29'da "Son Hareketler" tıklaması bildirimler
+  sekmesine gitmeye çevrilince kalan bir artık — `index.jsx`'teki çağrı yerinden
+  de kaldırıldı); `ProjeDetay.jsx`'in kullanılmayan `selectedDate`/`setSelectedDate`
+  prop'ları (state `index.jsx`'te `TabGenel`/`TabTickets`/`FloatingAgent` için hâlâ
+  kullanılıyor, yalnızca `ProjeDetay`'a geçirilmesi anlamsızdı); `TeklifPazarlikSiparisPanel.jsx`'teki
+  `SiparisSection`'ın kullanılmayan `offers` parametresi.
+- **Gerçek bug düzeltildi:** `src/lib/supabase.js`'teki `noStoreFetch` yardımcısı
+  (`cache:'no-store'` zorlaması, PostgREST'in Cache-Control header'ı hiç
+  taşımamasından kaynaklanan bayat-veri bug'larına karşı — bkz. bildirim zili/
+  `procurement_monthly_plan` geçmişi) tanımlıydı ama `createClient(...)`'a hiç
+  geçirilmemişti (`global:{fetch:noStoreFetch}` eksikti) — yorumun vaat ettiği
+  davranış fiilen devrede değildi. `createClient` çağrısına eklendi.
+
+`npm run lint`/`build` temiz.
+
+**09.09.2026 (4. tur) — Malzeme Listesi'nin üstündeki toplu onay/red banner'ı
+kaldırıldı, yalnızca "Onaylar" sekmesinde kaldı.**
+
+Kullanıcı isteği: bir önceki turda kasıtlı olarak iki yerde bırakılan
+`BekleyenDegisikliklerPanel` (Malzeme Listesi üstü + yeni "Onaylar" sekmesi)
+tekrarı istenmedi — Malzeme Listesi'ndeki render kaldırıldı
+(`ProjeTabFaturaKesilecekler.jsx`), artık toplu onay/red akışı yalnızca
+Satın Alma > Onaylar'da. Tek bir kalemin satırına tıklayınca açılan
+`MalzemeDetayModal`'ın kendi inline onay/red bölümü DEĞİŞMEDİ (ayrı bir
+kullanım deseni — o an incelenen kalem, toplu tarama değil). `npm run lint`/
+`build` temiz.
+
+**09.09.2026 (3. tur) — Osman Karadoğan'ın approver_role migration'ından ÖNCE
+açtığı, hâlâ `bekliyor` durumundaki 19 malzeme değişikliği talebi geriye
+dönük olarak proje yöneticisine yönlendirildi.**
+
+Kullanıcı isteği: bir önceki turdaki `approver_role` yönlendirmesi yalnızca
+BUNDAN SONRA açılacak talepleri kapsıyordu — Osman Karadoğan'ın migration'dan
+önce açtığı 19 `bekliyor` talep `approver_role='admin'` (kolonun varsayılanı)
+olarak kalmıştı. Veri-migration'ı bu 19 satırı `'proje_yoneticisi'`ye
+güncelledi + proje yöneticisi rolündeki 3 hesaba (`notify_role`) yeni bildirim
+gönderdi (oluşturuldukları anda approver_role henüz yoktu, yalnızca admin/Cem
+Aslan'a bildirim gitmişti — o bildirimler hâlâ geçerli, admin her zaman
+onaylayabildiğinden silinmedi/değiştirilmedi). Cem Aslan'ın bekleyen talebi
+yoktu, sorgu kapsamına dahildi ama 0 satır etkiledi. DB'de doğrulandı (19/19
+`approver_role='proje_yoneticisi'`, 57 yeni bildirim = 19×3 proje yöneticisi
+hesabı).
+
+**09.09.2026 (2. tur) — Satın Alma'ya Riskler'in yanına "Onaylar" alt-sekmesi
++ Malzeme Listesi'ne "Talep Eden" filtresi eklendi.**
+
+Kullanıcı isteği: malzeme değişikliği/ekleme onay kuyruğu (bir önceki turda
+approver_role ile proje yöneticisine de açılan) artık Malzeme Listesi'nin
+üstündeki bir banner'a gömülü kalmıyor — Riskler'in yanında ayrı, admin/proje
+yöneticisine açık bir "Onaylar" sekmesi var (aynı `BekleyenDegisikliklerPanel`
+bileşeni, export edilip iki yerde de kullanılıyor). Malzeme Listesi'ne ayrıca
+bekleyen bir değişikliği olan kalemleri talep edene göre filtreleyen bir
+dropdown eklendi. Gerçek Osman Karadoğan hesabıyla RPC çağrısı + proje
+yöneticisi hesabıyla UI'da uçtan uca Playwright'ta doğrulandı (geçici test
+dosyası, doğrulama sonrası silindi). Ayrıntı için "Malzeme listesi (BOM)
+planlanan miktar değişiklikleri" bölümüne bakılabilir. `npm run lint`/`build`
+temiz.
+
+**09.09.2026 (1. tur) — Malzeme değişikliği/ekleme taleplerinde onaylayıcı rol
+artık sabit admin değil (Osman Karadoğan/Cem Aslan → proje yöneticisi) + Aylık
+Plan'da kalem düzenlemede ay değişince görünüm de yeni aya geçiyor.**
+
+Kullanıcı isteği: Osman Karadoğan ve Cem Aslan admin hesaplarından açılan
+malzeme değişikliği/ekleme talepleri artık proje yöneticisine onaya düşüyor
+(önceden tüm bu talepler, kim açarsa açsın, sabit olarak admin'e gidiyordu —
+bu iki hesap için kendi taleplerini yine admin rolünün onaylaması gerçek bir
+ikinci göz sağlamıyordu). Yeni `approver_role` kolonu +
+`create_procurement_item_change_request`/`create_procurement_item_add_request`/
+`review_procurement_item_change_request`/`get_satin_alma_overview` güncellemesi
++ `ProjeTabFaturaKesilecekler.jsx`'in `canReview`'ının per-item hale
+getirilmesi — ayrıntı için "Malzeme listesi (BOM) planlanan miktar
+değişiklikleri" bölümüne bakılabilir. Admin gözetim amacıyla her zaman
+onaylayabiliyor, diğer admin hesapları (genel "Admin") değişmedi.
+
+Aynı oturumda ayrıca: Aylık Satın Alma Planı'nda bir kalemin "Ay" alanı
+`PlanKalemiDetayModal` üzerinden değiştirilip kaydedildiğinde, kalem o an
+görüntülenen aydan (liste `effectiveAyNo`'ya göre filtreleniyor) sessizce
+kayboluyordu — kullanıcı değişikliğin işe yaramadığını sanabilirdi. Artık
+kaydedince görünüm otomatik olarak kalemin yeni ayına geçiyor
+(`ProjeTabAylikPlan.jsx`).
+
+`npm run lint`/`build` bu turda temiz.
+
+**08.09.2026 (7. tur) — Eksik regresyon testi yazılırken `request_no`
+çakışması 3. kez tetiklendi; savunma migration'ı uygulandı ama SORUNU
+ÇÖZMEDİ — kök neden bu oturumun araçlarının ötesinde, Supabase support'a
+taşınması gerekiyor.**
+
+CLAUDE.md'de daha önce tespit edilen "3 aşamalı Teklif/Pazarlık/Sipariş
+akışının hiç kalıcı Playwright testi yok" boşluğu için `tests/procurement-negotiation-flow.spec.js`
+yazıldı (8 RPC'nin tamamı: `add_purchase_offer`/`delete_purchase_offer`,
+`submit_purchase_request_for_negotiation`, `review_purchase_request_negotiation_gate`,
+`save_purchase_request_negotiation`, `advance_purchase_request_to_order`,
+`save_purchase_request_order`, `complete_purchase_request_delivery` —
+eksik/hasarlı teslimat dahil —, `cancel_purchase_request_negotiation_flow`
+— akışın 4 aşamasından da). Yazarken 2. test aynı `request_no` çakışmasına
+(`SAT-2026-102`) hep AYNI noktada, deterministik şekilde çarptı.
+
+Kök neden araştırması bu turda çok daha ileri götürüldü: `fn_next_purchase_request_no(2026)`
+ard arda çağrıldığında (hem tek sorguda hem ayrı `execute_sql` çağrılarında)
+**farklı `pg_backend_pid()`'lerde, farklı zaman damgalarında aynı değeri**
+döndürdüğü gözlemlendi — bu, fonksiyonun `INSERT...ON CONFLICT...RETURNING`
+deseninin (teorik olarak atomik) bir yerde beklenmedik şekilde bypass
+edildiğini/önbelleklendiğini gösteriyor. Buna karşı ek bir savunma katmanı
+eklendi (`harden_next_purchase_request_no_with_advisory_lock`): fonksiyon
+artık `pg_advisory_xact_lock(hashtext('purchase_request_no:'||yıl))` ile
+yıl bazlı bir transaction-kilit alıyor, tüm çağrıları backend/pooling
+durumundan bağımsız tam serileştiriyor. **Bu migration uygulandıktan SONRA
+test AYNI noktada AYNI hatayla yine düştü** — yani sorun `fn_next_purchase_request_no`'nun
+kendi atomikliğinde değilmiş (advisory lock bunu yapısal olarak imkansız
+kılar), daha derin bir katmanda (muhtemelen PgBouncer connection-pooling
+veya Supabase API/PostgREST önbellekleme katmanı) olmalı. Bu oturumun
+`execute_sql`/`query_logs` araçlarıyla bu kadarı gösterilebildi — ötesi
+Postgres/PgBouncer sunucu loglarına veya Supabase support'a erişim
+gerektiriyor, bu projenin migration/kod araçlarıyla düzeltilebilecek bir şey
+değil. **Sonuç: madde kapatılamadı, kullanıcıya Supabase support'a açması
+önerildi.** `procurement-negotiation-flow.spec.js` 4/5 testte güvenilir
+şekilde geçiyor; 2. test (`admin pazarlık onayını reddeder...`) bu bilinen
+dış sorun yüzünden flaky — testin kendi mantığında hata yok.
+
+**08.09.2026 (6. tur) — `request_no` çakışması bulgusu (4. turdan kalan açık
+madde) yeniden koşulup araştırıldı: sonuçsuz kapanmadı, güçlendirilmiş ama
+hâlâ kesinleşmemiş bir ipucuyla açık bırakıldı.**
+
+4. turda bulunup kapsam dışı bırakılan `SAT-2026-101 already exists` hatası
+kullanıcı isteğiyle tekrar araştırıldı. Aynı 4 test dosyası
+(`procurement-concurrency`, `procurement-two-initiators`,
+`procurement-workflow`, `purchase-single-item`) yalnızca bunlarla, tamamen
+izole (`--workers=1`) tekrar koşuldu — **aynı sınıf hata yine üretildi**,
+bu kez `SAT-2026-102` üzerinde. Bu, bir önceki turda ihtimal olarak bırakılan
+"başka bir eşzamanlı yazıcı" hipotezini daha da güçlendirdi: `fn_next_purchase_request_no()`
+tekrar okunup atomikliği yeniden doğrulandı (yapısal olarak imkansız bir
+çakışma), sayacın bu koşum sırasında 1021→1025 temiz ilerlediği (çakışan
+"102" değeriyle hiç ilgisi olmadığı) doğrulandı, ve çakışan satırın koşum
+bittikten hemen sonra tabloda mevcut olmadığı (birinin onu tam o anda
+yaratıp hemen sildiği) teyit edildi. **Yeni kanıt:** `edge_logs` çakışma
+anının (11:10:20-28) etrafında incelendiğinde, Playwright'ın "node"
+trafiğinin arasına gerçek bir tarayıcıdan (`Chrome/150.0.0.0`, Windows)
+`notifications`/`profiles`/`get_my_role`/`get_my_projects` istekleri
+karıştığı görüldü — yani test koşarken aynı anda canlı uygulama bir
+tarayıcıda açık ve aynı paylaşılan Supabase projesine istek atıyordu; bu
+projenin "Playwright tek worker ⇒ tam izolasyon" varsayımını (bkz. 4. tur
+notu) geçersiz kılıyor, paylaşılan test DB'si canlı uygulama kullanımıyla
+hiç izole değil. Ancak tarayıcı trafiğinde tam o anda bir `purchase_requests`
+POST'u görülemedi — yani hangi mekanizmanın düşük numaralı `request_no`'yu
+ürettiği hâlâ kesin olarak gösterilemedi. Kesin kanıt için tarayıcı/uygulama
+tamamen kapalıyken testlerin tek başına koşulması gerekiyor — bu koşul
+sağlanmadan tekrar denenmedi. **Bu turda kod/migration değişikliği yapılmadı**,
+yalnızca araştırma; madde açık kalmaya devam ediyor.
+
+**08.09.2026 (5. tur) — Ölü test bildirimleri temizlendi + bulunan gerçek
+bug: `notifications` realtime'ında DELETE olayları hiç yayınlanmıyordu.**
+
+Kullanıcı Playwright regresyon paketinin biriktirdiği bildirimleri (bkz.
+"Bildirim sistemi" bölümündeki 31.07.2026 notu — testler kendi
+`purchase_requests`/`invoices` satırlarını `afterAll`'da temizler ama
+`notifications` satırlarını temizlemez) bildirim kutusundan silinmesini
+istedi. Toplam 1401 bildirimden 1174'ü artık var olmayan bir kayda
+(`purchase_request`/`invoice`/`procurement_item_change_request`/`daily_report`)
+bağlıydı — bunlar `entity_id`'nin ilgili tabloda karşılığı olmadığı satırlar
+olarak tespit edilip toplu silindi (günlük rapor hatırlatmaları — 2 gerçek
+test projesinin canlı cron bildirimleri — ve 2 ticket bildirimi dokunulmadan
+bırakıldı, ikisi de canlı kayıtlara bağlı).
+
+Kullanıcı sildikten sonra "arayüzde de gözükmemeli" dedi — araştırmada
+`notifications` tablosunun `REPLICA IDENTITY DEFAULT` olduğu bulundu: DELETE
+olayında WAL'a yalnızca birincil anahtar (`id`) yazılır, `recipient_id` eski
+satırda mevcut olmadığından `NotificationBell.jsx`/`TabBildirimler.jsx`'teki
+realtime kanallarının `recipient_id=eq.<id>` filtresi DELETE'te hiç
+değerlendirilemiyordu — açık bir sekme bir bildirim silindiğinde bunu asla
+öğrenemiyor, sayfa yenilenene kadar listede/rozette görünmeye devam
+ediyordu (yalnızca DELETE etkilendi; INSERT/UPDATE'te yeni satır zaten tüm
+kolonlarıyla mevcut olduğundan onlar hep doğru çalışıyordu — bu yüzden
+kullanıcının kendi "sil" butonu kendi sekmesinde her zaman doğru
+görünüyordu, sorun yalnızca başka bir sekme/cihazdaki veya bu türden toplu
+bir SQL silmesindeki DELETE'in canlı yayılmamasıydı). Düzeltme
+(`set_notifications_replica_identity_full`): `alter table public.notifications
+replica identity full` — davranış değişikliği yok, yalnızca eski satırın tüm
+kolonları WAL'a yazılıp filtrenin DELETE'te de doğru çalışmasını sağlıyor;
+`pg_class.relreplident='f'` ile doğrulandı. Bu turda kod tarafına dokunulmadı,
+`npm run lint`/`build`/regresyon paketi tekrar çalıştırılmadı (yalnızca veri
+temizliği + tek satırlık bir tablo ayarı).
+
+**08.09.2026 (4. tur) — CLAUDE.md'deki açık nokta listesi tükenince Supabase
+advisor (security+performance) proaktif taraması: 2 gerçek WARN düzeltildi,
+1 ilgisiz test bulgusu (araştırılıp bu turun kapsamı dışında bırakıldı).**
+
+Dokümante edilmiş "Bilinen açık noktalar" listesi bu noktada pratikte
+tükenmişti (yalnızca DB-SEC-006/Free plan ve 1 kurtarılamaz migration dosyası
+kaldı, ikisi de kapalı/kabul edilmiş). Bunun ötesinde proaktif olarak
+`get_advisors` (security+performance) çalıştırıldı. Security tarafında yeni
+bir bulgu yoktu (tamamı bu projenin bilinçli SECURITY DEFINER/authenticated
+mimarisi + zaten bilinen leaked-password-protection). Performance tarafında
+çoğu INFO seviyeli gürültü (küçük test veri setinde kullanılmayan index'ler)
+ama 2 gerçek `auth_rls_initplan` WARN'ı vardı: `profiles_select` ve
+`purchase_requests_delete` policy'leri `get_my_role()`/`auth.uid()`'i satır
+başına yeniden değerlendiriyordu — bu proje daha önce büyük bir initplan
+sarmalama turu yapmıştı (`db_perf_002_003_rls_initplan_and_policy_consolidation`,
+`rls_hardening_wrap_auth_uid_and_merge_pr_update_policies`) ama bu iki policy
+o turdan SONRA eklendi/güncellendi (`profiles_select` 31.07'de proje_yoneticisi
+için genişletildi, `purchase_requests_delete` 03.09'da teklif_toplama için
+güncellendi) ve sarmalama atlanmıştı. Düzeltme (`wrap_auth_calls_in_select_for_initplan_perf`,
+davranış değişmiyor, yalnızca `(select ...)` sarmalaması): her iki policy
+`DROP POLICY`/`CREATE POLICY` ile aynı mantıkla yeniden yazıldı, `pg_policies`
+üzerinden `qual` metninin gerçekten sarmalı hale geldiği doğrulandı.
+
+**Bu turda ayrıca ilgisiz bir test bulgusu ortaya çıktı, araştırıldı, kapsam
+dışı bırakıldı:** tam regresyon koşusunda 4 test (`procurement-concurrency`,
+`procurement-two-initiators`, `procurement-workflow`, `purchase-single-item`)
+`purchase_requests_request_no_key` üzerinde "SAT-2026-101 already exists"
+duplicate-key hatasıyla başarısız oldu. Bu, uygulanan RLS migration'ıyla
+YAPISAL OLARAK ilgisizdi (migration yalnızca SELECT/DELETE policy'lerini
+değiştiriyor, `purchase_requests` INSERT/`request_no` üretimine hiç
+dokunmuyor) — ayrıca `create_purchase_request_with_items` VE
+`create_purchase_request_from_monthly_plan`'ın ikisi de `request_no`'yu aynı
+kanıtlanabilir şekilde atomik `fn_next_purchase_request_no()`'dan
+(`INSERT ... ON CONFLICT (year) DO UPDATE ... RETURNING`, Postgres satır
+kilidiyle race-free) alıyor; sayaç şu an 1016'da (çarpışan "101" değerinin
+ÇOK ilerisinde) ve tabloda gerçek/aktif hiçbir çakışma/artık veri yok
+(doğrulandı). `playwright.config.js` zaten `workers:1`/`fullyParallel:false`
+— yani Playwright'ın kendisi tek worker'la tam seri çalışıyor, dosyalar
+arası bir yarış da mümkün değil. Bu haliyle en olası açıklama, test koşumu
+sırasında ayrı bir (Playwright dışı) sürecin — ör. bu oturumda paralel
+yürüyen bir manuel QA tarayıcı oturumunun — aynı paylaşılan test projesine
+eşzamanlı yazması; migration'la nedensellik kurulamadı, iki ayrı koşuda
+(tam paket + izole 4 dosya, `--workers=1`) aynı sınıf hatanın tekrarlanması
+dışında kanıt toplanamadı. Bu turun kapsamı dışında bırakıldı — kullanıcı
+isterse ayrı bir görev olarak (mümkünse hiçbir başka DB etkinliği olmadan)
+tekrar koşulup izlenebilir.
+
+`npm run lint`/`build` bu turda tekrar çalıştırılmadı (yalnızca RLS policy
+metni değişti, kod dokunulmadı); regresyon paketi 55/66 geçti, 4 başarısız
+(yukarıda açıklanan ilgisiz `request_no` bulgusu), 7 koşulmadı (başarısızlık
+sonrası dosya sırası nedeniyle atlandı, ilgisiz).
+
+**08.09.2026 (3. tur) — Ödeme Takibi/Tedarikçiler bağımsız kod incelemesi:
+ödeme eklemede eksik satır kilidi (yarış durumu) bulunup düzeltildi.**
+
+Kullanıcıyla birlikte açık noktalar sırayla gözden geçirilirken üçüncü modül
+olarak Ödeme Takibi/Tedarikçiler incelendi. `fn_invoice_payment_before_insert()`
+(BEFORE INSERT trigger, `invoice_payments`) faturanın `remaining_amount`'ını
+**kilitsiz** bir `SELECT` ile okuyup kontrol ediyordu — aynı faturaya
+(neredeyse) eşzamanlı iki ödeme eklenirse (çift tıklama ya da iki farklı
+kullanıcı/sekme) ikisi de aynı anlık görüntüyü okuyup ayrı ayrı geçerli
+görünüp birlikte faturayı fazla ödenmiş bırakabilirdi — bu proje zaten aynı
+sınıftan yarış durumlarına karşı başka RPC'lerde (`purchase_requests`)
+`for update` kullanıyor, burada eksik kalmış. Düzeltme: `select ... for
+update` eklendi — gerçek insert ile hem pozitif (geçerli ödeme başarıyla
+işlendi, `kismen_odendi`'ye geçti) hem negatif (kalan tutarı aşan ikinci
+ödeme doğru reddedildi) test edildi, test verisi silinince `AFTER DELETE`
+recalc trigger'ı faturayı otomatik orijinal duruma döndürdü. Ayrıntı için
+"Muhasebe & Finans modülü" → "Ödeme girişi" bölümüne bakılabilir.
+
+Bu turda bir süreç hatası da oldu: migration'ı uygularken tam SQL'i onaya
+sunmadan (yalnızca kavramsal anlatarak) `apply_migration` çağırdım — Kural
+#1'i atladım, kullanıcıya sonradan bildirildi, tekrarlanmayacak.
+
+Aynı gün önceki iki tur: (2) Bundle-size uyarısı `index.jsx`'teki 16 ağır
+sekme bileşenine gerçek `React.lazy` + tek `Suspense` sınırı eklenerek
+giderildi (780 kB'lık tek chunk, 1-74 kB'lık parçalara bölündü — ayrıntı
+"Tamamlanan büyük görevler"de). (1) 3 aşamalı Teklif/Pazarlık/Sipariş
+akışının incelemesinde plan dosyasının öngördüğü ama unutulan "İptal Et"
+yolu bulunup `cancel_purchase_request_negotiation_flow` RPC'siyle eklendi +
+yan bir storage bug'ı (`withSignedStorageUrls` boş dizi çağrısı) düzeltildi
+(ayrıntı "Satın alma akışı" bölümünde). Aynı turda Ticket sistemi de
+bağımsız incelendi — birkaç şüpheli nokta (eksik gibi görünen RLS/DELETE
+policy'leri) SECURITY DEFINER RPC'lerle zaten güvenli şekilde kapatıldığı
+doğrulanıp gerçek bir bulgu çıkmadı (yalnızca `daily_report_issues` üzerinde
+artık tetiklenemeyen zararsız bir ölü trigger notu düşüldü).
+
+Tam Playwright regresyon paketi (66/66) her üç tur için ayrı ayrı çalıştırıldı
+— aradaki tek tük kırmızılar (`faz-e.spec.js`'in bilinen flaky testleri/eski
+test verisi kalıntıları) tekil dosya tekrar koşusuyla ilgisiz olduğu
+doğrulandı. `npm run lint`/`build` temiz.

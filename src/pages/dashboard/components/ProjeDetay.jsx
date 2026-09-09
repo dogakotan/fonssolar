@@ -613,7 +613,7 @@ async function buildPeriodReportData(projectId, startDate, endDate) {
 }
 
 // ── Ana Bileşen ───────────────────────────────────────────────────────────────
-export default function ProjeDetay({ projectId, projectName, onBack, selectedDate, setSelectedDate, initialTab, onTabChange, initialReportId, onOpenedReport, initialChangeRequestId, onOpenedChangeRequest, openRequestId, onOpenedRequest, onSelectedRequestChange, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange, openTicketId, onOpenedTicket, onSelectedTicketChange }) {
+export default function ProjeDetay({ projectId, projectName, onBack, initialTab, onTabChange, initialReportId, onOpenedReport, initialChangeRequestId, onOpenedChangeRequest, openRequestId, onOpenedRequest, onSelectedRequestChange, openInvoiceId, onOpenedInvoice, onSelectedInvoiceChange, openTicketId, onOpenedTicket, onSelectedTicketChange }) {
   // Öncelik: açık deep-link (initialTab, ör. bildirimden gelme/URL) > projeye özel
   // localStorage'da kalıcı son seçim > "Genel Proje" — aksi halde başka bir menü
   // öğesine geçip aynı projeye geri dönüldüğünde (bileşen unmount/remount

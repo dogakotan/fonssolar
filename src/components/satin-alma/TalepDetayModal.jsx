@@ -52,6 +52,8 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
   const [showFaturaModal, setShowFaturaModal] = useState(false)
   const [supplierId, setSupplierId] = useState('')
   const [suppliers, setSuppliers] = useState([])
+  const [deliveryStatus, setDeliveryStatus] = useState('tam')
+  const [deliveryNote, setDeliveryNote] = useState('')
 
   async function reload() {
     const id = (data || request)?.id || talepId
@@ -111,6 +113,8 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
       const { error } = await supabase.rpc('complete_project_manager_purchase_request', {
         p_request_id: req.id,
         p_supplier_id: supplierIdArg || null,
+        p_delivery_status: deliveryStatus,
+        p_delivery_note: deliveryNote.trim() || null,
       })
       setSaving(false)
       if (error) {
@@ -188,6 +192,17 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                   <p style={LABEL}>Oluşturan</p>
                   <p style={{ ...VALUE, lineHeight: 1.35 }}>{requester}</p>
                 </div>
+                {req.delivery_status && (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <p style={LABEL}>Teslimat Durumu</p>
+                    <p style={{ ...VALUE, color: req.delivery_status === 'tam' ? '#16A34A' : '#DC2626' }}>
+                      {req.delivery_status === 'tam' ? 'Tam' : req.delivery_status === 'eksik' ? 'Eksik' : 'Hasarlı'}
+                    </p>
+                    {req.delivery_note && (
+                      <p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748B', whiteSpace: 'pre-wrap' }}>{req.delivery_note}</p>
+                    )}
+                  </div>
+                )}
               </div>
             </section>
 
@@ -331,7 +346,29 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
           </section>
 
           {canAct && (
-            <section style={{ ...CARD, padding: 12 }}>
+            <section style={{ ...CARD, padding: 12, display: 'grid', gap: 10 }}>
+              {canComplete && (
+                <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 10, alignItems: 'start' }}>
+                  <select
+                    value={deliveryStatus}
+                    onChange={event => { setDeliveryStatus(event.target.value); if (event.target.value === 'tam') setDeliveryNote('') }}
+                    style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '9px 10px', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', height: 38 }}
+                  >
+                    <option value="tam">Teslimat: Tam</option>
+                    <option value="eksik">Teslimat: Eksik</option>
+                    <option value="hasarli">Teslimat: Hasarlı</option>
+                  </select>
+                  {deliveryStatus !== 'tam' && (
+                    <input
+                      type="text"
+                      value={deliveryNote}
+                      onChange={event => setDeliveryNote(event.target.value)}
+                      placeholder="Eksik/hasarlı teslimat açıklaması (zorunlu)"
+                      style={{ border: '1px solid #D1D5DB', borderRadius: 8, padding: '9px 10px', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                    />
+                  )}
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: canComplete ? '1fr 150px 120px 120px' : '1fr 120px 120px', gap: 10, alignItems: 'center' }}>
                 <span style={{ color: '#64748B', fontSize: 12.5 }}>
                   {canReview ? 'Yönetici kararını bu talep üzerinden verebilir.' : 'Proje yöneticisi işlemi tamamlayabilir veya talebi reddedebilir.'}
@@ -347,7 +384,11 @@ export default function TalepDetayModal({ request, talepId, materialPlan = empty
                   </select>
                 )}
                 <button onClick={() => updateStatus(canReview ? 'reddedildi' : 'iptal')} disabled={saving || !note.trim()} style={{ background: '#FEF2F2', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: (saving || !note.trim()) ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: (saving || !note.trim()) ? 0.6 : 1 }}>Reddet</button>
-                <button onClick={() => updateStatus(canReview ? 'onaylandi' : 'satin_alindi', supplierId)} disabled={saving} style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
+                <button
+                  onClick={() => updateStatus(canReview ? 'onaylandi' : 'satin_alindi', supplierId)}
+                  disabled={saving || (canComplete && deliveryStatus !== 'tam' && !deliveryNote.trim())}
+                  style={{ background: '#16A34A', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', opacity: (saving || (canComplete && deliveryStatus !== 'tam' && !deliveryNote.trim())) ? 0.6 : 1 }}
+                >
                   {saving ? 'Kaydediliyor…' : canReview ? 'Onayla' : 'Tamamlandı'}
                 </button>
               </div>

@@ -10,7 +10,7 @@ import TalepDetayModal from '../../../components/satin-alma/TalepDetayModal'
 import FaturaOlusturModal from '../../../components/satin-alma/FaturaOlusturModal'
 import { ProcessStageHoverBox } from '../../../components/satin-alma/ProcessStageHoverBox'
 import Pager from '../../../components/ui/Pager'
-import { toNumber, materialKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
+import { toNumber, materialKey, materialMatchKey, normalizeStatus, materialName, riskState, groupByProjectId, isAwaitingInvoice } from '../../../utils/satinAlma'
 import { requestNo } from '../../../utils/purchaseRequestNo'
 
 // Yeni 3 aşamalı akışın 4 ara durumu (teklif_toplama/pazarlik_onay_bekliyor/
@@ -211,8 +211,9 @@ export default function TabSatinAlmaTalepListesi({
     const plan = new Map()
     procurement.forEach(material => {
       const key = materialKey(materialName(material))
-      if (!key) return
-      plan.set(key, toNumber(material.planned_qty ?? material.planned_quantity ?? material.quantity))
+      const qty = toNumber(material.planned_qty ?? material.planned_quantity ?? material.quantity)
+      if (key) plan.set(key, qty)
+      plan.set(`id:${material.id}`, qty)
     })
     setMaterialPlan(plan)
   }, [projectId, procurement])
@@ -245,7 +246,7 @@ export default function TabSatinAlmaTalepListesi({
       const totals = new Map()
       rows.filter(row => normalizeStatus(row.status) === 'bekliyor').forEach(row => {
         ;(row.items || []).forEach(item => {
-          const key = materialKey(item.name)
+          const key = materialMatchKey(item)
           if (!key) return
           totals.set(key, (totals.get(key) || 0) + toNumber(item.quantity))
         })
@@ -256,8 +257,9 @@ export default function TabSatinAlmaTalepListesi({
         const plan = new Map()
         ;(materialResult?.data || []).forEach(material => {
           const key = materialKey(materialName(material))
-          if (!key) return
-          plan.set(key, toNumber(material.planned_quantity ?? material.quantity))
+          const qty = toNumber(material.planned_quantity ?? material.quantity)
+          if (key) plan.set(key, qty)
+          plan.set(`id:${material.id}`, qty)
         })
         setMaterialPlan(plan)
       }
@@ -275,8 +277,9 @@ export default function TabSatinAlmaTalepListesi({
       const plan = new Map()
       group.rows.forEach(material => {
         const key = materialKey(materialName(material))
-        if (!key) return
-        plan.set(key, toNumber(material.planned_qty ?? material.planned_quantity ?? material.quantity))
+        const qty = toNumber(material.planned_qty ?? material.planned_quantity ?? material.quantity)
+        if (key) plan.set(key, qty)
+        plan.set(`id:${material.id}`, qty)
       })
       materialPlanByProject.set(groupProjectId, plan)
     })
@@ -285,7 +288,7 @@ export default function TabSatinAlmaTalepListesi({
       const totals = new Map()
       group.rows.forEach(row => {
         ;(row.items || []).forEach(item => {
-          const key = materialKey(item.name)
+          const key = materialMatchKey(item)
           if (!key) return
           totals.set(key, (totals.get(key) || 0) + toNumber(item.quantity))
         })
@@ -554,6 +557,14 @@ export default function TabSatinAlmaTalepListesi({
                         </ProcessStageHoverBox>
                       ) : (
                         <ProcessStatusBadge status={request.status} isSiteChief={siteChiefView} />
+                      )}
+                      {['eksik', 'hasarli'].includes(request.delivery_status) && (
+                        <span
+                          title={request.delivery_note || ''}
+                          style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 6, padding: '1px 6px' }}
+                        >
+                          {request.delivery_status === 'eksik' ? 'Eksik Teslimat' : 'Hasarlı Teslimat'}
+                        </span>
                       )}
                     </td>
                     {showActions && (

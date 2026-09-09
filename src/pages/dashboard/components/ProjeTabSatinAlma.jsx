@@ -6,7 +6,7 @@ import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/u
 import TabSatinAlmaTalepListesi from './TabSatinAlmaTalepListesi'
 import TabSatinAlmaOnayKuyrugu from './TabSatinAlmaOnayKuyrugu'
 import ProjeTabAylikPlan from './ProjeTabAylikPlan'
-import ProjeTabFaturaKesilecekler from './ProjeTabFaturaKesilecekler'
+import ProjeTabFaturaKesilecekler, { BekleyenDegisikliklerPanel } from './ProjeTabFaturaKesilecekler'
 import ProjeTabRiskler from './ProjeTabRiskler'
 import { buildMaterialListRows } from '../../../utils/satinAlma'
 
@@ -65,6 +65,13 @@ export default function ProjeTabSatinAlma({
   // buraya taşınana kadar bu hesaplama ProjeTabMalzemeListesi.jsx'te ayrı bir
   // get_satin_alma_overview çağrısıyla yapılıyordu (aynı veri iki kez çekiliyordu);
   // artık burada zaten yüklü olan `overview`'dan türetiliyor.
+  // "Onaylar" alt-sekmesi (09.09.2026, kullanıcı isteği — Riskler'in yanına) —
+  // Malzeme Listesi'ndeki BekleyenDegisikliklerPanel banner'ıyla AYNI mantık
+  // (bkz. ProjeTabFaturaKesilecekler.jsx'teki canReviewItem): admin her zaman,
+  // proje yöneticisi yalnızca approver_role kendisine düşen talepleri görür/onaylar.
+  const reviewablePendingChanges = pendingChanges.filter(item =>
+    isAdmin || (role === 'proje_yoneticisi' && item?.approver_role === 'proje_yoneticisi')
+  )
   const overviewRequests = overview?.requests || []
   const materialDateBoundary = new Date((filterDate || new Date().toISOString().split('T')[0]) + 'T23:59:59')
   const materialRequestsUntilDate = overviewRequests.filter(request => !request.created_at || new Date(request.created_at) <= materialDateBoundary)
@@ -104,6 +111,10 @@ export default function ProjeTabSatinAlma({
     ...(canManageProcurement ? [{ key: 'aylik-plan', label: 'Aylık Satın Alma Planı' }] : []),
     { key: 'malzeme', label: 'Malzeme Listesi' },
     { key: 'riskler', label: 'Riskler' },
+    // Malzeme değişikliği/ekleme onay kuyruğu — "Onay Bekleyenler"den (yalnızca admin,
+    // eski satın alma talebi zinciri için) ayrı: bu proje yöneticisine de açık, çünkü
+    // approver_role artık bazı talepleri ona yönlendiriyor (bkz. 09.09.2026 değişikliği).
+    ...(canManageProcurement ? [{ key: 'onaylar', label: 'Onaylar' }] : []),
   ]
 
   // localStorage'dan gelen sekme farklı bir rolden/görünümden kalmış olabilir —
@@ -161,6 +172,8 @@ export default function ProjeTabSatinAlma({
           projectId={projectId}
           openChangeRequestId={openChangeRequestId}
           onOpenedChangeRequest={onOpenedChangeRequest}
+          requests={materialRequestsUntilDate}
+          procurement={procurement}
         />
       )}
       {tab === 'riskler' && (
@@ -183,6 +196,9 @@ export default function ProjeTabSatinAlma({
       )}
       {tab === 'aylik-plan' && canManageProcurement && (
         <ProjeTabAylikPlan projectId={projectId} onOpenRequest={openLinkedRequest} />
+      )}
+      {tab === 'onaylar' && canManageProcurement && (
+        <BekleyenDegisikliklerPanel items={reviewablePendingChanges} onReviewed={refresh} />
       )}
     </div>
   )

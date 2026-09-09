@@ -19,6 +19,7 @@ const noStoreFetch = (url, options = {}) => fetch(url, { ...options, cache: 'no-
 export const supabase = createClient(
   supabaseUrl || 'https://missing-supabase-url.supabase.co',
   supabaseAnonKey || 'missing-supabase-anon-key',
+  { global: { fetch: noStoreFetch } },
 )
 
 export const signIn = (email, password) =>

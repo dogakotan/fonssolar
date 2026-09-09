@@ -167,7 +167,7 @@ Sayıları Türk Lirası formatında yaz (örn: 4.250.000 ₺). Türkçe yaz. K�
 ]
 
 // Sekme (tab) bazlı varsayılan + öne çıkan ajanlar
-export const TAB_AGENTS = {
+const TAB_AGENTS = {
   genel:        { default: 'proje_koordinator', featured: ['proje_koordinator', 'santiye_sefi', 'maliyet'] },
   projeler:     { default: 'proje_koordinator', featured: ['proje_koordinator', 'kurulum_sefi', 'evrak_takip'] },
   'is-plani':   { default: 'kurulum_sefi',      featured: ['kurulum_sefi', 'mekanik_sef', 'proje_koordinator'] },

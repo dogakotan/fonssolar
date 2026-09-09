@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../context/AuthContext'
 import { toUserMessage as translateError } from '../../../utils/errors'
 import { useHighlightRow } from '../../../hooks/useHighlightRow'
 import { useToast } from '../../../hooks/useToast'
 import Toast from '../../../components/ui/Toast'
+import { suggestBomMatches } from '../../../utils/satinAlma'
 const ROW_HEIGHT = 44
 const HEADER_HEIGHT = 24
 
@@ -34,73 +35,6 @@ const formatQty = (value) =>
 
 function toUserMessage(error) {
   return translateError(error, { fallback: err => err?.message || 'Kaydedilemedi. Lütfen tekrar deneyin.' })
-}
-
-function MiktarDuzenleModal({ row, onClose, onSaved }) {
-  const [newQty, setNewQty] = useState(row.planned || 0)
-  const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true)
-    setErr('')
-    const { error } = await supabase.rpc('create_procurement_item_change_request', {
-      p_procurement_item_id: row.id,
-      p_new_planned_qty: Number(newQty),
-      p_note: note.trim() || null,
-    })
-    setSaving(false)
-    if (error) { setErr(toUserMessage(error)); return }
-    onSaved()
-    onClose()
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.42)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
-      <div style={{ background: '#fff', borderRadius: 16, padding: 28, width: 440 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-          <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827', margin: 0 }}>Planlanan Miktarı Değiştir</h3>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: '#6B7280', cursor: 'pointer', lineHeight: 1 }}>✕</button>
-        </div>
-        <p style={{ margin: '0 0 20px', fontSize: 12.5, color: '#64748B' }}>
-          {row.material} için yeni planlanan miktarı girin. Bu talep yönetici onayına düşer, onaylanana kadar mevcut miktar geçerli kalır.
-        </p>
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Mevcut Miktar</label>
-              <div style={{ padding: '8px 12px', fontSize: 14, color: '#6B7280', background: '#F9FAFB', borderRadius: 8 }}>{formatQty(row.planned)} {row.unit}</div>
-            </div>
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Yeni Miktar *</label>
-              <input required type="number" min="0.01" step="0.01" value={newQty} onChange={e => setNewQty(e.target.value)}
-                style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
-            </div>
-          </div>
-
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ fontSize: 12, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Gerekçe</label>
-            <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Neden değişiyor..."
-              style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none', resize: 'vertical', minHeight: 60 }} />
-          </div>
-
-          {err && <p style={{ color: '#EF4444', fontSize: 13, marginBottom: 12 }}>{err}</p>}
-
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <button type="button" onClick={onClose} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
-              Vazgeç
-            </button>
-            <button type="submit" disabled={saving} style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 20px', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
-              {saving ? 'Gönderiliyor…' : 'Onaya Gönder'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
 }
 
 export const MALZEME_KATEGORI_OPTS = [
@@ -205,7 +139,81 @@ function YeniMalzemeEkleModal({ projectId, onClose, onSaved }) {
   )
 }
 
-function BekleyenDegisikliklerPanel({ items, onReviewed }) {
+// Bir talep kalemi serbest metinle girildiği için BOM'daki gerçek kalemle isim
+// bazlı eşleşmiyorsa (materialMatchKey) hem bu kalemin "Listede Yok" görünmesine
+// hem de Malzeme Listesi'ndeki Gönderilen/Kalan miktarların yanlış hesaplanmasına
+// yol açar. Bu panel her böyle kalem için BOM'daki en olası adayı (isim benzerliği)
+// önerir — kullanıcı onaylarsa link_purchase_request_item_to_bom ile kalıcı
+// (bom_item_id) bağlanır, reddederse yalnızca bu oturumda gizlenir (kalıcı bir
+// "bu öneriyi bir daha gösterme" kaydı tutulmaz — sayfa yenilenince aynı eşik
+// üstü aday varsa tekrar önerilir, bu bilinçli bir sadeleştirme).
+function EslestirmeOnerileriPanel({ suggestions, onLinked }) {
+  const [busyId, setBusyId] = useState(null)
+  const [dismissed, setDismissed] = useState(() => new Set())
+  const [errorById, setErrorById] = useState({})
+  const visible = suggestions.filter(s => !dismissed.has(s.itemId))
+  if (visible.length === 0) return null
+
+  async function approve(suggestion) {
+    setBusyId(suggestion.itemId)
+    setErrorById(m => ({ ...m, [suggestion.itemId]: '' }))
+    const { error } = await supabase.rpc('link_purchase_request_item_to_bom', {
+      p_item_id: suggestion.itemId,
+      p_procurement_item_id: suggestion.candidateId,
+    })
+    setBusyId(null)
+    if (error) { setErrorById(m => ({ ...m, [suggestion.itemId]: toUserMessage(error) })); return }
+    onLinked?.()
+  }
+
+  function dismiss(itemId) {
+    setDismissed(prev => new Set(prev).add(itemId))
+  }
+
+  return (
+    <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
+      <h4 style={{ margin: '0 0 4px', fontSize: 12.5, fontWeight: 700, color: '#1E40AF' }}>
+        Eşleştirme Önerileri ({visible.length})
+      </h4>
+      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: '#3730A3' }}>
+        Bu talep kalemleri Malzeme Listesi'ndeki hiçbir kalemle isim olarak birebir
+        eşleşmiyor ama şuna benziyor olabilir — onaylarsanız kalıcı olarak bağlanır.
+      </p>
+      <div style={{ display: 'grid', gap: 10 }}>
+        {visible.map(s => (
+          <div key={s.itemId} style={{ background: '#fff', border: '1px solid #BFDBFE', borderRadius: 8, padding: '10px 12px', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#111827' }}>
+                "{s.typedName}" ({formatQty(s.quantity)} {s.unit}) <span style={{ color: '#94A3B8', fontWeight: 500 }}>→ belki:</span> {s.candidateName}
+              </p>
+              <p style={{ margin: '2px 0 0', fontSize: 11.5, color: '#6B7280' }}>
+                {s.requestNo || s.requestTitle || 'Talep'} · benzerlik %{Math.round(s.score * 100)}
+              </p>
+              {errorById[s.itemId] && <p style={{ margin: '4px 0 0', fontSize: 11.5, color: '#DC2626' }}>{errorById[s.itemId]}</p>}
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button onClick={() => approve(s)} disabled={busyId === s.itemId}
+                style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Onayla
+              </button>
+              <button onClick={() => dismiss(s.itemId)} disabled={busyId === s.itemId}
+                style={{ background: '#F3F4F6', color: '#6B7280', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Yoksay
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Ayrıca "Satın Alma > Onaylar" alt-sekmesinde (ProjeTabSatinAlma.jsx) tek başına
+// kullanılabilsin diye export edildi — o sekme yalnızca bu paneli, bu dosyanın Malzeme
+// Listesi tablosu olmadan gösterir (iki yerde de aynı review_procurement_item_change_request
+// aksiyonu, farklı bağlamda — bkz. BekleyenDegisikliklerPanel'in tek kalem üzerindeki eşdeğeri
+// olan MalzemeDetayModal için yukarıdaki yorum).
+export function BekleyenDegisikliklerPanel({ items, onReviewed }) {
   const [busyId, setBusyId] = useState(null)
   const [noteById, setNoteById] = useState({})
 
@@ -335,13 +343,37 @@ function MiktarArtisiRozeti({ pendingChange, unit }) {
   )
 }
 
-function MalzemeGecmisiModal({ row, projectId, onClose }) {
+// Malzeme satırına tıklanınca açılan tek modal — önce detay (stat kartları),
+// ardından (varsa) bekleyen değişikliğin onay/red kısmı ya da (yoksa ve
+// canRequest ise) yeni bir revizyon talebi açan inline form, en altta da
+// onaylanmış değişikliklerin geçmişi. Öncesinde bu üçü ayrı yerlerdeydi
+// (satır-içi "Düzenle" butonu → ayrı MiktarDuzenleModal, üstteki admin-only
+// BekleyenDegisikliklerPanel, ve bu modal yalnızca geçmişi gösteriyordu) —
+// kullanıcı isteğiyle (07.09.2026) malzemeye tıklayınca hepsi tek yerde.
+// BekleyenDegisikliklerPanel (tüm kalemleri tek ekranda toplu taramak için)
+// artık burada değil, Satın Alma'nın "Onaylar" alt-sekmesinde (09.09.2026,
+// kullanıcı isteği) — bu modal aynı onay/red aksiyonunu tek bir kalem
+// bağlamında hâlâ sunar, o an incelenen kalem için ayrı sekmeye gitmeye gerek
+// kalmasın diye.
+function MalzemeDetayModal({ row, projectId, pendingChange, canRequest, canReview, onClose, onSaved }) {
   const [timeline, setTimeline] = useState([])
   const [loading, setLoading] = useState(true)
   const [historyError, setHistoryError] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
+
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [newQty, setNewQty] = useState(row.planned || 0)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [submitErr, setSubmitErr] = useState('')
+
+  const [reviewNote, setReviewNote] = useState('')
+  const [reviewBusy, setReviewBusy] = useState(false)
+  const [reviewErr, setReviewErr] = useState('')
 
   useEffect(() => {
     let alive = true
+    setLoading(true)
     Promise.all([
       // Yalnızca onaylanmış (dolayısıyla stok durumunu gerçekten değiştirmiş) talepler —
       // reddedilenler burada gösterilmez, hiçbir şeyi değiştirmediler.
@@ -372,7 +404,38 @@ function MalzemeGecmisiModal({ row, projectId, onClose }) {
       setLoading(false)
     })
     return () => { alive = false }
-  }, [row.id, row.material, projectId])
+  }, [row.id, row.material, projectId, reloadKey])
+
+  async function submitChange(e) {
+    e.preventDefault()
+    setSaving(true)
+    setSubmitErr('')
+    const { error } = await supabase.rpc('create_procurement_item_change_request', {
+      p_procurement_item_id: row.id,
+      p_new_planned_qty: Number(newQty),
+      p_note: note.trim() || null,
+    })
+    setSaving(false)
+    if (error) { setSubmitErr(toUserMessage(error)); return }
+    setShowEditForm(false)
+    setNote('')
+    onSaved?.()
+  }
+
+  async function review(approve) {
+    setReviewBusy(true)
+    setReviewErr('')
+    const { error } = await supabase.rpc('review_procurement_item_change_request', {
+      p_id: pendingChange.id,
+      p_approve: approve,
+      p_review_note: reviewNote.trim() || null,
+    })
+    setReviewBusy(false)
+    if (error) { setReviewErr(toUserMessage(error)); return }
+    setReviewNote('')
+    onSaved?.()
+    setReloadKey(k => k + 1)
+  }
 
   return (
     <div onMouseDown={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1100, padding: 18, background: 'rgba(15, 23, 42, .42)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -380,7 +443,7 @@ function MalzemeGecmisiModal({ row, projectId, onClose }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, marginBottom: 18 }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 18, color: '#111827' }}>{row.material}</h3>
-            <p style={{ margin: '5px 0 0', fontSize: 12.5, color: '#64748B' }}>Malzeme miktarı ve değişim geçmişi</p>
+            <p style={{ margin: '5px 0 0', fontSize: 12.5, color: '#64748B' }}>Malzeme detayı, revizyon ve değişim geçmişi</p>
           </div>
           <button onClick={onClose} style={{ border: 0, background: 'none', color: '#64748B', fontSize: 22, cursor: 'pointer' }}>×</button>
         </div>
@@ -398,10 +461,83 @@ function MalzemeGecmisiModal({ row, projectId, onClose }) {
           ))}
         </div>
 
+        {pendingChange ? (
+          <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '12px 14px', marginBottom: 20 }}>
+            <h4 style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700, color: '#92400E' }}>Bekleyen Değişiklik</h4>
+            <p style={{ margin: '0 0 4px', fontSize: 13.5, fontWeight: 700, color: '#111827' }}>
+              {formatQty(pendingChange.old_planned_qty)} → {formatQty(pendingChange.new_planned_qty)} {row.unit}
+            </p>
+            <p style={{ margin: '0 0 10px', fontSize: 12, color: '#78716C' }}>
+              {pendingChange.requester_name || 'Proje yöneticisi'} · {pendingChange.note || 'Gerekçe girilmedi'}
+            </p>
+            {canReview ? (
+              <>
+                <input
+                  type="text" placeholder="Not (opsiyonel)" value={reviewNote} onChange={e => setReviewNote(e.target.value)}
+                  style={{ width: '100%', border: '1px solid #FDE68A', borderRadius: 6, padding: '6px 9px', fontSize: 12.5, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box', marginBottom: 8, background: '#fff' }}
+                />
+                {reviewErr && <p style={{ margin: '0 0 8px', color: '#EF4444', fontSize: 12 }}>{reviewErr}</p>}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => review(true)} disabled={reviewBusy}
+                    style={{ background: '#D1FAE5', color: '#065F46', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Onayla
+                  </button>
+                  <button onClick={() => review(false)} disabled={reviewBusy}
+                    style={{ background: '#FEE2E2', color: '#991B1B', border: 'none', borderRadius: 6, padding: '6px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Reddet
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p style={{ margin: 0, fontSize: 12, color: '#78716C', fontStyle: 'italic' }}>Yönetici onayı bekleniyor.</p>
+            )}
+          </div>
+        ) : canRequest && (
+          <div style={{ marginBottom: 20 }}>
+            {!showEditForm ? (
+              <button onClick={() => setShowEditForm(true)}
+                style={{ background: '#EFF6FF', color: '#185FA5', border: 'none', borderRadius: 7, padding: '7px 14px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                Planlanan Miktarı Değiştir
+              </button>
+            ) : (
+              <form onSubmit={submitChange} style={{ background: '#F8FAFC', border: '1px solid var(--color-border-md)', borderRadius: 10, padding: 14 }}>
+                <h4 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: '#334155' }}>Miktarı Revize Et</h4>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ fontSize: 11.5, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Mevcut Miktar</label>
+                    <div style={{ padding: '7px 10px', fontSize: 13, color: '#6B7280', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 7 }}>{formatQty(row.planned)} {row.unit}</div>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 11.5, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Yeni Miktar *</label>
+                    <input required type="number" min="0.01" step="0.01" value={newQty} onChange={e => setNewQty(e.target.value)}
+                      style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 7, padding: '7px 10px', fontSize: 13, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none' }} />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 500, color: '#6B7280', display: 'block', marginBottom: 4 }}>Gerekçe</label>
+                  <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Neden değişiyor..."
+                    style={{ width: '100%', border: '1px solid #E5E7EB', borderRadius: 7, padding: '7px 10px', fontSize: 12.5, fontFamily: 'inherit', boxSizing: 'border-box', outline: 'none', resize: 'vertical', minHeight: 52 }} />
+                </div>
+                {submitErr && <p style={{ color: '#EF4444', fontSize: 12.5, marginBottom: 10 }}>{submitErr}</p>}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button type="button" onClick={() => { setShowEditForm(false); setSubmitErr('') }}
+                    style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 7, padding: '7px 14px', fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Vazgeç
+                  </button>
+                  <button type="submit" disabled={saving}
+                    style={{ background: '#185FA5', color: '#fff', border: 'none', borderRadius: 7, padding: '7px 16px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', opacity: saving ? 0.7 : 1 }}>
+                    {saving ? 'Gönderiliyor…' : 'Onaya Gönder'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        )}
+
         {loading ? <p style={{ color: '#64748B', fontSize: 13 }}>Geçmiş yükleniyor…</p> : (
           <>
             {historyError && <p style={{ margin: '0 0 12px', padding: '8px 10px', borderRadius: 8, background: '#FEF2F2', color: '#991B1B', fontSize: 12 }}>{historyError}</p>}
-            <h4 style={{ margin: '0 0 9px', fontSize: 13, color: '#334155' }}>Değişiklik Geçmişi</h4>
+            <h4 style={{ margin: '0 0 9px', fontSize: 13, color: '#334155' }}>Onaylanan Değişiklikler</h4>
             {timeline.length === 0 ? <p style={{ margin: 0, color: '#94A3B8', fontSize: 12.5 }}>Bu kalem için stok değişikliği kaydı yok.</p> : timeline.map(event => {
               if (event.kind === 'adjustment') {
                 const adjustment = event.data
@@ -432,13 +568,15 @@ function MalzemeGecmisiModal({ row, projectId, onClose }) {
   )
 }
 
-export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pendingChanges = [], onPendingChanged, projectId, openChangeRequestId, onOpenedChangeRequest }) {
+export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pendingChanges = [], onPendingChanged, projectId, openChangeRequestId, onOpenedChangeRequest, requests = [], procurement = [] }) {
   const { isAdmin, role } = useAuth()
-  const [editingRow, setEditingRow] = useState(null)
   const [detailRow, setDetailRow] = useState(null)
   const [showNewMaterial, setShowNewMaterial] = useState(false)
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  // "Değişiklik Talep Eden" filtresi (09.09.2026, kullanıcı isteği) — bekleyen bir
+  // değişiklik/ekleme talebi olan kalemleri talebi açan kişiye göre ayırt edebilmek için.
+  const [requesterFilter, setRequesterFilter] = useState('')
   // Kategori başlıklarına tıklanınca o grup kapanıp açılabilsin diye (04.09.2026,
   // kullanıcı isteği) — kapalı olan kategori adlarının kümesi. Varsayılan: hepsi açık.
   const [collapsedCategories, setCollapsedCategories] = useState(() => new Set())
@@ -452,9 +590,18 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
   }
 
   const canRequest = isAdmin || role === 'proje_yoneticisi'
-  const canReview = isAdmin
+  // Bir talebin onaylayıcısı artık her zaman admin değil — talebi açan hesaba göre
+  // create_procurement_item_change_request/create_procurement_item_add_request'in
+  // belirlediği approver_role'e bağlı (bkz. 09.09.2026 değişikliği: Osman Karadoğan/
+  // Cem Aslan admin hesaplarından açılan talepler proje yöneticisine düşer). Admin
+  // gözetim amacıyla her zaman onaylayabilir (fatura onay akışındaki desenle aynı).
+  const canReviewItem = (item) => isAdmin || (role === 'proje_yoneticisi' && item?.approver_role === 'proje_yoneticisi')
   const pending = canRequest ? pendingChanges : []
   const { toast, showToast } = useToast()
+  const bomMatchSuggestions = useMemo(
+    () => (canRequest ? suggestBomMatches(requests, procurement) : []),
+    [canRequest, requests, procurement]
+  )
 
   // Bildirimler'den bir malzeme miktarı değişikliği bildirimine tıklanınca artık modal
   // açmıyoruz (04.09.2026, kullanıcı kararı — öncesinde doğrudan MalzemeGecmisiModal
@@ -522,12 +669,23 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
     addedQty: 0,
     addedViaCount: 0,
     isPendingNew: true,
+    requesterName: item.requester_name || null,
   }))
+  const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
+  // "Değişiklik Talep Eden" filtresi (09.09.2026, kullanıcı isteği) — bir kalemin
+  // bekleyen değişiklik/ekleme talebini kimin açtığını satır bazında bulup, seçilen
+  // kişiye göre listeyi daraltır (yeni malzeme satırları için requesterName zaten
+  // yukarıda taşınıyor, mevcut kalemler için pendingByItemId'den okunur).
+  function rowRequesterName(row) {
+    return row.isPendingNew ? row.requesterName : (pendingByItemId.get(row.id)?.requester_name || null)
+  }
+  const pendingRequesterNames = [...new Set(pending.map(p => p.requester_name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr'))
   const searchTerm = search.trim().toLocaleLowerCase('tr')
   const allRowsUnfiltered = [...pendingNewRows, ...rows]
   const allRows = allRowsUnfiltered
     .filter(row => !searchTerm || (row.material || '').toLocaleLowerCase('tr').includes(searchTerm))
     .filter(row => !categoryFilter || row.category === categoryFilter)
+    .filter(row => !requesterFilter || rowRequesterName(row) === requesterFilter)
 
   // Kategoriler artık ayrı bir sütunda değil, Aylık Satın Alma Planı'yla aynı desende
   // (bkz. ProjeTabAylikPlan.jsx'teki FragmentGroup) bir grup başlığı satırıyla belli
@@ -539,8 +697,6 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
     .sort((a, b) => (categoryIndex[a] ?? 99) - (categoryIndex[b] ?? 99) || a.localeCompare(b, 'tr'))
   const sortedRows = groupKeys.flatMap(key => allRows.filter(row => (row.category || 'Diğer') === key))
   const groupCounts = new Map(groupKeys.map(key => [key, sortedRows.filter(row => (row.category || 'Diğer') === key).length]))
-
-  const pendingByItemId = new Map(pending.map(p => [p.procurement_item_id, p]))
 
   const { highlightedId, rowRef } = useHighlightRow(highlightItemId, sortedRows, r => r.id, () => {
     setHighlightItemId(null)
@@ -559,10 +715,12 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
         }
         .malz-tt-group:hover .malz-tt-bubble { visibility: visible; opacity: 1; }
       `}</style>
-      {/* Bekleyen değişiklik yokken "Bekleyen miktar değişikliği bulunmuyor" banner'ı
-          hiçbir bilgi taşımadan sayfada boşuna ~80px yer kaplıyordu — sığdırma
-          isteğiyle yalnızca gerçekten bekleyen bir şey varsa gösteriliyor artık. */}
-      {canReview && pending.length > 0 && <BekleyenDegisikliklerPanel items={pending} onReviewed={onPendingChanged} />}
+      {/* Bekleyen miktar değişikliklerinin toplu onay/red banner'ı buradan kaldırıldı
+          (09.09.2026, kullanıcı isteği) — artık yalnızca Satın Alma'nın "Onaylar"
+          alt-sekmesinde (bkz. ProjeTabSatinAlma.jsx, BekleyenDegisikliklerPanel oradan
+          da render ediliyor). Tek bir kalemin bekleyen değişikliğini onaylamak hâlâ
+          mümkün — o kalemin satırına tıklayıp MalzemeDetayModal'daki inline aksiyondan. */}
+      {canRequest && bomMatchSuggestions.length > 0 && <EslestirmeOnerileriPanel suggestions={bomMatchSuggestions} onLinked={onPendingChanged} />}
 
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -586,6 +744,19 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
+          {pendingRequesterNames.length > 0 && (
+            <select
+              value={requesterFilter}
+              onChange={e => setRequesterFilter(e.target.value)}
+              title="Bekleyen bir değişiklik/ekleme talebi olan kalemleri talep edene göre filtrele"
+              style={{ fontSize: 12, padding: '6px 10px', borderRadius: 7, border: '1px solid var(--color-border-md)', color: 'var(--color-text)', background: 'var(--color-surface)', fontFamily: 'inherit', cursor: 'pointer' }}
+            >
+              <option value="">Tüm Değişiklik Talep Edenler</option>
+              {pendingRequesterNames.map(name => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          )}
           {canRequest && (
             <button onClick={() => setShowNewMaterial(true)} style={{ background: 'var(--color-primary)', color: '#fff', border: 0, borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               + Yeni Malzeme
@@ -597,7 +768,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>Yükleniyor…</div>
         ) : allRows.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: 'var(--color-muted-light)', fontSize: 14 }}>
-            {(searchTerm || categoryFilter) ? 'Aramanızla/filtrenizle eşleşen malzeme bulunamadı.' : 'Bu projeye ait malzeme listesi henüz eklenmemiş.'}
+            {(searchTerm || categoryFilter || requesterFilter) ? 'Aramanızla/filtrenizle eşleşen malzeme bulunamadı.' : 'Bu projeye ait malzeme listesi henüz eklenmemiş.'}
           </div>
         ) : (
           <>
@@ -610,7 +781,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>
               <thead>
                 <tr>
-                  {['MALZEME', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN', ...(canRequest ? ['İŞLEM'] : []), ''].map((h, i) => (
+                  {['MALZEME', 'PLANLANAN MİKTAR', 'PROJE İÇİN GÖNDERİLEN', 'GÖNDERİLMESİ GEREKEN', ''].map((h, i) => (
                     <th key={h || `col-${i}`} style={{ ...TH, background: 'var(--color-surface)', boxShadow: 'inset 0 -1px 0 0 var(--color-border-md)', width: h ? undefined : 28 }}>{h}</th>
                   ))}
                 </tr>
@@ -620,7 +791,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
                   const rowCategory = row.category || 'Diğer'
                   const showCategoryHeader = idx === 0 || rowCategory !== (sortedRows[idx - 1].category || 'Diğer')
                   const isCollapsed = collapsedCategories.has(rowCategory)
-                  const totalColumns = 4 + (canRequest ? 1 : 0) + 1
+                  const totalColumns = 5
                   const categoryHeader = showCategoryHeader && (
                     <tr onClick={() => toggleCategory(rowCategory)} style={{ cursor: 'pointer' }}>
                       <td colSpan={totalColumns} style={{ padding: '7px 14px', background: 'var(--color-bg)', fontSize: 10.5, fontWeight: 700, color: 'var(--color-text-sub)', textTransform: 'uppercase', letterSpacing: '0.35px', borderBottom: '1px solid var(--color-border)', borderTop: idx === 0 ? 'none' : '1px solid var(--color-border)' }}>
@@ -641,7 +812,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
                         {categoryHeader}
                         <tr style={{ borderBottom: '1px solid var(--color-border)', background: '#FFFBEB' }}>
                           <MaterialNameCell name={row.material} style={{ fontWeight: 600, color: 'var(--color-text)' }} />
-                          <td style={TD} colSpan={canRequest ? 3 : 2}>
+                          <td style={TD} colSpan={4}>
                             <span style={{ fontSize: 10.5, lineHeight: 1.4, fontWeight: 700, color: '#92400E', background: '#FEF3C7', border: '1px solid #FDE68A', borderRadius: 20, padding: '2px 8px', display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap' }}>
                               Yeni Malzeme — Onay Bekliyor: {formatQty(row.planned)} {row.unit}
                             </span>
@@ -683,23 +854,6 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
                     <td style={{ ...TD, fontWeight: 700, color: row.required > 0 ? 'var(--color-warning)' : 'var(--color-success)' }}>
                       {formatQty(row.required)} {row.unit}
                     </td>
-                    {canRequest && (
-                      <td style={{ ...TD, whiteSpace: 'nowrap' }}>
-                        <button
-                          onClick={e => { e.stopPropagation(); setEditingRow(row) }}
-                          disabled={!!pendingChange}
-                          title={pendingChange ? 'Bu kalem için zaten bekleyen bir talep var' : ''}
-                          style={{
-                            background: pendingChange ? '#F3F4F6' : '#EFF6FF',
-                            color: pendingChange ? '#9CA3AF' : '#185FA5',
-                            border: 'none', borderRadius: 6, padding: '5px 10px', fontSize: 12, fontWeight: 600,
-                            cursor: pendingChange ? 'default' : 'pointer', fontFamily: 'inherit',
-                          }}
-                        >
-                          Düzenle
-                        </button>
-                      </td>
-                    )}
                     <td style={{ ...TD, textAlign: 'center' }}>
                       {row.hasHistory && (
                         <span
@@ -723,14 +877,17 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
         )}
       </div>
 
-      {editingRow && (
-        <MiktarDuzenleModal
-          row={editingRow}
-          onClose={() => setEditingRow(null)}
+      {detailRow && (
+        <MalzemeDetayModal
+          row={detailRow}
+          projectId={projectId}
+          pendingChange={pendingByItemId.get(detailRow.id)}
+          canRequest={canRequest}
+          canReview={canReviewItem(pendingByItemId.get(detailRow.id))}
+          onClose={() => setDetailRow(null)}
           onSaved={onPendingChanged}
         />
       )}
-      {detailRow && <MalzemeGecmisiModal row={detailRow} projectId={projectId} onClose={() => setDetailRow(null)} />}
       {showNewMaterial && (
         <YeniMalzemeEkleModal
           projectId={projectId}

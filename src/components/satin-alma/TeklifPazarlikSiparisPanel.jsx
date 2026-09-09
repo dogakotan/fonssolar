@@ -34,8 +34,11 @@ export default function TeklifPazarlikSiparisPanel({ request, status, onUpdated 
   const [loadingOffers, setLoadingOffers] = useState(true)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [cancelNote, setCancelNote] = useState('')
 
   const isProjectManager = role === 'proje_yoneticisi'
+  const canCancel = isProjectManager || isAdmin
 
   useEffect(() => {
     supabase.from('suppliers').select('id, name').order('name').then(({ data }) => setSuppliers(data || []))
@@ -52,6 +55,21 @@ export default function TeklifPazarlikSiparisPanel({ request, status, onUpdated 
 
   async function refresh() {
     await onUpdated?.()
+  }
+
+  async function cancelRequest() {
+    setError('')
+    if (!cancelNote.trim()) { setError('İptal için açıklama girmelisiniz.'); return }
+    setSaving(true)
+    const { error: rpcError } = await supabase.rpc('cancel_purchase_request_negotiation_flow', {
+      p_request_id: request.id,
+      p_note: cancelNote.trim(),
+    })
+    setSaving(false)
+    if (rpcError) { setError(toUserMessage(rpcError)); return }
+    setCancelOpen(false)
+    setCancelNote('')
+    onUpdated?.()
   }
 
   return (
@@ -103,7 +121,6 @@ export default function TeklifPazarlikSiparisPanel({ request, status, onUpdated 
       {status === 'siparis' && (
         <SiparisSection
           request={request}
-          offers={offers}
           suppliers={suppliers}
           isProjectManager={isProjectManager}
           saving={saving}
@@ -111,6 +128,35 @@ export default function TeklifPazarlikSiparisPanel({ request, status, onUpdated 
           setError={setError}
           onChanged={refresh}
         />
+      )}
+
+      {canCancel && (
+        <div style={{ borderTop: '1px solid #E5E7EB', marginTop: 12, paddingTop: 10 }}>
+          {cancelOpen ? (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <textarea
+                value={cancelNote}
+                onChange={event => setCancelNote(event.target.value)}
+                placeholder="İptal gerekçesi (zorunlu)"
+                style={{ ...INPUT, height: 56, resize: 'none' }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button type="button" onClick={() => { setCancelOpen(false); setCancelNote('') }} disabled={saving} style={{ ...BTN_GHOST, opacity: saving ? 0.7 : 1 }}>
+                  Vazgeç
+                </button>
+                <button type="button" onClick={cancelRequest} disabled={saving || !cancelNote.trim()} style={{ ...BTN_DANGER, opacity: (saving || !cancelNote.trim()) ? 0.6 : 1, cursor: !cancelNote.trim() ? 'not-allowed' : 'pointer' }}>
+                  {saving ? 'İptal ediliyor…' : 'İptali Onayla'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setCancelOpen(true)} style={BTN_DANGER}>
+                İptal Et
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </section>
   )
@@ -427,14 +473,17 @@ function PazarlikSection({ request, offers, suppliers, isProjectManager, saving,
   )
 }
 
-function SiparisSection({ request, offers, suppliers, isProjectManager, saving, setSaving, setError, onChanged }) {
+function SiparisSection({ request, suppliers, isProjectManager, saving, setSaving, setError, onChanged }) {
   const item = (request.items || [])[0] || {}
   const [quantity, setQuantity] = useState(item.quantity ?? '')
   const [unitPrice, setUnitPrice] = useState(item.unit_price ?? '')
   const [orderDate, setOrderDate] = useState(request.order_date || new Date().toISOString().slice(0, 10))
   const [supplierId, setSupplierId] = useState(request.supplier_id || '')
+  const [deliveryStatus, setDeliveryStatus] = useState('tam')
+  const [deliveryNote, setDeliveryNote] = useState('')
 
   const hasOrderInfo = Number(item.unit_price || 0) > 0
+  const deliveryNoteMissing = deliveryStatus !== 'tam' && !deliveryNote.trim()
 
   async function save() {
     setError('')
@@ -458,8 +507,13 @@ function SiparisSection({ request, offers, suppliers, isProjectManager, saving, 
 
   async function completeDelivery() {
     setError('')
+    if (deliveryNoteMissing) { setError('Eksik veya hasarlı teslimatta açıklama zorunludur.'); return }
     setSaving(true)
-    const { error: rpcError } = await supabase.rpc('complete_purchase_request_delivery', { p_request_id: request.id })
+    const { error: rpcError } = await supabase.rpc('complete_purchase_request_delivery', {
+      p_request_id: request.id,
+      p_delivery_status: deliveryStatus,
+      p_delivery_note: deliveryNote.trim() || null,
+    })
     setSaving(false)
     if (rpcError) { setError(toUserMessage(rpcError)); return }
     onChanged()
@@ -492,6 +546,28 @@ function SiparisSection({ request, offers, suppliers, isProjectManager, saving, 
           </select>
         </label>
       </div>
+      {hasOrderInfo && (
+        <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8 }}>
+          <select
+            value={deliveryStatus}
+            onChange={event => { setDeliveryStatus(event.target.value); if (event.target.value === 'tam') setDeliveryNote('') }}
+            style={INPUT}
+          >
+            <option value="tam">Teslimat: Tam</option>
+            <option value="eksik">Teslimat: Eksik</option>
+            <option value="hasarli">Teslimat: Hasarlı</option>
+          </select>
+          {deliveryStatus !== 'tam' && (
+            <input
+              type="text"
+              value={deliveryNote}
+              onChange={event => setDeliveryNote(event.target.value)}
+              placeholder="Eksik/hasarlı teslimat açıklaması (zorunlu)"
+              style={INPUT}
+            />
+          )}
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
         <button type="button" onClick={save} disabled={saving} style={{ ...BTN_GHOST, opacity: saving ? 0.7 : 1 }}>
           {saving ? 'Kaydediliyor…' : 'Kaydet'}
@@ -499,9 +575,9 @@ function SiparisSection({ request, offers, suppliers, isProjectManager, saving, 
         <button
           type="button"
           onClick={completeDelivery}
-          disabled={saving || !hasOrderInfo}
-          title={!hasOrderInfo ? 'Önce sipariş bilgisini kaydedin' : ''}
-          style={{ ...BTN_PRIMARY, opacity: (saving || !hasOrderInfo) ? 0.6 : 1, cursor: !hasOrderInfo ? 'not-allowed' : 'pointer' }}
+          disabled={saving || !hasOrderInfo || deliveryNoteMissing}
+          title={!hasOrderInfo ? 'Önce sipariş bilgisini kaydedin' : deliveryNoteMissing ? 'Eksik/hasarlı teslimatta açıklama zorunlu' : ''}
+          style={{ ...BTN_PRIMARY, opacity: (saving || !hasOrderInfo || deliveryNoteMissing) ? 0.6 : 1, cursor: (!hasOrderInfo || deliveryNoteMissing) ? 'not-allowed' : 'pointer' }}
         >
           Teslim Alındı — Tamamla
         </button>

@@ -46,7 +46,7 @@ function Panel({ title, action, children, className = '' }) {
   return <section className={`accounting-panel ${className}`}><header><h3>{title}</h3>{action}</header>{children}</section>
 }
 
-export default function MuhasebeGenelOzet({ onNavigate, onGoToInvoice }) {
+export default function MuhasebeGenelOzet({ onNavigate }) {
   const { data: invoiceData, loading, refreshing: invoiceRefreshing, error: invoiceError, refetch: refetchInvoices } =
     useDashboardData('get_invoices_list', {})
   const { data: requestData, refreshing: requestRefreshing, error: requestError, refetch: refetchRequests } =
