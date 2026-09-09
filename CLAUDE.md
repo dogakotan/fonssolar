@@ -1849,6 +1849,35 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**09.09.2026 (6. tur) — Genel İş Planı (Gantt) 07.09.2026'daki hiyerarşi
+değişikliğinden ÖNCEKİ tek-seviyeli/renkli görünümüne geri döndürüldü.**
+
+07.09.2026'daki "iş planı hiyerarşisi" değişikliği (b598bc6) hem Genel İş
+Planı (Gantt) hem yeni oluşturulan Detaylı İş Planı'nı AYNI çok seviyeli
+hiyerarşik ağaca (`buildGroupTree`, group_label'daki " › " ayracına göre iç
+içe dallar) + aynı düz/beyaz + tarih sütunlu grup başlığı stiline geçirmişti.
+Kullanıcı Kaptan Demir projesinde canlı test ederken bunun yanlış olduğunu
+belirtti: Detaylı İş Planı'nın hiyerarşik/tarihli kalması doğruydu (zaten
+ayrıca istenmişti), ama Genel İş Planı'nın kendi eski, sade halinde
+(tek-seviyeli düz gruplama, kategoriye göre renkli tam-genişlik bant
+başlıkları — `tone-mavi/yeşil/mor/turuncu/...`, tarih sütunu yok, yalnızca
+"X görev | %Y" özeti) kalması gerekiyordu — iki görünüm birbirinden görsel
+ve veri-yapısı olarak ayrışık olmalıydı.
+
+Düzeltme yalnızca `TabIsPlan.jsx`'in KENDİ Gantt render'ını etkiliyor:
+`renderGanttGroupNode` (tree-recursive render fonksiyonu) kaldırıldı, yerine
+07.09.2026 öncesi flat `grouped`/`knownGroupKeys`/`unknownGroupKeys`/
+`groupKeys` (resolveGroup + GROUP_ORDER sıralaması) mantığı ve eski JSX'i
+geri getirildi; `Dashboard.css`'teki `.gantt-group-row` de eski tone-renkli
+3-kolonlu (`42px minmax(0,1fr) auto`) haline döndürüldü. `buildGroupTree`/
+`groupPath`/`collectNodeTasks`/`GROUP_PATH_DELIM`/`GROUP_INDENT_PX` fonksiyon/
+sabitleri TabIsPlan.jsx'te dokunulmadan kaldı (hâlâ export ediliyor) — bunlar
+`TabIsPlaniDetay.jsx` tarafından import edilip kullanılıyor, Detaylı İş
+Planı'nın hiyerarşik tablosu tamamen değişmedi. Kaptan Demir Çelik (Adana
+GES-1) projesinde admin hesabıyla gerçek verilerle Playwright'ta doğrulandı
+(Genel'de 25 renkli tek-seviyeli grup başlığı, Detaylı'da hâlâ Sapma/Gerçek/
+Hedef kolonlu tam tablo). `npm run lint`/`build` temiz.
+
 **09.09.2026 (5. tur) — Ölü kod taraması: 1 DB fonksiyonu + 4 frontend ölü kod
 parçası silindi, 1 gerçek bug (eksik `noStoreFetch` wiring'i) düzeltildi.**
 
