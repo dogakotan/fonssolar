@@ -581,8 +581,14 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
   }
 
   const canRequest = isAdmin || role === 'proje_yoneticisi'
-  const canReview = isAdmin
+  // Bir talebin onaylayıcısı artık her zaman admin değil — talebi açan hesaba göre
+  // create_procurement_item_change_request/create_procurement_item_add_request'in
+  // belirlediği approver_role'e bağlı (bkz. 09.09.2026 değişikliği: Osman Karadoğan/
+  // Cem Aslan admin hesaplarından açılan talepler proje yöneticisine düşer). Admin
+  // gözetim amacıyla her zaman onaylayabilir (fatura onay akışındaki desenle aynı).
+  const canReviewItem = (item) => isAdmin || (role === 'proje_yoneticisi' && item?.approver_role === 'proje_yoneticisi')
   const pending = canRequest ? pendingChanges : []
+  const reviewablePending = pending.filter(canReviewItem)
   const { toast, showToast } = useToast()
   const bomMatchSuggestions = useMemo(
     () => (canRequest ? suggestBomMatches(requests, procurement) : []),
@@ -696,7 +702,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
           hiçbir bilgi taşımadan sayfada boşuna ~80px yer kaplıyordu — sığdırma
           isteğiyle yalnızca gerçekten bekleyen bir şey varsa gösteriliyor artık. */}
       {canRequest && bomMatchSuggestions.length > 0 && <EslestirmeOnerileriPanel suggestions={bomMatchSuggestions} onLinked={onPendingChanged} />}
-      {canReview && pending.length > 0 && <BekleyenDegisikliklerPanel items={pending} onReviewed={onPendingChanged} />}
+      {reviewablePending.length > 0 && <BekleyenDegisikliklerPanel items={reviewablePending} onReviewed={onPendingChanged} />}
 
       <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border-md)', borderRadius: 12, overflow: 'hidden' }}>
         <div style={{ padding: '9px 14px', borderBottom: '1px solid var(--color-border-md)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -846,7 +852,7 @@ export default function ProjeTabFaturaKesilecekler({ rows = [], loading, pending
           projectId={projectId}
           pendingChange={pendingByItemId.get(detailRow.id)}
           canRequest={canRequest}
-          canReview={canReview}
+          canReview={canReviewItem(pendingByItemId.get(detailRow.id))}
           onClose={() => setDetailRow(null)}
           onSaved={onPendingChanged}
         />

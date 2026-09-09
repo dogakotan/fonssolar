@@ -718,14 +718,36 @@ istenirse talep formuna opsiyonel bir alan eklemek ayrı bir özellik işi).
 2. **Bilinçli/onaylı:** Proje yöneticisi/admin "Düzenle" butonuyla bir kalemin
    planlanan miktarını doğrudan değiştirmek isteyebilir —
    `create_procurement_item_change_request` RPC'siyle `procurement_item_change_requests`'e
-   `bekliyor` bir satır düşer, `planned_qty` henüz değişmez. Yalnızca admin
-   `review_procurement_item_change_request` ile onaylayınca gerçekten güncellenir.
+   `bekliyor` bir satır düşer, `planned_qty` henüz değişmez.
+   `review_procurement_item_change_request` ile onaylanınca gerçekten güncellenir.
    Bir kalem için bekleyen bir talep varken ikinci talep açılamaz (RPC + unique
    index seviyesinde de reddedilir).
 3. **Yeni malzeme ekleme:** "+ Yeni Malzeme" butonu `create_procurement_item_add_request`
    RPC'siyle aynı tabloya `procurement_item_id=NULL` + `new_equipment`/`new_unit`/
-   `new_category` ile bir satır düşürür; admin onaylayınca `INSERT INTO
-   procurement_items` ile kalem gerçekten listeye eklenir.
+   `new_category` ile bir satır düşürür; onaylanınca `INSERT INTO procurement_items`
+   ile kalem gerçekten listeye eklenir.
+
+**Onaylayıcı rol her zaman admin değil — `approver_role` kolonu (09.09.2026
+eklendi).** `procurement_item_change_requests.approver_role` (`'admin'` |
+`'proje_yoneticisi'`, varsayılan `'admin'`) hangi rolün bu talebi onaylaması
+gerektiğini tutar; `create_procurement_item_change_request`/
+`create_procurement_item_add_request` bunu talebi açan kullanıcıya göre
+hesaplar ve `notify_role`'u da buna göre yönlendirir. **Kullanıcı kararı:**
+Osman Karadoğan ve Cem Aslan admin hesaplarından açılan talepler
+`'proje_yoneticisi'`ye düşer (bu iki hesap fiilen kendi taleplerini yine admin
+rolünce onaylatıyordu, gerçek bir ikinci göz sağlamıyordu) — kullanıcı
+ID'leri fonksiyon gövdesinde hardcoded (`c87088e5-...`/`30431df3-...`), diğer
+tüm admin hesapları (ör. genel "Admin" hesabı) eskisi gibi `'admin'`de kalır.
+`review_procurement_item_change_request` artık `get_my_role() IN ('admin',
+v_row.approver_role)` kontrolü yapar — admin gözetim amacıyla HER ZAMAN
+onaylayabilir (fatura onay akışındaki proje_yoneticisi/admin desenindeki aynı
+ilke), ek olarak `approver_role`'e eşit rol de onaylayabilir.
+`get_satin_alma_overview`'ın `pending_changes` çıktısına `approver_role` eklendi;
+`ProjeTabFaturaKesilecekler.jsx`'teki `canReview` artık sabit `isAdmin` değil,
+her kalem için `isAdmin || (role==='proje_yoneticisi' && item.approver_role
+==='proje_yoneticisi')` (`BekleyenDegisikliklerPanel`/`MalzemeDetayModal`'ın
+her ikisi de bu per-item kontrolü kullanır — proje yöneticisi yalnızca kendine
+yönlendirilmiş talepleri görür/onaylar).
 
 İkisi/üçü aynı anda tetiklenebilir (bir kalem için hem bekleyen manuel talep
 hem otomatik aşım) — bu durumda `review_procurement_item_change_request`
@@ -1802,6 +1824,31 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
 ## Son değişiklik
+
+**09.09.2026 — Malzeme değişikliği/ekleme taleplerinde onaylayıcı rol artık
+sabit admin değil (Osman Karadoğan/Cem Aslan → proje yöneticisi) + Aylık
+Plan'da kalem düzenlemede ay değişince görünüm de yeni aya geçiyor.**
+
+Kullanıcı isteği: Osman Karadoğan ve Cem Aslan admin hesaplarından açılan
+malzeme değişikliği/ekleme talepleri artık proje yöneticisine onaya düşüyor
+(önceden tüm bu talepler, kim açarsa açsın, sabit olarak admin'e gidiyordu —
+bu iki hesap için kendi taleplerini yine admin rolünün onaylaması gerçek bir
+ikinci göz sağlamıyordu). Yeni `approver_role` kolonu +
+`create_procurement_item_change_request`/`create_procurement_item_add_request`/
+`review_procurement_item_change_request`/`get_satin_alma_overview` güncellemesi
++ `ProjeTabFaturaKesilecekler.jsx`'in `canReview`'ının per-item hale
+getirilmesi — ayrıntı için "Malzeme listesi (BOM) planlanan miktar
+değişiklikleri" bölümüne bakılabilir. Admin gözetim amacıyla her zaman
+onaylayabiliyor, diğer admin hesapları (genel "Admin") değişmedi.
+
+Aynı oturumda ayrıca: Aylık Satın Alma Planı'nda bir kalemin "Ay" alanı
+`PlanKalemiDetayModal` üzerinden değiştirilip kaydedildiğinde, kalem o an
+görüntülenen aydan (liste `effectiveAyNo`'ya göre filtreleniyor) sessizce
+kayboluyordu — kullanıcı değişikliğin işe yaramadığını sanabilirdi. Artık
+kaydedince görünüm otomatik olarak kalemin yeni ayına geçiyor
+(`ProjeTabAylikPlan.jsx`).
+
+`npm run lint`/`build` bu turda temiz.
 
 **08.09.2026 (7. tur) — Eksik regresyon testi yazılırken `request_no`
 çakışması 3. kez tetiklendi; savunma migration'ı uygulandı ama SORUNU

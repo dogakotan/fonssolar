@@ -553,9 +553,10 @@ function PlanKalemiDetayModal({ plan, procurementItems, canEdit, planReferenceDa
     e.preventDefault()
     setSaving(true)
     setErr('')
+    const newAyNo = Number(form.ay_no) || 1
     const { error } = await supabase.from('procurement_monthly_plan').update({
       procurement_item_id: selectedBom?.id || null,
-      ay_no: Number(form.ay_no) || 1,
+      ay_no: newAyNo,
       kategori: form.kategori || null,
       kalem_adi: form.kalem_adi.trim(),
       ozellik: form.ozellik.trim() || null,
@@ -565,7 +566,10 @@ function PlanKalemiDetayModal({ plan, procurementItems, canEdit, planReferenceDa
     }).eq('id', plan.id)
     setSaving(false)
     if (error) { setErr(toUserMessage(error)); return }
-    onSaved()
+    // Ay değiştirilmişse kaydettikten sonra kalem artık o an görüntülenen aydan
+    // kaybolur (liste effectiveAyNo'ya göre filtreleniyor) — kullanıcı değişikliğin
+    // hiç işe yaramadığını sanmasın diye görünüm de kalemin yeni ayına geçer.
+    onSaved(newAyNo)
     onClose()
   }
 
@@ -886,7 +890,7 @@ export default function ProjeTabAylikPlan({ projectId, onOpenRequest }) {
           canEdit={canEdit}
           planReferenceDate={planReferenceDate}
           onClose={() => setDetailPlan(null)}
-          onSaved={fetchPlans}
+          onSaved={(newAyNo) => { if (newAyNo) setAyNo(newAyNo); fetchPlans() }}
           onDeleted={fetchPlans}
         />
       )}
