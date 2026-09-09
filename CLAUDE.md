@@ -1849,6 +1849,46 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**09.09.2026 (9. tur) — Fatura/harcama ekleme sihirbazına Şirket seçici
+eklendi: Fons Solar (projeli) vs PV Solution (projesiz genel harcama).**
+
+Kullanıcı isteği: `FaturaOlusturModal.jsx`'in genel giriş noktalarında
+(request prop'u boşken — Faturalar/Satın Alma/Ödemeler sayfalarındaki
+"＋ Fatura / Harcama Ekle" butonları, `isLocked=false`) sihirbazın en başına
+"Proje ve Bağlı Talep" kartından ÖNCE bir **Şirket** kartı eklendi
+(`invoice-mode-toggle` ile aynı görsel dil — Faturalı/Faturasız toggle'ıyla
+birebir aynı buton stili). **Fons Solar** (varsayılan) seçiliyken davranış
+hiç değişmedi — "Proje ve Bağlı Talep" kartı eskisi gibi zorunlu. **PV
+Solution** seçilince "Proje ve Bağlı Talep" kartı TAMAMEN gizlenir
+(`isPvSolution` — proje alanı hiç render edilmez, `manualProjectId`/
+`selectedRequestId`/`requestSearch` şirket değişince sıfırlanır) — bu
+kayıtlar hiçbir GES projesine bağlanamaz, `effectiveProjectId` zorlanmış
+şekilde boş kalır, `canSaveFaturali`/`canSaveFaturasiz`'in proje zorunluluğu
+`isPvSolution` iken devre dışı. Talep bağlantılı (isLocked, satın alma
+listesinden "Fatura Oluştur") akış her zaman Fons Solar'dır — bir satın alma
+talebi zaten yalnızca bir GES projesi bağlamında var olabildiğinden şirket
+seçici o modda hiç gösterilmez, sabit `company='fons_solar'`.
+
+Yeni `company text not null default 'fons_solar'` kolonu hem `invoices` hem
+`financial_transactions`'a eklendi (`invoices_company_check`/
+`financial_transactions_company_check` CHECK — `'fons_solar'|'pv_solution'`),
+mevcut tüm satırlar geriye dönük uyumlu. Migration öncesi doğrulandı:
+`project_id` her iki tabloda zaten nullable, ve
+`sync_cost_allocation_from_invoice`/`sync_cost_allocation_from_financial_transaction`
+trigger'ları zaten `project_id is not null` şartıyla çalışıyor (bkz.
+02.09.2026 tarihli `fix_invoice_cost_allocation_null_project_id` migration'ı)
+— yani projesiz bir PV Solution kaydı `cost_allocations`'a hiç yazmadan
+güvenle atlanıyor, ek bir guard gerekmedi. `fn_guard_invoice_requires_procurement_done`
+de yalnızca `purchase_request_id is not null` iken çalıştığından etkilenmedi.
+
+**Bilinçli olarak kapsam dışı bırakıldı:** Faturalar/Ödeme Takibi/Tedarikçiler
+listelerinde şirkete göre filtre veya kolon eklenmedi — kullanıcı yalnızca
+ekleme akışını istedi, mevcut listeler `company` alanını görüntülemiyor
+(ihtiyaç olursa ayrı bir iş). Gerçek RPC + UI ile admin hesabıyla Playwright'ta
+uçtan uca doğrulandı (PV Solution seçilince proje kartının kaybolduğu,
+faturasız kaydın `company='pv_solution'`/`project_id=null` ile gerçekten
+yazıldığı — test kaydı silindi). `npm run lint`/`build` temiz.
+
 **09.09.2026 (8. tur) — 6-7. turdaki "Genel İş Planı'nı tek seviyeye indirge"
 kararı YANLIŞ çıktı, geri alındı: Genel yeniden çok seviyeli hiyerarşiyi
 kullanıyor, yalnızca KENDİ renkli/tarihsiz stiliyle.**
