@@ -1849,6 +1849,39 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**09.09.2026 (8. tur) — 6-7. turdaki "Genel İş Planı'nı tek seviyeye indirge"
+kararı YANLIŞ çıktı, geri alındı: Genel yeniden çok seviyeli hiyerarşiyi
+kullanıyor, yalnızca KENDİ renkli/tarihsiz stiliyle.**
+
+Kullanıcı Kaptan Demir'de "Elektriksel Bölüm" grubunu açınca 6-7. turun tek-
+seviyeli gruplamasının gerçek bir kullanılabilirlik sorunu yarattığını fark
+etti: 108 görevin çoğu aynı ada sahip (ör. "AC Kazı Açılması" 8 kez, her
+inverter için bir tane) ve hiçbir alt başlık olmadan TEK bir düz listede
+ayırt edilemez şekilde art arda diziliyordu — "işleri başlıklarına göre
+bölmedin" diye bildirdi. Bu, 6-7. turda "Genel de genel olarak kalacaktı"
+talebinin yanlış yorumlandığını gösterdi: kullanıcı Genel'in tek-seviyeli
+olmasını değil, kendi GÖRSEL KİMLİĞİNİ (renkli/tone'lu başlık, tarih sütunu
+yok) korumasını istiyormuş — çok seviyeli hiyerarşinin (Inverter-1..9 ×
+AC/DC alt kırılımı) kendisi Detaylı için zaten gerekli VE Genel için de
+görevleri ayırt edilebilir kılmak için gerekli.
+
+Düzeltme: `buildGroupTree(withDates)` yeniden Genel'in kendi render'ında
+kullanılıyor (6-7. turda eklenen tek-seviyeli `grouped`/`groupKeys`/
+`topGroupNames` mantığı tamamen kaldırıldı, `allGroupNames`/`groupFilter`
+Detaylı ile aynı tam/granüler kümeye geri döndü). `renderGanttGroupNode`
+fonksiyonu geri getirildi ama Detaylı'nın (`TabIsPlaniDetay.jsx`'teki
+`buildDetayRows`) düz/beyaz + tarih sütunlu başlık stili yerine Genel'in
+kendi eski stilini kullanıyor: `groupConfigFor(node.label)`'dan gelen
+tone-renkli tam-genişlik bant + yalnızca toggle/başlık/"X görev | %Y" özeti
+(tarih sütunu yok), derinliğe göre artan girinti (`GROUP_INDENT_PX`). İki
+görünüm artık AYNI veri hiyerarşisini paylaşıyor, yalnızca görsel kimlikleri
+(renkli-sade vs düz-detaylı) ayrışık kalıyor — 6-7. turdaki asıl doğru fikir
+buydu, yalnızca uygulaması (tek-seviyeye indirgeme) hatalıydı. Kaptan Demir
+Çelik'te admin hesabıyla gerçek verilerle Playwright'ta doğrulandı: Genel'de
+36 renkli grup başlığı (Elektriksel Bölüm → TR-1-3000 kVA → Inverter-N →
+AC/DC gibi iç içe, her biri kendi rengiyle), Detaylı'da Inverter/Sapma
+kolonu hâlâ değişmeden duruyor. `npm run lint`/`build` temiz.
+
 **09.09.2026 (7. tur) — Genel İş Planı'nın grup KIRILIMI da (yalnızca stili
 değil) eskiye döndürüldü: Elektriksel görevler artık tek "Elektriksel Bölüm"
 grubunda, inverter/AC-DC bazında ayrı ayrı DEĞİL.**
