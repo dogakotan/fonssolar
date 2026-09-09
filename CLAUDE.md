@@ -1849,6 +1849,36 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**09.09.2026 (5. tur) — Ölü kod taraması: 1 DB fonksiyonu + 4 frontend ölü kod
+parçası silindi, 1 gerçek bug (eksik `noStoreFetch` wiring'i) düzeltildi.**
+
+Kullanıcı isteğiyle proaktif bir ölü kod denetimi yapıldı (DB tarafı elle,
+frontend tarafı bir Explore agent'la — sonuçlar tek tek doğrulandı).
+
+- **DB:** `log_ticket_changes()` fonksiyonu silindi (`20260909112738_drop_dead_log_ticket_changes_function`)
+  — hiçbir trigger'a bağlı değildi, gerçek log trigger'ı zaten `fn_ticket_history()`.
+  Diğer "trigger değil" görünen fonksiyonlar (`fn_next_purchase_request_no`,
+  `fn_purchase_request_procurement_fields_only`/`fn_purchase_request_sensitive_unchanged`/
+  `fn_ticket_sensitive_unchanged` — RLS policy'lerinde, `fn_recompute_auto_risks`/
+  `fn_apply_approved_material_excess`/`fn_rollback_material_excess` — trigger
+  gövdelerinden çağrılıyor) tek tek doğrulanıp kullanımda oldukları teyit edildi.
+- **Frontend, silindi:** `src/utils/satinAlma.js`'teki `classifyRequestTypes()`
+  (hiç import edilmiyordu); `MuhasebeGenelOzet.jsx`'in kullanılmayan
+  `onGoToInvoice` prop'u (2026-07-29'da "Son Hareketler" tıklaması bildirimler
+  sekmesine gitmeye çevrilince kalan bir artık — `index.jsx`'teki çağrı yerinden
+  de kaldırıldı); `ProjeDetay.jsx`'in kullanılmayan `selectedDate`/`setSelectedDate`
+  prop'ları (state `index.jsx`'te `TabGenel`/`TabTickets`/`FloatingAgent` için hâlâ
+  kullanılıyor, yalnızca `ProjeDetay`'a geçirilmesi anlamsızdı); `TeklifPazarlikSiparisPanel.jsx`'teki
+  `SiparisSection`'ın kullanılmayan `offers` parametresi.
+- **Gerçek bug düzeltildi:** `src/lib/supabase.js`'teki `noStoreFetch` yardımcısı
+  (`cache:'no-store'` zorlaması, PostgREST'in Cache-Control header'ı hiç
+  taşımamasından kaynaklanan bayat-veri bug'larına karşı — bkz. bildirim zili/
+  `procurement_monthly_plan` geçmişi) tanımlıydı ama `createClient(...)`'a hiç
+  geçirilmemişti (`global:{fetch:noStoreFetch}` eksikti) — yorumun vaat ettiği
+  davranış fiilen devrede değildi. `createClient` çağrısına eklendi.
+
+`npm run lint`/`build` temiz.
+
 **09.09.2026 (4. tur) — Malzeme Listesi'nin üstündeki toplu onay/red banner'ı
 kaldırıldı, yalnızca "Onaylar" sekmesinde kaldı.**
 

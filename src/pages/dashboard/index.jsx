@@ -435,7 +435,7 @@ export default function Dashboard() {
             Projeler") moda geçti — TabGenel/ProjectListView zaten null'ı destekliyor (diğer
             kısıtsız roller de böyle kullanıyor), bu yüzden girişte artık proje seçim ekranı
             YOK. */}
-        {activeTab === 'genel'        && role === 'muhasebe' && <MuhasebeGenelOzet onNavigate={handleTabChange} onGoToInvoice={goToInvoice} />}
+        {activeTab === 'genel'        && role === 'muhasebe' && <MuhasebeGenelOzet onNavigate={handleTabChange} />}
         {activeTab === 'genel'        && role !== 'santiye_sefi' && role !== 'muhasebe' && <TabGenel scopeProjectId={scopeProjectId} onSelectProject={handleSelectProject} selectedDate={selectedDate} setSelectedDate={setSelectedDate} onTabChange={handleTabChange} />}
         {activeTab === 'projeler'     && !showProjectDetail && <TabProjeler onSelectProject={handleSelectProject} />}
         {activeTab === 'projeler'     && showProjectDetail  && (
@@ -443,8 +443,6 @@ export default function Dashboard() {
             projectId={selectedProjectId}
             projectName={selectedProjectName}
             onBack={() => navigate('/dashboard/projeler')}
-            selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
             initialTab={initialProjectTab}
             onTabChange={(tab) => navigate(`/dashboard/projeler/${selectedProjectId}/${tab}`, { replace: true })}
             initialReportId={initialReportId}

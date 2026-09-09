@@ -292,14 +292,6 @@ export function requestType(request) {
   return /hizmet|işçilik|iscilik|kiralama|nakliye/.test(text) ? 'hizmet' : 'malzeme'
 }
 
-export function classifyRequestTypes(requests) {
-  return requests.reduce((acc, request) => {
-    const type = requestType(request)
-    acc[type] = (acc[type] || 0) + 1
-    return acc
-  }, { malzeme: 0, hizmet: 0, diger: 0 })
-}
-
 // Talepleri/malzemeleri project_id'ye göre gruplar. Farklı projelerin BOM'ları
 // birbirine karışmasın diye tüm çapraz-proje hesaplar bu gruplama üzerinden yapılır.
 export function groupByProjectId(rows) {

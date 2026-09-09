@@ -121,7 +121,6 @@ export default function TeklifPazarlikSiparisPanel({ request, status, onUpdated 
       {status === 'siparis' && (
         <SiparisSection
           request={request}
-          offers={offers}
           suppliers={suppliers}
           isProjectManager={isProjectManager}
           saving={saving}
@@ -474,7 +473,7 @@ function PazarlikSection({ request, offers, suppliers, isProjectManager, saving,
   )
 }
 
-function SiparisSection({ request, offers, suppliers, isProjectManager, saving, setSaving, setError, onChanged }) {
+function SiparisSection({ request, suppliers, isProjectManager, saving, setSaving, setError, onChanged }) {
   const item = (request.items || [])[0] || {}
   const [quantity, setQuantity] = useState(item.quantity ?? '')
   const [unitPrice, setUnitPrice] = useState(item.unit_price ?? '')
