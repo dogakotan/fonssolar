@@ -1690,31 +1690,20 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
-- **`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
-  duplicate key) — KÖK NEDENİ BULUNAMADI, Supabase support'a taşınmalı.**
-  `create_purchase_request_with_items`/ham `purchase_requests` insert'i
-  bazen (Playwright'ta deterministik şekilde tekrarlanabilir, canlıda
-  sıklığı bilinmiyor) düşük numaralı (`SAT-2026-101`/`102` gibi) bir
-  `request_no` ile "already exists" hatası veriyor — halbuki gerçek sayaç
-  (`purchase_request_no_counters`) o anda çok daha yüksek (1000+) bir
-  değerde ve çakışan satır hatadan hemen sonra tabloda hiç bulunmuyor
-  (transient). `fn_next_purchase_request_no()`'nun atomikliği defalarca
-  doğrulandı, ek bir `pg_advisory_xact_lock` savunması eklendi
-  (`harden_next_purchase_request_no_with_advisory_lock`, 08.09.2026) ama
-  sorun AYNEN devam etti — yani kök neden bu fonksiyonun kendisinde değil,
-  muhtemelen PgBouncer connection-pooling veya Supabase API/PostgREST
-  önbellekleme katmanında. Bu projenin migration/kod araçlarıyla
-  düzeltilemez — Supabase support'a (proje `bshhgvdzemgfijkzhcrf`) bu
-  bulgularla (bkz. "Son değişiklik" 7. tur) açılması gerekiyor. Etkilenen
-  testler: `procurement-concurrency`, `procurement-two-initiators`,
+- ~~`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
+  duplicate key)~~ — **kök nedeni bulunup düzeltildi (10.09.2026), Supabase
+  support'a hiç açılmadı.** Önceki turlarda "PgBouncer/PostgREST kaynaklı,
+  bu projenin araçlarıyla düzeltilemez" sanılmıştı — YANLIŞ çıktı. Gerçek
+  neden: `fn_next_purchase_request_no()` sayacı normal bir tabloda tutup
+  çağıranın transaction'ı İÇİNDE artırıyordu; PL/pgSQL'in
+  `exception when unique_violation` savepoint-rollback'i bu artışı da geri
+  alıyor, aynı numarayı tekrar tekrar üretiyordu (canlı bir zorlanmış-
+  çakışma testiyle kanıtlandı). Düzeltme: sayaç tablosu yerine yıl başına
+  gerçek bir Postgres `SEQUENCE` (`nextval()` rollback'ten etkilenmez) —
+  ayrıntı için "Son değişiklik" 10.09.2026 girdisine bak. Etkilenen testler
+  (`procurement-concurrency`, `procurement-two-initiators`,
   `procurement-workflow`, `purchase-single-item`,
-  `procurement-negotiation-flow` — hepsinde arıza aynı imza, testlerin
-  kendi mantığında hata yok. **10.09.2026'da kullanıcı etkisi kapatıldı
-  (workaround, kök neden değil):** `create_purchase_request_with_items`/
-  `create_purchase_request_from_monthly_plan` artık `unique_violation`'da
-  otomatik retry (en fazla 5 deneme) yapıyor — bkz. "Son değişiklik". Support
-  ticket'ı hâlâ açılmadı (kullanıcının kendi hesabından açması gerekiyor,
-  taslak metin hazır) — bu madde support/kök-neden tarafında hâlâ açık.
+  `procurement-negotiation-flow`) artık flaky olmamalı.
 - ~~Tedarikçi bakiyesi/Finans Raporları — `paid_amount`/`remaining_amount`
   TRY'ye çevrilmiyordu~~ — **tam çözüldü (18.08.2026).** Önceki kısmi düzeltme
   (2026-07-31) yalnızca `total_amount_try`'yi kapsıyordu; şimdi `paid_amount`/
@@ -1854,25 +1843,52 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**10.09.2026 — `request_no` çakışmasına karşı retry-on-conflict eklendi (kök
-neden hâlâ bulunamadı, bu bir workaround).**
+**10.09.2026 — `request_no` çakışmasının GERÇEK KÖK NEDENİ bulundu ve
+düzeltildi (Supabase support'a taşınmasına gerek kalmadı).**
 
-"Bilinen açık noktalar"daki `request_no` çakışması Supabase support'a
-taşınmak üzere işaretlendi (kök neden bu oturumun araçlarının ötesinde
-kaldığı için) — ama kullanıcı bu arada kullanıcı deneyimini etkilemeyecek
-en düşük riskli çözümle (retry-on-conflict) devam edilmesini istedi.
-`create_purchase_request_with_items` ve `create_purchase_request_from_monthly_plan`
-RPC'lerindeki `purchase_requests` INSERT'i artık `unique_violation`
-(`purchase_requests_request_no_key`) hatasında PL/pgSQL exception bloğu
-içinde (otomatik savepoint ile güvenli) en fazla 5 kez yeni bir
-`fn_next_purchase_request_no()` değeriyle kendini tekrar dener — 5 denemeden
-sonra hâlâ çakışıyorsa hata olduğu gibi yükselir (sonsuz döngü/sessiz yutma
-yok). Diğer tüm validasyon/yetki mantığı DEĞİŞMEDİ. Bu, sorunun kök nedenini
-ÇÖZMÜYOR (hâlâ bilinmiyor) — yalnızca kullanıcıya asla görünür hale
-gelmemesini sağlıyor. Supabase support ticket'ı hâlâ açılmadı (kullanıcının
-kendi hesabından açması gerekiyor, ayrı bir metin taslağı hazırlandı ama
-gönderilmedi) — bu madde support tarafında hâlâ açık, yalnızca kullanıcı
-etkisi ortadan kalktı.
+Bu maddenin serüveni aynı gün içinde iki aşamalı oldu:
+
+1. Önce en düşük riskli yol olarak `create_purchase_request_with_items`/
+   `create_purchase_request_from_monthly_plan`'a `unique_violation`'da
+   otomatik retry (en fazla 5 deneme) eklendi — kök neden bilinmediği için
+   yalnızca bir workaround olarak düşünüldü.
+2. Kullanıcının "neden Supabase'e bağlanıp kendin açmıyorsun" sorusu üzerine
+   canlı bir zorlanmış-çakışma testiyle (gerçek bir talep + kasıtlı olarak
+   aynı `request_no`'yu önceden dolduran bir dummy satır) retry'ın davranışı
+   doğrudan test edildi — ve retry'ın **hiç işe yaramadığı**, aynı numarayla
+   5 kez üst üste aynı hatayı verip yükselttiği bizzat gözlemlendi.
+
+**Gerçek kök neden:** `fn_next_purchase_request_no()` sayaç değerini normal
+bir tabloda (`purchase_request_no_counters`) tutup çağıranın transaction'ı
+İÇİNDE artırıyordu. PL/pgSQL'in `exception when unique_violation` bloğu bir
+hatayı yakaladığında, bloğun başındaki implicit savepoint'e geri sarar — bu
+geri sarma, AYNI savepoint içinde yapılmış olan sayaç artışını da geri
+alıyordu. Yani: bir INSERT herhangi bir sebeple `request_no` çakışmasıyla
+başarısız olup geri sarıldığında, sayaç da eski değerine dönüyor ve bir
+sonraki deneme (retry veya tamamen farklı bir istek) **AYNI numarayı tekrar
+üretiyordu** — bu, PgBouncer/PostgREST ile hiç ilgili değildi, saf bir
+"transaction içinde artan, rollback'e dayanıksız sayaç" bug'ıydı. Retry
+eklemek durumu düzeltmek yerine sorunu her seferinde 5 kat daha görünür
+(deterministik) hale getirdi.
+
+**Düzeltme:** `purchase_request_no_counters` tablosu yerine yıl başına gerçek
+bir Postgres `SEQUENCE` (`purchase_request_no_seq_2026`, mevcut sayaçtan
+—1046'dan— devam edecek şekilde 1047'den başlatıldı) kullanılıyor artık.
+`nextval()` Postgres tarafından ÖZEL OLARAK transaction rollback'inden
+etkilenmeyecek şekilde tasarlanmış — ihtiyaç tam olarak buydu.
+`fn_next_purchase_request_no()` yeni yıllar için sequence'i ilk çağrıda
+otomatik oluşturuyor (`create sequence if not exists`), advisory lock artık
+gereksiz (sequence'ler doğal olarak eşzamanlılığa karşı güvenli). Aynı
+zorlanmış-çakışma testi bu düzeltmeyle tekrarlandı: hata alınmadı, retry
+(hâlâ yerinde duruyor, artık zararsız bir defans katmanı) hiç tetiklenmeden
+ya da bir kez tetiklenip başarıyla tamamlandı. `purchase_request_no_counters`
+tablosu artık hiçbir fonksiyon tarafından okunmuyor ama veri kaybı riski
+almamak için SİLİNMEDİ (ayrı bir temizlik migration'ına bırakıldı).
+
+**Sonuç:** "Bilinen açık noktalar"daki bu madde artık KAPALI — Supabase
+support'a hiç açılmadı, açılmasına gerek kalmadı (kök neden bu projenin
+kendi migration araçlarıyla düzeltilebilir bir şeydi, altyapı sorunu
+değildi).
 
 **09.09.2026 (9. tur) — Fatura/harcama ekleme sihirbazına Şirket seçici
 eklendi: Fons Solar (projeli) vs PV Solution (projesiz genel harcama).**
