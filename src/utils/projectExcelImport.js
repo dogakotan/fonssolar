@@ -1,8 +1,22 @@
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
+import { downloadBlob, XLSX_MIME } from './downloadFile'
+
+// Excel'in 1900-tabanli seri gun sayisini (SheetJS'in SSF.parse_date_code'unun
+// yaptigi seyi) elle cozer — yalnizca hucre tarih olarak formatlanmamissa
+// (exceljs bu durumda JS Date donduremeyip ham sayi verir) devreye giren
+// savunma amacli fallback.
+function excelSerialToDate(serial) {
+  const utcMs = Math.round((serial - 25569) * 86400 * 1000)
+  const d = new Date(utcMs)
+  return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() }
+}
 
 // Excel seri tarih ya da string → YYYY-MM-DD
 function toDateStr(val) {
   if (!val && val !== 0) return ''
+  if (val instanceof Date) {
+    return `${val.getUTCFullYear()}-${String(val.getUTCMonth() + 1).padStart(2, '0')}-${String(val.getUTCDate()).padStart(2, '0')}`
+  }
   if (typeof val === 'string') {
     const dot = val.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
     if (dot) return `${dot[3]}-${dot[2].padStart(2, '0')}-${dot[1].padStart(2, '0')}`
@@ -11,8 +25,7 @@ function toDateStr(val) {
     return ''
   }
   if (typeof val === 'number') {
-    const d = XLSX.SSF.parse_date_code(val)
-    if (!d) return ''
+    const d = excelSerialToDate(val)
     return `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
   }
   return ''
@@ -56,30 +69,54 @@ function pick(row, ...keys) {
   return ''
 }
 
-// Dosyayı XLSX workbook olarak oku
-function readWorkbook(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = e => {
-      try {
-        resolve(XLSX.read(e.target.result, { type: 'array', cellDates: false }))
-      } catch (err) {
-        reject(new Error('Excel dosyası okunamadı: ' + err.message))
-      }
-    }
-    reader.onerror = () => reject(new Error('Dosya okunamadı'))
-    reader.readAsArrayBuffer(file)
+// exceljs hucre degerini SheetJS'in dondurdugu duz deger bicimine indirger
+// (zengin metin/hyperlink/formul objelerini metne cevirir)
+function cellToPlain(v) {
+  if (v == null) return ''
+  if (v instanceof Date) return v
+  if (typeof v === 'object') {
+    if ('richText' in v) return v.richText.map(t => t.text).join('')
+    if ('text' in v) return v.text
+    if ('result' in v) return v.result ?? ''
+  }
+  return v
+}
+
+// Bir sayfayı SheetJS'in sheet_to_json(ws, {defval:''}) davranışıyla aynı
+// şekilde (ilk satır başlık, sonrakiler nesne) satır dizisine çevirir
+function sheetToObjects(ws) {
+  let headers = []
+  const rows = []
+  ws.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+    const vals = row.values.slice(1).map(cellToPlain)
+    if (rowNumber === 1) { headers = vals.map(h => String(h ?? '').trim()); return }
+    const obj = {}
+    headers.forEach((h, i) => { obj[h] = vals[i] !== undefined && vals[i] !== null ? vals[i] : '' })
+    rows.push(obj)
   })
+  return rows
+}
+
+// Dosyayı ExcelJS workbook olarak oku
+async function readWorkbook(file) {
+  const buf = await file.arrayBuffer()
+  const wb = new ExcelJS.Workbook()
+  try {
+    await wb.xlsx.load(buf)
+  } catch (err) {
+    throw new Error('Excel dosyası okunamadı: ' + err.message)
+  }
+  return wb
 }
 
 // "İş Kalemleri" sayfasını parse et → project_tasks satırları (Gantt görevi +
 // varsa ölçülebilir ilerleme hedefi — birim/hedef miktar/dashboard alanları tek satırda)
 export async function parseIsKalemleri(file) {
   const wb = await readWorkbook(file)
-  const sheetName =
-    wb.SheetNames.find(n => /iş|is|görev|gorev|task/i.test(n)) ||
-    wb.SheetNames[0]
-  const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: '' })
+  const ws =
+    wb.worksheets.find(w => /iş|is|görev|gorev|task/i.test(w.name)) ||
+    wb.worksheets[0]
+  const raw = sheetToObjects(ws)
 
   const rows = raw
     .map((r, i) => {
@@ -104,25 +141,24 @@ export async function parseIsKalemleri(file) {
     })
     .filter(r => r.task_name)
 
-  return { rows, sheetName, skippedCount: raw.length - rows.length }
+  return { rows, sheetName: ws.name, skippedCount: raw.length - rows.length }
 }
 
 // İndirilebilir örnek Excel şablonu oluştur
-export function downloadProjectTemplate() {
-  const wb = XLSX.utils.book_new()
+export async function downloadProjectTemplate() {
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet('İş Kalemleri')
 
   // Sayfa 1: İş Kalemleri (Gantt görevi + varsa ölçülebilir ilerleme hedefi)
-  const ws1 = XLSX.utils.aoa_to_sheet([
-    ['Görev Kodu', 'Görev Adı', 'Kategori', 'Alt Kategori / Kurum', 'Plan Başlangıç', 'Plan Bitiş', 'Sorumlu', 'Ekip Sayısı', 'Ekipman', 'Notlar', 'Birim', 'Hedef Miktar', 'Yapılan Miktar'],
-    ['T001', 'Mobilizasyon ve Şantiye Kurulumu', 'mobilizasyon', '',   '2026-07-01', '2026-07-07', 'Proje Müdürü', 10,  '', '',                      '',     0,    0],
-    ['T002', 'Panel Temel Kazık Çakımı',         'mekanik',       '',   '2026-07-08', '2026-07-30', 'Mekanik Şef', 25,  'Kazık çakma makinesi', '', 'adet', 2500, 800],
-    ['T003', 'Solar Panel Montajı',               'mekanik',       '',   '2026-07-20', '2026-08-15', 'Mekanik Şef', 30,  '', '',                     'adet', 3000, 0],
-    ['T004', 'DC Kablo Döşeme',                   'elektrik_dc',   '',   '2026-08-01', '2026-08-20', 'Elektrik Şefi', 15, '', '',                    'm',    15000, 0],
-    ['T005', 'AC Kablo ve Pano',                  'elektrik_ac',   '',   '2026-08-10', '2026-08-25', 'Elektrik Şefi', 12, '', '',                    'm',    3000, 0],
-    ['T006', 'Devreye Alma',                      'devreye_alma',  '',   '2026-09-01', '2026-09-10', 'Proje Müdürü', 8,  '', '',                      '',     0,    0],
-  ])
-  ws1['!cols'] = [8, 28, 15, 18, 15, 15, 15, 10, 20, 20, 8, 12, 12].map(w => ({ wch: w }))
-  XLSX.utils.book_append_sheet(wb, ws1, 'İş Kalemleri')
+  ws.addRow(['Görev Kodu', 'Görev Adı', 'Kategori', 'Alt Kategori / Kurum', 'Plan Başlangıç', 'Plan Bitiş', 'Sorumlu', 'Ekip Sayısı', 'Ekipman', 'Notlar', 'Birim', 'Hedef Miktar', 'Yapılan Miktar'])
+  ws.addRow(['T001', 'Mobilizasyon ve Şantiye Kurulumu', 'mobilizasyon', '',   '2026-07-01', '2026-07-07', 'Proje Müdürü', 10,  '', '',                      '',     0,    0])
+  ws.addRow(['T002', 'Panel Temel Kazık Çakımı',         'mekanik',       '',   '2026-07-08', '2026-07-30', 'Mekanik Şef', 25,  'Kazık çakma makinesi', '', 'adet', 2500, 800])
+  ws.addRow(['T003', 'Solar Panel Montajı',               'mekanik',       '',   '2026-07-20', '2026-08-15', 'Mekanik Şef', 30,  '', '',                     'adet', 3000, 0])
+  ws.addRow(['T004', 'DC Kablo Döşeme',                   'elektrik_dc',   '',   '2026-08-01', '2026-08-20', 'Elektrik Şefi', 15, '', '',                    'm',    15000, 0])
+  ws.addRow(['T005', 'AC Kablo ve Pano',                  'elektrik_ac',   '',   '2026-08-10', '2026-08-25', 'Elektrik Şefi', 12, '', '',                    'm',    3000, 0])
+  ws.addRow(['T006', 'Devreye Alma',                      'devreye_alma',  '',   '2026-09-01', '2026-09-10', 'Proje Müdürü', 8,  '', '',                      '',     0,    0])
+  ws.columns = [8, 28, 15, 18, 15, 15, 15, 10, 20, 20, 8, 12, 12].map(w => ({ width: w }))
 
-  XLSX.writeFile(wb, 'GES_Proje_Sablonu.xlsx')
+  const buf = await wb.xlsx.writeBuffer()
+  downloadBlob(buf, 'GES_Proje_Sablonu.xlsx', XLSX_MIME)
 }

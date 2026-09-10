@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { AGENTS, getAgentById, getTabConfig } from './agentConfig'
 import { fetchTabContext } from './agentContext'
 import { supabase } from '../../lib/supabase'
@@ -34,30 +34,76 @@ function fileToBase64(file) {
   })
 }
 
+// Basit CSV satır ayracı — tırnaklı virgülleri korur (chat önizlemesi için
+// yeterli, tam RFC 4180 uyumu gerekmiyor)
+function parseCsvText(text) {
+  return text.split(/\r\n|\n|\r/).filter(l => l.length).map(line => {
+    const cells = []
+    let cur = '', inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { cur += '"'; i++ }
+        else inQuotes = !inQuotes
+      } else if (ch === ',' && !inQuotes) {
+        cells.push(cur); cur = ''
+      } else cur += ch
+    }
+    cells.push(cur)
+    return cells
+  })
+}
+
+// exceljs hücre değerini düz metne indirger (zengin metin/hyperlink objeleri)
+function cellToPlain(v) {
+  if (v == null) return ''
+  if (v instanceof Date) return v.toLocaleDateString('tr-TR')
+  if (typeof v === 'object') {
+    if ('richText' in v) return v.richText.map(t => t.text).join('')
+    if ('text' in v) return v.text
+    if ('result' in v) return v.result ?? ''
+  }
+  return v
+}
+
 // ─── Excel/CSV → markdown tablo metni ────────────────────────────────────────
 function excelToText(file) {
+  const isCsv = /\.csv$/i.test(file.name)
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = e => {
+    reader.onload = async e => {
       try {
-        const wb = XLSX.read(e.target.result, { type: 'binary' })
         const lines = []
-        wb.SheetNames.slice(0, 3).forEach(name => {
-          const ws = wb.Sheets[name]
-          const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
-          lines.push(`\n### Sayfa: ${name}`)
+        if (isCsv) {
+          const data = parseCsvText(e.target.result)
+          lines.push(`\n### Sayfa: ${file.name}`)
           data.slice(0, 60).forEach(row => {
             lines.push('| ' + row.map(c => String(c ?? '').replace(/\|/g, '\\|')).join(' | ') + ' |')
           })
           if (data.length > 60) lines.push(`_(... ${data.length - 60} satır daha)_`)
-        })
+        } else {
+          const wb = new ExcelJS.Workbook()
+          await wb.xlsx.load(e.target.result)
+          wb.worksheets.slice(0, 3).forEach(ws => {
+            const data = []
+            ws.eachRow({ includeEmpty: true }, row => {
+              data.push(row.values.slice(1).map(cellToPlain))
+            })
+            lines.push(`\n### Sayfa: ${ws.name}`)
+            data.slice(0, 60).forEach(row => {
+              lines.push('| ' + row.map(c => String(c ?? '').replace(/\|/g, '\\|')).join(' | ') + ' |')
+            })
+            if (data.length > 60) lines.push(`_(... ${data.length - 60} satır daha)_`)
+          })
+        }
         resolve(lines.join('\n'))
       } catch (err) {
         reject(err)
       }
     }
     reader.onerror = reject
-    reader.readAsBinaryString(file)
+    if (isCsv) reader.readAsText(file)
+    else reader.readAsArrayBuffer(file)
   })
 }
 

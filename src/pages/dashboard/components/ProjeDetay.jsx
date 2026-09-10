@@ -1138,7 +1138,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, initialTab,
       if (type === 'pdf') {
         await exportPeriodReportPdf(projMeta, periodLabel, periodRangeLabel, periodData)
       } else {
-        exportPeriodReportExcel(projMeta, periodLabel, periodRangeLabel, periodData)
+        await exportPeriodReportExcel(projMeta, periodLabel, periodRangeLabel, periodData)
       }
       return
     }
@@ -1146,7 +1146,7 @@ export default function ProjeDetay({ projectId, projectName, onBack, initialTab,
     if (type === 'pdf') {
       await exportGunlukRaporPdf(project, wps, ilerlemeData, personelData, opts)
     } else {
-      exportGunlukRaporExcel(project, wps, ilerlemeData, personelData, opts)
+      await exportGunlukRaporExcel(project, wps, ilerlemeData, personelData, opts)
     }
   }
 

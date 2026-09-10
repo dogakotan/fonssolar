@@ -1,6 +1,7 @@
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { jsPDF } from 'jspdf'
 import { autoTable } from 'jspdf-autotable'
+import { downloadBlob, XLSX_MIME } from './downloadFile'
 
 // ─── Fons Solar Marka Sabitleri ───────────────────────────────────────────────
 const BRAND = {
@@ -41,64 +42,72 @@ async function registerUnicodeFont(doc) {
   doc.setFont('Roboto', 'normal')
 }
 
-// ─── EXCEL EXPORT ─────────────────────────────────────────────────────────────
-export function exportToExcel(title, periyot, columns, rows) {
-  const periyotLabel = PERIYOT_LABEL[periyot] || periyot
-  const wb = XLSX.utils.book_new()
+// ─── EXCEL ORTAK YARDIMCILARI ─────────────────────────────────────────────────
+// exceljs ARGB (alpha+RGB, 8 hex) bekler — SheetJS'in düz RGB'sinden (6 hex)
+// dönüştürür.
+const argb = rgb => `FF${rgb.toUpperCase()}`
 
-  // Başlık bloğu + veri
-  const headerRows = [
-    ['FONS SOLAR'],
-    [`${title} — ${periyotLabel} Raporu`],
-    [`Oluşturulma: ${nowLabel()}`],
-    [],                      // boş ayraç
-    columns,                 // kolon başlıkları
-    ...rows,
-  ]
+// 3 banner satırı (başlık/alt başlık/meta) + boş ayraç + kolon başlığı + veri
+// şeklindeki ortak şablonu kurar; bu dosyadaki tüm Excel export fonksiyonları
+// aynı düzeni kullanıyor.
+function buildStyledSheet(wb, sheetName, titleLines, titleStyles, colStyle, colNames, rows) {
+  const ws = wb.addWorksheet(sheetName.slice(0, 31))
+  titleLines.forEach(line => ws.addRow([line]))
+  ws.addRow([])
+  ws.addRow(colNames)
+  rows.forEach(r => ws.addRow(r))
 
-  const ws = XLSX.utils.aoa_to_sheet(headerRows)
+  const colCount = colNames.length
+  const widths = colNames.map(c => String(c ?? '').length)
+  rows.forEach(row => row.forEach((cell, i) => {
+    const l = String(cell ?? '').length
+    if (l > (widths[i] || 0)) widths[i] = l
+  }))
+  ws.columns = widths.map(w => ({ width: Math.max(w + (colStyle.widthPad ?? 4), colStyle.minWidth ?? 12) }))
 
-  // Kolon genişlikleri — başlık satırındaki en uzun içeriğe göre
-  const colCount = columns.length
-  const widths = Array(colCount).fill(0)
-  rows.forEach(row =>
-    row.forEach((cell, i) => {
-      const len = String(cell ?? '').length
-      if (len > widths[i]) widths[i] = len
-    })
-  )
-  columns.forEach((col, i) => {
-    if (String(col).length > widths[i]) widths[i] = String(col).length
-  })
-  ws['!cols'] = widths.map(w => ({ wch: Math.max(w + 4, 14) }))
-
-  // Merge: başlık satırlarını tüm kolonlara yay
   if (colCount > 1) {
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
-      { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
-    ]
+    for (let r = 1; r <= titleLines.length; r++) ws.mergeCells(r, 1, r, colCount)
   }
 
-  // Hücre stilleri (xlsx CE sınırlı — temel kalın/zemin)
-  const styleHeader = { font: { bold: true, sz: 16, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '185FA5' } }, alignment: { horizontal: 'left' } }
-  const styleTitle  = { font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0F6E56' } }, alignment: { horizontal: 'left' } }
-  const styleMeta   = { font: { sz: 9, color: { rgb: '64748B' } }, fill: { fgColor: { rgb: 'F5F7FA' } } }
-  const styleCol    = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } }
-
-  const cellRef = (r, c) => XLSX.utils.encode_cell({ r, c })
-
-  if (ws[cellRef(0, 0)]) ws[cellRef(0, 0)].s = styleHeader
-  if (ws[cellRef(1, 0)]) ws[cellRef(1, 0)].s = styleTitle
-  if (ws[cellRef(2, 0)]) ws[cellRef(2, 0)].s = styleMeta
-  columns.forEach((_, i) => {
-    const ref = cellRef(4, i)
-    if (ws[ref]) ws[ref].s = styleCol
+  titleLines.forEach((_, i) => {
+    const cell = ws.getCell(i + 1, 1)
+    cell.font = titleStyles[i].font
+    cell.fill = titleStyles[i].fill
+    cell.alignment = titleStyles[i].alignment || { horizontal: 'left' }
   })
+  const colRowIdx = titleLines.length + 2
+  colNames.forEach((_, i) => {
+    const cell = ws.getCell(colRowIdx, i + 1)
+    cell.font = colStyle.font
+    cell.fill = colStyle.fill
+    cell.alignment = colStyle.alignment
+  })
+  return ws
+}
 
-  XLSX.utils.book_append_sheet(wb, ws, title.slice(0, 31))
-  XLSX.writeFile(wb, `FonsSolar_${title}_${periyotLabel}_${fileDate()}.xlsx`)
+async function writeWorkbookAndDownload(wb, filename) {
+  const buf = await wb.xlsx.writeBuffer()
+  downloadBlob(buf, filename, XLSX_MIME)
+}
+
+// ─── EXCEL EXPORT ─────────────────────────────────────────────────────────────
+export async function exportToExcel(title, periyot, columns, rows) {
+  const periyotLabel = PERIYOT_LABEL[periyot] || periyot
+  const wb = new ExcelJS.Workbook()
+
+  buildStyledSheet(
+    wb, title,
+    ['FONS SOLAR', `${title} — ${periyotLabel} Raporu`, `Oluşturulma: ${nowLabel()}`],
+    [
+      { font: { bold: true, size: 16, color: { argb: argb('FFFFFF') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('185FA5') } } },
+      { font: { bold: true, size: 11, color: { argb: argb('FFFFFF') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('0F6E56') } } },
+      { font: { size: 9, color: { argb: argb('64748B') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('F5F7FA') } } },
+    ],
+    { font: { bold: true, size: 10, color: { argb: argb('FFFFFF') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('1E3A5F') } }, alignment: { horizontal: 'center' }, widthPad: 4, minWidth: 14 },
+    columns, rows
+  )
+
+  await writeWorkbookAndDownload(wb, `FonsSolar_${title}_${periyotLabel}_${fileDate()}.xlsx`)
 }
 
 // ─── PDF EXPORT ───────────────────────────────────────────────────────────────
@@ -528,9 +537,9 @@ export async function exportGunlukRaporPdf(project, workPackages = [], ilerlemeD
  *  Sheet 3 — İlerleme Durumu
  *  Sheet 4 — Personel & Makine
  */
-export function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData = [], personelRaporu = null, opts = {}) {
+export async function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData = [], personelRaporu = null, opts = {}) {
   const { selectedDate = null } = opts
-  const wb      = XLSX.utils.book_new()
+  const wb      = new ExcelJS.Workbook()
   const projAd  = project?.name || opts.projectName || 'GES PROJESİ'
   const kapsite = project?.capacity_kwp ? `${Number(project.capacity_kwp).toLocaleString('tr-TR')} kWp` : ''
 
@@ -538,48 +547,19 @@ export function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData 
     ? new Date(selectedDate).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', weekday: 'long' })
     : new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric', weekday: 'long' })
 
-  const STYL = {
-    H1: { font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '185FA5' } }, alignment: { horizontal: 'left' } },
-    H2: { font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0F6E56' } }, alignment: { horizontal: 'left' } },
-    META: { font: { sz: 9, color: { rgb: '64748B' } }, fill: { fgColor: { rgb: 'F5F7FA' } } },
-    COL: { font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } },
-    DATA: { font: { sz: 9, color: { rgb: '111827' } } },
-    BOLD: { font: { bold: true, sz: 9, color: { rgb: '111827' } } },
-  }
+  const TITLE_STYLES = [
+    { font: { bold: true, size: 14, color: { argb: argb('FFFFFF') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('185FA5') } } },
+    { font: { bold: true, size: 11, color: { argb: argb('FFFFFF') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('0F6E56') } } },
+    { font: { size: 9, color: { argb: argb('64748B') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('F5F7FA') } } },
+  ]
+  const COL_STYLE = { font: { bold: true, size: 9, color: { argb: argb('FFFFFF') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('1E3A5F') } }, alignment: { horizontal: 'center' } }
 
   function buildSheet(title, colNames, rows) {
-    const aoa = [
-      ['FONS SOLAR'],
-      [`${projAd}${kapsite ? ' — ' + kapsite : ''}`],
-      [`${title} — ${tarihLabel}`],
-      [],
-      colNames,
-      ...rows,
-    ]
-    const ws = XLSX.utils.aoa_to_sheet(aoa)
-
-    // Kolon genişlikleri
-    const colCount = colNames.length
-    const widths = colNames.map(c => String(c).length)
-    rows.forEach(row => row.forEach((cell, i) => { const l = String(cell ?? '').length; if (l > (widths[i] || 0)) widths[i] = l }))
-    ws['!cols'] = widths.map(w => ({ wch: Math.max(w + 4, 12) }))
-
-    // Merges
-    if (colCount > 1) {
-      ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
-      ]
-    }
-
-    const cr = (r, c) => XLSX.utils.encode_cell({ r, c })
-    if (ws[cr(0,0)]) ws[cr(0,0)].s = STYL.H1
-    if (ws[cr(1,0)]) ws[cr(1,0)].s = STYL.H2
-    if (ws[cr(2,0)]) ws[cr(2,0)].s = STYL.META
-    colNames.forEach((_, i) => { const ref = cr(4, i); if (ws[ref]) ws[ref].s = STYL.COL })
-
-    return ws
+    return buildStyledSheet(
+      wb, title,
+      ['FONS SOLAR', `${projAd}${kapsite ? ' — ' + kapsite : ''}`, `${title} — ${tarihLabel}`],
+      TITLE_STYLES, COL_STYLE, colNames, rows
+    )
   }
 
   // ── Sheet 1: KPI Özet ────────────────────────────────────────────────────────
@@ -590,7 +570,7 @@ export function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData 
   const pending   = workPackages.filter(w => w.status === 'bekliyor').length
   const avgPct    = total ? Math.round(workPackages.reduce((s,w) => s + (w.progress||0), 0) / total) : 0
 
-  const ozet = buildSheet('KPI Özeti', ['Gösterge', 'Değer', 'Açıklama'], [
+  buildSheet('KPI Özeti', ['Gösterge', 'Değer', 'Açıklama'], [
     ['Proje Adı', projAd, ''],
     ['Kapasite', kapsite, ''],
     ['Konum', project?.location || '—', ''],
@@ -603,11 +583,10 @@ export function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData 
     ['Gecikmiş', late, late > 0 ? '⚠️ Dikkat' : 'Normal'],
     ['Genel İlerleme', `%${avgPct}`, 'Ortalama tamamlanma'],
   ])
-  XLSX.utils.book_append_sheet(wb, ozet, 'KPI Özeti')
 
   // ── Sheet 2: İş Paketleri ────────────────────────────────────────────────────
   const STATUS_LABEL = { completed: 'Tamamlandı', done: 'Tamamlandı', active: 'Devam Ediyor', pending: 'Beklemede', late: 'Gecikmiş' }
-  const wpSheet = buildSheet('İş Paketleri',
+  buildSheet('İş Paketleri',
     ['#', 'İş Paketi Adı', 'Kategori', 'Durum', 'Başlangıç', 'Bitiş Tarihi', 'İlerleme %'],
     workPackages.map((w, i) => [
       i + 1,
@@ -619,11 +598,10 @@ export function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData 
       `%${w.progress || 0}`,
     ])
   )
-  XLSX.utils.book_append_sheet(wb, wpSheet, 'İş Paketleri')
 
   // ── Sheet 3: İlerleme Durumu ─────────────────────────────────────────────────
   if (ilerlemeData.length) {
-    const ilerSheet = buildSheet('İlerleme Durumu',
+    buildSheet('İlerleme Durumu',
       ['Kategori', 'İş Kalemi', 'Miktar', 'Birim', 'Günlük İlerleme', 'Toplam İlerleme', 'İlerleme %', 'Açıklama'],
       ilerlemeData.map(r => [
         r.category || '—',
@@ -636,7 +614,6 @@ export function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData 
         r.description || r.aciklama || '',
       ])
     )
-    XLSX.utils.book_append_sheet(wb, ilerSheet, 'İlerleme Durumu')
   }
 
   // ── Sheet 4: Personel & Makine ───────────────────────────────────────────────
@@ -652,23 +629,23 @@ export function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData 
       ['Departman', 'Vardiya Baş.', 'Vardiya Bitiş', 'Mühendis', 'Usta', 'İşçi', 'Toplam'],
       persRows
     )
-    // Makine verileri ekle
-    const mStart = 4 + 1 + persRows.length + 2
-    const makRows = [
+    // Makine verileri, iki boş satır sonra ekleniyor (SheetJS'teki sheet_add_aoa
+    // origin hesabıyla ayni gorsel bosluk)
+    persSheet.addRow([])
+    persSheet.addRow([])
+    ;[
       ['İŞ MAKİNASI', '', '', '', '', '', ''],
       ['Vinç', p.vinc||0, '', '', '', '', ''],
       ['JCB', p.jcb||0, '', '', '', '', ''],
       ['Ekskavatör', p.ekskavatör||0, '', '', '', '', ''],
       ['Kamyon', p.kamyon||0, '', '', '', '', ''],
       ['Traktör', p.traktör||p.traktor||0, '', '', '', '', ''],
-    ]
-    XLSX.utils.sheet_add_aoa(persSheet, makRows, { origin: mStart })
-    XLSX.utils.book_append_sheet(wb, persSheet, 'Personel ve Makine')
+    ].forEach(r => persSheet.addRow(r))
   }
 
   const tarihSlug  = (selectedDate ? new Date(selectedDate) : new Date()).toLocaleDateString('tr-TR').replace(/\./g, '-')
   const safeName   = projAd.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_ÇçĞğİıÖöŞşÜü]/g, '')
-  XLSX.writeFile(wb, `FonsSolar_${safeName}_GunlukRapor_${tarihSlug}.xlsx`)
+  await writeWorkbookAndDownload(wb, `FonsSolar_${safeName}_GunlukRapor_${tarihSlug}.xlsx`)
 }
 
 // ─── DÖNEM (HAFTALIK/AYLIK) İLERLEME RAPORU — MÜŞTERİ EXPORT'U ───────────────
@@ -874,44 +851,26 @@ export async function exportPeriodReportPdf(project, periodLabel, periodRangeLab
   doc.save(`FonsSolar_${safeName}_${periodLabel}IlerlemeRaporu_${fileDate()}.pdf`)
 }
 
-export function exportPeriodReportExcel(project, periodLabel, periodRangeLabel, data) {
-  const wb = XLSX.utils.book_new()
+export async function exportPeriodReportExcel(project, periodLabel, periodRangeLabel, data) {
+  const wb = new ExcelJS.Workbook()
   const projAd = project?.name || 'GES PROJESİ'
   const kapsite = project?.capacityKwp ? `${Number(project.capacityKwp).toLocaleString('tr-TR')} kWp` : ''
 
-  function buildSheet(title, colNames, rows) {
-    const aoa = [
-      ['FONS SOLAR'],
-      [`${projAd}${kapsite ? ' — ' + kapsite : ''}`],
-      [`${title} — ${periodLabel} (${periodRangeLabel})`],
-      [],
-      colNames,
-      ...rows,
-    ]
-    const ws = XLSX.utils.aoa_to_sheet(aoa)
-    const colCount = colNames.length
-    const widths = colNames.map(c => String(c).length)
-    rows.forEach(row => row.forEach((cell, i) => { const l = String(cell ?? '').length; if (l > (widths[i] || 0)) widths[i] = l }))
-    ws['!cols'] = widths.map(w => ({ wch: Math.max(w + 4, 12) }))
-    if (colCount > 1) {
-      ws['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: colCount - 1 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: colCount - 1 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: colCount - 1 } },
-      ]
-    }
-    const cr = (r, c) => XLSX.utils.encode_cell({ r, c })
-    const STYL = {
-      H1: { font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '185FA5' } } },
-      H2: { font: { bold: true, sz: 11, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0F6E56' } } },
-      META: { font: { sz: 9, color: { rgb: '64748B' } }, fill: { fgColor: { rgb: 'F5F7FA' } } },
-      COL: { font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E3A5F' } }, alignment: { horizontal: 'center' } },
-    }
-    if (ws[cr(0,0)]) ws[cr(0,0)].s = STYL.H1
-    if (ws[cr(1,0)]) ws[cr(1,0)].s = STYL.H2
-    if (ws[cr(2,0)]) ws[cr(2,0)].s = STYL.META
-    colNames.forEach((_, i) => { const ref = cr(4, i); if (ws[ref]) ws[ref].s = STYL.COL })
-    return ws
+  const TITLE_STYLES = [
+    { font: { bold: true, size: 14, color: { argb: argb('FFFFFF') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('185FA5') } } },
+    { font: { bold: true, size: 11, color: { argb: argb('FFFFFF') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('0F6E56') } } },
+    { font: { size: 9, color: { argb: argb('64748B') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('F5F7FA') } } },
+  ]
+  const COL_STYLE = { font: { bold: true, size: 9, color: { argb: argb('FFFFFF') } }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: argb('1E3A5F') } }, alignment: { horizontal: 'center' } }
+
+  // tabName: gerçek sayfa sekmesi adı — title (banner metni) ile kasıtlı olarak
+  // farklı olabilir (ör. 'Personel Durumu' banner'ı, 'Personel' sekmesi)
+  function buildSheet(tabName, title, colNames, rows) {
+    return buildStyledSheet(
+      wb, tabName,
+      ['FONS SOLAR', `${projAd}${kapsite ? ' — ' + kapsite : ''}`, `${title} — ${periodLabel} (${periodRangeLabel})`],
+      TITLE_STYLES, COL_STYLE, colNames, rows
+    )
   }
 
   const DEPT_LABELS = { idari: 'İdari', mekanik: 'Mekanik', elektrik: 'Elektrik', yevmiyeci: 'Yevmiyeci', diger: 'Diğer' }
@@ -919,22 +878,22 @@ export function exportPeriodReportExcel(project, periodLabel, periodRangeLabel, 
     const d = data.personnel?.[key] || { muhendis: 0, usta: 0, isci: 0 }
     return [label, d.muhendis, d.usta, d.isci, d.muhendis + d.usta + d.isci]
   })
-  XLSX.utils.book_append_sheet(wb, buildSheet('Personel Durumu', ['Departman', 'Mühendis', 'Usta', 'İşçi', 'Toplam'], persRows), 'Personel')
+  buildSheet('Personel', 'Personel Durumu', ['Departman', 'Mühendis', 'Usta', 'İşçi', 'Toplam'], persRows)
 
   const eqRows = (data.equipment || []).map(e => [e.type, e.total])
-  XLSX.utils.book_append_sheet(wb, buildSheet('Ekipman (Dönem Toplamı)', ['Ekipman', 'Toplam Adet-Gün'], eqRows), 'Ekipman')
+  buildSheet('Ekipman', 'Ekipman (Dönem Toplamı)', ['Ekipman', 'Toplam Adet-Gün'], eqRows)
 
   const taskRows = (data.completedTasks || []).map((t, i) => [i + 1, t])
-  XLSX.utils.book_append_sheet(wb, buildSheet('Dönemde Tamamlanan İşler', ['#', 'İş Kalemi'], taskRows), 'Tamamlanan İşler')
+  buildSheet('Tamamlanan İşler', 'Dönemde Tamamlanan İşler', ['#', 'İş Kalemi'], taskRows)
 
   const progRows = (data.progressItems || []).map(it => [it.name, it.unit || '', it.target, it.before, it.added, it.after, it.pct])
-  XLSX.utils.book_append_sheet(wb, buildSheet('İlerleme Durumu', ['İş Kalemi', 'Birim', 'Hedef', 'Dönem Başı', 'Dönem İçi', 'Dönem Sonu', 'İlerleme %'], progRows), 'İlerleme')
+  buildSheet('İlerleme', 'İlerleme Durumu', ['İş Kalemi', 'Birim', 'Hedef', 'Dönem Başı', 'Dönem İçi', 'Dönem Sonu', 'İlerleme %'], progRows)
 
   const noteRows = (data.notes || []).map(n => [n.date ? new Date(n.date).toLocaleDateString('tr-TR') : '—', n.type, n.text])
-  XLSX.utils.book_append_sheet(wb, buildSheet('Notlar / İSG', ['Tarih', 'Tip', 'Not'], noteRows), 'Notlar')
+  buildSheet('Notlar', 'Notlar / İSG', ['Tarih', 'Tip', 'Not'], noteRows)
 
   const safeName = projAd.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_ÇçĞğİıÖöŞşÜü]/g, '')
-  XLSX.writeFile(wb, `FonsSolar_${safeName}_${periodLabel}IlerlemeRaporu_${fileDate()}.xlsx`)
+  await writeWorkbookAndDownload(wb, `FonsSolar_${safeName}_${periodLabel}IlerlemeRaporu_${fileDate()}.xlsx`)
 }
 
 // ─── TARİH FİLTRESİ ──────────────────────────────────────────────────────────

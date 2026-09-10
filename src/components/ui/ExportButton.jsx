@@ -39,7 +39,7 @@ export default function ExportButton({ getData, title, disabled }) {
     try {
       const { columns, rows } = getData(periyot)
       if (tip === 'excel') {
-        exportToExcel(title, periyot, columns, rows)
+        await exportToExcel(title, periyot, columns, rows)
       } else {
         await exportToPdf(title, periyot, columns, rows)
       }
