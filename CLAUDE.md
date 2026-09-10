@@ -1709,7 +1709,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   testler: `procurement-concurrency`, `procurement-two-initiators`,
   `procurement-workflow`, `purchase-single-item`,
   `procurement-negotiation-flow` — hepsinde arıza aynı imza, testlerin
-  kendi mantığında hata yok.
+  kendi mantığında hata yok. **10.09.2026'da kullanıcı etkisi kapatıldı
+  (workaround, kök neden değil):** `create_purchase_request_with_items`/
+  `create_purchase_request_from_monthly_plan` artık `unique_violation`'da
+  otomatik retry (en fazla 5 deneme) yapıyor — bkz. "Son değişiklik". Support
+  ticket'ı hâlâ açılmadı (kullanıcının kendi hesabından açması gerekiyor,
+  taslak metin hazır) — bu madde support/kök-neden tarafında hâlâ açık.
 - ~~Tedarikçi bakiyesi/Finans Raporları — `paid_amount`/`remaining_amount`
   TRY'ye çevrilmiyordu~~ — **tam çözüldü (18.08.2026).** Önceki kısmi düzeltme
   (2026-07-31) yalnızca `total_amount_try`'yi kapsıyordu; şimdi `paid_amount`/
@@ -1848,6 +1853,26 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
 ## Son değişiklik
+
+**10.09.2026 — `request_no` çakışmasına karşı retry-on-conflict eklendi (kök
+neden hâlâ bulunamadı, bu bir workaround).**
+
+"Bilinen açık noktalar"daki `request_no` çakışması Supabase support'a
+taşınmak üzere işaretlendi (kök neden bu oturumun araçlarının ötesinde
+kaldığı için) — ama kullanıcı bu arada kullanıcı deneyimini etkilemeyecek
+en düşük riskli çözümle (retry-on-conflict) devam edilmesini istedi.
+`create_purchase_request_with_items` ve `create_purchase_request_from_monthly_plan`
+RPC'lerindeki `purchase_requests` INSERT'i artık `unique_violation`
+(`purchase_requests_request_no_key`) hatasında PL/pgSQL exception bloğu
+içinde (otomatik savepoint ile güvenli) en fazla 5 kez yeni bir
+`fn_next_purchase_request_no()` değeriyle kendini tekrar dener — 5 denemeden
+sonra hâlâ çakışıyorsa hata olduğu gibi yükselir (sonsuz döngü/sessiz yutma
+yok). Diğer tüm validasyon/yetki mantığı DEĞİŞMEDİ. Bu, sorunun kök nedenini
+ÇÖZMÜYOR (hâlâ bilinmiyor) — yalnızca kullanıcıya asla görünür hale
+gelmemesini sağlıyor. Supabase support ticket'ı hâlâ açılmadı (kullanıcının
+kendi hesabından açması gerekiyor, ayrı bir metin taslağı hazırlandı ama
+gönderilmedi) — bu madde support tarafında hâlâ açık, yalnızca kullanıcı
+etkisi ortadan kalktı.
 
 **09.09.2026 (9. tur) — Fatura/harcama ekleme sihirbazına Şirket seçici
 eklendi: Fons Solar (projeli) vs PV Solution (projesiz genel harcama).**
