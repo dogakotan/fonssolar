@@ -1690,20 +1690,27 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
-- ~~`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
-  duplicate key)~~ — **kök nedeni bulunup düzeltildi (10.09.2026), Supabase
-  support'a hiç açılmadı.** Önceki turlarda "PgBouncer/PostgREST kaynaklı,
-  bu projenin araçlarıyla düzeltilemez" sanılmıştı — YANLIŞ çıktı. Gerçek
-  neden: `fn_next_purchase_request_no()` sayacı normal bir tabloda tutup
-  çağıranın transaction'ı İÇİNDE artırıyordu; PL/pgSQL'in
+- **`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
+  duplicate key) — KISMEN çözüldü (10.09.2026), tam kapanmadı.** Önceki
+  turlarda "PgBouncer/PostgREST kaynaklı, bu projenin araçlarıyla
+  düzeltilemez" sanılmıştı — bu hipotez YANLIŞ çıktı. Gerçek (ve kanıtlanmış)
+  bir mekanizma bulundu: `fn_next_purchase_request_no()` sayacı normal bir
+  tabloda tutup çağıranın transaction'ı İÇİNDE artırıyordu; PL/pgSQL'in
   `exception when unique_violation` savepoint-rollback'i bu artışı da geri
   alıyor, aynı numarayı tekrar tekrar üretiyordu (canlı bir zorlanmış-
   çakışma testiyle kanıtlandı). Düzeltme: sayaç tablosu yerine yıl başına
-  gerçek bir Postgres `SEQUENCE` (`nextval()` rollback'ten etkilenmez) —
-  ayrıntı için "Son değişiklik" 10.09.2026 girdisine bak. Etkilenen testler
+  gerçek bir Postgres `SEQUENCE` (`nextval()` rollback'ten etkilenmez).
+  **AMA** tam regresyon paketi bu düzeltmeden SONRA tekrar çalıştırılınca
+  6/74 test hâlâ aynı imzayla başarısız oldu — kapsamlı canlı adli inceleme
+  (sequence izole test, süreç listesi, `pg_stat_activity`, farklı-proje
+  peer-oturum kontrolü, Supabase branch listesi) kalıntı nedeni AÇIKLAYAMADI.
+  Pragmatik önlem olarak retry sınırı 5'ten 20'ye çıkarıldı
+  (`bump_request_no_retry_cap_to_20`) — kök nedeni çözmüyor, yalnızca
+  kullanıcı etkisini azaltıyor. Ayrıntı için "Son değişiklik" 10.09.2026
+  girdisine (ve altındaki "DÜZELTME" notuna) bak. Etkilenen testler
   (`procurement-concurrency`, `procurement-two-initiators`,
   `procurement-workflow`, `purchase-single-item`,
-  `procurement-negotiation-flow`) artık flaky olmamalı.
+  `procurement-negotiation-flow`) hâlâ ara sıra flaky olabilir.
 - ~~Tedarikçi bakiyesi/Finans Raporları — `paid_amount`/`remaining_amount`
   TRY'ye çevrilmiyordu~~ — **tam çözüldü (18.08.2026).** Önceki kısmi düzeltme
   (2026-07-31) yalnızca `total_amount_try`'yi kapsıyordu; şimdi `paid_amount`/
@@ -1885,10 +1892,46 @@ ya da bir kez tetiklenip başarıyla tamamlandı. `purchase_request_no_counters`
 tablosu artık hiçbir fonksiyon tarafından okunmuyor ama veri kaybı riski
 almamak için SİLİNMEDİ (ayrı bir temizlik migration'ına bırakıldı).
 
-**Sonuç:** "Bilinen açık noktalar"daki bu madde artık KAPALI — Supabase
-support'a hiç açılmadı, açılmasına gerek kalmadı (kök neden bu projenin
-kendi migration araçlarıyla düzeltilebilir bir şeydi, altyapı sorunu
-değildi).
+**DÜZELTME (aynı gün, birkaç saat sonra) — bir önceki "Sonuç" bölümündeki
+"artık KAPALI" ifadesi ERKEN verilmiş bir sonuçtu, tam regresyon paketi
+çalıştırılınca yanlış çıktı.** Tam paket (74 test) bu düzeltmeden sonra
+çalıştırılınca 6 test hâlâ AYNI imzayla ("request_no already exists", düşük
+numaralarla — SAT-2026-105..109 gibi) başarısız oldu. Bu 6 testin TAMAMI
+tek worker'la tam sıralı (`playwright.config.js`: `workers:1`,
+`fullyParallel:false`, `retries:0`) çalıştığından, Playwright'ın kendi
+paralelliği/retry'ı bu duruma karışmıyordu. Kapsamlı canlı adli inceleme
+yapıldı ve şunların HİÇBİRİ açıklama olarak doğrulanamadı: (a) `pg_sequences`
+üzerinden sequence'in kendisi izole test edildiğinde tertemiz, hiç geriye
+sarmadan ilerliyordu (1046→1102); (b) bu makinede lingering başka bir
+Playwright/test process'i yoktu (yalnızca eski `npm run dev` instance'ları
+— bazıları 3 Ağustos'tan beri açık kalmış, ayrı bir bulgu — ve ilgisiz bir
+Next.js/CRM projesi vardı); (c) `pg_stat_activity` o anda başka aktif bir
+transaction göstermiyordu; (d) kullanıcının ayrı bir "PV Solutions CRM"
+oturumu tamamen FARKLI bir Supabase projesine (`mzwxtfnmikgcrmjgkvad`)
+bağlıydı, bu projeyle ilgisizdi; (e) Supabase'de `main` dışında bir preview
+branch yoktu (branch-reset ihtimali de elendi). Yani: bugün bulunan ve
+düzeltilen mekanizma (transaction-rollback'in sayaç artışını geri alması)
+KESİN OLARAK gerçek ve doğrulanmış bir bug'dı — ama bu, `request_no`'nun
+ARTIK HİÇ ÇAKIŞMAYACAĞI garantisi vermiyor; kalıntı bir çakışma kaynağı
+(muhtemelen gerçekten dış/eşzamanlı bir yazıcı, ama kanıtlanamadı) hâlâ var
+ve nedeni bulunamadı.
+
+**Pragmatik önlem:** kullanıcı kararıyla, kök nedeni bulmaya daha fazla zaman
+harcamak yerine iki RPC'deki retry sınırı 5'ten **20**'ye çıkarıldı
+(`bump_request_no_retry_cap_to_20` migration'ı) — ucuz, güvenli, kök nedeni
+çözmüyor ama kalıntı hatanın kullanıcıya ulaşma ihtimalini daha da azaltıyor.
+RPC'den geçmeyen ham insert'ler (ör. `purchase-single-item.spec.js`'teki
+concurrency testi, doğrudan `.from('purchase_requests').insert(...)`
+kullanıyor) hâlâ korumasız — bu, bugünkü işin kapsamı dışında, önceden de
+böyleydi.
+
+**Sonuç (düzeltilmiş):** "Bilinen açık noktalar"daki bu madde TAMAMEN
+KAPANMADI — mekanizma-seviyesi kök neden kesin olarak bulunup düzeltildi
+(gerçek ilerleme), ama regresyon paketinde ~%8 (6/74) kalıntı bir arıza
+oranı hâlâ gözlemleniyor, nedeni tam olarak belirlenemedi. Supabase
+support'a hâlâ açılmadı — açılırsa artık "PgBouncer/PostgREST" hipotezi
+değil, bu turda toplanan adli kanıtlarla (sequence temiz, yerel süreç/oturum
+elendi) birlikte açılmalı.
 
 **09.09.2026 (9. tur) — Fatura/harcama ekleme sihirbazına Şirket seçici
 eklendi: Fons Solar (projeli) vs PV Solution (projesiz genel harcama).**
