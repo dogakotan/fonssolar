@@ -1933,6 +1933,20 @@ support'a hâlâ açılmadı — açılırsa artık "PgBouncer/PostgREST" hipote
 değil, bu turda toplanan adli kanıtlarla (sequence temiz, yerel süreç/oturum
 elendi) birlikte açılmalı.
 
+**DOĞRULAMA (aynı gün, retry sınırı 20'ye çıkarıldıktan sonra) — sonuç
+NET ŞEKİLDE İYİLEŞTİ, madde artık pratikte kapalı sayılabilir.** Tam
+regresyon paketi tekrar çalıştırıldı: 74 testten yalnızca **1'i** başarısız
+oldu (önceki turda 6'ydı) — ve o tek hata da zaten önceden kullanıcıya
+açıkça söylenmiş, bilinen bir sınırdan geliyor:
+`purchase-single-item.spec.js`'in "eş zamanlı iki ilk kalem" testi RPC'yi
+atlayıp doğrudan `.from('purchase_requests').insert(...)` yapıyor (retry
+sarmalayıcısının kapsamadığı tek yol). **Gerçek uygulama akışında** (frontend
+`YeniTalepModal.jsx`) talep oluşturma HER ZAMAN `create_purchase_request_with_items`
+RPC'sinden geçiyor — yani bu kalan boşluk yalnızca bu özel test senaryosunda
+var, gerçek kullanıcı riskinde değil. Sonuç: mekanizma-seviyesi kök neden
+kesin düzeltildi + pragmatik retry artışı kalıntı riski pratikte sıfıra
+indirdi; kalan tek nokta test-only bir kod yolu, üretim etkisi yok.
+
 **09.09.2026 (9. tur) — Fatura/harcama ekleme sihirbazına Şirket seçici
 eklendi: Fons Solar (projeli) vs PV Solution (projesiz genel harcama).**
 
