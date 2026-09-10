@@ -1516,7 +1516,7 @@ Risk girişi yalnızca proje **düzenleme** akışında var, **oluşturmada yok*
 | Proje yönetimi | projects, project_tasks, project_category_weights, project_risks |
 | Günlük saha raporlama | daily_reports, daily_tasks, personnel_log_entries, machinery_logs, daily_report_photos, daily_report_issues, daily_report_material_usage (kullanımda değil), daily_report_drafts |
 | İmalat ilerlemesi | progress_daily |
-| Satın alma | purchase_requests, purchase_request_items, purchase_request_status_log, purchase_request_no_counters (`request_no` üretimi için yıl-bazlı sayaç, 30.07.2026) |
+| Satın alma | purchase_requests, purchase_request_items, purchase_request_status_log, purchase_offers (teklif toplama, 03.09.2026), procurement_monthly_plan (`request_no` üretimi artık `purchase_request_no_counters` tablosu değil bir Postgres SEQUENCE — 10.09.2026'da eklendi, ayrıntı için "Son değişiklik") |
 | Fatura ve maliyet | invoices, invoice_approvals, invoice_payments, suppliers, budget_lines, cost_allocations, financial_transactions, financial_transaction_payments |
 | Kullanıcı yönetimi / navigasyon | roles, role_allowed_tabs, role_sidebar_items, profiles, user_project_access, user_management_audit |
 | Bildirim | notifications |
@@ -1969,8 +1969,12 @@ gereksiz (sequence'ler doğal olarak eşzamanlılığa karşı güvenli). Aynı
 zorlanmış-çakışma testi bu düzeltmeyle tekrarlandı: hata alınmadı, retry
 (hâlâ yerinde duruyor, artık zararsız bir defans katmanı) hiç tetiklenmeden
 ya da bir kez tetiklenip başarıyla tamamlandı. `purchase_request_no_counters`
-tablosu artık hiçbir fonksiyon tarafından okunmuyor ama veri kaybı riski
-almamak için SİLİNMEDİ (ayrı bir temizlik migration'ına bırakıldı).
+tablosu o gün hiçbir fonksiyon tarafından okunmuyordu ama veri kaybı riski
+almamak için hemen silinmemişti — 10.09.2026'nın ilerleyen bir turunda
+(DB advisor taraması sırasında: RLS'i kapalıydı, ama `anon`/`authenticated`'a
+hiç grant verilmediğinden gerçek bir REST açığı yoktu) ertelenmiş temizlik
+tamamlandı, tablo `drop_dead_purchase_request_no_counters_table` migration'ıyla
+kaldırıldı.
 
 **DÜZELTME (aynı gün, birkaç saat sonra) — bir önceki "Sonuç" bölümündeki
 "artık KAPALI" ifadesi ERKEN verilmiş bir sonuçtu, tam regresyon paketi
