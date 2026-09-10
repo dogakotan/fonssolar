@@ -1850,6 +1850,62 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**10.09.2026 (2. tur) — DB advisor hijyeni (2 küçük düzeltme) + 3 yeni test
+dosyasıyla yakın zamanda eklenen ama hiç test kapsamında olmayan üç özellik
+kapatıldı.**
+
+Kullanıcı isteğiyle proaktif bir tarama yapıldı: `get_advisors`
+(security+performance) çalıştırıldı, iki gerçek (ama düşük riskli) bulgu
+düzeltildi —
+1. `fn_release_monthly_plan_link_on_request_terminal_status` (07.09.2026'daki
+   aylık plan linki temizleme trigger'ı) `anon` rolüne bile EXECUTE açık
+   bırakılmıştı — `RETURNS trigger` olduğundan pratikte somurulamaz (Postgres
+   trigger fonksiyonlarının doğrudan çağrılmasını reddeder) ama projenin
+   kendi "yeni SECURITY DEFINER'da REVOKE FROM PUBLIC,anon" kuralına
+   uymuyordu — `REVOKE` ile kapatıldı.
+2. `purchase_offers` (created_by/request_id/supplier_id) ve `purchase_requests`'in
+   yeni pazarlık kolonları (negotiated_by/selected_offer_id/stage_approved_by)
+   üzerinde covering index yoktu (`unindexed_foreign_keys` INFO) — 6 index
+   eklendi.
+
+Ardından, 09.09.2026'da eklenen ama hiç Playwright kapsamında olmayan üç
+özellik için test yazıldı:
+- **`tests/company-selector.spec.js`** — Şirket seçici (Fons Solar/PV
+  Solution). PV Solution'ın projesiz oluşturulup `cost_allocations`'a hiç
+  yansımadığını, Fons Solar yolunun hâlâ doğru yansıdığını (regresyon
+  guard) ve arayüzde şirket seçilince "Proje ve Bağlı Talep" kartının
+  görünürlüğünü doğrular. **Test yazılırken gerçek bir bulgu çıktı (ürün
+  hatası değil, test varsayımı hatasıydı):** `financial_transactions`'ta
+  client-erişimli bir DELETE policy'si yok (diğer finans tablolarındaki
+  hiç-hard-delete deseniyle tutarlı) — ilk yazımda test cleanup'ı sessizce
+  hiçbir şey silmiyordu (RLS 0 satır etkiliyordu, hata da dönmüyordu),
+  `status='iptal'`e çekilerek düzeltildi (bu da `trg_financial_transaction_cost_allocation`'ı
+  tetikleyip bağlı `cost_allocations` satırını otomatik temizliyor). Ayrıca
+  `cost_allocations`'ın admin-only SELECT olduğu (muhasebe göremez) ilk
+  yazımda gözden kaçmıştı — kontrol admin client'ına taşındı.
+- **`tests/approver-role-routing.spec.js`** — 09.09.2026'daki approver_role
+  yönlendirmesi (Osman Karadoğan/Cem Aslan admin hesaplarından açılan
+  malzeme değişikliği talepleri proje yöneticisine düşer, diğer admin
+  hesapları `admin`de kalır). İki yönü de doğrular: doğru hesap doğru role
+  yönlendiriliyor VE bu yönlendirme `review_procurement_item_change_request`'in
+  kendi yetki kontrolünü fiilen etkiliyor (proje yöneticisi yalnızca kendine
+  yönlendirilmiş talebi onaylayabiliyor, `admin`e yönlendirilmiş birini
+  onaylayamıyor).
+- **`tests/bom-matching.spec.js`** — 07.09.2026'daki malzeme eşleştirme
+  önerisi (`nameSimilarity`/`suggestBomMatches`, `src/utils/satinAlma.js`).
+  Bu proje vitest/jest kullanmıyor ama bu iki fonksiyon yan etkisiz saf JS
+  olduğundan (DB/browser bağımlılığı yok) Playwright'ın `page` fixture'ı
+  olmadan çalışan `test()` ile doğrudan unit-test gibi test edildi — CLAUDE.md'de
+  dokümante edilen gerçek fix vakasını ("TTR kablo" ↔ uzun/teknik BOM adı,
+  ilk sürümde %16, `tokenSetSimilarity` fix'iyle %100) doğrudan regresyon
+  guard'ı olarak kullanır, ayrıca `suggestBomMatches`'in filtre mantığını
+  (bom_item_id dolu/kategori/durum/eşik altı) kapsar. Canlı proje verisine
+  (`kaptan-demir-adana-arazi-faz1`) bağımlı olmadığından kırılgan değil.
+
+Dört PR da (#15-#18) `main`'e merge edildi, her birinde production deploy
+doğrulandı. `npm run lint` bu turda değişmeyen 10 önceden-bilinen uyarıyla
+temiz (0 hata).
+
 **10.09.2026 — `request_no` çakışmasının GERÇEK KÖK NEDENİ bulundu ve
 düzeltildi (Supabase support'a taşınmasına gerek kalmadı).**
 
