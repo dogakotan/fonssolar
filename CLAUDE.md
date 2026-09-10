@@ -1690,30 +1690,34 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
-- **`xlsx` (SheetJS) bağımlılığı — HIGH severity güvenlik açığı, npm'de
-  düzeltme yok, kullanıcı kararıyla şimdilik kabul edildi (10.09.2026).**
-  `npm audit` iki CVE'yi işaretliyor (prototype pollution + ReDoS,
-  GHSA-4r6h-8v6p-xvw6/GHSA-5pgg-2g8v-p4x9). SheetJS'in yamalı sürümleri
-  yalnızca kendi CDN'inde (`cdn.sheetjs.com`) yayınlanıyor, npm registry'deki
-  `xlsx` paketi güncellenmiyor. Bu paket `import-project-excel`/
-  `export-project-excel` edge fonksiyonlarında ve `src/utils/projectExcelImport.js`'de
-  kullanıcının yüklediği .xlsx dosyalarını parse etmek için kullanılıyor —
-  gerçek bir saldırı yüzeyi var (yalnızca export değil, import/parse de).
-  Kullanıcı üç seçenekten ("kabul et/izle", "SheetJS CDN'inden yamalı sürüm
-  kur", "önce gerçek riski araştır") ilkini seçti — npm dışı bir kaynaktan
-  paket kurmanın kendi riskleri (registry dışı bağımlılık takibi) olduğu
-  düşünüldü. Yeniden gündeme gelirse: önce hangi rollerin Excel yükleyebildiği
-  (`TabProjeYonetimi.jsx` → admin/proje_yoneticisi) ve gerçek ReDoS/prototype-pollution
-  tetikleme koşullarının bu akışta mümkün olup olmadığı araştırılmalı.
-- **`react-router` v6→v7 migration'ı — ertelendi (10.09.2026, kullanıcı
-  kararı).** `npm audit`'in işaretlediği moderate açığı (open redirect +
-  SSR hydration'da constructor injection) tam kapatmak `react-router-dom`'u
-  v7'ye (major, gerçek API değişiklikleri içeren bir migration) taşımayı
-  gerektiriyor — bu proje SSR kullanmıyor, gerçek istismar riski düşük
-  değerlendirildi, şimdilik ertelendi. Mevcut 6.x hattında en güncel patch'e
-  (6.30.6) çekildi (`dompurify` ile birlikte, PR #20). Yeniden gündeme
-  gelirse react-router v7'nin resmi migration rehberi + bu projenin
-  `AppRouter`/lazy `Dashboard` yapısına etkisi haritalanmalı.
+- ~~`xlsx` (SheetJS) bağımlılığı — HIGH severity güvenlik açığı~~ — **çözüldü
+  (10.09.2026, 2. tur).** Önceki "kabul et/izle" kararı, gerçek saldırı
+  yüzeyinin dokümante edilenden çok daha geniş olduğu ortaya çıkınca yeniden
+  ele alındı — bkz. "Son değişiklik". `xlsx` tamamen kaldırıldı, 3 kullanım
+  yeri (`src/utils/exportUtils.js`, `src/utils/projectExcelImport.js`,
+  `src/components/agent/AgentChat.jsx`) `exceljs`'e (zaten edge fonksiyonlarında
+  kullanılan, aktif bakımlı kütüphane) geçirildi.
+- **`react-router` v6→v7 migration'ı — hâlâ ertelenmiş durumda, ama araştırma
+  tamamlandı (10.09.2026, 2. tur).** Kullanım tamamen deklaratif/kütüphane
+  modu (`BrowserRouter`/`Routes`/`Route`/`Navigate`/`useNavigate`/`useLocation`,
+  5 dosya) — data router API'si (`createBrowserRouter`, loader/action) hiç
+  kullanılmıyor. Advisory'deki 2 CVE'den SSR hydration'daki
+  (`deserializeErrors()`) bu projede **hiç geçerli değil** (SSR yok);
+  backslash ile open redirect (`<Link>`/`useNavigate`) teorik olarak geçerli
+  ama kod taramasında `navigate()`'e kullanıcı kontrollü/dışarıdan gelen bir
+  hedef geçirilmediği doğrulandı (tüm çağrılar sabit uygulama-içi path).
+  **Resmi migration rehberinden çıkan kritik bulgu:** v7'nin
+  `v7_relativeSplatPath` davranış değişikliği tam olarak bu projenin
+  `src/router/index.jsx`'teki `<Route path="/dashboard/*" ...>` gibi çok
+  segmentli splat route'ları etkiliyor — bu route CLAUDE.md'de ayrıca
+  "kasıtlı olarak TEK bir wildcard, remount bug'larına karşı dikkatli
+  tasarlandı" diye işaretli (bkz. "Frontend yapısı" → Routing), yani naif bir
+  v7 sıçraması navigasyonu sessizce bozabilir. Resmi tavsiye edilen yol:
+  önce mevcut 6.30.6'da yalnızca `v7_relativeSplatPath` future flag'i açılıp
+  dashboard içi navigasyon (özellikle proje-içi sekme geçişleri, deep-link'ler)
+  gerçek/Playwright ile test edilmeli, sorun çıkmazsa asıl v7 paket geçişi
+  yapılmalı — tek adımda büyük sürüm atlanmamalı. Bu iki adım henüz
+  YAPILMADI, yalnızca haritalandı; kullanıcı onayı olmadan uygulanmayacak.
 - **`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
   duplicate key) — KISMEN çözüldü (10.09.2026), tam kapanmadı.** Önceki
   turlarda "PgBouncer/PostgREST kaynaklı, bu projenin araçlarıyla
@@ -1873,6 +1877,66 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
 ## Son değişiklik
+
+**10.09.2026 (3. tur) — "ertelenenler" yeniden incelendi: `xlsx` (SheetJS)
+tamamen kaldırılıp `exceljs`'e geçirildi (gerçek saldırı yüzeyi sanılandan
+geniş çıktı), `react-router` v7 için araştırma tamamlandı (henüz uygulanmadı).**
+
+Kullanıcı isteğiyle daha önce "kabul edildi"/"ertelendi" diye kapatılan iki
+madde yeniden ele alındı. Kod taraması ikisi için de önceki değerlendirmenin
+eksik olduğunu gösterdi:
+
+- **xlsx — gerçek kapsam dokümante edilenden geniş çıktı.** CLAUDE.md'nin eski
+  hâli "edge fonksiyonları + projectExcelImport.js" diyordu — ama edge
+  fonksiyonları (`import-project-excel`/`export-project-excel`) `xlsx` değil
+  `exceljs` kullanıyor (yanlış dokümantasyon), ve gerçek `xlsx.read()` (parse)
+  çağrısı üçüncü, hiç bahsedilmemiş bir dosyada daha vardı:
+  `src/components/agent/AgentChat.jsx` — `FloatingAgent` (`index.jsx:545`)
+  hiçbir rol filtresi olmadan render edildiğinden, bu saldırı yüzeyi
+  "yalnızca admin/proje_yöneticisi" değil **tüm 4 rol** için açıktı.
+- **Düzeltme (kabul yerine kaldırma):** `exceljs@4.4.0` (zaten edge
+  fonksiyonlarında kullanılan, aktif bakımlı) frontend bağımlılığı olarak
+  eklendi, `xlsx` 3 dosyadan da (`exportUtils.js`, `projectExcelImport.js`,
+  `AgentChat.jsx`) tamamen çıkarıldı ve `npm uninstall xlsx` ile kaldırıldı.
+  Yeni paylaşılan yardımcı: `src/utils/downloadFile.js` (`downloadBlob()`) —
+  exceljs'in `writeBuffer()`'ı SheetJS'in `writeFile()`'ının aksine tarayıcı
+  indirmesini otomatik tetiklemediğinden, Blob + geçici `<a download>` linkiyle
+  elle yapılıyor. `exportUtils.js`'teki 3 Excel export fonksiyonu (`exportToExcel`,
+  `exportGunlukRaporExcel`, `exportPeriodReportExcel`) artık ortak bir
+  `buildStyledSheet()` yardımcısını paylaşıyor (öncesinde 3 kez neredeyse
+  birebir kopyalanmış SheetJS aoa/stil kodu vardı) — banner/kolon başlığı
+  renk-yazı stilleri (RGB→ARGB çevrimiyle) birebir korundu. Bu üçü + `AgentChat`'in
+  dosya-eki metne çevirme yolu + proje sihirbazının "manuel doldur" import'u
+  (`parseIsKalemleri`/`downloadProjectTemplate`) hepsi artık `async` (writeBuffer
+  promise döndürdüğünden) — çağıran yerler (`ExportButton.jsx`, `ProjeDetay.jsx`)
+  `await` eklenerek güncellendi, `vite.config.js`'teki `vendor-xlsx` manualChunk
+  girdisi `'xlsx'`'ten `'exceljs'`e çevrildi (aksi halde build "Could not resolve
+  entry module xlsx" ile patlıyordu).
+  **Doğrulama:** canlı admin hesabıyla gerçek bir Excel export indirilip
+  (`ExportButton` → TabGenel) indirilen dosya `exceljs` ile geri okunarak
+  banner/kolon stillerinin (bold/renk/dolgu) doğru yazıldığı doğrulandı;
+  `parseIsKalemleri()`/`downloadProjectTemplate()` gerçek kaynak koddan
+  esbuild ile bundle edilip Node'da (hem string hem gerçek Excel Date hücreli
+  tarih girdileriyle) doğrudan test edildi; `AgentChat`'in dosya-eki akışı
+  canlı tarayıcıda `.xlsx` dosyası eklenerek konsol/sayfa hatası olmadığı
+  doğrulandı. `npm run lint`/`build` temiz (yalnızca `vendor-xlsx` chunk'ı
+  ~938 kB'a çıktı — exceljs SheetJS'ten daha büyük bir kütüphane, bilinçli
+  bir bundle-size ödünleşimi, ayrıca optimize edilmedi).
+  **Not — `exceljs`'in kendi `uuid` bağımlılığı** `npm audit`'te moderate bir
+  CVE taşıyor (GHSA-w5hq-g745-h8pq, "buf parametresi verildiğinde bounds
+  check eksik") ama exceljs bu fonksiyonu (`cf-rule-ext-xform.js`) her zaman
+  parametresiz (`uuidv4()`) çağırıyor — yani bu projede bu güvenlik açığının
+  tetiklenme yolu hiç yok, kontrol edilip doğrulandı.
+- **react-router v7 — yalnızca araştırıldı, henüz göç edilmedi.** Kullanım
+  tamamen deklaratif (data router API'si yok), advisory'nin SSR bacağı hiç
+  geçerli değil, open-redirect bacağı da `navigate()` çağrılarının hiçbirinin
+  kullanıcı kontrollü hedef almaması nedeniyle düşük risk. Ama resmi migration
+  rehberi `v7_relativeSplatPath` davranış değişikliğinin tam olarak
+  `/dashboard/*` gibi çok segmentli splat route'ları etkilediğini gösterdi —
+  bu route bu projede özellikle hassas (bkz. "Frontend yapısı" → Routing,
+  kasıtlı tek wildcard + remount bug geçmişi). Ayrıntı ve önerilen 2 aşamalı
+  yol (önce v6'da future flag + test, sonra asıl v7 geçişi) "Bilinen açık
+  noktalar" bölümüne yazıldı — kullanıcı onayı beklemeden uygulanmadı.
 
 **10.09.2026 (2. tur) — DB advisor hijyeni (2 küçük düzeltme) + 3 yeni test
 dosyasıyla yakın zamanda eklenen ama hiç test kapsamında olmayan üç özellik
