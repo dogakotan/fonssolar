@@ -1690,6 +1690,30 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
+- **`xlsx` (SheetJS) bağımlılığı — HIGH severity güvenlik açığı, npm'de
+  düzeltme yok, kullanıcı kararıyla şimdilik kabul edildi (10.09.2026).**
+  `npm audit` iki CVE'yi işaretliyor (prototype pollution + ReDoS,
+  GHSA-4r6h-8v6p-xvw6/GHSA-5pgg-2g8v-p4x9). SheetJS'in yamalı sürümleri
+  yalnızca kendi CDN'inde (`cdn.sheetjs.com`) yayınlanıyor, npm registry'deki
+  `xlsx` paketi güncellenmiyor. Bu paket `import-project-excel`/
+  `export-project-excel` edge fonksiyonlarında ve `src/utils/projectExcelImport.js`'de
+  kullanıcının yüklediği .xlsx dosyalarını parse etmek için kullanılıyor —
+  gerçek bir saldırı yüzeyi var (yalnızca export değil, import/parse de).
+  Kullanıcı üç seçenekten ("kabul et/izle", "SheetJS CDN'inden yamalı sürüm
+  kur", "önce gerçek riski araştır") ilkini seçti — npm dışı bir kaynaktan
+  paket kurmanın kendi riskleri (registry dışı bağımlılık takibi) olduğu
+  düşünüldü. Yeniden gündeme gelirse: önce hangi rollerin Excel yükleyebildiği
+  (`TabProjeYonetimi.jsx` → admin/proje_yoneticisi) ve gerçek ReDoS/prototype-pollution
+  tetikleme koşullarının bu akışta mümkün olup olmadığı araştırılmalı.
+- **`react-router` v6→v7 migration'ı — ertelendi (10.09.2026, kullanıcı
+  kararı).** `npm audit`'in işaretlediği moderate açığı (open redirect +
+  SSR hydration'da constructor injection) tam kapatmak `react-router-dom`'u
+  v7'ye (major, gerçek API değişiklikleri içeren bir migration) taşımayı
+  gerektiriyor — bu proje SSR kullanmıyor, gerçek istismar riski düşük
+  değerlendirildi, şimdilik ertelendi. Mevcut 6.x hattında en güncel patch'e
+  (6.30.6) çekildi (`dompurify` ile birlikte, PR #20). Yeniden gündeme
+  gelirse react-router v7'nin resmi migration rehberi + bu projenin
+  `AppRouter`/lazy `Dashboard` yapısına etkisi haritalanmalı.
 - **`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
   duplicate key) — KISMEN çözüldü (10.09.2026), tam kapanmadı.** Önceki
   turlarda "PgBouncer/PostgREST kaynaklı, bu projenin araçlarıyla
