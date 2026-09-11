@@ -1697,27 +1697,59 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   yeri (`src/utils/exportUtils.js`, `src/utils/projectExcelImport.js`,
   `src/components/agent/AgentChat.jsx`) `exceljs`'e (zaten edge fonksiyonlarında
   kullanılan, aktif bakımlı kütüphane) geçirildi.
-- **`react-router` v6→v7 migration'ı — hâlâ ertelenmiş durumda, ama araştırma
-  tamamlandı (10.09.2026, 2. tur).** Kullanım tamamen deklaratif/kütüphane
-  modu (`BrowserRouter`/`Routes`/`Route`/`Navigate`/`useNavigate`/`useLocation`,
+- **`react-router` v6→v7 migration'ı — 1. faz tamamlandı (11.09.2026), asıl v7
+  paket geçişi hâlâ ertelenmiş.** Kullanım tamamen deklaratif/kütüphane modu
+  (`BrowserRouter`/`Routes`/`Route`/`Navigate`/`useNavigate`/`useLocation`,
   5 dosya) — data router API'si (`createBrowserRouter`, loader/action) hiç
   kullanılmıyor. Advisory'deki 2 CVE'den SSR hydration'daki
   (`deserializeErrors()`) bu projede **hiç geçerli değil** (SSR yok);
   backslash ile open redirect (`<Link>`/`useNavigate`) teorik olarak geçerli
   ama kod taramasında `navigate()`'e kullanıcı kontrollü/dışarıdan gelen bir
   hedef geçirilmediği doğrulandı (tüm çağrılar sabit uygulama-içi path).
-  **Resmi migration rehberinden çıkan kritik bulgu:** v7'nin
-  `v7_relativeSplatPath` davranış değişikliği tam olarak bu projenin
-  `src/router/index.jsx`'teki `<Route path="/dashboard/*" ...>` gibi çok
-  segmentli splat route'ları etkiliyor — bu route CLAUDE.md'de ayrıca
-  "kasıtlı olarak TEK bir wildcard, remount bug'larına karşı dikkatli
-  tasarlandı" diye işaretli (bkz. "Frontend yapısı" → Routing), yani naif bir
-  v7 sıçraması navigasyonu sessizce bozabilir. Resmi tavsiye edilen yol:
-  önce mevcut 6.30.6'da yalnızca `v7_relativeSplatPath` future flag'i açılıp
-  dashboard içi navigasyon (özellikle proje-içi sekme geçişleri, deep-link'ler)
-  gerçek/Playwright ile test edilmeli, sorun çıkmazsa asıl v7 paket geçişi
-  yapılmalı — tek adımda büyük sürüm atlanmamalı. Bu iki adım henüz
-  YAPILMADI, yalnızca haritalandı; kullanıcı onayı olmadan uygulanmayacak.
+  Resmi migration rehberi v7'nin `v7_relativeSplatPath` davranış değişikliğinin
+  tam olarak `src/router/index.jsx`'teki `<Route path="/dashboard/*" ...>` gibi
+  çok segmentli splat route'ları etkilediğini gösteriyordu — bu route CLAUDE.md'de
+  ayrıca "kasıtlı olarak TEK bir wildcard, remount bug'larına karşı dikkatli
+  tasarlandı" diye işaretli (bkz. "Frontend yapısı" → Routing). Önerilen
+  2 aşamalı yoldan **1. aşama uygulandı:** `src/App.jsx`'teki `<BrowserRouter>`'a
+  `future={{ v7_relativeSplatPath: true, v7_startTransition: true }}` eklendi
+  (declarative router'da geçerli tek 2 future flag — `v7_fetcherPersist`/
+  `v7_normalizeFormMethod`/`v7_partialHydration`/`v7_skipActionErrorRevalidation`
+  yalnızca data router'a özgü, bu projede uygulanamaz/anlamsız). Doğrulama: (a)
+  proje_yoneticisi ile canlı Playwright testi — `/dashboard/*` splat route'a giriş,
+  proje detayına tıklama, proje-içi 5 sekme arası geçiş (URL `replace` ile
+  güncelleniyor), tarayıcı geri/ileri, derin URL'de sayfa yenileme (varsayılan
+  sekmeye sıçramadığı doğrulandı), üst-seviye sekmeler arası client-side geçiş —
+  hepsi hatasız; (b) A/B karşılaştırması — flag'ler geçici olarak kaldırılıp aynı
+  test tekrar koşuldu, aynı (ilgisiz) konsol hatası baseline'da da çıktı, yani
+  flag'lerin kendisi hiçbir yeni hata üretmiyor; (c) **tam Playwright regresyon
+  paketi (88 test) flag'ler açıkken çalıştırıldı** — 86 geçti, kalan 2'si
+  flag'lerle tamamen ilgisiz, önceden bilinen durumlar (`request_no` test-only
+  boşluğu — bkz. aşağıdaki madde — ve bu turda ayrıca bulunup düzeltilen xlsx→
+  exceljs migration'ının test dosyası artığı, hemen altta). `npm run lint`/
+  `build` temiz. **Hâlâ YAPILMAYAN, kullanıcı onayı gereken adım:** asıl
+  `react-router-dom` v7 paket sürüm atlaması (bugün yalnızca future flag'ler
+  v6.30.6 üzerinde açıldı, paket hâlâ v6).
+- **Yan bulgu: `xlsx`→`exceljs` migration'ının (10.09.2026, PR #23) gözden
+  kaçırdığı 2 test dosyası — düzeltildi (11.09.2026).** Tam regresyon paketi
+  ilk kez bu turda (react-router doğrulaması için) çalıştırılınca
+  `tests/material-list-excel.spec.js` ve `tests/project-excel-layout.spec.js`
+  `Cannot find package 'xlsx'` ile tamamen YÜKLENEMEDİ — bu iki dosya proje
+  Excel export'unu (edge fonksiyonu çıktısını) geri okuyup içeriğini doğrulamak
+  için doğrudan `xlsx` import ediyordu; migration yalnızca `src/` altındaki 3
+  frontend kullanımını taradı, `tests/` altını kapsamamıştı. İkisi de `exceljs`'e
+  çevrildi (`.v`→`cell.value`, `.f`→`cell.formula`, `sheet_to_json(header:1,
+  defval:null)`→satır başına `Array.from({length: sheet.columnCount}, (_,i) =>
+  ...)` ile üretilen yardımcı). **Bu sırada ikinci bir ince bug bulundu:**
+  ExcelJS'in `row.values`'ı bir satırda yalnızca BAZI ara kolonlar hiç
+  set edilmemişse (ör. otomatik risklerde Olasılık/Etki/Skoru hiç yazılmıyor)
+  gerçek bir sparse array (JS "hole") döndürüyor — `.slice().map()` delikleri
+  atlayıp korur, bu da index bazlı erişimde (`row[5]`) `undefined` dönmesine
+  yol açıyordu (`JSON.stringify` bunu yanıltıcı şekilde `null` gösteriyor, ayrım
+  yalnızca doğrudan property erişiminde ortaya çıkıyor). `Array.from({length},
+  (_,i)=>row.values[i+1])` her index'i açıkça ziyaret ettiğinden bu sorunu
+  yaşamıyor — düzeltme bu, uzunluk pad'lemek değil. İkisi de yeniden çalıştırılıp
+  geçtiği doğrulandı.
 - **`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
   duplicate key) — KISMEN çözüldü (10.09.2026), tam kapanmadı.** Önceki
   turlarda "PgBouncer/PostgREST kaynaklı, bu projenin araçlarıyla
@@ -1877,6 +1909,36 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
 
 ## Son değişiklik
+
+**11.09.2026 — react-router v7 migration'ının 1. fazı (future flag'ler)
+uygulandı ve tam regresyon paketiyle doğrulandı; bu sırada xlsx→exceljs
+migration'ının gözden kaçırdığı 2 test dosyası da düzeltildi.**
+
+CLAUDE.md'de bir önceki turdan (10.09.2026, 2. tur) kalan "araştırıldı ama
+uygulanmadı" react-router maddesinin önerdiği 2 aşamalı yoldan ilki
+gerçekleştirildi: `src/App.jsx`'teki `<BrowserRouter>`'a
+`future={{ v7_relativeSplatPath: true, v7_startTransition: true }}` eklendi.
+Playwright ile proje_yoneticisi hesabıyla `/dashboard/*` splat route'u,
+proje-içi 5 sekme arası geçişi (URL replace), tarayıcı geri/ileri'yi, derin
+URL'de sayfa yenilemeyi ve üst-seviye client-side navigasyonu (Bildirimler/
+Genel Bakış) kapsayan bir doğrulama testi yazıldı; flag'ler açıkken temiz
+geçti, flag'ler geçici kaldırılıp aynı test tekrar koşulduğunda aynı
+(ilgisiz) konsol hatası baseline'da da çıktı — yani flag'lerin kendisi hiçbir
+yeni sorun üretmiyor. Ardından **tam Playwright regresyon paketi (88 test)**
+flag'ler açık haldeyken çalıştırıldı: 86 geçti. Kalan 2 başarısızlığın
+ikisi de flag'lerle ilgisiz çıktı — biri önceden bilinen/kabul edilmiş
+`request_no` test-only boşluğu (bkz. ilgili madde), diğeri bu tam paket
+koşumunda YENİ ortaya çıkan bir bulgu: `tests/material-list-excel.spec.js`
+ve `tests/project-excel-layout.spec.js`, 10.09.2026'daki xlsx→exceljs
+migration'ında atlanmış — hâlâ `xlsx` import ettiklerinden `Cannot find
+package 'xlsx'` ile tamamen yüklenemiyorlardı (migration taraması yalnızca
+`src/`'i kapsamış, `tests/`'i değil). İkisi de `exceljs`'e çevrildi; bu
+sırada ExcelJS'in sparse-array ("hole") döndürebilen `row.values`'ından
+kaynaklanan ayrı bir ince bug da bulunup düzeltildi (ayrıntı için "Bilinen
+açık noktalar" altındaki iki ilgili maddeye bakılabilir). `npm run lint`/
+`build` temiz. **Hâlâ yapılmayan:** asıl `react-router-dom` v7 paket sürüm
+atlaması — yalnızca future flag'ler v6.30.6 üzerinde açıldı, kullanıcı onayı
+olmadan uygulanmayacak.
 
 **10.09.2026 (3. tur) — "ertelenenler" yeniden incelendi: `xlsx` (SheetJS)
 tamamen kaldırılıp `exceljs`'e geçirildi (gerçek saldırı yüzeyi sanılandan

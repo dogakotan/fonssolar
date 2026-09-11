@@ -1,6 +1,20 @@
 import { test, expect } from '@playwright/test'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { signIn } from './helpers.js'
+
+// XLSX (SheetJS) tamamen kaldırıldı (bkz. CLAUDE.md "Son değişiklik" — 10.09.2026,
+// güvenlik açığı nedeniyle exceljs'e geçiş) — bu test dosyası da aynı kütüphaneye
+// geçirildi, davranış (satır/hücre okuma) korunuyor.
+function cellToPlain(v) {
+  if (v === undefined || v === null) return null
+  if (v instanceof Date) return v
+  if (typeof v === 'object') {
+    if (v.richText) return v.richText.map(t => t.text).join('')
+    if (v.text !== undefined) return v.text
+    if (v.result !== undefined) return v.result
+  }
+  return v
+}
 
 const marker = `E2E_BOM_EXCEL_${Date.now()}`
 
@@ -20,10 +34,21 @@ test.describe.serial('Malzeme listesi onayları ve proje Excel export', () => {
       },
     )
     expect(response.status).toBe(200)
-    const workbook = XLSX.read(await response.arrayBuffer(), { type: 'array' })
-    const sheet = workbook.Sheets['Malzeme Listesi']
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(await response.arrayBuffer())
+    const sheet = workbook.getWorksheet('Malzeme Listesi')
     expect(sheet).toBeTruthy()
-    return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null }).slice(4)
+    // row.values bazı ara kolonlar hiç set edilmemişse gerçek bir sparse array
+    // (delik) dönebiliyor — .slice()/.map() delikleri atlayıp korur, index bazlı
+    // erişimde (ör. row[5]) undefined'a yol açar. Array.from({length}, ...) her
+    // index'i açıkça ziyaret ettiğinden bu sorunu yaşamıyor (bkz.
+    // project-excel-layout.spec.js'teki aynı not).
+    const width = sheet.columnCount
+    const rows = []
+    sheet.eachRow({ includeEmpty: true }, row => {
+      rows.push(Array.from({ length: width }, (_, i) => cellToPlain(row.values[i + 1])))
+    })
+    return rows.slice(4)
   }
 
   function findExportedMaterial(rows) {
