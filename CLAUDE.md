@@ -1907,8 +1907,55 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   "Son değişiklik"). En azından yerel dosyaların kendisi artık git'te (önceki bir
   oturumda 16 migration + 17 finans/muhasebe bileşen dosyası diske yazılmış
   ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
+- **`esbuild` (Vite'ın dahili bundler'ı) — moderate CVE, yalnızca dev-server'a
+  özgü, kabul edildi (11.09.2026).** `GHSA-67mh-4wv8-2f99`: herhangi bir web
+  sitesi dev server'a istek atıp yanıtı okuyabiliyor — bu yalnızca `npm run dev`
+  çalışırken VE dev server ağa açıkken geçerli, production build'e (statik
+  dosyalar, Vercel'de servis edilen) hiç dahil değil. Düzeltmesi `vite@8`'e
+  (breaking change) atlamayı gerektiriyor — `npm audit fix --force` ile
+  otomatik uygulanabilir ama Vite 8'in kendi breaking change'leri (config
+  şeması, plugin API'si) ayrı bir doğrulama turu ister; şimdilik yalnızca
+  yerel geliştirme ortamını ilgilendirdiğinden ve gerçek üretim riski
+  taşımadığından ertelendi. `npm audit fix` (force'suz) ile aynı taramada
+  `brace-expansion` (HIGH, DoS — `eslint-plugin-react`/`exceljs`'in
+  `archiver`→`readdir-glob`→`minimatch` zincirinden, ikisi de yalnızca
+  `node_modules`'ta duruyor, gerçek `dist/` build çıktısında hiç yok —
+  `exceljs`'in `browser` alanı Vite tarafından otomatik seçildiğinden
+  `archiver` zaten client bundle'a hiç girmiyor, doğrulandı), `postcss`
+  (HIGH), `nanoid`, `js-yaml`, `browserslist` gibi dev-tooling'e özgü
+  bağımlılıklar sorunsuz güncellendi (yalnızca `package-lock.json` değişti,
+  `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**11.09.2026 (2. tur) — proaktif DB advisor + npm audit taraması: yeni bir DB
+güvenlik/performans bulgusu çıkmadı, npm tarafında kırılmayan bağımlılık
+güncellemeleri uygulandı.**
+
+Kullanıcı isteğiyle düzenli hijyen taraması yapıldı. `get_advisors`
+(security+performance) sonuçları önceki turlarla birebir aynı kalıba oturdu:
+50 SECURITY WARN'ın 49'u bilinçli SECURITY DEFINER RPC katmanı (tam liste
+tek tek isim bazında kontrol edildi — hiçbiri trigger-only bir fonksiyon
+değil, yani daha önce iki kez bulunan "trigger fonksiyonuna gereksiz
+authenticated EXECUTE" bug sınıfından yeni bir örnek yok), 1'i bilinen
+`auth_leaked_password_protection` (Free plan kısıtı). Performance tarafı
+tamamı INFO seviyesi: 3 `archive` şema yedek tablosunda PK yok (zararsız,
+tek seferlik yedekler) + bir grup "unused index" (küçük test veri setinde
+beklenen gürültü — 09.09.2026'da eklenen teklif/pazarlık FK index'leri de
+bu listede, henüz kullanılmamış olmaları normal, kaldırılmadı). Hiçbir yeni
+migration gerekmedi.
+
+`npm audit --omit=dev` 5 bulgu gösterdi: `brace-expansion` (HIGH), `react-router`
+(moderate, zaten bilinen/migration'ı süren madde), `uuid` (moderate, zaten
+bilinen/exceljs üzerinden erişilemez olduğu doğrulanmış madde). `npm audit fix`
+(force'suz) çalıştırıldı — `brace-expansion`/`postcss`/`nanoid`/`js-yaml`/
+`browserslist` sorunsuz güncellendi (yalnızca `package-lock.json`, `package.json`
+değişmedi). Kalan 3 madde (`esbuild`/`react-router`/`uuid`) `--force` (breaking
+change) gerektiriyor, ayrıntı ve gerekçe için "Bilinen açık noktalar"a eklenen
+yeni `esbuild` maddesine bakılabilir. Güncellemeden sonra `npm run lint`/`build`
+temiz, tam Playwright regresyon paketi (88 test) 87/88 geçti — tek başarısız
+zaten bilinen/kabul edilmiş `request_no` test-only boşluğu (RPC'yi atlayıp
+doğrudan `.insert()` yapan tek bir concurrency testi).
 
 **11.09.2026 — react-router v7 migration'ının 1. fazı (future flag'ler)
 uygulandı ve tam regresyon paketiyle doğrulandı; bu sırada xlsx→exceljs
