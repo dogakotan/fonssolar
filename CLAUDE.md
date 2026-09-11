@@ -1697,39 +1697,27 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   yeri (`src/utils/exportUtils.js`, `src/utils/projectExcelImport.js`,
   `src/components/agent/AgentChat.jsx`) `exceljs`'e (zaten edge fonksiyonlarında
   kullanılan, aktif bakımlı kütüphane) geçirildi.
-- **`react-router` v6→v7 migration'ı — 1. faz tamamlandı (11.09.2026), asıl v7
-  paket geçişi hâlâ ertelenmiş.** Kullanım tamamen deklaratif/kütüphane modu
-  (`BrowserRouter`/`Routes`/`Route`/`Navigate`/`useNavigate`/`useLocation`,
-  5 dosya) — data router API'si (`createBrowserRouter`, loader/action) hiç
-  kullanılmıyor. Advisory'deki 2 CVE'den SSR hydration'daki
-  (`deserializeErrors()`) bu projede **hiç geçerli değil** (SSR yok);
-  backslash ile open redirect (`<Link>`/`useNavigate`) teorik olarak geçerli
-  ama kod taramasında `navigate()`'e kullanıcı kontrollü/dışarıdan gelen bir
-  hedef geçirilmediği doğrulandı (tüm çağrılar sabit uygulama-içi path).
-  Resmi migration rehberi v7'nin `v7_relativeSplatPath` davranış değişikliğinin
-  tam olarak `src/router/index.jsx`'teki `<Route path="/dashboard/*" ...>` gibi
-  çok segmentli splat route'ları etkilediğini gösteriyordu — bu route CLAUDE.md'de
-  ayrıca "kasıtlı olarak TEK bir wildcard, remount bug'larına karşı dikkatli
-  tasarlandı" diye işaretli (bkz. "Frontend yapısı" → Routing). Önerilen
-  2 aşamalı yoldan **1. aşama uygulandı:** `src/App.jsx`'teki `<BrowserRouter>`'a
-  `future={{ v7_relativeSplatPath: true, v7_startTransition: true }}` eklendi
-  (declarative router'da geçerli tek 2 future flag — `v7_fetcherPersist`/
-  `v7_normalizeFormMethod`/`v7_partialHydration`/`v7_skipActionErrorRevalidation`
-  yalnızca data router'a özgü, bu projede uygulanamaz/anlamsız). Doğrulama: (a)
-  proje_yoneticisi ile canlı Playwright testi — `/dashboard/*` splat route'a giriş,
-  proje detayına tıklama, proje-içi 5 sekme arası geçiş (URL `replace` ile
-  güncelleniyor), tarayıcı geri/ileri, derin URL'de sayfa yenileme (varsayılan
-  sekmeye sıçramadığı doğrulandı), üst-seviye sekmeler arası client-side geçiş —
-  hepsi hatasız; (b) A/B karşılaştırması — flag'ler geçici olarak kaldırılıp aynı
-  test tekrar koşuldu, aynı (ilgisiz) konsol hatası baseline'da da çıktı, yani
-  flag'lerin kendisi hiçbir yeni hata üretmiyor; (c) **tam Playwright regresyon
-  paketi (88 test) flag'ler açıkken çalıştırıldı** — 86 geçti, kalan 2'si
-  flag'lerle tamamen ilgisiz, önceden bilinen durumlar (`request_no` test-only
-  boşluğu — bkz. aşağıdaki madde — ve bu turda ayrıca bulunup düzeltilen xlsx→
-  exceljs migration'ının test dosyası artığı, hemen altta). `npm run lint`/
-  `build` temiz. **Hâlâ YAPILMAYAN, kullanıcı onayı gereken adım:** asıl
-  `react-router-dom` v7 paket sürüm atlaması (bugün yalnızca future flag'ler
-  v6.30.6 üzerinde açıldı, paket hâlâ v6).
+- ~~`react-router` v6→v7 migration'ı~~ — **tamamen çözüldü (11.09.2026, 2 fazda).**
+  1. faz (future flag'ler, aynı gün önce) canlı Playwright testi + A/B
+  karşılaştırması + tam regresyon paketiyle (88 test, 86 geçti — kalan 2'si
+  flag'lerle ilgisiz) doğrulanmıştı. 2. faz — asıl paket geçişi —
+  `react-router-dom@6.30.6` → `@7.18.3` (`react-router` da beraberinde
+  v7.18.3'e güncellendi; v7'de iki paket birleşti, `react-router-dom` artık
+  yalnızca `react-router`'ı re-export ediyor). Kullanım tamamen deklaratif
+  olduğundan (`createBrowserRouter`/loader/action hiç yok) kod tarafında TEK
+  değişiklik gerekti: `src/App.jsx`'teki `<BrowserRouter future={{...}}>`'daki
+  `future` prop'u kaldırıldı — v7'de `BrowserRouter` artık `future` prop'unu
+  kabul etmiyor (`v7_relativeSplatPath` her zaman aktif davranış, `v7_startTransition`
+  yerini varsayılanı `true` olan yeni bir `useTransitions` prop'una bıraktı,
+  ikisi de 1. fazda test edilen davranışla birebir aynı). Diğer 4 dosyanın
+  kullandığı `Routes`/`Route`/`Navigate`/`useNavigate`/`useLocation` v7'de
+  değişmeden duruyor (doğrudan `require('react-router-dom')` ile tek tek
+  kontrol edildi). Doğrulama: `npm run lint`/`build` temiz, **tam Playwright
+  regresyon paketi (88 test) paket yükseltmesinden sonra 87/88 geçti** — kalan
+  1 tanesi zaten bilinen/kabul edilmiş `request_no` test-only boşluğu (bu
+  migration'la ilgisiz). `npm audit`'teki react-router CVE'si (open redirect +
+  SSR hydration, ikisi de bu projede zaten düşük/geçersiz risk olarak
+  değerlendirilmişti) artık tamamen kapandı.
 - **Yan bulgu: `xlsx`→`exceljs` migration'ının (10.09.2026, PR #23) gözden
   kaçırdığı 2 test dosyası — düzeltildi (11.09.2026).** Tam regresyon paketi
   ilk kez bu turda (react-router doğrulaması için) çalıştırılınca
@@ -1927,6 +1915,33 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**11.09.2026 (3. tur) — react-router v7 migration'ının 2. fazı (asıl paket
+geçişi) tamamlandı — madde tamamen kapandı.**
+
+1. fazda (future flag'ler) doğrulanan davranışın gerçek v7 paketinde de aynen
+geçerli olduğu onaylandı. `react-router-dom@6.30.6` → `@7.18.3` yükseltildi.
+Araştırma: v7'de `react-router-dom` artık kendi kodunu taşımıyor, tamamen
+`react-router`'ı re-export ediyor (`export * from "react-router"`) — bu yüzden
+paketin kendi dist dosyasında `BrowserRouter` aranınca bulunamadı, gerçek
+implementasyon `node_modules/react-router/dist/development/*.mjs`'te bulundu.
+Orada görülen: `BrowserRouter` artık `future` prop'unu HİÇ kabul etmiyor —
+`v7_relativeSplatPath` davranışı kalıcı varsayılan oldu, `v7_startTransition`
+ise `useTransitions` adlı (varsayılanı `true`) yeni bir prop'a dönüştü. Bu
+yüzden kod tarafında yalnızca `src/App.jsx`'teki `future={{...}}` satırının
+kaldırılması gerekti — 1. fazda test edilenden farklı bir davranışa
+geçilmiyor, yalnızca API şekli değişti. Diğer 4 dosyanın (`ProtectedRoute.jsx`,
+`router/index.jsx`, `pages/dashboard/index.jsx`, `pages/Yetkisiz.jsx`)
+kullandığı `Routes`/`Route`/`Navigate`/`useNavigate`/`useLocation` doğrudan
+`require()` ile tek tek kontrol edilip hepsinin v7'de aynen var olduğu
+doğrulandı. `npm run lint`/`build` temiz, **tam Playwright regresyon paketi
+(88 test) paket yükseltmesinden SONRA 87/88 geçti** — kalan 1'i zaten bilinen/
+kabul edilmiş `request_no` test-only boşluğu (migration'la ilgisiz, RPC'yi
+atlayıp doğrudan `.insert()` yapan tek bir concurrency testi). npm audit'teki
+react-router CVE'si (open redirect + SSR hydration) bu yükseltmeyle kapandı —
+kalan tek moderate bulgu artık yalnızca `uuid` (via exceljs, önceden
+erişilemez olduğu doğrulanmıştı). Ayrıntı için "Bilinen açık noktalar"daki
+ilgili maddeye bakılabilir (artık ~~çözüldü~~ olarak işaretli).
 
 **11.09.2026 (2. tur) — proaktif DB advisor + npm audit taraması: yeni bir DB
 güvenlik/performans bulgusu çıkmadı, npm tarafında kırılmayan bağımlılık
