@@ -1916,6 +1916,42 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**15.09.2026 — proaktif ölü kod taraması: 2 öksüz CSS bloğu silindi + CLAUDE.md'de
+bayat bir "silindi" notu düzeltildi.**
+
+Kullanıcı isteğiyle iki paralel tarama yapıldı (kod tabanında kalıntı/dead
+code + son özelliklerin test kapsamı). Kod tabanı taraması iki gerçek, güvenle
+silinebilir bulgu çıkardı — ikisi de `Dashboard.css`'te, hiçbir `.jsx`'te
+referansı olmadığı `grep` ile tek tek doğrulandıktan sonra kaldırıldı:
+`.tl-toolbar-sev` kuralı (artık var olmayan bir ticket-liste toolbar öğesini
+hedefliyordu) ve satın alma özet ekranındaki artık var olmayan bir sütun/donut
+grafik bileşenine ait tüm blok (`sa-chart-total`, `sa-column-bars`,
+`sa-column-chart`, `sa-column-item`, `sa-column-track`, `sa-currency-card`,
+`sa-currency-row`, `sa-donut`, `sa-donut-legend`, `sa-donut-wrap`,
+`sa-overview-grid`). Aynı komşulukta duran `.sa-panel-card`/`.sa-metric`e
+DOKUNULMADI — hâlâ 2'şer dosyada kullanımda oldukları doğrulandı.
+
+Tarama ayrıca bir dokümantasyon tutarsızlığı buldu: CLAUDE.md
+`classifyRequestTypes()`'ın 09.09.2026'da (5. tur) silindiğini söylüyordu ama
+fonksiyon hâlâ `src/utils/satinAlma.js`'te duruyordu. Git geçmişi kontrol
+edildi: silme gerçekten olmuş ama AYNI GÜN içinde geri alınmış
+("fix: classifyRequestTypes'i geri getir - onceki temizlik test kirdi") çünkü
+`tests/purchase-risk-classification.spec.js` buna bağımlıydı — CLAUDE.md notu
+hiç güncellenmemişti. İlgili madde düzeltildi: fonksiyon production `src/`
+kodunda hâlâ hiç import edilmiyor ama o test dosyası tarafından gerçekten
+test ediliyor, yani silinecek ölü kod değil, test-only bir yardımcı olarak
+bilinçli şekilde kalmalı.
+
+Aynı taramada iki test-kapsamı boşluğu da bulundu (bu turda düzeltilmedi,
+kullanıcı yalnızca CSS/dokümantasyon düzeltmesini seçti): Malzeme Listesi'nin
+"Onaylar" alt-sekmesi + "Talep Eden" filtresinin kalıcı bir Playwright testi
+yok (yalnızca 09.09.2026'da geçici bir testle bir kerelik doğrulanıp
+silinmiş); Genel/Detaylı İş Planı hiyerarşi ayrımının gerçek gruplama mantığı
+(`buildGroupTree`/`groupPath`) da sekme geçişi dışında hiç test edilmiyor.
+İkisi de talep edilirse ayrı bir iş olarak yapılabilir.
+
+`npm run lint`/`build` temiz.
+
 **11.09.2026 (3. tur) — react-router v7 migration'ının 2. fazı (asıl paket
 geçişi) tamamlandı — madde tamamen kapandı.**
 
@@ -2369,14 +2405,19 @@ frontend tarafı bir Explore agent'la — sonuçlar tek tek doğrulandı).
   `fn_ticket_sensitive_unchanged` — RLS policy'lerinde, `fn_recompute_auto_risks`/
   `fn_apply_approved_material_excess`/`fn_rollback_material_excess` — trigger
   gövdelerinden çağrılıyor) tek tek doğrulanıp kullanımda oldukları teyit edildi.
-- **Frontend, silindi:** `src/utils/satinAlma.js`'teki `classifyRequestTypes()`
-  (hiç import edilmiyordu); `MuhasebeGenelOzet.jsx`'in kullanılmayan
+- **Frontend, silindi:** `MuhasebeGenelOzet.jsx`'in kullanılmayan
   `onGoToInvoice` prop'u (2026-07-29'da "Son Hareketler" tıklaması bildirimler
   sekmesine gitmeye çevrilince kalan bir artık — `index.jsx`'teki çağrı yerinden
   de kaldırıldı); `ProjeDetay.jsx`'in kullanılmayan `selectedDate`/`setSelectedDate`
   prop'ları (state `index.jsx`'te `TabGenel`/`TabTickets`/`FloatingAgent` için hâlâ
   kullanılıyor, yalnızca `ProjeDetay`'a geçirilmesi anlamsızdı); `TeklifPazarlikSiparisPanel.jsx`'teki
-  `SiparisSection`'ın kullanılmayan `offers` parametresi.
+  `SiparisSection`'ın kullanılmayan `offers` parametresi. ~~`src/utils/satinAlma.js`'teki
+  `classifyRequestTypes()` de bu turda silinmişti~~ — **bu satır bayatladı, 15.09.2026'da
+  düzeltildi:** silme `tests/purchase-risk-classification.spec.js`'i kırdığı için aynı gün
+  içinde geri alınmıştı ("fix: classifyRequestTypes'i geri getir") ama bu CLAUDE.md notu hiç
+  güncellenmemişti — fonksiyon hâlâ `satinAlma.js`'te duruyor ve o test dosyası tarafından
+  gerçekten test ediliyor (production `src/` kodunda hiç import edilmiyor, yalnızca test-only
+  bir yardımcı olarak yaşıyor) — silinecek ölü kod DEĞİL, bu haliyle kalmalı.
 - **Gerçek bug düzeltildi:** `src/lib/supabase.js`'teki `noStoreFetch` yardımcısı
   (`cache:'no-store'` zorlaması, PostgREST'in Cache-Control header'ı hiç
   taşımamasından kaynaklanan bayat-veri bug'larına karşı — bkz. bildirim zili/
