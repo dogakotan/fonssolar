@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { MALZEME_KATEGORI_OPTS } from '../../pages/dashboard/components/ProjeTabFaturaKesilecekler'
+import { projectIdLabel } from '../../utils/projectResolver'
 
 const UNITS = ['Adet', 'Metre', 'Kg', 'Lt', 'Rulo', 'Kutu', 'Takım', 'Ton', 'M²', 'M³']
 const OTHER_VALUE = '__diger__'
@@ -14,16 +15,6 @@ const INPUT = {
 const LABEL = {
   fontSize: 11, fontWeight: 500, color: '#6B7280', textTransform: 'uppercase',
   letterSpacing: '0.4px', display: 'block', marginBottom: 4,
-}
-
-function projectIdLabel(projectId) {
-  if (!projectId) return 'Bağlı Proje'
-  if (/^[0-9a-f-]{24,}$/i.test(String(projectId))) return 'Bağlı Proje'
-  return String(projectId)
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
 }
 
 export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, availableProjects }) {
@@ -106,7 +97,7 @@ export default function YeniTalepModal({ onClose, onSaved, defaultProjectId, ava
           return
         }
 
-        const label = projectIdLabel(defaultProjectId)
+        const label = projectIdLabel(defaultProjectId, { unresolved: 'Bağlı Proje' })
         if (label !== 'Bağlı Proje') {
           const byName = await supabase.from('projects')
             .select('id, name')

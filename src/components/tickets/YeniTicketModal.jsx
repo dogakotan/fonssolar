@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { SEVERITY_OPTIONS } from '../../utils/ticketSeverity'
 import { compressImageFile } from '../../utils/imageCompression'
+import { projectIdLabel } from '../../utils/projectResolver'
 
 const ROW = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -15,16 +16,6 @@ const SELECT_STYLE = {
   border: '1px solid #E5E7EB', borderRadius: 7, padding: '7px 10px',
   fontSize: 13, fontFamily: 'inherit', color: '#111827', background: '#fff',
   outline: 'none', cursor: 'pointer', minWidth: 130,
-}
-
-function projectIdLabel(projectId) {
-  if (!projectId) return '—'
-  if (/^[0-9a-f-]{24,}$/i.test(String(projectId))) return 'Bağlı Proje'
-  return String(projectId)
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/\b\p{L}/gu, c => c.toLocaleUpperCase('tr-TR'))
 }
 
 export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
@@ -62,7 +53,7 @@ export default function YeniTicketModal({ onClose, onSaved, defaultProject }) {
         return
       }
 
-      const label = projectIdLabel(projectId)
+      const label = projectIdLabel(projectId, { unresolved: 'Bağlı Proje' })
       if (label !== 'Bağlı Proje') {
         const byName = await supabase.from('projects').select('id, name, location')
           .ilike('name', `%${String(projectId).replace(/[-_]+/g, ' ')}%`)

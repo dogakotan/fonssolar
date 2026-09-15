@@ -1916,6 +1916,30 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**15.09.2026 (3. tur) — `projectIdLabel` üç ayrı yerde neredeyse birebir
+kopyalanmıştı, tek paylaşımlı fonksiyona tekilleştirildi.**
+
+Proaktif tarama sırasında bulunan üçüncü (küçük) madde: `src/utils/projectResolver.js`'in
+export ettiği `projectIdLabel()` hiçbir yerden import edilmiyordu —
+`YeniTalepModal.jsx` ve `YeniTicketModal.jsx` her biri kendi dosya-lokal,
+neredeyse birebir aynı kopyasını tanımlamıştı (yalnızca "çözülemeyen" girdide
+— boş/UUID — döndürdükleri sentinel string farklıydı: paylaşılan sürüm `''`,
+ikisi de `'Bağlı Proje'`). `projectIdLabel` artık ikinci, opsiyonel bir
+`{ unresolved }` parametresi alıyor (varsayılan `''`, `resolveProjectByAssignedId`'nin
+`label || assignedProjectId` deseniyle uyumlu); iki dosya da kendi yerel
+kopyalarını silip paylaşılan fonksiyonu `{ unresolved: 'Bağlı Proje' }` ile
+çağırıyor. **Bilinçli olarak DOKUNULMADI:** her iki dosyadaki çevresindeki
+by-id/by-name/fallback çözümleme akışı (`loadProject`/`loadDefaultProject`) —
+bu akış `resolveProjectByAssignedId`'yle kavramsal olarak örtüşse de,
+`YeniTalepModal.jsx`'in "isme göre bulunursa `id`'yi bilerek `defaultProjectId`
+ile eziyor" gibi bileşene özgü ince bir davranışı var (aksi halde `<select>`'in
+value eşleşmesi bozulurdu) — bunu ortak bir yardımcıya taşımak gerçek bir
+davranış riski taşıdığından bu turun kapsamı dışında bırakıldı, yalnızca
+gerçekten birebir aynı olan etiket biçimlendirme mantığı tekilleştirildi.
+Değişikliğin davranışı hiç etkilemediği `procurement-role-acceptance.spec.js`
+(santiye şefinin sabit-proje talep formu) + `manual-task-progress.spec.js`
+çalıştırılıp doğrulandı, `npm run lint`/`build` temiz.
+
 **15.09.2026 (2. tur) — bir önceki turda bulunan iki test-kapsamı boşluğu
 kapatıldı: "Onaylar"/"Talep Eden" filtresi + İş Planı hiyerarşi gruplaması.**
 
