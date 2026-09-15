@@ -1916,7 +1916,44 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**15.09.2026 — proaktif ölü kod taraması: 2 öksüz CSS bloğu silindi + CLAUDE.md'de
+**15.09.2026 (2. tur) — bir önceki turda bulunan iki test-kapsamı boşluğu
+kapatıldı: "Onaylar"/"Talep Eden" filtresi + İş Planı hiyerarşi gruplaması.**
+
+`tests/onaylar-tab-ve-talep-eden-filtresi.spec.js` (yeni) — Malzeme Listesi'nin
+"Talep Eden" filtresini (proje yöneticisi olarak iki farklı talep sahibinin
+kalemleri arasında filtreleyip yalnızca ilgilisini görme) ve Satın Alma'nın
+"Onaylar" sekmesini gerçek UI etkileşimiyle doğrular: proje yöneticisi yalnızca
+kendisine yönlendirilen (approver_role='proje_yoneticisi') talebi görüp
+onaylayabiliyor, admin'e yönlendirilmiş bir talebi hiç görmüyor; admin kendi
+talebini görüp reddedebiliyor. Osman Karadoğan hesabıyla gerçek
+`create_procurement_item_change_request` çağrısı + proje yöneticisi/admin
+hesaplarıyla tarayıcıda uçtan uca test edildi, temizlik doğrulandı (test
+kalemleri DB'de sıfır kaldı).
+
+`tests/is-plani-hiyerarsi.spec.js` (yeni) — Genel/Detaylı İş Planı'nın ikisinin
+de `buildGroupTree`'nin ürettiği ÇOK SEVİYELİ ağacı (üst segment › inverter ›
+AC-DC gibi) doğru render ettiğini, 09.09.2026'nın 7. turdaki (sonra geri alınan)
+regresyonunu — çok seviyeli group_label'ı tek düz kovaya indirgeme — doğrudan
+regresyon guard'ı olarak doğrular: kendi izole (marker'lı) 3 satırlık bir görev
+seti (`TOP › INV1 › AC`, `TOP › INV1 › DC`, `TOP › INV2 › AC`) `project_tasks`'a
+eklenip Genel'de üç seviyenin de ayrı başlık olduğu, özellikle aynı isimli iki
+farklı "AC" yaprağının (Inverter-1 ve Inverter-2 altında) birbirine
+karışmadan İKİ AYRI başlık olarak göründüğü doğrulanıyor; Detaylı'nın da AYNI
+ağacı kullandığı ayrıca test ediliyor. **Teknik not:** bu iki saf fonksiyon
+(`buildGroupTree`/`groupConfigFor`) `TabIsPlan.jsx`'in içinde tanımlı ve dosya
+transitif olarak `src/lib/supabase.js`'i (→ `import.meta.env`) import ettiğinden
+`bom-matching.spec.js`'teki gibi doğrudan Node'da import edip saf birim testi
+yazmak mümkün olmadı (`import.meta.env` Vite dışında undefined) — bu yüzden
+test gerçek tarayıcı + seed edilmiş `project_tasks` satırlarıyla yapıldı (kod
+tabanına dokunulmadan, üretim yolu birebir egzersiz edilerek).
+
+Tam Playwright regresyon paketi (90 test, bu iki yeni dosya dahil) bu iki dosya
+eklendikten sonra çalıştırıldı: 87 geçti, 3'ü zaten bilinen/kabul edilmiş
+`request_no` kalıntı çakışması ile başarısız oldu (bkz. "Bilinen açık noktalar"
+→ ilgili madde, bu turla ilgisiz). Yeni eklenen 2 test dosyası dahil hiçbir
+test bu turda yeni bir başarısızlık üretmedi. `npm run lint`/`build` temiz.
+
+**15.09.2026 (1. tur) — proaktif ölü kod taraması: 2 öksüz CSS bloğu silindi + CLAUDE.md'de
 bayat bir "silindi" notu düzeltildi.**
 
 Kullanıcı isteğiyle iki paralel tarama yapıldı (kod tabanında kalıntı/dead
@@ -1948,7 +1985,8 @@ kullanıcı yalnızca CSS/dokümantasyon düzeltmesini seçti): Malzeme Listesi'
 yok (yalnızca 09.09.2026'da geçici bir testle bir kerelik doğrulanıp
 silinmiş); Genel/Detaylı İş Planı hiyerarşi ayrımının gerçek gruplama mantığı
 (`buildGroupTree`/`groupPath`) da sekme geçişi dışında hiç test edilmiyor.
-İkisi de talep edilirse ayrı bir iş olarak yapılabilir.
+**Bu iki boşluk da aynı gün içinde 2. turda kapatıldı** — bkz. yukarıdaki
+15.09.2026 (2. tur) girdisi.
 
 `npm run lint`/`build` temiz.
 
