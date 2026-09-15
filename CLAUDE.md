@@ -1895,6 +1895,40 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   "Son değişiklik"). En azından yerel dosyaların kendisi artık git'te (önceki bir
   oturumda 16 migration + 17 finans/muhasebe bileşen dosyası diske yazılmış
   ama hiç `git add` edilmemişti, 29.07.2026'da giderildi).
+  **15.09.2026'da isim-bazlı (yalnızca timestamp değil) tam bir karşılaştırma
+  daha yapıldı** (`supabase_migrations.schema_migrations`'ın 426 versiyonu ↔
+  yerel 415 dosya, hem version hem migration `name` alanına göre eşleştirildi
+  — bu ikinci adım kritik: yalnızca timestamp'e bakan ilk taramada 67 "yerelde
+  yok" görünüyordu, bunların 52'si zaten bilinen zararsız timestamp
+  sürüklenmesiydi — ör. DB'de `20260904083650` olan `link_monthly_plan_to_purchase_requests`
+  yerelde `20260904090000` adı altında duruyor). Geriye, isimle de eşleşmeyen
+  **15 gerçek boşluk** kaldı — yukarıdaki `invoice_flow_single_approver...`
+  (zaten bilinen/kabul edilmiş) hariç **14'ü yeni bulgu**: `create_procurement_monthly_plan`
+  (20260812060349) + Kaptan Demir Çelik (Adana GES-1/GES-2) projesinin gerçek
+  verisine dokunan 13 migration — `import_kaptan_demir_1ay_plan`,
+  7 adet `adana_faz1_*` (WBS'in fotoğraf bazlı yapıya geçirilmesi, task kodu
+  formatı, OG/ENH alt-kategori düzeltmeleri, group_label düzleştirme/birleştirme)
+  ve 5 adet `faz1_wbs_tasks_gantt_sync_*`/`faz1_elektriksel_group_labels_split`
+  (11-18 Ağustos 2026 arası, Gantt/WBS senkron adımları).
+  **Kullanıcı kararıyla (15.09.2026):** yalnızca `create_procurement_monthly_plan`
+  (saf şema — tablo/CHECK/FK/index/RLS, gerçek müşteri verisi içermiyor)
+  mevcut canlı şemadan yeniden inşa edilip repoya eklendi
+  (`20260812060349_create_procurement_monthly_plan.sql`) — RLS policy'si
+  BİLEREK sonraki `restrict_procurement_monthly_plan_rls_to_pm_admin`
+  (20260904082158, zaten yerelde var) tarafından üzerine yazılacak eski/gevşek
+  haliyle yazıldı, bir `db reset` sıralamayı bozmaz. **Diğer 13'ü BİLİNÇLİ
+  OLARAK yeniden inşa EDİLMEDİ** — bunlar gerçek bir müşteri projesinin
+  (Kaptan Demir Çelik) task kodu/WBS yapısı/aylık satın alma planı gibi iş
+  verisini içeriyor; bunu idempotent SQL olarak git geçmişine kalıcı şekilde
+  gömmek, önceki 5+2 reconstruction'ın (yalnızca şema/RLS/trigger, hiç müşteri
+  verisi) kapsamından farklı bir risk taşıyor — kullanıcı bu riski görüp
+  yalnızca şema kısmını onayladı. Bu 13 migration hâlâ açık madde: bir
+  `supabase db reset` bu 13 versiyonu (ve `create_procurement_monthly_plan`'ın
+  RLS-öncesi ilk halini) atlayıp doğrudan sonraki (zaten yerelde olan)
+  düzeltme migration'larına geçeceğinden, taze bir ortamda Kaptan Demir
+  Çelik'in WBS/aylık plan verisi hiç oluşmaz — yalnızca bu iki gerçek proje
+  için, yalnızca bir `db reset` senaryosunda önemli, günlük geliştirme akışını
+  etkilemiyor.
 - **`esbuild` (Vite'ın dahili bundler'ı) — moderate CVE, yalnızca dev-server'a
   özgü, kabul edildi (11.09.2026).** `GHSA-67mh-4wv8-2f99`: herhangi bir web
   sitesi dev server'a istek atıp yanıtı okuyabiliyor — bu yalnızca `npm run dev`
