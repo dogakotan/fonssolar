@@ -8,7 +8,7 @@ const TABS = [
   { key: 'tedarikciler', label: 'Tedarikçiler' },
 ]
 
-// Yalnızca muhasebe rolüne özel üst-seviye sekme (roles.allowed_tabs/sidebar_items
+// Yalnızca muhasebe rolüne özel üst-seviye sekme (role_allowed_tabs/role_sidebar_items
 // üzerinden) — Ödeme Takibi + Tedarikçiler önceden Finans'ın alt-sekmeleriydi,
 // muhasebenin günlük işinin ağırlıklı kısmı bu ikisi olduğundan ayrı bir menü
 // öğesine çıkarıldı (bkz. CLAUDE.md "Muhasebe & Finans modülü").

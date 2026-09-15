@@ -72,7 +72,7 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
 ## Sistem mimarisi (güncel referans)
 
 ### Frontend yapısı
-- Routing: `/login`, `/yetkisiz`, `/dashboard/*` (tek `ProtectedRoute`,
+- Routing: `/login`, `/hesap-olustur`, `/dashboard/*` (tek `ProtectedRoute`,
   `ScopeProvider` ile sarmalı — `/dashboard/*` kasıtlı olarak TEK bir wildcard
   route, ayrı `<Route>` girdileri değil; ayrı girdiler olsaydı React bunları
   farklı ağaç konumu sayıp Dashboard'u navigasyon sırasında remount edebilirdi).
@@ -177,12 +177,15 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   bir formda, ör. proje sihirbazı, arka planda bir yenileme olursa fark
   ediliyordu — 2026-07-30'da bulunan bug). Artık sonraki oturum olaylarında
   profil sessizce arka planda güncelleniyor, `loading` tekrar tetiklenmiyor.
-- Rol → sekme/sidebar erişimi **DB-tabanlı**: `roles.allowed_tabs`
-  (NULL = kısıtsız)/`default_tab`/`sidebar_items` kolonlarından okunur,
-  `AuthContext` login'de bu satırı çekip `navigation` olarak context'e koyar;
-  `Sidebar.jsx`/`index.jsx`/`TabBildirimler.jsx` buradan okur. Yeni bir rol
-  eklemek/bir rolün erişimini değiştirmek yalnızca `roles` tablosunda bir
-  güncelleme gerektirir, kod değişikliği gerekmez.
+- Rol → sekme/sidebar erişimi **DB-tabanlı**: `roles.tabs_unrestricted`
+  (true = kısıtsız)/`default_tab` + ayrı `role_allowed_tabs(role_key, tab_key,
+  order_index)`/`role_sidebar_items(role_key, item_key, order_index)` join
+  tablolarından okunur (24.07.2026'daki 4NF normalizasyonundan önce bunlar
+  `roles` üzerinde düz dizi kolonlarıydı — kaldırıldı), `AuthContext` login'de
+  bunları çekip `navigation` olarak context'e koyar; `Sidebar.jsx`/`index.jsx`/
+  `TabBildirimler.jsx` buradan okur. Yeni bir rol eklemek/bir rolün erişimini
+  değiştirmek yalnızca `roles`/`role_allowed_tabs`/`role_sidebar_items`
+  tablolarında bir güncelleme gerektirir, kod değişikliği gerekmez.
 - Veri çekme: ortak `src/hooks/useDashboardData.js` (loading/refreshing/error +
   visibilitychange'de tazeleme) ve `src/hooks/useRealtimeRefresh.js` (ekran
   başına tek Supabase Realtime kanalı, 2sn debounce, 60sn polling yedeği) —
@@ -888,8 +891,18 @@ kullanıcının genel ticket'ı `NULL` karşılaştırmasında eşleşmediği i�
 görünmez) — yani `.or()` kapsamı genişletmiyor, yalnızca kullanıcının zaten
 görmeye yetkili olduğu kendi genel ticket'larını görünür kılıyor.
 
-### Roller (4, `roles` tablosunda tanımlı — `select key, display_name, is_manager, cross_project, allowed_tabs, default_tab, sidebar_items from roles`)
+### Roller (4, `roles` tablosunda tanımlı — `select key, display_name, is_manager, cross_project, tabs_unrestricted, default_tab from roles`, sekme/sidebar listesi ayrı `role_allowed_tabs`/`role_sidebar_items` tablolarında)
 admin, muhasebe, proje_yoneticisi, santiye_sefi.
+
+**Not (15.09.2026'da düzeltilen doküman hatası):** `roles.allowed_tabs`/
+`sidebar_items` dizi kolonları **24.07.2026'da kaldırıldı**
+(`20260724160000_normalize_role_navigation_4nf.sql`, 4NF normalizasyonu) —
+yerine sıra bilgili iki join tablosu (`role_allowed_tabs(role_key, tab_key,
+order_index)`, `role_sidebar_items(role_key, item_key, order_index)`) ve eski
+"NULL = kısıtsız" semantiğini taşıyan bir `tabs_unrestricted boolean` kolonu
+geldi. Bu madde uzun süre (bir aydan fazla, birkaç proaktif tarama turunda)
+fark edilmeden CLAUDE.md'de eski haliyle kalmıştı — kod (`AuthContext.jsx`)
+her zaman doğru tabloları kullanıyordu, yalnızca dokümantasyon geride kalmıştı.
 
 `profiles.role_key`'in `roles(key)`'e FK'si var (`ON UPDATE CASCADE`) — yalnızca
 bu 4 rol bir profile atanabilir. (`profiles_role_key_check` CHECK constraint'i
@@ -1955,6 +1968,48 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**15.09.2026 (5. tur) — Çekirdek mimari dosyalarında (App/router/AuthContext/
+Sidebar vb.) proaktif bug/tutarsızlık taraması: 1 gerçek CLAUDE.md sapması
+düzeltildi + `ProtectedRoute`'un `allowedRoles` prop'u ve ulaşılamaz
+`/yetkisiz` sayfası kaldırıldı.**
+
+Kullanıcı isteğiyle çekirdek mimari dosyaları (App.jsx, router/index.jsx,
+ProtectedRoute.jsx, AuthContext.jsx, ScopeContext.jsx, Sidebar.jsx,
+dashboard/index.jsx, src/lib/supabase.js, useDashboardData/useRealtimeRefresh/
+useUrlSyncedSelection/useHighlightRow, Login/HesapOlustur) tek tek okunup
+analiz edildi. İki gerçek bulgu çıktı:
+
+1. **"Roller" bölümü bayatlamıştı.** `roles.allowed_tabs`/`sidebar_items`
+   dizi kolonları 24.07.2026'da (`20260724160000_normalize_role_navigation_4nf.sql`)
+   kaldırılıp `role_allowed_tabs`/`role_sidebar_items` join tabloları +
+   `tabs_unrestricted` boolean'ıyla değiştirilmişti — kod (`AuthContext.jsx`)
+   her zaman doğruydu, yalnızca CLAUDE.md'deki örnek SQL ve anlatım (birkaç
+   proaktif tarama turunda fark edilmeden) eski şemayı tarif ediyordu, hatta
+   örnek sorgu artık DB'de hata verirdi. "Roller" başlığı + "Rol → sekme/sidebar
+   erişimi" paragrafı güncellendi; `AuthContext.jsx`/`Sidebar.jsx`/
+   `TabOdemeler.jsx`'teki eşdeğer eski kod yorumları da düzeltildi (kod zaten
+   doğruydu, yalnızca yorum metni eskiydi).
+2. **`ProtectedRoute`'un `allowedRoles` prop'u ve `/yetkisiz` sayfası fiilen
+   ulaşılamazdı.** `router/index.jsx`'teki tek `<ProtectedRoute>` kullanımı
+   `allowedRoles` hiç geçmiyordu — rol tabanlı `/yetkisiz` yönlendirmesi normal
+   navigasyonla asla tetiklenemiyordu (yalnızca adres çubuğuna elle yazılırsa
+   görülüyordu). Muhasebe/DB-tabanlı sekme görünürlüğü modeline geçilmeden
+   önceki eski bir rota-bazlı yetki modelinden kalıntıydı. Kullanıcı kararıyla
+   `ProtectedRoute.jsx`'ten `allowedRoles` kontrolü, `router/index.jsx`'ten
+   `/yetkisiz` route'u/importu, ve `src/pages/Yetkisiz.jsx` dosyası tamamen
+   kaldırıldı — "Frontend yapısı"ndaki routing listesi güncellendi
+   (`/yetkisiz` çıktı, gerçekte var olan ama listede hiç geçmeyen
+   `/hesap-olustur` eklendi). `grep -i yetkisiz`/`allowedRoles` ile hem `src/`
+   hem `tests/` tarandı — tek eşleşme `category-weights.spec.js`'teki alakasız
+   bir test adıydı ("yetkisiz saha rolü..."), silinen sayfaya/prop'a bağımlı
+   hiçbir test yoktu.
+
+Bu turda ayrıca `ScopeContext.jsx`'teki `dashboard-scope-project` localStorage
+anahtarını temizleyen tek-seferlik `useEffect` gözden geçirildi — hiçbir yerde
+artık yazılmayan eski bir global proje-seçici kalıntısının savunma amaçlı
+temizliği, zararsız/kasıtlı bırakıldı, dokunulmadı. `npm run lint`/`build`
+temiz.
 
 **15.09.2026 (4. tur) — Migration tracking boşluğu maddesi kalıcı kapatıldı
 (yalnızca dokümantasyon, kod/migration değişikliği yok).**

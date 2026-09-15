@@ -153,7 +153,7 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
   ]
 
   // 'bildirimler' rol tanımından bağımsız her zaman görünür (RLS: recipient_id=auth.uid())
-  // — roles.sidebar_items henüz yüklenmemiş/boşsa bile bildirim erişimi kaybolmasın diye.
+  // — role_sidebar_items henüz yüklenmemiş/boşsa bile bildirim erişimi kaybolmasın diye.
   const visibleItems = navigation
     ? items.filter(item => item.key === 'bildirimler' || (navigation.sidebarItems || []).includes(item.key))
     : []
