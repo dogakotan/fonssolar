@@ -92,8 +92,9 @@ export function AuthProvider({ children }) {
       }
 
       // Sekme/sidebar izinleri artık navigation.js'te hardcoded değil, roles
-      // tablosundan okunuyor (allowed_tabs/default_tab/sidebar_items) — yeni bir
-      // rol eklendiğinde/rol izinleri değiştiğinde tek yer burasıdır.
+      // (tabs_unrestricted/default_tab) + role_allowed_tabs/role_sidebar_items
+      // join tablolarından okunuyor — yeni bir rol eklendiğinde/rol izinleri
+      // değiştiğinde tek yer burasıdır.
       const { data: roleRow, error: roleRowError } = await supabase
         .from('roles')
         .select(`
