@@ -1,5 +1,10 @@
-export function projectIdLabel(projectId) {
-  if (!projectId || /^[0-9a-f-]{24,}$/i.test(String(projectId))) return ''
+// `unresolved` yalnızca girdi boşsa veya bir UUID'yse döner (metne çevrilemeyen
+// bir eski proje id'si) — çağıranlar bu durumda göstermek istedikleri kendi
+// varsayılan etiketini geçebilir (ör. 'Bağlı Proje', '—'); varsayılan boş
+// string, resolveProjectByAssignedId'nin aşağıdaki `label || assignedProjectId`
+// deseniyle uyumlu kalsın diye.
+export function projectIdLabel(projectId, { unresolved = '' } = {}) {
+  if (!projectId || /^[0-9a-f-]{24,}$/i.test(String(projectId))) return unresolved
   return String(projectId)
     .replace(/[-_]+/g, ' ')
     .replace(/\s+/g, ' ')
