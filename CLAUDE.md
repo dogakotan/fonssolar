@@ -1859,8 +1859,10 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   "Migration tracking boşluğu" — bu projede kod ile doküman arasında böyle bir
   gecikme daha önce de görülmüş). Fark edilirse bu notu hatırlat: madde
   kapalıdır, yeniden açmadan önce önce kodu kontrol et.
-- **Migration tracking boşluğu (Supabase tarafı) — büyük ölçüde kapandı,
-  yalnızca 1 migration gerçekten kurtarılamaz.** 2026-07-26'da fark edildi:
+- **Migration tracking boşluğu (Supabase tarafı) — kapandı (kullanıcı kararıyla,
+  15.09.2026), yalnızca 2 migration/grup kalıcı olarak yerel dosyasız kalacak
+  şekilde kabul edildi — bu madde bir daha "açık nokta" olarak taranmayacak.**
+  2026-07-26'da fark edildi:
   `financial_transactions`/`financial_transaction_payments` şeması,
   `v_invoice_payment_overview` security_invoker düzeltmesi,
   `role_allowed_tabs`/`role_sidebar_items` normalizasyonu,
@@ -1922,13 +1924,17 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   verisini içeriyor; bunu idempotent SQL olarak git geçmişine kalıcı şekilde
   gömmek, önceki 5+2 reconstruction'ın (yalnızca şema/RLS/trigger, hiç müşteri
   verisi) kapsamından farklı bir risk taşıyor — kullanıcı bu riski görüp
-  yalnızca şema kısmını onayladı. Bu 13 migration hâlâ açık madde: bir
-  `supabase db reset` bu 13 versiyonu (ve `create_procurement_monthly_plan`'ın
+  yalnızca şema kısmını onayladı. **Kullanıcı kararıyla (15.09.2026, 2. tur)
+  bu 13 migration KALICI olarak yerel dosyasız bırakılmasına karar verildi —
+  yeniden gündeme getirilmeyecek, kalıcı kabul edilmiş bir risk kararı**
+  (gerçek müşteri verisini git geçmişine gömmemek, bir sonraki turda tekrar
+  "açık madde" gibi taranıp reconstruct edilmemeli). Bilinen/kalıcı etkisi:
+  bir `supabase db reset` bu 13 versiyonu (ve `create_procurement_monthly_plan`'ın
   RLS-öncesi ilk halini) atlayıp doğrudan sonraki (zaten yerelde olan)
   düzeltme migration'larına geçeceğinden, taze bir ortamda Kaptan Demir
   Çelik'in WBS/aylık plan verisi hiç oluşmaz — yalnızca bu iki gerçek proje
   için, yalnızca bir `db reset` senaryosunda önemli, günlük geliştirme akışını
-  etkilemiyor.
+  etkilemiyor. Canlı DB'de veri zaten mevcut ve bu karardan hiç etkilenmiyor.
 - **`esbuild` (Vite'ın dahili bundler'ı) — moderate CVE, yalnızca dev-server'a
   özgü, kabul edildi (11.09.2026).** `GHSA-67mh-4wv8-2f99`: herhangi bir web
   sitesi dev server'a istek atıp yanıtı okuyabiliyor — bu yalnızca `npm run dev`
@@ -1949,6 +1955,23 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**15.09.2026 (4. tur) — Migration tracking boşluğu maddesi kalıcı kapatıldı
+(yalnızca dokümantasyon, kod/migration değişikliği yok).**
+
+Bir önceki turda (3. tur) tespit edilip kullanıcıya sorulan "kalan 13 migration
+(Kaptan Demir Çelik'in gerçek WBS/aylık plan verisini içeren) ne olacak"
+sorusuna kullanıcı kararı: **yeniden inşa edilmeyecek, madde dokümantasyonda
+kalıcı kapalı olarak işaretlenecek** — gerçek müşteri verisini git geçmişine
+gömme riski daha önce de bilerek reddedilmişti, bu karar değişmedi. CLAUDE.md'deki
+"Bilinen açık noktalar" → "Migration tracking boşluğu" maddesi buna göre
+güncellendi: başlık "büyük ölçüde kapandı" yerine "kapandı (kullanıcı kararıyla)"
+oldu, 13 migration'ın "hâlâ açık madde" ifadesi "KALICI olarak yerel dosyasız
+bırakılmasına karar verildi — yeniden gündeme getirilmeyecek" şeklinde
+netleştirildi. Canlı DB'deki veri/şema bu karardan hiç etkilenmiyor, yalnızca
+hipotetik bir `db reset` senaryosunda (iki test dışı gerçek proje için) eksik
+kalacağı notu duruyor. Bir sonraki proaktif tarama turunda bu madde artık
+"açık nokta" olarak yeniden gündeme getirilmemeli.
 
 **15.09.2026 (3. tur) — `projectIdLabel` üç ayrı yerde neredeyse birebir
 kopyalanmıştı, tek paylaşımlı fonksiyona tekilleştirildi.**
