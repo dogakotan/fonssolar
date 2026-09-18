@@ -595,6 +595,27 @@ değişiklik").
 - **Düzeltme sonrası yeniden gönderim:** muhasebe faturayı düzenler, AYNI
   `invoice_approvals` satırını `duzeltme_istendi → bekliyor`'a UPDATE eder
   (yeni satır AÇILMAZ) — cascade bunu tekrar `yönetici_onayında`'ya çeker.
+- **Muhasebenin kendi geri çekmesi — self-revize (18.09.2026 eklendi):**
+  `yönetici_onayında` bir faturada yöneticinin "Düzeltme İste"sini beklemeden
+  muhasebe kendi hatasını (yanlış tutar/ürün vb.) fark edip faturayı kendisi
+  geri çekebilir — `FaturaDetayModal.jsx`'te muhasebeye özel "Geri Çek ve
+  Düzenle" bölümü (`canSelfRevize`, yalnızca `isMuhasebe &&
+  status==='yönetici_onayında'` — admin/proje_yoneticisi'nin zaten
+  `OnayReddetActions` üzerinden kendi "Düzeltme İste"si var, bu bölüm onlarda
+  görünmez), zorunlu bir gerekçe alıp AYNI `invoice_approvals`
+  `bekliyor→duzeltme_istendi` geçişini (yöneticinin "Düzeltme İste"siyle
+  BİREBİR aynı satır/RPC yolu, `reviewer_id` kendi id'si) tetikler, ardından
+  doğrudan düzenleme formunu açar. Bu geçiş öncesinde `fn_validate_invoice_status_transition`
+  (invoices BEFORE UPDATE, SECURITY INVOKER — `get_my_role()` gerçek çağıran
+  role bakıyor, `fn_invoice_approval_cascade`'in SECURITY DEFINER'ı bunu
+  bypass ETMİYOR) `yönetici_onayında → duzeltme_bekliyor` geçişini yalnızca
+  `admin`/`proje_yoneticisi`'ye izinliydi — muhasebe kendi geri çekmesini
+  denediğinde "Bu rol için geçersiz fatura durum geçişi" hatasıyla reddediliyordu
+  (test yazılırken bulunan gerçek engel, ilk tasarımda "migration gerekmez"
+  sanılmıştı). `allow_muhasebe_self_revize_invoice_from_manager_approval`
+  migration'ı bu TEK geçişin izinli rol listesine `muhasebe`'yi ekledi, diğer
+  hiçbir geçiş/rol değişmedi. `tests/invoice-self-revize.spec.js` gerçek
+  RPC/UI ile uçtan uca doğrular.
 - **Ödeme girişi:** tek satırlık `payment_date`/`payment_note` değil — ayrı bir
   `invoice_payments` tablosu (çoklu kısmi ödeme, para birimi, yöntem, referans no,
   iptal desteği). `odeme_bekliyor`/`kismen_odendi` bir faturada muhasebe/admin
@@ -1968,6 +1989,34 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**18.09.2026 — FaturaDetayModal'a muhasebenin kendi hatasını fark edince
+faturayı geri çekip düzenleyebildiği "Geri Çek ve Düzenle" (self-revize)
+bölümü eklendi.**
+
+Kullanıcı isteği: `yönetici_onayında` bir faturada (ekran görüntüsünde
+görüldüğü gibi, yanlış ürün faturalanmış bir örnek) muhasebe artık yöneticinin
+"Düzeltme İste"sini pasif şekilde beklemek zorunda değil — kendi fark ettiği
+hatayı düzeltmek için faturayı kendisi geri çekebiliyor. Uygulama, yöneticinin
+zaten var olan "Düzeltme İste" akışıyla (`invoice_approvals`
+`bekliyor→duzeltme_istendi`, `fn_invoice_approval_cascade`) BİREBİR aynı DB
+yolunu kullanıyor — RLS (`invoice_approvals_update`) muhasebeye zaten
+izinliydi, ayrı bir RPC gerekmedi. **Ama gerçek testte bulunan bir engel:**
+`fn_validate_invoice_status_transition` (invoices tablosunun kendi BEFORE
+UPDATE trigger'ı, SECURITY INVOKER) `yönetici_onayında → duzeltme_bekliyor`
+geçişini yalnızca admin/proje_yoneticisi'ye izin veriyordu — cascade'in
+SECURITY DEFINER'ı bu invoker-taraflı kontrolü bypass etmiyor, muhasebe
+denediğinde hata alıyordu. `allow_muhasebe_self_revize_invoice_from_manager_approval`
+migration'ı bu tek geçişin izinli rol listesine `muhasebe`'yi ekleyerek
+düzeltti (diğer hiçbir geçiş/rol etkilenmedi). Ayrıca `FaturaDetayModal.jsx`'in
+`editing` dalı artık düzenleme formuna stale `invoice` prop'u yerine tazelenmiş
+`effectiveInvoice`'u geçiriyor — bu sayede geri çekme sonrası doğrudan açılan
+form "Onaya Gönder" değil doğru şekilde "Tekrar Gönder" etiketini gösteriyor
+(latent bir tutarsızlık, bu turda ayrıca düzeltildi). `tests/invoice-self-revize.spec.js`
+(yeni) gerçek RPC + UI ile uçtan uca doğrular: buton/uyarı görünürlüğü,
+admin'e özel "Reddet" butonunun muhasebede hiç görünmediği, geri çekme
+sonrası DB durumu (`duzeltme_bekliyor`/`duzeltme_istendi`/doğru `reviewer_id`/
+`note`). `npm run lint`/`build` temiz.
 
 **15.09.2026 (5. tur) — Çekirdek mimari dosyalarında (App/router/AuthContext/
 Sidebar vb.) proaktif bug/tutarsızlık taraması: 1 gerçek CLAUDE.md sapması
