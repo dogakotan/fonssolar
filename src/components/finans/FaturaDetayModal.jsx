@@ -62,6 +62,35 @@ function OdemeIptalModal({ payment, userId, onClose, onSaved }) {
   )
 }
 
+// Muhasebe, yönetici_onayında bir faturada kendi hatasını (yanlış tutar/ürün vb.)
+// fark ederse yöneticinin "Düzeltme İste"sini beklemeden faturayı kendisi geri
+// çekebilir — aynı invoice_approvals 'bekliyor'→'duzeltme_istendi' geçişini
+// (fn_invoice_approval_cascade) tetikler, bu yüzden yeni bir RPC/migration
+// gerekmedi: RLS (invoice_approvals_update) muhasebeye zaten izinliydi, trigger
+// kimin yazdığına bakmıyor. FaturaFormModal'ın "Tekrar Gönder" akışı da
+// existingApproval.status==='duzeltme_istendi'i zaten role-agnostik ele alıyor.
+function SelfRevizeModal({ onClose, onSubmit, busy, err }) {
+  const [reason, setReason] = useState('')
+  const canSubmit = reason.trim().length > 0
+
+  return (
+    <div className="payment-modal-backdrop">
+      <div className="payment-modal" role="dialog" aria-modal="true">
+        <h3 style={{ margin: '0 0 8px' }}>Faturayı Geri Çek</h3>
+        <p style={{ color: 'var(--color-muted)', fontSize: 12.5 }}>
+          Fatura "Düzeltme Bekliyor" durumuna alınır ve düzenleme ekranı doğrudan açılır. Düzelttikten sonra tekrar yönetici onayına gönderebilirsiniz.
+        </p>
+        <textarea autoFocus value={reason} onChange={e => setReason(e.target.value)} placeholder="Geri çekme sebebi (zorunlu)" style={{ width: '100%', minHeight: 90, border: '1px solid var(--color-border-md)', borderRadius: 8, padding: 10, fontFamily: 'inherit' }} />
+        {err && <p style={{ color: '#DC2626', fontSize: 12.5 }}>{err}</p>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <button className="payment-secondary-btn" onClick={onClose}>Vazgeç</button>
+          <button className="payment-primary-btn" disabled={busy || !canSubmit} onClick={() => onSubmit(reason)}>{busy ? 'Geri çekiliyor…' : 'Geri Çek ve Düzenle'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Fatura Detayı — tek adımlı onay süreci (Yönetici), Satın Alma Kontrolü,
 // Bağlı Talebin Kalemleri, rol+statü bazlı aksiyonlar. Reddedilen fatura
 // artık nihai (kurtarma yok) — yalnızca düzeltme_bekliyor akışı düzenlenip
@@ -81,6 +110,9 @@ export default function FaturaDetayModal({ invoice, onClose, onChanged }) {
   const [payments, setPayments] = useState([])
   const [currentInvoice, setCurrentInvoice] = useState(invoice)
   const [cancelPayment, setCancelPayment] = useState(null)
+  const [showSelfRevize, setShowSelfRevize] = useState(false)
+  const [selfRevizeSaving, setSelfRevizeSaving] = useState(false)
+  const [selfRevizeErr, setSelfRevizeErr] = useState('')
 
   async function fetchPaymentData() {
     if (!invoice?.id) return
@@ -136,6 +168,10 @@ export default function FaturaDetayModal({ invoice, onClose, onChanged }) {
   const canCancel = isAdmin && (invoice.status === 'onaylandı' || invoice.status === 'odeme_bekliyor')
   const canApproveHere = canApprove && invoice.status === 'yönetici_onayında'
   const canEditDuzeltme = isMuhasebe && invoice.status === 'duzeltme_bekliyor'
+  // Yalnızca muhasebe için — admin/proje_yoneticisi zaten yönetici_onayında bir
+  // faturada OnayReddetActions üzerinden kendi "Düzeltme İste"sine sahip
+  // (canApproveHere), muhasebenin bu durumda hiçbir aksiyonu yoktu.
+  const canSelfRevize = isMuhasebe && effectiveInvoice.status === 'yönetici_onayında'
   const paymentStage = ['odeme_bekliyor', 'kismen_odendi', 'ödendi'].includes(effectiveInvoice.status)
   const canGirOdeme = (isMuhasebe || isAdmin) && ['odeme_bekliyor', 'kismen_odendi'].includes(effectiveInvoice.status)
   const activePayments = payments.filter(payment => !payment.is_cancelled)
@@ -143,6 +179,27 @@ export default function FaturaDetayModal({ invoice, onClose, onChanged }) {
   const total = Number(effectiveInvoice.total_amount) || 0
   const paid = Number(effectiveInvoice.paid_amount) || 0
   const progress = total > 0 ? Math.min(100, Math.max(0, (paid / total) * 100)) : 0
+
+  async function handleSelfRevize(reason) {
+    setSelfRevizeSaving(true)
+    setSelfRevizeErr('')
+    const { error } = await supabase
+      .from('invoice_approvals')
+      .update({
+        status: 'duzeltme_istendi',
+        note: reason.trim(),
+        reviewed_at: new Date().toISOString(),
+        reviewer_id: user.id,
+      })
+      .eq('invoice_id', invoice.id)
+      .eq('status', 'bekliyor')
+    setSelfRevizeSaving(false)
+    if (error) { setSelfRevizeErr(toUserMessage(error)); return }
+    setShowSelfRevize(false)
+    await fetchPaymentData()
+    onChanged?.()
+    setEditing(true)
+  }
 
   async function handleCancel() {
     setCancelSaving(true)
@@ -157,7 +214,7 @@ export default function FaturaDetayModal({ invoice, onClose, onChanged }) {
   if (editing) {
     return (
       <FaturaFormModal
-        invoice={invoice}
+        invoice={effectiveInvoice}
         onClose={() => setEditing(false)}
         onSaved={() => { onChanged?.(); onClose() }}
       />
@@ -350,6 +407,17 @@ export default function FaturaDetayModal({ invoice, onClose, onChanged }) {
           </div>
         )}
 
+        {canSelfRevize && (
+          <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--color-border-md)' }}>
+            <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--color-warning-text)', background: 'var(--color-warning-bg)', borderRadius: 8, padding: '9px 12px' }}>
+              Bu fatura şu anda yönetici onayında. Hatalı bir bilgi girdiyseniz yöneticinin incelemesini beklemeden geri çekip düzenleyebilirsiniz.
+            </p>
+            <button onClick={() => setShowSelfRevize(true)} style={{ background: 'var(--color-surface)', color: 'var(--color-warning-text)', border: '1px solid var(--color-warning-text)', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+              Geri Çek ve Düzenle
+            </button>
+          </div>
+        )}
+
         {canEditDuzeltme && (
           <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--color-border-md)' }}>
             <p style={{ margin: '0 0 12px', fontSize: 12.5, color: 'var(--color-text-sub)', background: 'var(--color-bg)', borderRadius: 8, padding: '9px 12px' }}>
@@ -394,6 +462,14 @@ export default function FaturaDetayModal({ invoice, onClose, onChanged }) {
         <OdemeEkleModal invoice={effectiveInvoice} onClose={() => setShowOdemeGir(false)} onSaved={async () => { await fetchPaymentData(); onChanged?.() }} />
       )}
       {cancelPayment && <OdemeIptalModal payment={cancelPayment} userId={user?.id} onClose={() => setCancelPayment(null)} onSaved={async () => { await fetchPaymentData(); onChanged?.() }} />}
+      {showSelfRevize && (
+        <SelfRevizeModal
+          busy={selfRevizeSaving}
+          err={selfRevizeErr}
+          onClose={() => { setShowSelfRevize(false); setSelfRevizeErr('') }}
+          onSubmit={handleSelfRevize}
+        />
+      )}
     </div>
   )
 }
