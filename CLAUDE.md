@@ -1990,6 +1990,28 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**18.09.2026 (2. tur) — Kullanıcı isteğiyle 4 demo tedarikçi (Güneş Panel A.Ş./
+Elektrik Malzeme Ltd./Nakliye Lojistik A.Ş./Çelik Yapı San. Ltd.,
+`aaaaaaaa-0000-...-000{1-4}` ID'li, bkz. "Tedarikçi No" kozmetik bug notu)
+ve tüm bağlı demo verisi kalıcı olarak silindi.**
+
+Bu tedarikçilere bağlı 12 fatura (bazıları `DEMO-FTR-*` önekli, bazıları eski
+seed verisi), 6 satın alma talebi ve 3 faturasız ödeme kaydı vardı — hepsi
+bilinen iki test projesinde (`test-izmir-ges-2026`/`test-kayseri-develi-ges`),
+gerçek müşteri verisi değil. FK zinciri (`purchase_requests`/
+`financial_transactions`/`purchase_offers` → suppliers RESTRICT/NO ACTION)
+tedarikçilerin doğrudan silinmesini engelliyordu — önce 1 blok eden
+`financial_transaction_payments` satırı + 10 artık `notifications` satırı
+(entity_id soft-ref) temizlendi, ardından invoices → purchase_requests →
+financial_transactions → suppliers sırasıyla (bu sıra, `invoices.purchase_request_id`
+NO ACTION olduğundan zorunlu) silindi; `invoice_approvals`/`cost_allocations`/
+`invoice_payments`/`purchase_request_items`/`purchase_offers` zaten CASCADE
+olduğundan otomatik gitti. Bu bir migration değil, tek seferlik veri
+temizliği — `supabase/migrations/`'daki bu tedarikçileri seed eden eski
+dosyalar (`20260617062719_seed_finance_data.sql` vb.) dokunulmadan kaldı, bir
+`db reset` bu demo tedarikçileri/faturaları yeniden oluşturur (bu turun
+kapsamı yalnızca canlı DB'ydi).
+
 **18.09.2026 — FaturaDetayModal'a muhasebenin kendi hatasını fark edince
 faturayı geri çekip düzenleyebildiği "Geri Çek ve Düzenle" (self-revize)
 bölümü eklendi.**
