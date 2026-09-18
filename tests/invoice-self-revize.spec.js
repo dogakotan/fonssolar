@@ -4,12 +4,19 @@ import { signIn, loginUi } from './helpers.js'
 // FaturaDetayModal'a 18.09.2026'da eklenen "Geri Çek ve Düzenle" (self-revize)
 // aksiyonunu doğrular — muhasebe, "Yönetici Onayında" bir faturada kendi
 // hatasını (yanlış tutar/ürün vb.) fark ederse yöneticinin "Düzeltme İste"sini
-// beklemeden faturayı kendisi geri çekip düzenleyebiliyor. Yeni bir RPC/migration
-// yok — mevcut invoice_approvals 'bekliyor'→'duzeltme_istendi' geçişini
+// beklemeden faturayı kendisi geri çekip düzenleyebiliyor. Yeni bir RPC yok —
+// mevcut invoice_approvals 'bekliyor'→'duzeltme_istendi' geçişini
 // (fn_invoice_approval_cascade) muhasebe kendi adına tetikliyor; RLS
-// (invoice_approvals_update) ve trigger zaten role-agnostik.
+// (invoice_approvals_update) ve trigger zaten role-agnostik. Ama bu geçiş
+// öncesinde çalışan fn_validate_invoice_status_transition (invoices BEFORE
+// UPDATE) muhasebeye kapalıydı — allow_muhasebe_self_revize_invoice_from_manager_approval
+// migration'ı bu tek geçişe muhasebe'yi ekledi (bkz. CLAUDE.md "Son değişiklik").
 test('muhasebe yönetici_onayındaki faturayı kendisi geri çekip düzenleyebilir', async ({ page }) => {
   const { client, user } = await signIn(process.env.TEST_MUHASEBE_EMAIL, process.env.TEST_MUHASEBE_PASSWORD)
+  // Temizlik admin client'ıyla yapılır — invoices üzerinde DELETE yalnızca
+  // admin'e izinli (bkz. faz-e.spec.js'teki aynı not), muhasebe client'ıyla
+  // silmeye çalışmak RLS'te sessizce 0 satır etkiler, artık kalır.
+  const { client: admin } = await signIn(process.env.TEST_ADMIN_EMAIL, process.env.TEST_ADMIN_PASSWORD)
   const invoiceNo = `TEST-SELFREVIZE-${Date.now()}`
 
   const { data: inserted, error: insertError } = await client.from('invoices').insert({
@@ -75,6 +82,7 @@ test('muhasebe yönetici_onayındaki faturayı kendisi geri çekip düzenleyebil
     expect(afterApproval.note).toBe('Yanlış ürün girilmiş, tutar düzeltilecek')
     expect(afterApproval.reviewer_id).toBe(user.id)
   } finally {
-    await client.from('invoices').delete().eq('id', inserted.id)
+    const { error: deleteError } = await admin.from('invoices').delete().eq('id', inserted.id)
+    expect(deleteError).toBeNull()
   }
 })
