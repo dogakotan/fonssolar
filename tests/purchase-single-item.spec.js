@@ -64,6 +64,8 @@ test.describe.serial('Satın alma talebi tek kalem kuralı', () => {
     const { data: request, error } = await pm.from('purchase_requests').insert({
       project_id: projectId,
       title: `${marker}_CONCURRENT`,
+      // This test covers concurrent item inserts, not request number allocation.
+      request_no: `${marker}_CONCURRENT`,
       category: 'diger',
       request_note: marker,
       status: 'talep_olusturuldu',
