@@ -1,5 +1,4 @@
 import { Fragment, useState, useEffect, useRef } from 'react'
-import ExcelJS from 'exceljs'
 import { AGENTS, getAgentById, getTabConfig } from './agentConfig'
 import { fetchTabContext } from './agentContext'
 import { supabase } from '../../lib/supabase'
@@ -84,6 +83,7 @@ function excelToText(file) {
           })
           if (data.length > 60) lines.push(`_(... ${data.length - 60} satır daha)_`)
         } else {
+          const { default: ExcelJS } = await import('exceljs')
           const wb = new ExcelJS.Workbook()
           await wb.xlsx.load(e.target.result)
           wb.worksheets.slice(0, 3).forEach(ws => {

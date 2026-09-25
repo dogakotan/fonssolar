@@ -1977,6 +1977,10 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 **24.09.2026 — AI ajanı başarısız istekte kullanıcı içeriğini koruyor.** Gemini çağrısı hata verdiğinde gönderim öncesi temizlenen metin ve dosya kayboluyordu. Hata halinde başarısız mesaj balonu kaldırılıyor, içerik giriş alanına geri yükleniyor ve yeni bir yazı/dosyanın üzerine yazılmıyor; kullanıcı doğrudan yeniden deneyebilir. Test çalıştırılmadı.
 
+**24.09.2026 — ExcelJS yalnızca Excel işlemi gerektiğinde yükleniyor.** Ajan dosya analizi, proje sihirbazı içe aktarımı ve rapor dışa aktarımlarındaki statik importlar dinamik importa çevrildi. Production `index.html` artık 938 kB'lık `vendor-xlsx` dosyasını ön yüklemiyor; kullanıcı bir Excel işlevi çağırınca yükleniyor. Bu ayrı chunk hâlâ büyük olduğu için build boyut uyarısı devam ediyor. Lint ve build başarılı; lint'te 10 önceden var olan Fast Refresh uyarısı bulunuyor.
+
+**24.09.2026 — `fn_next_purchase_request_no` için doğrudan RPC erişimi kapatıldı.** Salt okunur catalog kontrolü, `authenticated` rolünün sequence tabanlı numara üreticisini doğrudan çağırabildiğini doğruladı; keyfi yıl girdileri boş yere sayaç/sequence tüketebilirdi. `20260924110039_revoke_authenticated_execute_on_request_no_allocator` migration'ı kullanıcı onayından sonra uygulandı. Sonraki salt okunur kontrol `authenticated_exec=false`, `service_role_exec=true` ve iki iç satın alma RPC'sinde `postgres_exec=true` gösterdi; uygulama akışı korunurken doğrudan çağrı kapandı.
+
 **18.09.2026 (2. tur) — Kullanıcı isteğiyle 4 demo tedarikçi (Güneş Panel A.Ş./
 Elektrik Malzeme Ltd./Nakliye Lojistik A.Ş./Çelik Yapı San. Ltd.,
 `aaaaaaaa-0000-...-000{1-4}` ID'li, bkz. "Tedarikçi No" kozmetik bug notu)

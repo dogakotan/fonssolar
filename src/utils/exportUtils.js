@@ -1,4 +1,3 @@
-import ExcelJS from 'exceljs'
 import { jsPDF } from 'jspdf'
 import { autoTable } from 'jspdf-autotable'
 import { downloadBlob, XLSX_MIME } from './downloadFile'
@@ -92,6 +91,7 @@ async function writeWorkbookAndDownload(wb, filename) {
 
 // ─── EXCEL EXPORT ─────────────────────────────────────────────────────────────
 export async function exportToExcel(title, periyot, columns, rows) {
+  const { default: ExcelJS } = await import('exceljs')
   const periyotLabel = PERIYOT_LABEL[periyot] || periyot
   const wb = new ExcelJS.Workbook()
 
@@ -538,6 +538,7 @@ export async function exportGunlukRaporPdf(project, workPackages = [], ilerlemeD
  *  Sheet 4 — Personel & Makine
  */
 export async function exportGunlukRaporExcel(project, workPackages = [], ilerlemeData = [], personelRaporu = null, opts = {}) {
+  const { default: ExcelJS } = await import('exceljs')
   const { selectedDate = null } = opts
   const wb      = new ExcelJS.Workbook()
   const projAd  = project?.name || opts.projectName || 'GES PROJESİ'
@@ -852,6 +853,7 @@ export async function exportPeriodReportPdf(project, periodLabel, periodRangeLab
 }
 
 export async function exportPeriodReportExcel(project, periodLabel, periodRangeLabel, data) {
+  const { default: ExcelJS } = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   const projAd = project?.name || 'GES PROJESİ'
   const kapsite = project?.capacityKwp ? `${Number(project.capacityKwp).toLocaleString('tr-TR')} kWp` : ''
