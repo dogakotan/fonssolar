@@ -1,0 +1,6 @@
+# Gerçek ölçüm dokümanları ve beklenen alanlar ASLA repoya girmez (müşteri gizliliği, Karar #5).
+olcum-seti/
+# Raporlar belge alıntıları içerebilir.
+sonuclar/
+# make-sample-set.mjs çıktısı (yeniden üretilebilir).
+ornek-olcum-seti/
