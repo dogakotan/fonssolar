@@ -1664,6 +1664,76 @@ Playwright regresyon suite'i (`npm run test:e2e`), kimlik bilgileri `.env.test`'
 yazılmaz.** Admin test hesabının `profiles.id`'si değişebilir — `select id from
 profiles where role_key='admin'` ile doğrula.
 
+### Proje Kontrol (Faz A — zemin ve kararlar, 06.10.2026'da başladı)
+
+Kaynak tasarım: `docs/proje-kontrol/tasarim.md` (v2; eski `FONS_Diyarbakir_Sistem_Revizyon_Yol_Haritasi.docx`
+v1 geçersiz, çelişkide tasarim.md kazanır). Faz A'da **şema değişmez**; yalnızca kararlar, Drive
+kurulumu, güvenlik doğrulaması, drive-gateway iskeleti ve AI ölçüm hazırlığı yapılır. Branch:
+`faz-a-proje-kontrol`.
+
+**Canlıda tasarımla çelişen bir ön şema var (06.10.2026'da bulundu).** 05.10.2026'da yerel dosyası
+olmayan 3 migration (`faz1_wbs_alan_activity`, `project_control_phase1_core`,
+`project_control_phase1b_hardening`) uygulanmış: `project_wbs`, `project_areas`, `area_wbs`,
+`documents`, `drawings`, `rfis`, `actions`, `decisions`, `technical_submittals`,
+`material_approvals`, `project_register_counters`, `register_status_history` (hepsi boş, frontend
+kullanmıyor) + `project_tasks`/`project_risks`/`procurement_items`/`purchase_requests`'e kolonlar.
+Tasarımdan farkları (ad, numara biçimi `RFI-2026-001`, doğrudan yazma policy'leri, ayrı `actions`
+tablosu, `record_state` yokluğu, `project_tasks.is_critical`'ın **geri eklenmesi**, `suppliers.supplier_type`
+ad çakışması) `docs/proje-kontrol/sema-dogrulama.md` Bölüm 0'da. Faz B şeması bu durum
+kararlaştırılmadan kilitlenemez (Karar #0).
+
+**Kararlar — TASLAK, hiçbiri kesinleşmedi.** Kullanıcı bir kararı onaylayınca etiket "ONAYLANDI
+(tarih)" olur ve gerekçesi yazılır; onaylanmamış karar uygulanmaz.
+
+| # | Karar | Taslak (tasarım önerisi) | Durum |
+|---|---|---|---|
+| 0 | 05.10 ön şemasının akıbeti | (a) tabloları koru, tasarımı bu adlara uyarla + doğrudan yazma policy'lerini kaldır (G-01); (b) boş oldukları için ters migration'la kaldır, tasarımdaki M01-M05'le yeniden kur; (c) olduğu gibi bırak. Tablolar boş → (b) ucuz; seçimden önce kimin/neden uyguladığı netleşmeli. `is_critical`'ın geri gelmesi ayrıca onaylanmalı (03.08 kararıyla çelişiyor) | **ONAY BEKLİYOR** |
+| 1 | Drive erişim modeli | Tek servis hesabı Shared Drive'a erişir; kullanıcı dosyayı yalnızca drive-gateway üzerinden açar (her çağrıda JWT + `has_project_access`) | **ONAY BEKLİYOR** |
+| 2 | Drive klasör yapısı | Shared Drive "Fons Projects" > Proje > `01_Dokumanlar` > Disiplin > Register türü (+ `00_Gelen_Kutusu`, `99_Arsiv`); dosya adı `{register_no}_{rev}_{kisa-baslik}.{ext}` (ör. `DRW-DYB-0125_R03_…`) | **ONAY BEKLİYOR** |
+| 3 | Revizyon modeli | Her revizyon ayrı Drive dosyası ve ayrı `documents` satırı, `supersedes_id` zinciri | **ONAY BEKLİYOR** |
+| 4 | Roller | Mevcut 4 rol korunur; register × eylem yetkisi `register_permissions` tablosunda (tasarım 4.3 matrisi öneridir) | **ONAY BEKLİYOR** |
+| 5 | AI sağlayıcı ve gizlilik | Önce İsdemir OYAK'tan harici modele belge gönderme izni; sonra Faz B'de 10-15 belgeyle iki sağlayıcı ölçümü (`scripts/proje-kontrol/ai-olcum/`), seçim "yüksek güvenle yanlış" en az olan. İzin yoksa AI yalnızca metadata | **ONAY BEKLİYOR** |
+| 6 | NCR ve Inspection | Pilotta yok; mobilizasyondan sonra, kalite modülünün kaldırılma kararı hatırlanarak | **ONAY BEKLİYOR** |
+| 7 | Agent kimliği | Her agent için ayrı, proje kapsamlı rol; yalnızca izinli RPC'ler; service_role ile serbest tablo erişimi yok | **ONAY BEKLİYOR** |
+| 8 | İlk agent'lar | Yalnızca Reconciliation ve Planning | **ONAY BEKLİYOR** |
+
+**Drive / edge function / secret'lar:**
+- Yeni edge function: `drive-gateway` (iskelet, **deploy edilmedi**) — `?action=upload|download|provision_folders`;
+  kontrol sırası JWT (401) → girdi (400) → `has_project_access` (403) → tür/boyut (415/413) →
+  Drive yapılandırması (501). `has_project_access(NULL)=true` olduğu için boş `project_id` gateway'de 400.
+  Drive çağrıları `driveClient.ts`'te TODO; `create_document_record`/`get_document_for_download`/
+  `enqueue_document_job` Faz B RPC'leri yokken 501 `register_rpc_missing` döner, dosya vermez.
+- Secret'lar (yalnızca `supabase secrets set`; repoda, `.env`'de ve `VITE_` önekli değişkende asla):
+  `GOOGLE_SERVICE_ACCOUNT_JSON`, `DRIVE_SHARED_DRIVE_ID`, `MAX_UPLOAD_BYTES` (varsayılan 25 MiB, geçici),
+  ileride `AI_PROVIDER`, `AI_API_KEY`, `SYNC_SECRET`. AI ölçümü için yerel kabuk değişkenleri
+  `AI_OLCUM_{A,B}_*` + `AI_OLCUM_GIZLILIK_ONAYI=evet` (yoksa harici gönderim engellenir).
+- Canlı edge function'lar 4 adet (create-user, manage-user, import/export-project-excel);
+  **`agent-chat` repoda var ama deploy edilmemiş** — `AgentChat.jsx` onu çağırıyor (doğrulanmadı, G-09).
+- pg_cron kurulu; **pg_net kurulu değil** (kurulabilir) — drive-sync tetiklemesi için Faz B'de karar.
+
+**Faz A güvenlik bulguları** (`docs/proje-kontrol/guvenlik-bulgulari.md`, SQL'ler taslak, uygulanmadı):
+G-02/G-03 YÜKSEK — `daily_report_photos`/`ticket_attachments` INSERT policy'leri yalnızca oturum
+kontrol ettiği için sahte metadata satırıyla **başka projenin saha fotoğrafı/ticket eki indirilebiliyor**
+(testle kanıtlı); G-01 YÜKSEK — 05.10 register tablolarında doğrudan yazma policy'leri; G-04 ORTA —
+storage silme/yükleme sahiplik ve rol kontrolü yok (muhasebe dahil); G-05..G-09 düşük/bilgi.
+
+**Yeni dosyalar:**
+- `docs/proje-kontrol/` — `tasarim.md`, `sema-dogrulama.md`, `guvenlik-bulgulari.md`, `frontend-tasarim-notu.md`,
+  `canli-05-10-migrations/` (05.10 migration'larının md5-doğrulamalı birebir arşivi; çalıştırılmaz,
+  `supabase/migrations/`'a taşınması Karar #0'a bağlı), `taslak-sql/g01_gecici_yazma_kapatma.sql`
+  (G-01 geçici REVOKE + geri alma; UYGULANMADI)
+- `tests/proje-kontrol-guvenlik.spec.js` — 8 senaryo (6 geçiyor, 2'si G-02/G-03 düzeltilene kadar bilerek kırmızı)
+- `supabase/functions/drive-gateway/` — `index.ts`, `handler.ts`, `driveClient.ts`, `validation.ts`,
+  `handler.test.ts` (`node --test …`, 28 test), `README.md` (deploy sonrası curl senaryosu)
+- `scripts/proje-kontrol/drive-limit-test.mjs` — Drive yükle/indir süre-boyut-hata tablosu (kimlik bilgisi gerekir)
+- `scripts/proje-kontrol/ai-olcum/` — `run.mjs`, `metrics.mjs`, `schemas/rfi_v1.json`, `prompts/rfi_v1.md`,
+  `providers/` (ortak arayüz, boş `adapter-a/b`, `mock`), `make-sample-set.mjs` (sentetik set);
+  `olcum-seti/`, `sonuclar/` gitignore'da (gerçek belge repoya girmez)
+
+**Frontend kararı için not** (`frontend-tasarim-notu.md`): ProjeDetay iç sekmelerinin rol bazlı
+yetki mekanizması yok; santiye_sefi ve muhasebe `projeler` sekmesine sahip olmadığından ProjeDetay'a
+hiç ulaşamaz → "Proje Kontrol" bu roller için ayrı üst seviye `kontrol` sekmesi gerektirir.
+
 ---
 
 ## Tamamlanan büyük görevler (özet)
@@ -1964,6 +2034,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**06.10.2026 — Proje Kontrol Faz A başladı (şema değişmedi).** Canlı şema doğrulandı; 05.10'da
+tasarımla çelişen, yerel dosyası olmayan 3 Proje Kontrol migration'ı bulundu (Karar #0). Güvenlik
+testi iki YÜKSEK açık kanıtladı (sahte metadata satırıyla başka projenin fotoğraf/ekini indirme).
+drive-gateway iskeleti, Drive sınır betiği, AI ölçüm iskeleti ve frontend notu yazıldı. Ayrıntı:
+"Sistem mimarisi" → "Proje Kontrol (Faz A)".
 
 **24.09.2026 — AI ajanı dosya boyutu sınırı eşitlendi.** İstemci 20 MB dosyaya izin verirken Edge Function'ın Base64 ve toplam istek sınırları bazı seçilen dosyaları gönderim sırasında reddediyordu. İstemci limiti 12 MB'a indirildi ve reddedilen dosyada input temizleniyor; böylece aynı dosya yeniden seçilebilir. Test çalıştırılmadı.
 
