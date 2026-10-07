@@ -1,844 +1,924 @@
 # Proje Kontrol: tasarım (v3) — Claude Code için kaynak dosya
 
-> **v3, 07.10.2026.** Canlı şemaya ve onaylanan kararlara göre yeniden yazıldı. Bu dosya v2'nin ve
-> `FONS_Diyarbakir_Sistem_Revizyon_Yol_Haritasi.docx` (v1) dosyasının YERİNE geçer. Çelişkide öncelik sırası:
-> **onaylı kararlar (CLAUDE.md "Proje Kontrol (Faz A)") > canlı şema (`canli-sema-ozeti.md`) > bu dosya.**
->
-> **v2'den başlıca farklar:**
-> - **Tablo adları canlıdaki gibi:** `project_wbs`, `project_areas`, `area_wbs`, `project_actions`, `technical_submittals`.
-> - **Ayrı Action tablosu:** Action, ticket genişletmesi değil ayrı bir tablo (`project_actions`).
-> - **Revizyon modeli:** tek doküman, çok revizyon (`documents` + `document_revisions`, tek `is_current`); `supersedes_id` zinciri yok.
-> - **Numara biçimi:** `{TÜR}-{PROJE_KODU}-{SIRA}`, kırpmasız, uygulandı. Önekler DOC/DRW/RFI/TS/MA/DEC/ACT; proje kodları ADN1, ADN2, TIZ, TKY.
-> - **Depolama sınırları:** ücretsiz planda (500 MB veritabanı, 1 GB dosya) PDF tam metni kalıcı saklanmaz (`document_texts` yok); audit yalnızca değişen alanları tutar.
-> - **Dosya sağlayıcısı karar bekliyor:** Supabase Storage + Pro ya da ayrı Gmail hesabında Drive (OAuth). v2'deki "servis hesabı + Shared Drive" varsayımı bu karara bağlandı (§4.5).
-> - **NCR ve Inspection:** ilk tasarımda yok.
->
-> **Doküman yapısı:** Bölüm 1-4. Bölüm numaraları (4.1-4.9) v2 ile aynıdır, eski atıflar geçerlidir. Yeni bölüm: **4.10 Faz B kalan iş paketleri**.
->
-> **Teknik ayrıntı:** her tablonun kolon, kısıt, policy ve yetki ayrıntısı `canli-sema-ozeti.md`'dedir. Bu dosya özetler ve hedefi anlatır.
+> Bu dosya önceki tasarım sürümlerinin ve `FONS_Diyarbakir_Sistem_Revizyon_Yol_Haritasi.docx` dosyasının YERİNE geçer. Çelişirse bu dosya geçerlidir; yalnızca kolon düzeyindeki canlı şema konusunda `docs/proje-kontrol/canli-sema-ozeti.md` geçerlidir (canlı veritabanı tasarımdan önce gelir, fark bulursan bu dosyayı düzelt).
+> v3 farkları: dosya deposu Supabase Storage'dır (Fons içi klasörlü dosya gezgini); Google Drive ve SharePoint YOKTUR (şirkette Microsoft 365 ve Google Workspace yok). Canlı şema 07.10.2026 itibarıyla esas alınmıştır. Karar 0-4 onaylanmış ve uygulanmıştır; Karar 5 (dosya deposu ve Supabase Pro planı) patron onayı beklemektedir.
+> Diyagramlar yalnızca Word sürümünde görsel olarak yer alır; içerikleri metinde de anlatılmıştır.
 
 # Bölüm 1 · Yol haritası
 
 ## Özet
 
-Hedef: 1 Ocak 2027 saha mobilizasyonunda Document, Drawing, RFI ve Action register'ları dosya deposu + Supabase + AI
-ile uçtan uca çalışıyor olsun; kalan register'lar mobilizasyondan sonra aynı iskelete eklensin.
+Hedef: 1 Ocak 2027 saha mobilizasyonunda Document, Drawing, RFI ve Action register'ları Supabase + AI ile uçtan uca çalışıyor olsun; kalan register'lar mobilizasyondan sonra aynı iskelete eklensin. Kayıtlar veritabanında, dosyalar Supabase Storage'da tutulur ve kullanıcı bunlara Fons içindeki klasörlü bir dosya gezgininden ulaşır.
 
 Beş ilke:
 
-1. Supabase tek kayıt kaynağı, dosya deposu (§4.5'teki karara göre Supabase Storage veya Drive) tek dosya kaynağı. Excel yalnızca şablon, import ve export.
-2. Ekle, bozma. Satın alma, finans, günlük rapor, ticket ve risk modülleri çalışmaya devam eder.
+1. Supabase tek kayıt ve dosya kaynağıdır: kayıtlar veritabanında, dosyalar özel bir Storage bucket'ında. Excel yalnızca şablon, import ve export.
+2. Ekle, bozma. Satın alma, finans, günlük rapor, ticket ve risk modülleri çalışmaya devam eder; ortak olanlar genişletilir, kopyalanmaz.
 3. Dikey dilim. Her faz sonunda kullanıcının gerçekten kullanabildiği bir özellik çıkar.
 4. AI taslak üretir, yetkili kişi onaylar. Onay akışı ve audit çekirdekte baştan vardır.
-5. Register'lar projeden bağımsızdır. Diyarbakır ilk kullanıcıdır; aynı yapı sonraki projelerde açılır (proje kodu `project_register_settings`'e eklenerek).
+5. Register'lar projeden bağımsızdır. Diyarbakır ilk kullanıcıdır; aynı yapı sonraki projelerde proje kodu tanımlanarak açılır.
+
+Önceki sürümlerden farklar:
+
+| Konu | v1 | v3 |
+|---|---|---|
+| Yapı | 12 faz, sıralı | 5 faz, dikey dilim, takvimli |
+| Güvenlik | Baştan yeniden yap | Mevcut durumu testle doğrula, açıkları kapat (yapıldı) |
+| Dosya kaynağı | Supabase Storage, SharePoint ileride | Supabase Storage, Fons içi klasörlü dosya gezgini; SharePoint ve Google Drive kullanılmıyor (şirkette Microsoft 365 ve Google Workspace yok) |
+| AI | Önce embedding ve vektör arama | Önce yapılandırılmış çıkarım; embedding yalnızca arama için, sonra |
+| Onay ve audit | Faz 10 | Faz B, çekirdek |
+| Kapsam | 16 register birden | Pilotta 4 register (Action ayrı tabloda), hazır tablolara köprü, kalanlar sonra |
+| Action | Ticket'ın genişletilmesi | Ayrı tablo (project_actions); ticket sahadan bildirim olarak kalır |
+
+## Güncel durum (7 Ekim 2026)
+
+Yapılanlar:
+
+- Canlı veritabanındaki 05.10 şeması (WBS/Alan tabloları ve 7 register tablosu) incelendi, tasarımla hizalandı: project_actions, document_revisions (tek doküman, çok revizyon), project_register_settings (proje kodları ADN1, ADN2, TIZ, TKY), kırpmayan numaralama, is_critical kaldırıldı.
+- Güvenlik: G-01 (register tablolarına doğrudan yazma kapatıldı), G-02 ve G-03 (başka projenin fotoğraf ve ek dosyalarının indirilebilmesi) kapatıldı. Tam Playwright seti 118/118 geçti.
+- Sistem dokümantasyonu ve CLAUDE.md güncellendi.
+
+Açık kalanlar: yazma RPC'leri ve yetki tablosu (Faz B), doküman deposu ve klasörlü gezgin (Faz B-C), G-04, G-12, G-13, FK indeksleri, tam şema yedeği, İsdemir OYAK izni, AI ölçüm seti, patron onayı (dosya deposu ve Supabase Pro planı).
 
 ## Sistem değişiklikleri
 
-| Katman | Bugün (07.10.2026) | Hedef (Faz B-D) |
+Mevcut hiçbir tablo, RPC veya ekran silinmiyor ya da yeniden adlandırılmıyor (07.10 uyum migration'ı dünkü boş register tablolarını hizalamıştır). Katman katman durum:
+
+| Katman | Durum | Değişiklik |
 |---|---|---|
-| Veritabanı | 55 tablo, 7 view, 437 migration. Proje Kontrol için canlıda: project_wbs, project_areas, area_wbs, documents, document_revisions, drawings, rfis, project_actions, decisions, technical_submittals, material_approvals, register_status_history, project_register_counters, project_register_settings (hepsi boş; proje kodları dolu) | Eklenecek: register_permissions, register_audit (yalnızca değişen alanlar), register_status_transitions, register_links, register_drafts, document_jobs, ai_runs, ai_settings; ortak kolonlar (record_state, source, approved_*). Changes/claims/interfaces Faz D-E |
-| Dosya | Supabase Storage: günlük rapor fotoğrafları, ticket ekleri, teklif ekleri (private bucket'lar) | Proje dokümanları §4.5'teki karara göre Storage'a ya da Drive'a gider; fotoğraf ve ekler Storage'da kalır |
-| Edge function | Canlıda 4: create-user, manage-user, import-project-excel, export-project-excel. Repoda deploy edilmemiş: agent-chat, drive-gateway (iskelet, 28 birim testi) | Dosya ağ geçidi (drive-gateway, sağlayıcıya göre adaptör), process-document; Drive seçilirse drive-sync |
-| Yetki | 4 rol. Register tablolarında RLS okuma `user_has_project_access`; yazma G-01 ile geçici kapalı | register_permissions × register_can(); yazma yalnızca SECURITY DEFINER RPC (G-01 kalıcılaşır) |
-| Frontend | Proje Kontrol ekranı yok | ProjeDetay içinde "Proje Kontrol" sekmesi + santiye_sefi/muhasebe için üst seviye `kontrol` sekmesi (frontend-tasarim-notu.md); config tabanlı RegisterList/RegisterDetail |
-| AI | agent-chat (Gemini proxy); ölçüm iskeleti `scripts/proje-kontrol/ai-olcum/` | Yapılandırılmış çıkarım → register_drafts → onay; ai_runs ile ölçüm |
-| Planlama | project_tasks (+activity_id, baseline_*, forecast_*, wbs_id, area_id), progress_daily | Değişmez; WBS/Area bağları kullanılmaya başlar |
-| Test | 121 Playwright testi (118 geçiyor, 3 Faz B'yi bekleyen fixme) | Her fazda RLS + akış testleri (4 rol) |
+| Veritabanı | Canlıda: project_wbs, project_areas, area_wbs, documents, document_revisions, drawings, rfis, project_actions, decisions, technical_submittals, material_approvals, register_status_history, project_register_counters, project_register_settings (hepsi boş, yazma kapalı) | Faz B-C'de eklenecek: register_permissions, register_audit (yalnızca değişen alanlar), register_drafts, ai_runs, ai_settings, document_jobs; sonra Change, Claim, Interface. FK kolonlarına indeks |
+| Dosya | Supabase Storage: günlük rapor fotoğrafları ve ticket ekleri (private bucket'lar) | Yeni özel bucket'ta proje dokümanları; klasör ağacı arayüzde doküman kayıtlarından üretilir. Fotoğraf ve ticket ekleri yerinde kalır |
+| Edge function | 5 adet: agent-chat, create-user, export-project-excel, import-project-excel, manage-user | Yeni: yalnızca process-document (AI taslağı). Dosya erişimi için ayrı bir function gerekmez |
+| Yetki | 4 rol; sekme erişimi roles ve role_allowed_tabs tablolarından | Aynı 4 rol; register × eylem yetkisi register_permissions'ta; agent'lar için ayrı, proje kapsamlı roller (Faz E) |
+| Frontend | ProjeDetay sekmeleri, tek /dashboard/* route'u; şantiye şefi ve muhasebe rollerinin "Projeler" sekmesi yok | "Proje Kontrol" grubu; şantiye şefi için ayrı üst seviye giriş (kararı Faz B'de); config tabanlı RegisterList ve RegisterDetail; klasörlü dosya gezgini; onay kutusu |
+| AI | agent-chat: Gemini proxy, istemciden gelen prompt, tool yok | agent-chat aynı kalır. Yeni yol: doküman, yapılandırılmış çıkarım, register_drafts'ta taslak, onay; güven skoru, kaynak gösterimi, ai_runs. Sağlayıcı Faz B sonunda ölçümle seçilir (ChatGPT dahil), anahtarlar yalnızca edge function secret'ında |
+| Planlama | project_tasks (+ wbs, alan, activity_id, baseline kolonları, identity_guard trigger'ı), progress_daily | Activity ID kuralı canlıda; Faz B'de yalnızca admin'in kullanabildiği düzeltme RPC'si |
+| Test ve doküman | 118 Playwright testi (3 test Faz B yazma yolunu bekliyor) | Her fazda yeni RLS ve akış testleri; her migration SQL onayıyla uygulanır; CLAUDE.md her fazda güncellenir |
 
-## Başlangıç noktası (07.10.2026, canlıdan doğrulandı)
+## Kararlar ve durumları
 
-| Alan | Durum |
-|---|---|
-| Kimlikler | projects.id text; profiles, project_tasks, project_risks, procurement_items, suppliers id uuid. project_tasks'ta hem `task_code` (UNIQUE project_id, task_code) hem `activity_id` (kısmi unique, değiştirilemez) var |
-| Güvenlik | G-02/G-03 (sahte metadata ile başka projenin dosyası) düzeltildi; G-01 geçici; G-11 (numara kırpma) düzeltildi; açık: G-04, G-12, G-13 (bkz. guvenlik-bulgulari.md) |
-| Numaralama | `next_register_no` + `project_register_counters` + `project_register_settings`; eşzamanlılık SQL tarafında doğru (satır kilidi), 20 eşzamanlı istek testi yazma RPC'si gelince |
-| Kalite | Kalite kontrol modülü kararla kaldırıldı; NCR/Inspection ilk tasarımda yok |
-| Eklentiler | pg_cron var; pg_net ve pgvector yok |
-| Yedek | Ücretsiz planda otomatik yedek yok; `npm run db:backup` henüz çalışmıyor (`scripts/db-backup/.env.local` yok) |
+Faz B'nin şeması bu kararlara dayanır.
 
-## Kararlar
-
-| # | Karar | Durum |
+| # | Karar | Durum ve içerik |
 |---|---|---|
-| 0 | 05.10 ön şeması korunur ve hizalanır (0.1 project_actions, 0.2 numara biçimi, 0.4 submittal/material ayrı, 0.5 is_critical kaldırıldı) | **ONAYLANDI 07.10**, migration uygulandı (`20261007072501`) |
-| 1 | Dosya erişim modeli: kullanıcı dosyaya yalnızca uygulama üzerinden (gateway, her çağrıda JWT + proje yetkisi) ulaşır | İlke kabul; **sağlayıcı seçimi BEKLİYOR** (§4.5: A Storage+Pro / B Gmail Drive OAuth) |
-| 2 | Klasör/yol yapısı ve dosya adı `{register_no}_{rev}_{kisa-baslik}.{ext}` | Sağlayıcı kararına bağlı (§4.5) |
-| 3 | Revizyon: tek doküman, çok revizyon, tek is_current | **ONAYLANDI 07.10**, uygulandı |
-| 4 | Roller: 4 rol korunur; register × eylem yetkisi register_permissions'ta (§4.3 öneridir) | ONAY BEKLİYOR (Faz B ilk paketinden önce) |
-| 5 | AI sağlayıcı ve gizlilik: önce İsdemir OYAK izni, sonra iki sağlayıcı ölçümü | ONAY BEKLİYOR; gizlilik sorusunun gönderildiği doğrulanamadı |
-| 6 | NCR ve Inspection: ilk tasarımda yok (project_actions.source_type'tan ncr/inspection çıkarıldı) | Fiilen uygulandı (0.1 ile); ayrı onay kaydı yok |
-| 7 | Agent kimliği: proje kapsamlı, yalnızca izinli RPC | ONAY BEKLİYOR (Faz E) |
-| 8 | İlk agent'lar: Reconciliation ve Planning | ONAY BEKLİYOR (Faz E) |
+| 0 | Dünkü (05.10) canlı şema | ONAYLANDI ve UYGULANDI (07.10): korunup tasarıma hizalandı |
+| 1 | Action | ONAYLANDI: ayrı tablo project_actions; ticket sahadan bildirim olarak kalır |
+| 2 | Numara biçimi | ONAYLANDI: {TÜR}-{PROJE_KODU}-{SIRA}, örnek RFI-ADN1-0007; yıl ve disiplin kodda yok; sıra kırpılmaz |
+| 3 | Revizyon | ONAYLANDI: tek doküman, çok revizyon (document_revisions), her dokümanın tek güncel revizyonu |
+| 4 | Submittal ve Material Approval | ONAYLANDI: iki ayrı tablo (technical_submittals, material_approvals) |
+| 5 | Dosya deposu | KARAR VERİLDİ, PATRON ONAYI BEKLİYOR: dosyalar Supabase Storage'da özel bucket'ta, Fons içinde klasörlü gezgin. Supabase Pro planına geçiş (aylık 25 $ sabit) önerilir |
+| 6 | Roller | Mevcut 4 rolü koru, register bazında yetki tablosu (register_permissions) ekle |
+| 7 | AI sağlayıcı ve gizlilik | AÇIK: önce İsdemir OYAK dokümanlarının harici modele gönderilmesi için onay; sağlayıcı Faz B sonunda 10-15 gerçek dokümanla iki sağlayıcıyı (ChatGPT dahil) ölçerek seçilir |
+| 8 | NCR ve Inspection | Pilotta yok, aksiyon kaynak listesinden çıkarıldı; mobilizasyondan sonra ele alınır |
+| 9 | Agent kimliği ve ilk agent'lar | Her agent için ayrı, proje kapsamlı rol; yalnızca izinli RPC'ler; başlangıçta yalnızca Reconciliation ve Planning (Faz E) |
+| 10 | Dört göz kuralı | AÇIK: kritik register'larda (risk, change, claim, decision) onaylayan hazırlayandan farklı olmalı; küçük ekipte kilitlenirse project_register_settings'te proje bazlı kapatılır |
 
-Ek kararlar (07.10): proje kodları ADN1, ADN2, TIZ, TKY (DYB Diyarbakır açılınca); önekler DOC/DRW/RFI/TS/MA/DEC/ACT; depolama: PDF tam metni kalıcı saklanmaz, audit yalnızca değişen alanları tutar.
+Bu sayfadaki tarihler tahmindir; ekip kapasitesi netleşince Faz C ve D süreleri orantılı kayar.
 
 ## Hedef mimari
 
-Kayıt Supabase'de, dosya seçilen depoda. Kullanıcı dosyaya yalnızca gateway üzerinden ulaşır; yetki her çağrıda
-kontrol edilir. AI çıktısı `register_drafts`'a taslak olarak yazılır; onaysız gerçek kayıt oluşmaz. Register
-tablolarına yazma yalnızca SECURITY DEFINER RPC'lerle yapılır. İstisna: WBS/Alan master verisi; onlar RLS ile
-doğrudan yazılır.
+(Diyagram: Hedef mimari: kayıt ve dosya Supabase'de, AI yalnızca taslak yazar; yalnızca Word sürümünde görsel)
+
+Kullanıcı dosyaya yalnızca Fons arayüzünden ulaşır; her açışta proje ve register yetkisi veritabanı kurallarıyla kontrol edilir ve tarayıcıya süreli imzalı adres verilir. AI çıktısı register_drafts tablosuna taslak olarak yazılır; onay verilmeden gerçek kayıt oluşmaz. Excel yalnızca giriş ve çıkış kapısıdır.
 
 ## Fazlar ve takvim
 
-| Faz | Tarih (tahmin) | Kullanıcının eline geçen |
-|---|---|---|
-| A · Zemin ve kararlar | 6-19 Eki | Kararlar, doğrulanmış güvenlik, uyumlu şema, gateway iskeleti, ölçüm iskeleti |
-| B · Çekirdek | 20 Eki - 9 Kas (kapsam küçüldü; erken bitebilir) | Yetki matrisi, yazma RPC'leri, audit, dosya akışı, RegisterList/Detail iskeleti |
-| C · Pilot dilim | 10 Kas - 7 Ara | Document, Drawing, RFI, Action uçtan uca; dosyadan RFI taslağı |
-| D · İkinci dilim | 8-28 Ara | Submittal, Material Approval, Risk taslağı, Change/Claim; Procurement/Subcontractor köprüleri |
-| E · Mobilizasyon sonrası | Ocak'tan sonra | Agent'lar, dashboard, kalan register'lar, Excel import |
+Faz A-D 28 Aralık'ta biter, 1 Ocak mobilizasyonuna 4 gün tampon kalır; pilot (Faz C) 7 Aralık'ta kullanıma hazır olur. Faz A'nın şema ve güvenlik işleri 7 Ekim'de tamamlandı. Faz E mobilizasyondan sonra başlar.
 
-Faz B kapsamının küçülmesinin nedeni: v2'nin M01 (WBS/Area) ve M04 (numaralama) migration'ları, M05/M06/M12/M16'nın tablo kısımları canlıda var (§4.8). Kalan iş §4.10'da.
+(Diyagram: Faz takvimi: pilot 7 Aralık'ta hazır, Faz D mobilizasyondan 4 gün önce biter; yalnızca Word sürümünde görsel)
+
+| Faz | Kullanıcının eline geçen |
+|---|---|
+| A · Zemin ve kararlar | Kararlar, hizalanmış canlı şema, kapatılmış güvenlik açıkları (büyük kısmı yapıldı); AI ölçüm seti ve izin soruları açık |
+| B · Çekirdek | Yetki, audit, yazma fonksiyonları, doküman deposu ve yükleme akışı, register iskeleti |
+| C · Pilot dilim | Document (klasörlü gezgin), Drawing, RFI, Action: dosyadan taslak, onay |
+| D · İkinci dilim | Risk, Change, Claim, Submittal, Material Approval, Decision ekranları; Procurement ve Subcontractor köprüleri |
+| E · Mobilizasyon sonrası | Reconciliation, agent'lar, proje sağlığı dashboard'u, kalan register'lar, Excel import sihirbazı |
 
 ## Faz faz değişiklik planı
 
-| Faz | Ne değişir | Dokunulmaz / geri dönüş | Çıkış kapısı |
+Her faz kendi migration grubuyla ayrı çıkar ve çıkış kapısı geçilmeden sonraki faz başlamaz. Mevcut akışlar yeni nesnelere bağımlı olmadığı için geri dönüş ucuzdur. İş paketlerinin ayrıntısı aşağıdaki Backend ve Frontend bölümlerinde.
+
+| Faz | Ne değişir | Dokunulmaz ve geri dönüş | Çıkış kapısı |
 |---|---|---|---|
-| A | Kararlar, güvenlik doğrulaması, uyum migration'ı (yapıldı), gateway iskeleti, ölçüm iskeleti, sağlayıcı kararı | Uyum migration'ı geri alınabilir (`yedek-uyum-07-10.sql`) | Bkz. Bölüm 3 Faz A kapısı |
-| B | §4.10 paketleri | Mevcut ekranlar yeni nesnelere bağlı değil; boş tablolarda ters migration ucuz | Aynı numara iki kez üretilmiyor (20 eşzamanlı); 4 rolle onay matrisi; doğrudan yazma reddediliyor; tam regresyon yeşil; sağlayıcı ölçümü sonuçlanmış |
-| C | process-document, drawings/rfis/actions ekranları, onay kutusu, register_links | Manuel giriş AI kapalıyken çalışır | Gerçek RFI PDF'inden taslak → onay → audit; başka proje göremiyor |
-| D | Submittal/Material ekranları, Risk taslağı, Change/Claim, köprüler | Satın alma/finansa yazma yok | Risk taslağı onaysız kesinleşmiyor; satın alma ve finans testleri yeşil |
-| E | Agent'lar, dashboard, kalan register'lar | agent-chat değişmez | Agent'lar yalnızca RPC ile okuyor, her koşu ai_runs'ta |
+| A · Zemin ve kararlar | YAPILDI: şema doğrulama, G-01/G-02/G-03, uyum migration'ı, canlı şema özeti. AÇIK: AI ölçüm seti, İsdemir OYAK izni, patron onayı, tam yedek | Canlı akışlar korunur; her değişiklik geri alma SQL'iyle birlikte uygulandı | Yetkisiz kullanıcı başka projenin dosyasını göremiyor (sağlandı); kararlar yazılı; patron onayı alınmış |
+| B · Çekirdek | register_permissions, audit (yalnızca değişen alanlar), yazma RPC'leri (G-01'i kalıcı kurala çevirir), doküman deposu (bucket, politikalar, yükleme RPC'leri), list/detail RPC'leri, FK indeksleri, G-04, G-12, G-13, identity_guard düzeltme RPC'si, RegisterList ve RegisterDetail iskeleti | Mevcut ekranlar ve RPC'ler yeni nesnelere bağlı değil; sorun çıkarsa yeni nesne kullanılmaz bırakılır, düzeltme migration'ı yazılır | Numara çakışmıyor; 4 rolle onay matrisi çalışıyor; yükleme ve yetkisiz erişim testleri yeşil; mevcut testlerin regresyonu yeşil; sağlayıcı ölçümü sonuçlanmış |
+| C · Pilot dilim | Sağlayıcı seçilir. register_drafts, document_jobs, ai_runs, ai_settings; process-document; Document (klasörlü gezgin), Drawing, RFI, Action ekranları; onay kutusu | Ticket'ın mevcut akışı aynı çalışır. process-document bir ayarla kapatılabilir, manuel RFI girişi çalışmaya devam eder | Geçmiş bir projenin gerçek RFI PDF'inden taslak çıkıyor, onaylanıyor, audit'te görünüyor; başka projenin kullanıcısı göremiyor |
+| D · İkinci dilim | Submittal, Material Approval, Decision ekranları; Change, Claim tabloları; Risk taslağı ve onayı; Procurement ve Subcontractor köprüleri; AI Analiz paneli | Satın alma ve finans akışlarına yazma yok, yalnızca okuma bağları | Risk taslağı onaysız kesinleşmiyor; mevcut satın alma ve finans testleri yeşil |
+| E · Mobilizasyon sonrası | Reconciliation ve Planning agent'ları; agent rolleri; pg_cron ve iş kuyruğu; ai_findings; proje sağlığı dashboard'u; kalan register'lar; Excel import sihirbazı; gerekirse pgvector | Mevcut sohbet agent'ları ve agent-chat değişmez; cron işi kapatılarak agent'lar durdurulur | Agent'lar yalnızca izinli RPC'leri çağırıyor; her koşu ai_runs'ta; bir gece koşusunun maliyeti ölçülmüş |
 
-## 16 register: mevcut tablolarla eşleştirme
+## 16 register: canlı tablolarla eşleştirme
 
-| # | Register | Canlıdaki karşılık | Durum | Faz |
+| # | Register | Canlı karşılık | Karar | Faz |
 |---|---|---|---|---|
-| 1 | Document | `documents` + `document_revisions` | Tablo var | B-C |
-| 2 | Drawing | `drawings` (dokümana bire bir uzantı, DRW numarası) | Tablo var | C |
-| 3 | RFI | `rfis` | Tablo var | C |
-| 8 | Action | `project_actions` (ticket'tan ayrı) | Tablo var | C |
-| 4 | Technical Submittal | `technical_submittals` (TS) | Tablo var | D |
-| 5 | Material Approval | `material_approvals` (MA); BOM bağı ters yönde: procurement_items/purchase_requests.material_approval_id | Tablo var | D |
-| 9 | Decision | `decisions` (DEC) | Tablo var | E (ekran) |
-| 10 | Risk | `project_risks` (+ wbs/area/task/rfi/action/decision kFK) | Genişletme kısmen | D |
-| 6 | Procurement | purchase_requests (+ wbs/area/task/material_approval/technical_submittal kFK) | Köprü | D |
-| 7 | Subcontractor | suppliers (`supplier_type` adı başka anlamla dolu) | Köprü; ad çakışması çözülmeli | D |
-| 11 | Change / Variation | yok | Yeni | D |
-| 12 | Claim & Notice | yok | Yeni | D |
-| 15 | Interface | yok | Yeni | E |
-| 16 | Payment | invoices, invoice_payments, financial_transactions | Köprü | E |
-| 13-14 | NCR, Inspection | yok | İlk tasarımda yok (Karar #6) | — |
+| 1 | Document | documents + document_revisions (boş) | Yazma RPC'leri ve Storage bağlantısı Faz B'de | B-C |
+| 2 | Drawing | drawings (dokümana bire bir bağlı uzantı) | Çizim numarası dokümanın numarasıdır (DRW öneki) | C |
+| 3 | RFI | rfis | Yazma RPC'leri ve ekranlar | C |
+| 8 | Action | project_actions (ayrı tablo) | Ticket genişletilmez; kaynak bağı ile ilişkilendirilir | C |
+| 4 | Technical Submittal | technical_submittals (TS öneki) | Ekran ve AI şeması | D |
+| 5 | Material Approval | material_approvals (MA öneki) | procurement_items'a bağlı | D |
+| 9 | Decision | decisions | Ekran | D |
+| 10 | Risk | project_risks (otomatik kural motoru) | Genişlet: manuel ve AI taslağı, onay | D |
+| 11 | Change / Variation | Yok | Yeni | D |
+| 12 | Claim & Notice | Yok | Yeni, Change'e bağlı | D |
+| 6 | Procurement | purchase_requests, purchase_request_items, purchase_offers | Köprü: doküman, risk ve aktivite bağları | D |
+| 7 | Subcontractor | suppliers | Genişlet: tür alanı | D |
+| 15 | Interface | Yok | Yeni | E |
+| 16 | Payment | invoices, invoice_payments, financial_transactions | Köprü: register görünümü, yeni tablo yok | E |
+| 13 | NCR | Kaldırılan kalite modülü | Pilotta yok (Karar 8) | E+ |
+| 14 | Inspection | Kaldırılan kalite modülü | Pilotta yok (Karar 8) | E+ |
 
-## Backend ve frontend iş paketleri (özet)
+## Backend iş paketleri
 
-Backend paketleri §4.10'da, frontend paketleri §4.7'de. Her migration CLAUDE.md kuralı gereği SQL gösterilip onayla uygulanır; her pakette pozitif ve negatif RLS testi yazılır.
+Her migration CLAUDE.md kuralı gereği SQL gösterilip onay alınarak uygulanır, her pakette pozitif ve negatif RLS testi yazılır, uygulamadan önce yedek veya değişen nesnelerin anlık görüntüsü alınır.
+
+| Faz | İş paketi | Çıktı |
+|---|---|---|
+| A (yapıldı) | RLS, RPC ve Storage durumunun testle doğrulanması; G-01, G-02, G-03; uyum migration'ı | Rapor ve uygulanmış migration'lar |
+| B | register_permissions (rol × register × eylem), register_can(), get_my_register_permissions, durum geçiş tablosu | 4 rolle onay matrisi çalışıyor |
+| B | register_audit: yalnızca değişen alanları saklayan genel trigger | Kim neyi ne zaman değiştirdi izlenir, veritabanı şişmez |
+| B | Yazma RPC'leri: kaydet, onaya gönder, onayla, reddet, yeniden aç, durum değiştir, bağla, sil; G-01'in kalıcı kurala çevrilmesi | Frontend ham tabloya değil RPC'ye bağlanır |
+| B | Doküman deposu: özel bucket, Storage politikaları (G-04'ün bu bucket için çözümü), begin_document_upload, complete_document_upload, abort_document_upload, terk edilmiş yüklemeleri temizleyen zamanlanmış iş | Dosya ve kayıt tutarlı; yetim dosya kalmaz |
+| B | get_register_list, get_register_detail, get_register_overview ve vw_reg_* görünümleri | Liste ve detay ekranları RPC ile beslenir |
+| B | FK kolonlarına indeks; G-13 (WBS tablolarında TRUNCATE yetkisini geri çek); identity_guard için yalnızca-admin düzeltme RPC'si | Performans ve güvenlik temizliği |
+| C | register_drafts, document_jobs, ai_runs, ai_settings, ai_budget_ok(); taslak RPC'leri (listele, getir, güncelle, onayla, reddet) | Taslak akışı |
+| C | process-document: Storage'dan okur, metin ve alan çıkarır, taslak yazar | Yüklenen RFI PDF'inden taslak RFI çıkar |
+| C | Bildirim desteği: yeni entity_type değerleri ve bildirim trigger'ları | Taslaklar kaybolmaz |
+| D | Change, Claim tabloları; Risk, Procurement, Subcontractor köprüleri; submittal ve material approval geçişleri | İkinci dilim register'ları |
+| E | Agent kimliği, ai_findings, kuyruk tabanlı gece koşusu, Reconciliation ve Planning RPC'leri | Agent'lar ham tabloya değil kontrollü RPC'ye bağlanır |
+
+## Frontend iş paketleri
+
+Register'lar proje kapsamlı olduğu için global sidebar'a 24 madde eklenmez; ProjeDetay içine tek bir "Proje Kontrol" sekme grubu girer. Şantiye şefi ve muhasebe rollerinin "Projeler" sekmesi olmadığı için bu roller için ayrı bir giriş kararı Faz B'de verilir. 16 ayrı ekran yerine config'ten üretilen tek liste ve tek detay bileşeni yazılır.
+
+| Faz | İş paketi | Çıktı |
+|---|---|---|
+| A (yapıldı) | ProjeDetay sekme yapısı, URL senkronu ve bildirim derin bağlantıları incelendi; frontend tasarım notu yazıldı | docs/proje-kontrol/frontend-tasarim-notu.md |
+| B | Config tabanlı RegisterList ve RegisterDetail iskeleti; durum, güven ve audit bileşenleri | Tek bileşenle yeni register eklenebilir |
+| B | "Proje Kontrol" sekme grubu (admin'e görünür); şantiye şefi girişi kararı | Boş register listeleri bağlı |
+| C | Document ekranı: klasörlü dosya gezgini (proje, disiplin, tür), sürükle-bırak yükleme, süreli imzalı adresle açma ve indirme, revizyon geçmişi | Dosya yüklenir, kayıt oluşur |
+| C | Drawing ve RFI ekranları; "Dosyadan RFI oluştur" akışı: yükle, AI taslağı gör, sarı/kırmızı alanları düzelt, onayla | Pilotun ana senaryosu |
+| C | Action ekranı (project_actions); onay kutusu | Bekleyen taslaklar görünür |
+| D | Submittal, Material Approval, Decision, Change, Claim, Risk ekranları config ile; AI Analiz paneli | Her biri küçük bir config ve özel alanlar |
+| E | Proje sağlığı dashboard'u, reconciliation bulguları, Excel import sihirbazı, kalan register'lar | Yönetim görünümü |
+
+Yeni ekranlar için Playwright testleri mevcut tests/ desenine eklenir; rol testleri 4 rolle yazılır.
 
 ## AI katmanı ve onay modeli
 
-AI hiçbir kaydı kendi başına kesinleştirmez. Pilot akışı:
+AI hiçbir kaydı kendi başına kesinleştirmez: dosyadan taslak çıkarır, yetkili kişi onaylar. Pilot akışı:
 
-1. Dosya gateway ile yüklenir; `documents` + `document_revisions` satırı ve `document_jobs` işi açılır.
-2. process-document metni **bellekte** çıkarır (taranmış PDF için sayfa görüntüsü). Metin veritabanına kalıcı yazılmaz.
-3. Tür belliyse register şemasına göre yapılandırılmış çıkarım yapılır.
-4. Çizim no, `task_code`/`activity_id`, WBS ve Alan mevcut kayıtlarla eşleştirilir; eşleşmeyen alan boş kalır.
-5. Her alan için güven ve kaynak (sayfa, kısa alıntı) `register_drafts.field_confidence`'a yazılır.
-6. Kullanıcı sarı/kırmızı alanları kontrol edip onaylar; RPC hedef tabloya yazar, audit'e değişen alanlar düşer.
+1. Dosya Fons'ta yüklenir (Supabase Storage); documents ve document_revisions kaydı oluşur, document_jobs satırı açılır.
+2. process-document dosyayı kullanıcının yetkisiyle Storage'dan okur, metni çıkarır (taranmış PDF için görüntü modunda okunur), dosya türünü tespit eder.
+3. Tür belliyse ilgili register'ın kolonlarından üretilen şemaya göre yapılandırılmış alan çıkarımı yapılır.
+4. Çizim no, aktivite kodu, WBS ve Area mevcut kayıtlarla eşleştirilir; eşleşmeyen alan boş kalır, uydurulmaz.
+5. Her alan için güven skoru ve kaynak (sayfa, paragraf) saklanır; taslak register_drafts tablosunda ai_draft durumuyla açılır.
+6. Kullanıcı yalnızca sarı ve kırmızı alanları kontrol eder, onaylar; kayıt approved olur ve audit'e yazılır.
 
-Kurallar: Risk, Claim, Change, Decision ve Payment için hiçbir alan otomatik kesinleşmez. Hukuki ve ticari yorumlar
-uyarıdır. DWG okunmaz. AI anahtarı yalnızca edge function secret'ında durur. Gizlilik izni (Karar #5) gelmeden
-gerçek doküman harici modele gitmez (`AI_OLCUM_GIZLILIK_ONAYI` kapısı).
+Kurallar:
+
+- Dokümanın tam metni veritabanında kalıcı saklanmaz (ücretsiz plan sınırı ve gizlilik); metin yalnızca işlem sırasında kullanılır. Sonuç olarak alanlar, güven skorları ve kısa kaynak alıntıları saklanır.
+- Document metadata (başlık, tür, revizyon) yüksek güvende otomatik doldurulabilir. Risk, Claim, Change ve Decision için hiçbir alan otomatik kesinleşmez.
+- Sözleşme, ihbar süresi ve maliyet etkisi gibi hukuki veya ticari yorumlar AI'ın kararı değil, onaylayana gösterilen uyarıdır.
+- Güven eşikleri pilotta alan bazında doğruluk ölçülerek ayarlanır; baştan sabit yüzde verilmez.
+- DWG doğrudan okunmaz; PDF çıktısı kullanılır.
+- AI anahtarları yalnızca edge function secret'ında durur. Çağrı kullanıcının JWT'siyle yapılır ve proje yetkisi kontrol edilir. İstemciden system prompt kabul edilmez.
+- Sağlayıcı seçimi Karar 7'ye bağlıdır; belge içeriği harici modele gitmeden önce izin alınır.
+
+Faz E'de eklenenler: benzer RFI ve sözleşme maddesi araması (pgvector, yalnızca gerçekten gerekirse) ve Reconciliation; örneğin register'da RFI açık, dosya deposunda cevap PDF'i var.
+
+**Agent'lar (Faz E)**
+
+- SQL/RPC hesaplar, AI yorumlar. "7 günden eski açık RFI'lar" bir sorgudur, modele gitmez; "hangisi kritik yolu etkiliyor ve neden" sorusu modele gider.
+- Başlangıçta iki agent: Reconciliation ve Planning. Diğerleri tool'ları oturunca eklenir.
+- Kimlik: her agent için ayrı, proje kapsamlı rol; yalnızca izinli RPC'leri çağırır. service_role ile serbest tablo erişimi verilmez. Çıktı taslak (register_drafts) veya bulgu (ai_findings) olarak yazılır.
+- Çalışma kaydı: ai_runs tablosu; hangi agent, hangi tool, model, token, süre, sonuç.
+- Orkestrasyon: ayrı bir servis yok. pg_cron iş kuyruğuna satır atar, edge function projeye veya register'a bölünmüş işi işler.
+- Mevcut sohbet agent'ları ve agent-chat olduğu gibi kalır; yeni agent'lar ayrı yoldan çalışır.
+- Model seçimi: basit sınıflandırma için hızlı model, kritik analiz için güçlü model. Sağlayıcı ölçümle seçilir; bütçe pilotta ölçülen doküman başına token ve tek gece koşusunun maliyetinden çıkarılır.
 
 ## Kabul kriterleri ve riskler
 
+Bir faz, kabul kriteri sağlanmadan kapanmış sayılmaz.
+
 | Faz | Kabul kriteri |
 |---|---|
-| A | Bölüm 3 Faz A kapısı |
-| B | Eşzamanlı 20 istekte numara benzersiz ve ardışık; 4 rolle onay matrisi; doğrudan INSERT/UPDATE/DELETE reddediliyor; audit yalnızca değişen alanları yazıyor; tam regresyon yeşil |
-| C | Gerçek RFI PDF'inden taslak çıkıyor, onaylanıyor, audit'te görünüyor; başka projenin kullanıcısı kayıt ve dosyayı göremiyor; AI kapalıyken manuel giriş çalışıyor |
-| D | Risk taslağı PM onayı olmadan kesinleşmiyor; köprüler satın alma/finansı bozmuyor |
-| E | Agent'lar yalnızca RPC ile okuyor, her koşu ai_runs'ta |
+| A | Yetkisiz kullanıcı başka projenin dosyasını göremiyor (sağlandı); kararlar yazılı; patron onayı alınmış; İsdemir OYAK izni veya "yalnızca metadata" kararı yazılı |
+| B | Eşzamanlı testte aynı register numarası iki kez üretilmiyor; 4 rolle onay matrisi testleri geçiyor; yüklenen dosyayı yalnızca yetkili kullanıcı açabiliyor; mevcut testlerin regresyonu yeşil |
+| C | Geçmiş bir projenin gerçek RFI PDF'inden taslak çıkıyor, kullanıcı onaylıyor, audit'te görünüyor; başka projenin kullanıcısı kaydı ve dosyayı göremiyor |
+| D | Risk taslağı Proje Yöneticisi onayı olmadan kesinleşmiyor; Procurement ve Payment köprüleri mevcut akışları bozmuyor |
+| E | Reconciliation, dosya deposu ile register arasındaki farkı bulgu olarak gösteriyor; agent'lar yalnızca RPC üzerinden veri okuyor, her koşu ai_runs'a yazılıyor, oturumsuz gece koşusu yetki dışı veriye ulaşamıyor |
 
 | Risk | Etki | Önlem |
 |---|---|---|
-| Ücretsiz plan sınırları (500 MB DB, 1 GB dosya, otomatik yedek yok) | Doküman deposu dolar; veri kaybında geri dönüş yok | §4.5 karar; metin ve audit şişmesi engellendi; db:backup çalışır hale getirilmeli |
-| Elle verilen register numarası sayaçla çakışır | O türde kayıt açılamaz | Yazma RPC'leri `*_no` almaz |
-| Drive (B seçeneği) tek kişisel hesaba bağlı | Hesap kilitlenirse dosyaya erişim kesilir | Ayrı, şirket kontrolünde hesap; refresh token secret'ta; düzenli dışa aktarım |
-| AI yanlış alan çıkarır | Hatalı kayıt | Taslak + onay, alıntı doğrulaması, "yüksek güvenle yanlış" ölçümü |
-| Canlı modüllerin bozulması | Diğer projeler etkilenir | Yalnızca ekleyici migration; her migration'da tam regresyon |
-| Kapasite | Pilot yetişmez | Önce Document + RFI |
+| Kapasite beklenenden düşük | Pilot 1 Ocak'a yetişmez | Kapsamı küçült: önce Document + RFI, Drawing ve Action sonra |
+| Supabase ücretsiz plan sınırları (1 GB dosya, 500 MB veritabanı, tek dosya 50 MB, otomatik yedek yok, 1 hafta işlem olmazsa duraklama) | Dosya ve yedek riski | Pilot dokümanlarından önce Pro plan (aylık 25 $ sabit); kullanım izleme ve %70'te uyarı; düzenli şema ve veri yedeği |
+| Patron SharePoint beklentisini sürdürür | Tasarım tartışılır, geç değişiklik | Erken yazılı onay; dosya bağlantısı alanı genel tutulduğu için ileride SharePoint bağlantısı eklenebilir |
+| Fotoğraflar ve dokümanlar dosya alanını doldurur | Yükleme durur | İstemci tarafında küçültme; doluluk izleme; mobilizasyondan sonra arşiv kararı |
+| AI yanlış alan çıkarır | Hatalı kayıt | Taslak + onay, kaynak gösterimi, pilotta alan bazında doğruluk ölçümü |
+| Doküman gizliliği | Sözleşme ihlali | Karar 7 kapanmadan harici modele dosya gönderilmez |
+| Canlı modüllerin bozulması | Diğer projeler etkilenir | Boş bırakılabilir FK, ekle-geçir-kaldır kuralı, her migration'da regresyon testi |
+| Rol yapısı yetersiz kalır | Onay akışı tıkanır | register_permissions ile rolü çoğaltmadan yetki ayrıştırılır |
 
 
 # Bölüm 2 · Dokümanın açıklaması
 
+Bu bölüm, mevcut Fons sistemini bozmadan üzerine proje kontrol katmanı eklemeyi anlatır: kayıtlar ve dosyalar Supabase'de durur, kullanıcı hepsine Fons'un içinden ulaşır, AI yalnızca taslak üretir ve onayı insan verir. Plan, 1 Ocak 2027 mobilizasyonuna yetişecek şekilde kurgulanmıştır.
+
 ## 1. Neden yeni bir sistem değil, ekleme
 
-Kod 437 migration, 55 tablo ve 121 test içeriyor ve canlı çalışıyor. Mevcut modüller korunuyor; Proje Kontrol
-tabloları yanlarına eklendi (05.10) ve onaylanan kararlara göre hizalandı (07.10).
+Kod yüzlerce migration, 55 tablo ve 118 test içeriyor ve canlı çalışıyor. Satın alma, finans, günlük rapor, ticket ve risk modülleri bunun içinde. Yeniden yazmak hem zaman kaybı hem risk olurdu. Bu yüzden mevcut tablolar silinmiyor, yenileri ekleniyor. Bu, CLAUDE.md'deki "ekle, geçir, sonra eskiyi kaldır" kuralıyla da uyumlu.
 
-## 2. Temel yapı: üç kaynak, bir kural
+## 2. Temel yapı: iki kaynak, bir kural
 
 | Parça | Rolü |
 |---|---|
-| Supabase (veritabanı) | Kaydın tek kaynağı: RFI, doküman kimliği, revizyon, risk, audit, yetki |
-| Dosya deposu | Dosyanın tek kaynağı: PDF, DWG, Word. Supabase Storage (A) veya Drive (B), §4.5 |
-| Excel | Yalnızca şablon, toplu giriş, dışa aktarma |
+| Supabase veritabanı | Kayıtların tek kaynağı: RFI, çizim, risk, audit, yetki |
+| Supabase Storage (özel bucket) | Dosyaların tek kaynağı: PDF, Word, Excel, fotoğraf. Kullanıcı bunu Fons içindeki klasörlü dosya gezgininden görür |
+| Excel | Yalnızca şablon, toplu giriş ve dışa aktarma; çalışan sistem değil |
 
-Kural: aynı bilgi iki yerde tutulmaz. Kayıt dosyaya depo dosya kimliğiyle (`document_revisions.storage_file_id`)
-bağlanır. Kullanıcı dosyayı uygulama üzerinden açar; tarayıcıya kalıcı depo bağlantısı verilmez.
+Kural: aynı bilgi iki yerde tutulmaz. RFI-ADN1-0032'nin durumu veritabanında, cevap PDF'i dosya deposundadır ve kayıt dosyaya bağlıdır.
+
+Kullanıcı dosyayı dış bir sistemden değil, Fons içinden açar. Her açışta proje ve register yetkisi kontrol edilir ve tarayıcıya yalnızca süreli bir adres verilir. SharePoint ve Google Drive bu planda yok, çünkü şirkette Microsoft 365 ve Google Workspace hesapları bulunmuyor. Yapı, ileride SharePoint bağlantısı eklemeye engel değildir.
 
 ## 3. 16 register nasıl çözülüyor
 
-- 7'si canlıda tablo olarak var: Document, Drawing, RFI, Action, Technical Submittal, Material Approval, Decision.
-- 5'i köprü: Procurement, Subcontractor, Risk, Payment (ve Material Approval'ın BOM bağı).
-- 3'ü yeni: Change, Claim, Interface.
-- NCR ve Inspection ilk tasarımda yok.
+Hepsi sıfırdan yazılmıyor, ve canlıda bugün hazır tablolar var:
 
-Numara biçimi her register'da aynı: `RFI-DYB-0032` (tür, proje kodu, 4 haneye kadar sıfır doldurulmuş sıra; daha uzun
-sayı kırpılmaz).
+- Canlıda hazır (boş): Document ve Drawing (documents, document_revisions, drawings), RFI, Action (project_actions), Decision, Technical Submittal, Material Approval.
+- Mevcut tabloya köprü: Procurement (satın alma talepleri), Subcontractor (tedarikçiler), Risk (proje riskleri), Payment (faturalar ve ödemeler).
+- Yeni: Change, Claim, Interface.
+- Pilotta yok: NCR ve Inspection. Kalite kontrol modülü daha önce bilinçli olarak kaldırılmıştı; geri dönüşü yine bilinçli bir karar olmalı.
+
+Yeni tablolar ortak sütunlarla açılır: proje, WBS, Area, aktivite kodu, durum, öncelik, sorumlu. Böylece "bu RFI hangi çizime ve hangi aktiviteye bağlı" sorusu cevaplanabilir.
 
 ## 4. AI nasıl çalışıyor: örnek akış
 
-Bir RFI PDF'i uygulamadan yüklenir → kayıt ve iş açılır → metin bellekte çıkarılır → RFI alanları şemaya göre
-çıkarılır → çizim no ve aktivite eşleştirilir → taslak `register_drafts`'a yazılır → kullanıcı sarı/kırmızı alanları
-düzeltip onaylar → RPC kaydı `rfis`'e yazar, numara verir, audit'e değişen alanlar düşer. Sorgu gerektiren işler
-("7 günden eski açık RFI'lar") veritabanında yapılır; modele yalnızca yorum gerektiren sorular gider.
+Bir RFI PDF'i Fons'ta yüklenir:
+
+1. Sistem dosyayı özel depoya koyar, kaydı açar ve işleme kuyruğuna atar.
+2. process-document metni çıkarır, dosyanın RFI olduğunu tespit eder.
+3. RFI register'ının kolonlarına göre alanları çıkarır: konu, çizim no, aktivite, öncelik.
+4. Çizim no ve aktivite kodunu mevcut kayıtlarla eşleştirir. Eşleşmeyen alan boş kalır, uydurulmaz.
+5. Her alan için güven skoru ve kaynak (sayfa, paragraf) saklanır. Taslak, register_drafts tablosunda ai_draft durumuyla açılır.
+6. Kullanıcı yalnızca sarı ve kırmızı alanları kontrol edip onaylar. Kayıt kesinleşir, audit'e yazılır.
+
+Dokümanın tam metni veritabanında saklanmaz; yalnızca çıkarılan alanlar, güven skorları ve kısa alıntılar saklanır. Risk, Claim, Change ve Decision için hiçbir alan otomatik kesinleşmez. Sözleşme ve ihbar süresi yorumları AI'ın kararı değil, onaylayana gösterilen uyarıdır.
+
+Gece çalışan agent'lar ayrı bir konudur ve mobilizasyondan sonra gelir. Başlangıçta yalnızca ikisi vardır: Reconciliation ve Planning. Bunların kullanıcı oturumu olmadığı için her birine ayrı, proje kapsamlı bir rol verilir ve yalnızca izinli RPC'leri çağırabilir.
+
+Bir kural daha: "7 günden eski açık RFI'lar" gibi sorguları veritabanı yapar; AI'a yalnızca yorum gerektiren sorular gider. Her model çağrısı ai_runs tablosuna yazılır; maliyet ve "bu bulgu nereden çıktı" sorusu oradan izlenir.
 
 ## 5. Fazlar ve takvim
 
-Bkz. Bölüm 1 ve Bölüm 3. Pilot 7 Aralık'ta hazır; Faz D mobilizasyondan 4 gün önce biter. Faz A takvimden önde (7 Ekim
-itibarıyla şema ve güvenlik işleri bitti).
+| Faz | Tarih (tahmin) | Ne olur |
+|---|---|---|
+| A · Zemin ve kararlar | 6-19 Eki | Büyük kısmı yapıldı: şema hizalama, güvenlik açıkları; açık: ölçüm seti, izinler, patron onayı |
+| B · Çekirdek | 20 Eki - 9 Kas | Yetki, audit, yazma fonksiyonları, doküman deposu ve yükleme; sağlayıcı ölçümü |
+| C · Pilot dilim | 10 Kas - 7 Ara | Document (klasörlü gezgin), Drawing, RFI, Action uçtan uca |
+| D · İkinci dilim | 8-28 Ara | Risk, Change, Claim, Submittal, Material Approval, Decision, köprüler |
+| E · Mobilizasyon sonrası | Ocak'tan sonra | Agent'lar, dashboard, kalan register'lar, Excel import |
+
+Pilot 7 Aralık'ta hazır olur, Faz D mobilizasyondan 4 gün önce biter. Takvim bir tahmindir; ekip kapasitesi bilinmeden yazıldı. Yetişmezse kapsam küçültülür: önce Document ve RFI.
 
 ## 6. Kararlar
 
-Bkz. Bölüm 1 "Kararlar" tablosu. Açık kalan en kritik iki karar: **dosya sağlayıcısı** (§4.5; Pro plan ödemesi
-sorusuna bağlı) ve **AI gizlilik izni** (#5).
+Onaylananlar: Action ayrı tablo (project_actions); numara biçimi RFI-ADN1-0032 (yıl ve disiplin yok, kırpma yok); tek doküman, çok revizyon; Submittal ve Material Approval iki ayrı tablo; dünkü canlı şemanın korunup hizalanması.
+
+Bekleyenler:
+
+1. **Dosya deposu ve Supabase Pro planı (patron onayı):** Dosyalar Fons içinde, Supabase Storage'da tutulur. Ücretsiz planda 1 GB dosya alanı, 500 MB veritabanı ve tek dosya için 50 MB sınırı var, otomatik yedek ve süreli duraklama durumu da bulunuyor; pilot dokümanlarından önce aylık 25 $'lık sabit Pro planı öneriliyor.
+2. **AI sağlayıcı ve gizlilik:** İsdemir OYAK dokümanlarının harici modele gönderilmesi için izin gerekebilir. Sağlayıcı Faz B sonunda, aynı 10-15 gerçek dokümanı iki sağlayıcıya (ChatGPT dahil) vererek ölçümle seçilir. İzin gelmezse AI yalnızca metadata ile çalışır.
+3. **Dört göz kuralı:** Kritik kayıtlarda onaylayan hazırlayandan farklı olmalı; küçük ekipte kilitlenirse proje bazında kapatılır.
 
 ## 7. Doğrulanmamış noktalar
 
-- Seçilen depo için gerçek yükleme süresi ve boyut sınırları (`scripts/proje-kontrol/drive-limit-test.mjs` hazır, çalıştırılmadı).
-- Supabase Pro planının güncel fiyat ve kotaları; satın almadan önce supabase.com/pricing'den doğrulanmalı.
-- Google'ın OAuth "Testing" durumunda refresh token'ı 7 günde düşürmesi ve `drive.file` kapsamının doğrulama gerektirmemesi. Bunlar bilinen davranışlar; B seçilirse kurulumda doğrulanmalı.
-- Edge function süre ve bellek sınırı; PDF metin çıkarımı için Deno'da çalışan kütüphane.
+- Edge function süre sınırı yüzünden uzun işler kuyruğa bölünüyor; gerçek sınır Faz C'de ölçülecek.
+- Dosya yükleme boyutu sınırı plana göre değişir; Pro planda üst sınırın nasıl ayarlanacağı Faz B'de denenecek.
+- Sağlayıcı seçimi kasıtlı olarak açık bırakıldı: karar ölçüme dayanmalı, tavsiyeye değil.
 
 ## 8. Sıradaki adım
 
-Sağlayıcı kararı (Pro ödemesi) ve db:backup; ardından Faz B'nin ilk paketi (register_permissions + Karar #4 onayı).
+Patrona dosya deposu ve Pro plan mesajı gönderilir, onay gelince Faz B (yetki, audit, yazma fonksiyonları ve doküman deposu) başlar. Bu arada AI ölçüm seti, İsdemir OYAK izni ve tam yedek hazırlanır.
 
 
 # Bölüm 3 · Uygulama takvimi (6 Ekim 2026 - 1 Ocak 2027)
 
-## Başlamadan önce (6 Ekim) — durum
+Bu takvim 12 haftayı veritabanı, dosya deposu, edge function, frontend, AI ve test kollarında haftalık iş paketlerine böler; her fazın sonunda bir çıkış kapısı vardır ve kapı geçilmeden sonraki faz başlamaz. Tarihler tahmindir; 29 Ekim resmî tatil olduğu için Faz B'nin ikinci haftası kısadır. Faz A'nın şema ve güvenlik işleri 7 Ekim'de tamamlandı, bu yüzden takvim planın önündedir.
 
-- [x] Git dalı açıldı: `faz-a-proje-kontrol`.
-- [ ] `npm run db:backup` çalışır hale getirilecek (`.env.local` yok; muhtemelen Docker gerekiyor). 07.10'daki değişikliklerde nesne anlık görüntüsü kullanıldı.
-- [ ] Dosya sağlayıcısı kararı (§4.5). Drive seçilirse Google hesabı ve OAuth istemcisi; Storage seçilirse Pro plan.
-- [ ] Ölçüm seti: 10-15 doküman + beklenen alanlar (kullanıcıda).
-- [ ] İsdemir OYAK gizlilik sorusu (kullanıcıda; gönderildiği doğrulanamadı).
-- [x] Karar #0 ve #3 onaylandı; #1/#2 sağlayıcı kararına bağlandı; #4-#8 açık.
+## Şimdi (7 Ekim sonrası): senin açık işlerin
+
+- [ ] **Patrona mesaj gönder:** dosyalar SharePoint yerine Fons içinde klasörlü dokümanlarda tutulacak; maliyet yalnızca Supabase Pro (aylık 25 $ sabit). Onay gelmeden dosya gezgininin geliştirmesine başlama; kayıt ve yetki işleri beklemeden sürer.
+- [ ] İsdemir OYAK dokümanlarının harici bir AI modeline gönderilmesi için izin sorusunu yaz ve gönder (Karar 7). Cevap gelene kadar gerçek Diyarbakır dokümanı modele gitmez.
+- [ ] Ölçüm seti için 10-15 gerçek doküman seç ve beklenen alanları bir Excel'e yaz (RFI için konu, çizim no, aktivite, tarih, öncelik). Müşteri gizlilik koşullarına bak, belirsizse isimleri karartılmış kopya kullan.
+- [ ] Tam şema yedeği: `scripts/db-backup/.env.local` dosyasını hazırla ve `npm run db:backup` komutunun çalıştığını gör. Ücretsiz planda otomatik yedek olmadığı için tek güvencen bu; Faz B veri değiştiren migration'lara girmeden önce şart.
+- [ ] Faz A dalını (`faz-a-proje-kontrol`) kendi gözünle kontrol ettikten sonra push et; main'e birleştirme (Vercel main'den yayın alır).
+- [ ] Elle deneme: test projesinde günlük rapora fotoğraf yükle, ticket'a ek ekle, ikisini de aç; İş Planı sayfasını aç.
+
+Not: ayrı bir staging veritabanı yok, migration'lar canlıya uygulanıyor. Bu yüzden her migration yalnızca ekleyen türdendir ve öncesinde geri alma SQL'i ve değişen nesnelerin anlık görüntüsü hazırlanır. Ayrı bir staging varsa söyle, akışı ona göre değiştiririz.
 
 ## Faz A: zemin ve kararlar (6-19 Ekim)
 
-| İş | Durum |
-|---|---|
-| Canlı şema doğrulaması (`sema-dogrulama.md`) ve 05.10 ön şemasının bulunması | Yapıldı (06.10) |
-| Güvenlik testleri (`tests/proje-kontrol-guvenlik.spec.js`, 8 senaryo) | Yapıldı; 8/8 |
-| G-02/G-03 düzeltmesi, G-01 geçici kapatma | Uygulandı (07.10) |
-| WBS/Alan yetki testi (`tests/proje-kontrol-master-veri.spec.js`) | Yapıldı; 9/9 (G-10 açık yok) |
-| Karar #0 alt kararları, uyum migration'ı (numara, revizyon, project_actions, is_critical) | Uygulandı (07.10); `tests/proje-kontrol-uyum.spec.js` 7 + 3 fixme |
-| Canlı şema özeti (`canli-sema-ozeti.md`) ve bu tasarım v3 | Yapıldı (07.10) |
-| drive-gateway iskeleti (kontrol sırası, 28 birim testi) | Yapıldı; deploy edilmedi; sağlayıcı adaptörü karara bağlı |
-| Depo sınır betiği | Hazır; çalıştırılmadı (kimlik bilgisi/sağlayıcı yok) |
-| AI ölçüm iskeleti (`scripts/proje-kontrol/ai-olcum/`) | Hazır; ölçüm seti yok |
-| Frontend tasarım notu (`frontend-tasarim-notu.md`) | Yapıldı |
-| Dosya sağlayıcısı kararı | **Açık** |
-| db:backup | **Açık** |
-| Gizlilik sorusu, ölçüm seti | **Açık** (kullanıcıda) |
-| Karar #4 (yetki matrisi) | **Açık**; Faz B ilk paketinden önce gerekli |
+| Tarih | Kol | İş | Kim | Durum |
+|---|---|---|---|---|
+| 6-7 Eki | Karar | Kararlar CLAUDE.md'ye yazıldı; Karar 0 ve dört şema kararı onaylandı | Birlikte | Yapıldı |
+| 6-7 Eki | Veritabanı | Canlı şema doğrulaması (30 iddia, 24'ü doğru); canlı şema özeti | Birlikte | Yapıldı |
+| 6-7 Eki | Güvenlik | Güvenlik testleri; G-01 (register tablolarına yazma kapatma), G-02 ve G-03 (fotoğraf ve ek sızıntısı) uygulandı | Birlikte | Yapıldı |
+| 6-7 Eki | Veritabanı | Uyum migration'ı: project_actions, document_revisions, project_register_settings, kırpmayan numaralama, is_critical kaldırma | Birlikte | Yapıldı |
+| 6-7 Eki | Test | Tam Playwright seti 118/118 | Birlikte | Yapıldı |
+| 6-7 Eki | Frontend | ProjeDetay yapısı ve bildirim derin bağlantıları incelendi, tasarım notu yazıldı | Birlikte | Yapıldı |
+| 8-19 Eki | Karar | Dosya deposu ve Pro plan için patron onayı | Sen | Açık |
+| 8-19 Eki | AI | Ölçüm seti ve beklenen alanlar Excel'i | Sen | Açık |
+| 8-19 Eki | AI | İsdemir OYAK izin sorusu | Sen | Açık |
+| 8-19 Eki | Yedek | Tam şema yedeği çalışır hâle gelir | Sen | Açık |
+| 8-19 Eki | Doküman | tasarim.md ve Word dokümanının v3 sürümü Claude Code'a verilir | Sen | Bu dosya |
 
-**Faz A çıkış kapısı (19 Ekim):**
-
-| Madde | Durum |
-|---|---|
-| Mevcut güvenlik durumu testle doğrulandı, YÜKSEK açıklar kapandı | Kapandı (G-02/G-03 düzeltildi, G-01 geçici) |
-| Proje Kontrol şeması kararlarla uyumlu | Kapandı |
-| Kararlar yazılı ve CLAUDE.md'de | Kısmen: #0, #3 onaylı; #1/#2 sağlayıcıya bağlı; #4-#8 açık |
-| Yetkisiz kullanıcı gateway'den dosya alamıyor | Açık: iskelet ve birim testi var, deploy ve uçtan uca test sağlayıcı kararından sonra |
-| Gizlilik sorusu gönderildi veya AI'ın yalnızca metadata ile çalışacağı yazıldı | Açık |
-| Yedek alınabiliyor (db:backup) | Açık |
+Çıkış kapısı (19 Ekim): yetkisiz kullanıcı başka projenin dosyasını göremiyor (sağlandı), kararlar yazılı (sağlandı), patron onayı alınmış, gizlilik sorusu gönderilmiş, yedek çalışıyor.
 
 ## Faz B: çekirdek (20 Ekim - 9 Kasım)
 
-v2'deki Migration 1 (WBS/Area) ve Migration 4 (numaralama) yapıldı; Migration 5'in tablo kısmı (documents) yapıldı.
-Kalan paketler ve sırası §4.10'da. Önerilen haftalık dağılım:
+Bu fazda canlıdaki boş register tablolarına yazma yolu açılır, ama yalnızca RPC üzerinden. "Proje Kontrol" grubu bu fazda yalnızca admin'e görünür.
 
-| Hafta | İş |
-|---|---|
-| 20-26 Eki | B1 G-13 + FK indeksleri + ortak kolonlar; B2 register_permissions (Karar #4 onayıyla); B3 audit |
-| 27 Eki - 2 Kas | B4 yazma RPC'leri (G-01 kalıcı); 20 eşzamanlı numara testi; RegisterList/Detail iskeleti (28 Ekim yarım gün, 29 Ekim tatil) |
-| 3-9 Kas | B5 dosya akışı (seçilen sağlayıcı); B6 document_jobs, register_drafts, ai_runs, ai_settings; sağlayıcı ölçümü; G-04, G-12; Proje Kontrol sekmesi (yalnızca admin) |
+| Tarih | Kol | İş | Kim | Çıktı |
+|---|---|---|---|---|
+| 20-26 Eki | Veritabanı | register_permissions (rol × register × eylem), register_can(), get_my_register_permissions, durum geçiş tablosu; 4 rol için varsayılan izinler | Birlikte | Onay matrisi çalışıyor |
+| 20-26 Eki | Veritabanı | register_audit: yalnızca değişen alanları saklayan genel trigger; FK kolonlarına indeksler; G-13 (TRUNCATE yetkisini geri çek) | Birlikte | Audit çalışıyor, güvenlik temizlendi |
+| 20-26 Eki | Frontend | RegisterList ve RegisterDetail iskeleti, registerConfig.js (kolon, filtre, form alanı) | Birlikte | Config'ten üretilen boş liste ve detay |
+| 27 Eki - 2 Kas | Veritabanı | Yazma RPC'leri: kaydet, onaya gönder, onayla, reddet, yeniden aç, durum değiştir, bağla, sil (rfis, drawings, project_actions, decisions, technical_submittals, material_approvals). G-01'in geçici kapatması kalıcı kurala dönüşür | Birlikte | Tablolara yalnızca RPC ile yazılabiliyor |
+| 27 Eki - 2 Kas | Veritabanı | identity_guard için yalnızca-admin düzeltme RPC'si; yazma yolunu bekleyen 3 testin açılması | Birlikte | Yanlış girilen Activity ID düzeltilebiliyor |
+| 27 Eki - 2 Kas | Frontend | Ortak bileşenler: durum rozeti, AI güven rozeti, audit paneli, ilişkili kayıtlar paneli; şantiye şefi ve muhasebe için giriş kararı | Birlikte | Bileşenler hazır |
+| 27 Eki - 2 Kas | Not | 28 Ekim yarım gün, 29 Ekim resmî tatil: bu hafta kapasite yaklaşık bir gün düşük | | |
+| 3-9 Kas | Dosya deposu | Özel bucket, Storage politikaları (G-04'ün bu bucket için çözümü), begin_document_upload, complete_document_upload, abort_document_upload, terk edilmiş yüklemeleri temizleyen zamanlanmış iş (patron onayı gerekir) | Birlikte | Dosya yüklenir, kayıt oluşur, yetim dosya kalmaz |
+| 3-9 Kas | Veritabanı | get_register_list, get_register_detail, get_register_overview ve vw_reg_* görünümleri; realtime yayını | Birlikte | Liste ve detay RPC ile besleniyor |
+| 3-9 Kas | AI | Ölçüm betiği iki sağlayıcıyla (ChatGPT dahil) çalıştırılır (gizlilik izni durumuna göre kapsam belirlenir); alan bazında doğruluk, süre, maliyet raporu | Birlikte | Sağlayıcı ölçüm raporu |
+| 3-9 Kas | Frontend | "Proje Kontrol" sekme grubu (lazy, admin'e görünür); boş register listeleri bağlanır; G-12 (ticket ek hatası kullanıcıya gösterilsin) | Birlikte | Sekme canlıda, yalnızca admin görür |
+| 3-9 Kas | Test | Regresyon; yeni RLS, yükleme ve numaralama testleri; CLAUDE.md güncellemesi | Birlikte | Faz B kapısı |
 
-Çıkış kapısı (9 Kasım): Bölüm 1 "Kabul kriterleri" B satırı.
+Çıkış kapısı (9 Kasım): aynı numara iki kez üretilmiyor, 4 rolle onay matrisi çalışıyor, yüklenen dosyayı yalnızca yetkili kullanıcı açabiliyor, mevcut testler yeşil, sağlayıcı ölçümü sonuçlanmış.
 
 ## Faz C: pilot dilim (10 Kasım - 7 Aralık)
 
-| Hafta | İş |
-|---|---|
-| 10-16 Kas | Sağlayıcı seçimi (Karar #5); register_links; Document ekranı (yükleme, revizyon listesi, gateway ile indirme) |
-| 17-23 Kas | process-document v1 (metin bellekte, tür tespiti, ai_runs); Drawing ve RFI ekranları; manuel RFI tam çalışır; (Drive seçildiyse) drive-sync |
-| 24-30 Kas | process-document v2 (RFI çıkarımı, güven, alıntı doğrulama, eşleştirme); taslak RPC'leri; "Dosyadan RFI oluştur" |
-| 1-7 Ara | Action ekranı (`project_actions`); onay kutusu; bildirim türleri; pilot testleri |
+Bu faz planın kalbidir: Document, Drawing, RFI ve Action uçtan uca çalışır, AI dosyadan RFI taslağı çıkarır. Faz sonunda "Proje Kontrol" grubu admin'den sonra proje_yoneticisi ve santiye_sefi rollerine, register_permissions'a göre açılır.
+
+| Tarih | Kol | İş | Kim | Çıktı |
+|---|---|---|---|---|
+| 10-16 Kas | AI | Faz B ölçümüne göre sağlayıcı seçilir; anahtar edge function secret'ına eklenir | Birlikte | Sağlayıcı seçili |
+| 10-16 Kas | Frontend | Document ekranı: klasörlü dosya gezgini (proje, disiplin, tür), sürükle-bırak yükleme, süreli imzalı adresle açma ve indirme, revizyon geçmişi | Birlikte | Dosya yüklenir, kayıt oluşur, klasör ağacı görünür |
+| 10-16 Kas | Frontend | Drawing ekranı (dokümana bağlı uzantı, revizyon zinciri) | Birlikte | Çizim ekranı |
+| 17-23 Kas | Veritabanı | register_drafts, document_jobs, ai_runs, ai_settings, ai_budget_ok() | Birlikte | Kuyruk, kayıt ve taslak tabloları |
+| 17-23 Kas | Edge | process-document v1: Storage'dan okur, PDF metin çıkarımı ve doküman türü tespiti; her çağrı ai_runs'a yazılır | Birlikte | Tür tespiti çalışıyor |
+| 17-23 Kas | Frontend | RFI liste ve detay; manuel RFI girişi tam çalışır | Birlikte | Manuel akış hazır |
+| 24-30 Kas | AI | process-document v2: RFI alan çıkarımı, güven skoru, kaynak sayfa, çizim no ve task_code eşleştirmesi; taslağı register_drafts'a yazar | Birlikte | PDF'ten taslak RFI |
+| 24-30 Kas | Veritabanı | Taslak RPC'leri (listele, getir, güncelle, onayla, reddet), bildirim türleri ve trigger'ları | Birlikte | Onay akışı |
+| 24-30 Kas | Frontend | "Dosyadan RFI oluştur" akışı; AI taslak ekranı (sarı ve kırmızı alanlar vurgulu); onay butonları | Birlikte | Pilotun ana senaryosu |
+| 1-7 Ara | Frontend | Action ekranı (project_actions); onay kutusu (bekleyen taslaklar) | Birlikte | Action ve onay kutusu |
+| 1-7 Ara | Test | Geçmiş projenin gerçek RFI PDF'leriyle pilot; başka proje kullanıcısı negatif testi; process-document kapatma anahtarı testi; regresyon | Birlikte | Faz C kapısı |
+
+Çıkış kapısı (7 Aralık): gerçek bir RFI PDF'inden taslak çıkıyor, onaylanıyor ve audit'te görünüyor; başka projenin kullanıcısı kaydı ve dosyayı göremiyor; AI kapatılsa bile manuel RFI girişi çalışıyor.
 
 ## Faz D: ikinci dilim (8-28 Aralık) ve yılbaşı tamponu
 
-| Hafta | İş |
-|---|---|
-| 8-14 Ara | Submittal ve Material Approval ekranları (tablolar var); geçiş seed'leri; Submittal AI şeması |
-| 15-21 Ara | changes, claims; project_risks onay/source genişlemesi; Risk taslağı yalnızca PM onayıyla |
-| 22-28 Ara | suppliers ad çakışmasının çözümü (`party_type` önerisi) ve köprüler; AI Analiz paneli; tam regresyon |
-| 29 Ara - 1 Oca | Tampon, eğitim, DYB proje kodu ve klasörleri, doküman güncellemesi |
+Pilotun iskeleti hazır olduğu için bu fazda her register küçük bir config girdisi, yazma RPC'si ve bir AI şemasıdır. Satın alma ve finans akışlarına yazma yapılmaz, yalnızca okuma bağları kurulur.
+
+| Tarih | Kol | İş | Kim | Çıktı |
+|---|---|---|---|---|
+| 8-14 Ara | Frontend | Submittal, Material Approval ve Decision ekranları registerConfig.js girdisiyle eklenir (tablolar canlıda) | Birlikte | Üç ekran |
+| 8-14 Ara | AI | Submittal için çıkarım şeması; process-document yeni türü tanır | Birlikte | Submittal taslağı |
+| 15-21 Ara | Veritabanı | changes, claims (Change'e bağlı, ihbar süresi alanı); project_risks'e kaynak, durum ve onaylayan kolonları | Birlikte | Tablolar ve onay akışı |
+| 15-21 Ara | Frontend | Change, Claim ve Risk ekranları; Risk taslağı yalnızca Proje Yöneticisi onayıyla kesinleşir | Birlikte | Üç ekran |
+| 15-21 Ara | AI | Risk, Change ve Claim için taslak çıkarımı; ihbar süresi ve maliyet etkisi yalnızca uyarı olarak gösterilir | Birlikte | Kesinleşmeyen taslaklar |
+| 22-28 Ara | Veritabanı | Köprüler: suppliers'a tür alanı (tedarikçi, taşeron); Procurement için doküman, risk ve aktivite bağları | Birlikte | Okuma bağları |
+| 22-28 Ara | Frontend | Her kayıtta "AI Analiz" paneli: ilişkili çizim, aktivite, benzer kayıt (yalnızca okuma) | Birlikte | Panel |
+| 22-28 Ara | Test | Satın alma ve finans testleri dahil tam regresyon; yetki, audit ve onay testleri 4 rolle | Birlikte | Faz D kapısı |
+| 29 Ara - 1 Oca | Tampon | Düzeltmeler; Diyarbakır projesinin kodu ve klasör yapısının canlıda hazırlanması; kullanıcılara kısa eğitim; CLAUDE.md ve sistem dokümantasyonu güncellemesi | Birlikte | Mobilizasyona hazır |
+
+Çıkış kapısı (28 Aralık): Risk taslağı onaysız kesinleşmiyor, mevcut satın alma ve finans testleri yeşil, bütün yeni ekranlarda 4 rolün yetkisi doğrulanmış.
 
 ## Frontend nasıl güncellenecek
 
-Ayrıntı `frontend-tasarim-notu.md` ve §4.7. Özet:
-- ProjeDetay'a "Proje Kontrol" sekmesi; ProjeDetay iç sekmelerinin rol bazlı yetki mekanizması yok.
-- santiye_sefi ve muhasebe ProjeDetay'a ulaşamadığı için bu rollere üst seviye `kontrol` sekmesi açılır (`role_allowed_tabs` + `role_sidebar_items` satırı + Sidebar.jsx girdisi).
-- URL: `/dashboard/projeler/{id}/kontrol?register=&kayit=`, `useUrlSyncedSelection` deseni. index.jsx'te birden fazla parametreyi tek seferde güncelleyen bir `syncEntityParams` yardımcısı gerekir.
-- Bileşenler `src/components/proje-kontrol/`. Veri yalnızca RPC'lerden gelir, ham `.from()` kullanılmaz.
+Frontend yeni bir uygulama olmuyor: mevcut desenlerin üzerine tek bir yeni sekme grubu ekleniyor. Aşağıdaki "Mevcut" sütunu CLAUDE.md'den, "Değişiklik" sütunu bu plandan; dosya ve klasör adları öneridir.
+
+| Alan | Mevcut | Değişiklik |
+|---|---|---|
+| Navigasyon | ProjeDetay'ın 7 iç sekmesi; seçili sekme localStorage'da proje bazlı saklanıyor | 8. sekme "Proje Kontrol", lazy() ile yüklenir; Faz B'de yalnızca admin, Faz C sonunda register_permissions'a göre diğer roller. Şantiye şefi ve muhasebe için ayrı üst seviye giriş kararı Faz B'de |
+| URL | /dashboard/projeler/{id}/{sekme}; detay modalları ?talep=, ?ticket= gibi sorgu parametreleriyle useUrlSyncedSelection üzerinden | /dashboard/projeler/{id}/kontrol; seçili register ve kayıt ?register= ve ?kayit= ile; aynı hook kullanılır |
+| Veri erişimi | Ham .from() büyük ölçüde RPC desenine taşındı | Register ekranları yalnızca RPC çağırır; ham .from() yok |
+| Canlı yenileme | P0 tablolarda useRealtimeRefresh | Faz B'de register ve doküman tablolarına eklenir |
+| Bileşenler | Her sayfa bir Tab*.jsx | Yeni klasör (öneri) src/components/proje-kontrol/: RegisterList, RegisterDetail, registerConfig.js, durum ve güven rozeti, AuditPanel, LinksPanel, ApprovalInbox, DocumentExplorer, DocumentUpload |
+| Yeni register eklemek | Ayrı ekran yazmak | registerConfig.js'e bir girdi (kolonlar, filtreler, form alanları, AI şeması adı) |
+| Yetki | roles, role_allowed_tabs; sekme görünürlüğü AuthContext'ten | Buton ve alan görünürlüğü get_my_register_permissions RPC'sinden gelir; asıl güvenlik RLS ve RPC'dedir, arayüz yalnızca gizler |
+| Dosya açma | Fotoğraf ve ekler Storage'da, süreli imzalı adresle | Proje dokümanları da aynı desenle: klasör ağacı doküman kayıtlarından üretilir, dosya süreli imzalı adresle açılır; yükleme begin/complete RPC'leri üzerinden |
+| Bildirim | entity_type değerleri: purchase_request, invoice, ticket, daily_report, daily_report_reminder, procurement_item_change_request | Yeni register_record ve register_draft; derin bağlantı mevcut goToRequest deseniyle ?register=&kayit= URL'ine gider. CLAUDE.md kuralı: alıcı rolün ilgili sekmeyi gerçekten görebildiğini doğrula |
+| Dil ve adlandırma | Arayüz Türkçe, kod İngilizce snake_case | Aynı |
+| Test | Playwright, tests/helpers.js | Her yeni ekran için bir spec; roller 4 rolle test edilir; her fazın kapısında tam regresyon |
+| Paket boyutu | Sekme bazlı lazy() ile bölünmüş | Yeni sekme grubu da lazy(); ana paket büyümez |
 
 ## Haftalık rutin, migration akışı ve kayma kuralı
 
-Her migration:
-1. SQL yazılır ve gösterilir.
-2. Kullanıcı onaylar.
-3. Değişecek nesnelerin anlık görüntüsü alınır; db:backup çalışır hale gelince o.
-4. Gerekiyorsa ROLLBACK'li deneme ve parmak izi karşılaştırması yapılır.
-5. Migration uygulanır; aynı sürümle `supabase/migrations/` dosyası yazılır.
-6. Doğrulama sorgusu ve pozitif/negatif RLS testi çalıştırılır.
-7. Tam regresyon koşulur.
-8. CLAUDE.md güncellenir.
+Her pazartesi: önceki haftanın testlerini çalıştır, CLAUDE.md'yi güncelle, o haftanın işlerini bu tablodan al.
 
-Yeni tablo ve fonksiyonlarda yetki açıkça geri çekilir. `pg_default_acl`, yeni tablolarda `authenticated`'a tüm yetkileri, yeni fonksiyonlarda `anon`/`authenticated`'a EXECUTE veriyor.
+Her migration aynı sırayla ilerler:
 
-Gecikmede kesilme sırası:
-1. AI Analiz paneli.
-2. Material Approval ekranı ve Claim.
-3. Onay kutusunun gelişmiş hali.
-4. Drawing ekranı Document içinde basit liste olarak kalır.
+1. SQL yazılır ve gösterilir; sen onaylamadan uygulanmaz (CLAUDE.md'nin ilk kuralı).
+2. Yedek: tam şema yedeği (npm run db:backup) veya değişen nesnelerin anlık görüntüsü; veri değiştiren migration'larda veri yedeği şarttır.
+3. Taslak mümkünse tek bir BEGIN ... ROLLBACK bloğunda denenir.
+4. Migration uygulanır; supabase/migrations/ altına aynı sürüm numarasıyla dosyası yazılır.
+5. RLS için pozitif ve negatif test çalıştırılır.
+6. Uygulanan değişiklik CLAUDE.md ve sistem dokümantasyonuna işlenir.
 
-Kesilmeyenler: Document, RFI, taslak + insan onayı, audit, yetki testleri.
+Gecikme olursa şu sırayla kesilir, çekirdek korunur:
+
+1. AI Analiz paneli (Faz D) Ocak'a kayar.
+2. Material Approval ve Claim (Faz D) Ocak'a kayar.
+3. Decision ekranı ve onay kutusunun gelişmiş hali Faz D'ye kayar.
+4. Drawing ekranı Document ekranının içinde basit liste olarak kalır.
+
+Hiçbir durumda kesilmeyenler: Document, RFI, AI taslak ve insan onayı, audit, yetki testleri.
+
+İsdemir OYAK izni gelmezse takvim değişmez ama Faz C'nin AI işi küçülür: process-document yalnızca dosya adı ve klasörden metadata çıkarır, RFI alanları elle doldurulur; gerçek AI çıkarımı izin gelince eklenir.
+
+Patron dosya deposunu onaylamazsa ve SharePoint isterse: kayıtlar, yetki, audit, taslak akışı ve register ekranları aynı kalır; yalnızca dosya yükleme ve açma bölümü (Faz B'nin dosya deposu işi ve Faz C'nin Document ekranı) o sağlayıcıya göre yeniden yazılır. Bu yüzden onay beklenirken dosya dışındaki işlere devam edilir.
 
 
 # Bölüm 4 · Teknik tasarım
 
+Bu bölüm, sistemin entegrasyonuna başlayabileceğin seviyede tasarımıdır: tablolar, kolonlar, durum makineleri, yetkiler, RPC ve edge function sözleşmeleri, dosya deposu, AI şemaları, ekranlar ve migration durumu. Canlı şema 07.10.2026 itibarıyla esas alınmıştır; kolon düzeyindeki kesin canlı tanım docs/proje-kontrol/canli-sema-ozeti.md dosyasındadır ve bu bölümle çelişirse canlı şema geçerlidir (bu bölüm ona göre güncellenir).
+
 ## Okuma rehberi
 
-Canlıdan doğrulananlar (07.10.2026):
-- `projects.id` text; diğer kimlikler uuid.
-- `has_project_access(NULL)` true döner; bu yüzden her yeni tabloda `project_id` NOT NULL olmalı.
-- `project_tasks`'ta `task_code` (UNIQUE) ve `activity_id` (değiştirilemez) var.
-- Register tablolarında aynı-proje bütünlüğü kompozit FK (kFK) `(project_id, x) → (project_id, id)` ile sağlanır.
-- Kolon düzeyinde ayrıntı `canli-sema-ozeti.md`'de. Bu bölüm canlı durumu ve Faz B-D hedefini birlikte verir; **"canlı"** ve **"eklenecek"** ayrı işaretlidir.
+Koddan ve canlı şemadan doğrulananlar: proje kimliği text (projects.id), kullanıcı kimliği uuid, has_project_access(p_project_id text) NULL proje için true döndürüyor (yeni tablolarda project_id bu yüzden NOT NULL olmalı), project_tasks.id uuid ve UNIQUE(project_id, task_code), tickets.id uuid, notifications.entity_id uuid ve entity_type, event_type alanlarında CHECK kısıtı var, roles.key text PK, aktif roller 4 tane. Canlıda 07.10'dan beri: project_wbs, project_areas, area_wbs, documents, document_revisions, drawings, rfis, project_actions, decisions, technical_submittals, material_approvals, register_status_history, project_register_counters, project_register_settings (hepsi boş; authenticated kullanıcılar yalnızca okuyabilir).
 
-Esaslı tasarım kararı (v2'den beri): AI taslakları hedef tabloya değil `register_drafts`'a yazılır; onayla RPC hedefe yazar.
+Hâlâ doğrulanması gerekenler: baz şema (projects, profiles, project_risks, procurement_items) migration dosyalarında bulunmuyor; bu tabloların kolon tipleri canli-sema-ozeti.md ve canlı sorgularla teyit edilir.
+
+Bu tasarımın temel ilkesi: AI taslakları hedef register tablosuna yazılmaz, ayrı bir register_drafts tablosunda tutulur. Sebep: project_risks gibi canlı akışlarda kullanılan tablolara taslak satırı koymak mevcut liste RPC'lerinin ve RLS'lerin hepsini değiştirmeyi gerektirirdi. Taslak onaylanınca RPC gerçek kaydı hedef tabloya yazar.
 
 ## 4.1 Ortak sözleşme
 
-**Canlı olan ortak yapı:**
-- **Kimlik:** `id uuid` PK; `project_id text NN` FK projects ON DELETE CASCADE; `UNIQUE (project_id, id)`.
-- **Bağlar:** `wbs_id`, `area_id`, `task_id`: kFK → project_wbs, project_areas, project_tasks; ON DELETE NO ACTION. SET NULL kullanılmaz, çünkü kompozit FK'de SET NULL `project_id`'yi de boşaltırdı.
-- **Kayıt no:** tabloya özel ad. Hepsi NOT NULL, UNIQUE (project_id, x), boş gelirse trigger doldurur. drawings'in kendi numarası yok.
-
-  | Tablo | Kolon |
-  |---|---|
-  | documents | document_no |
-  | rfis | rfi_no |
-  | project_actions | action_no |
-  | decisions | decision_no |
-  | technical_submittals | submittal_no |
-  | material_approvals | approval_no |
-
-  Liste RPC'si ve view'lar bunları `register_no` olarak normalleştirir.
-- **Zaman:** `created_at`, `updated_at` (`update_updated_at_column` trigger'ı).
-- **İş durumu:** `status` her tabloya özel CHECK (§4.2).
-- **Öncelik:** `priority` low / **medium** / high / critical, varsayılan medium. Yalnızca rfis ve project_actions'ta var; canlı sözlük korunur.
-
-**Faz B'de eklenecek ortak kolonlar** (register tablolarının hepsine, boş tablolar olduğu için ucuz):
+Register tablolarının hepsi (documents, drawings, rfis, project_actions, decisions, technical_submittals, material_approvals; ileride changes, claims, interfaces) aynı ortak kolonları taşır. Mevcut tablolar (project_risks, suppliers, tickets) kendi sözlüklerini korur; farkı RPC katmanı normalleştirir.
 
 | Kolon | Tip | Kural |
 |---|---|---|
-| record_state | text NN default 'draft' | draft, pending_approval, approved, rejected |
-| source | text NN default 'manual' | manual, ai, import |
-| approved_by, approved_at, rejected_reason | uuid FK profiles, timestamptz, text | Onay/ret bilgisi |
-| created_by | uuid FK profiles | rfis, technical_submittals ve material_approvals'ta eksik; eklenir |
-| source_document_id | uuid, kFK → documents | Kaydın çıkarıldığı dosya. Var olan `document_id` "ilişkili doküman" anlamında kalır |
-| discipline | text | CHECK mechanical, dc, ac, mv, enh, civil, general (project_wbs.discipline ile aynı sözlük) |
+| id | uuid | PK, gen_random_uuid() |
+| project_id | text | NOT NULL, FK projects(id) ON DELETE CASCADE. NULL olamaz çünkü has_project_access(NULL) true döner |
+| register_no | text | NOT NULL, UNIQUE(project_id, register_no); biçim RFI-DYB-0032 |
+| record_state | text | draft, pending_approval, approved, rejected; varsayılan draft |
+| source | text | manual, ai, import; varsayılan manual |
+| wbs_id, area_id | uuid | Boş geçilebilir FK, ON DELETE SET NULL |
+| task_id | uuid | Boş geçilebilir FK project_tasks(id) ON DELETE SET NULL; aktivite kodu ekranda task_code olarak join'den gelir |
+| discipline | text | mechanical, dc, ac, mv, enh, civil, general |
+| priority | text | low, normal, high, critical; varsayılan normal |
+| responsible_id | uuid | FK profiles(id) ON DELETE SET NULL |
+| source_document_id | uuid | Boş geçilebilir FK documents(id); kaydın çıkarıldığı dosya |
+| created_by, approved_by | uuid | FK profiles(id) |
+| approved_at, rejected_reason | timestamptz, text | Onay ve ret bilgisi |
+| created_at, updated_at | timestamptz | updated_at trigger ile güncellenir |
 
-**İki eksenli durum:** `record_state` kaydın geçerliliğini, `status` işin yaşam döngüsünü tutar. record_state geçişleri yalnızca RPC ile yapılır:
+İki eksenli durum: record_state kaydın geçerliliğini, status (her register'a özel) işin yaşam döngüsünü tutar. Örneğin RFI-032 approved bir kayıttır ve status alanı open, answered, closed olarak ilerler.
 
-| Nereden | Nereye | Kim |
-|---|---|---|
-| (yeni) | draft | create izni |
-| draft | pending_approval | sahibi veya edit izni |
-| pending_approval | approved | approve izni; kritik register'da (risk, change, claim, decision) onaylayan ≠ created_by |
-| pending_approval | rejected | approve izni, gerekçe zorunlu |
-| rejected | draft | sahibi |
-| approved | draft | approve izni, gerekçe zorunlu (reopen) |
+**record_state geçişleri** (yalnızca RPC ile; geçersiz geçiş hata verir):
 
-Onaylı kayıtta alanlar kilitlidir. Elle yüklenen doküman doğrudan approved açılabilir.
+| Nereden | Nereye | Kim | Not |
+|---|---|---|---|
+| (yeni) | draft | create izni olan | Elle giriş |
+| draft | pending_approval | kaydın sahibi veya edit izni olan | submit_register_record |
+| pending_approval | approved | approve izni olan | Kritik register'larda onaylayan created_by'dan farklı olmalı (dört göz) |
+| pending_approval | rejected | approve izni olan | Gerekçe zorunlu |
+| rejected | draft | kaydın sahibi | Düzeltip yeniden gönderir |
+| approved | draft | approve izni olan | reopen_register_record; gerekçe zorunlu, audit'e yazılır |
 
-**Numaralama (canlı, 07.10.2026):**
-- Biçim `{TÜR}-{PROJE_KODU}-{SIRA}`.
-- **Proje kodu:** `project_register_settings.prefix` (2-6 büyük harf/rakam, projeler arasında benzersiz). Kodu olmayan projede kayıt açılamaz, açık hata verir.
-- **Sıra:** `project_register_counters (project_id, register_code)`. Kaydı ekleyen transaction içinde `insert … on conflict do update … returning` ile artar; geri alınan işlemde numara tüketilmez.
-- **Biçim:** 4 haneye kadar sıfır doldurulur; 10000 ve üstü olduğu gibi yazılır.
-- **Önekler:** RFI, DEC, ACT, TS, MA (trigger argümanı). documents'ta `document_type='drawing'` → DRW, değilse DOC.
-- **Yeni register önekleri:** CHG, CLM, INT (Faz D-E).
-- **Mevcut kayıtlar:** ticket ve risk satırlarına numara verilmez.
-- **Kural:** Yazma RPC'leri `*_no` kolonunu girdi olarak kabul etmez. Elle verilen numara sayaçla çakışır.
+Onaylı kayıtta alanlar kilitlidir; yalnızca status geçişi, not ekleme ve bağlantı eklemek serbesttir. Doküman kaydı istisnadır: elle yüklenen doküman doğrudan approved açılır.
+
+**AI taslağı** (register_drafts) ayrı bir yaşam döngüsü izler: ai_draft → approved | rejected | superseded (aynı dosyadan yeniden çıkarım yapılırsa eski taslak). Onaylanınca hedef tabloya record_state = approved, source = ai olarak yazılır.
+
+**Numaralama (canlıda).** Biçim {TÜR}-{PROJE_KODU}-{SIRA}, örnek RFI-ADN1-0007. Yıl ve disiplin numaranın içinde yoktur (disiplin ayrı kolondur). Proje kodu project_register_settings tablosunda tutulur (2-6 karakter, büyük harf veya rakam, projeler arasında benzersiz; canlıda ADN1, ADN2, TIZ, TKY). Doküman numaraları: çizim türündeki dokümanlar DRW, diğerleri DOC öneki alır ve her önek kendi sırasında ilerler; çizimin numarası bağlı olduğu dokümanın numarasıdır. Submittal TS, malzeme onayı MA önekini taşır. Sıra project_register_counters tablosundaki satırın aynı işlemde arttırılmasıyla üretilir; başarısız bir kayıt denemesi sayacı ilerletmez (kayıp numara oluşmaz). Sıra 4 haneye kadar sıfır doldurulur, 10000 ve üstü kırpılmaz (07.10'da düzeltilen G-11). Kodu tanımlı olmayan projede numara istenirse açık bir hata döner; Faz B yazma fonksiyonları numarayı dışarıdan kabul etmez.
 
 ## 4.2 Tablo tablo şema
 
-Genel kural:
-- Her FK kolonuna indeks (bugün eksikler var, §4.10 B1).
-- Her tabloda RLS açık.
-- Register tablolarında yazma yalnızca RPC ile (B4'te doğrudan yazma policy'leri düşürülür).
-- Master veri (project_wbs, project_areas, area_wbs) istisna: RLS ile doğrudan yazılır.
+Genel kural: her FK kolonuna indeks açılır (canlıda WBS, alan ve görev bağlarında var; register'lar arası bağlarda Faz B'de eklenecek), her tabloda RLS açıktır, hiçbir register tablosuna doğrudan INSERT/UPDATE/DELETE yetkisi verilmez; yazma yalnızca RPC ile olur (bugün yazma tamamen kapalı, Faz B'de RPC'ler açılacak).
 
 **A. Altyapı tabloları**
 
-| Tablo | Durum | Özet |
+| Tablo | Durum | Kolonlar ve kurallar |
 |---|---|---|
-| project_wbs | Canlı | wbs_code (CHECK `^[A-Z0-9][A-Z0-9-]*$`, UNIQUE proje içi), parent_id (kFK RESTRICT), level (trigger), discipline, default_owner_role, is_active, notes. Guard trigger: proje değişmez, kullanımdaki kod değişmez, pasif üst altında aktif alt yok, döngü yok. Yazma: admin, PM (+erişim). Eklenebilir: sort_order |
-| project_areas | Canlı | area_code, parent_id (hiyerarşi), area_type (12 değer), responsible_user, is_active. Guard aynı. Yazma: admin, PM, santiye_sefi (yalnızca kendi projesi); silme admin/PM |
-| area_wbs | Canlı | Alan ↔ WBS çoktan çoğa; kFK CASCADE; UPDATE policy'si yok |
-| project_register_settings | Canlı | project_id PK, prefix (UNIQUE). Eklenebilir: four_eyes_enabled (varsayılan açık), claim_notice_days (Faz D) |
-| project_register_counters | Canlı | (project_id, register_code) PK, last_value. Erişim yalnızca DEFINER fonksiyonlarla |
-| register_status_history | Canlı | Durum değişiklikleri (rfis, decisions, project_actions trigger'ı). register_audit gelince yerini ona bırakır ya da yalnızca durum zaman çizelgesi olarak kalır (B3'te karar) |
-| register_permissions | Eklenecek (B2) | role_key FK roles, register_type, can_view, can_create, can_edit, can_approve, can_delete; PK (role_key, register_type) |
-| register_status_transitions | Eklenecek (B2) | (register_type, from_status, to_status) PK |
-| register_audit | Eklenecek (B3) | id bigint identity, project_id, table_name, record_id, action (insert, update, delete, state_change, approve, reject, reopen), changed_by default auth.uid(), changed_at, **changed jsonb** (yalnızca değişen alanlar: `{alan: [eski, yeni]}`; INSERT'te yalnızca dolu alanlar, büyük metin alanları kısaltılır), reason. Satırı yalnızca trigger yazar; UPDATE/DELETE yetkisi yok. İndeks (table_name, record_id, changed_at desc), (project_id, changed_at desc) |
-| register_links | Eklenecek (C) | from_type, from_id, to_type, to_id, relation (relates_to, answers, caused_by, blocks, references). Doğrudan kFK bağlarının karşılamadığı çoktan çoğa ilişkiler için |
-| register_drafts | Eklenecek (B6) | project_id, register_type, payload jsonb, field_confidence jsonb (alan → {confidence, page, quote ≤ 200 karakter}), source_document_id, source_revision_id, job_id, run_id, prompt_version, status (ai_draft, approved, rejected, superseded), reviewed_fields text[], created_record_id, reviewed_by/at, reject_reason. Onaylanan ve reddedilen taslakların payload'ı 90 gün sonra temizlenebilir (depolama) |
-| document_jobs | Eklenecek (B6) | project_id, document_id, revision_id, job_type (classify, extract), status (queued, running, done, failed, skipped), attempts, last_error, zaman damgaları |
-| ai_runs, ai_settings | Eklenecek (B6) | §4.6 |
-| document_texts | **Kurulmayacak** (depolama kararı) | Metin işlem sırasında bellekte tutulur; yeniden işleme gerekirse dosyadan tekrar çıkarılır |
-| project_drive_folders, drive_sync_state | Yalnızca B seçeneğinde (Drive) | §4.5 |
+| project_wbs, project_areas, area_wbs | CANLI | WBS ve alan hiyerarşisi (üst kayıt, kod, ad, disiplin/tür, aktif mi); alan–WBS çoktan çoğa bağ. UNIQUE(project_id, kod); silmek yerine pasife alınır. project_tasks'ta wbs_id, area_id, activity_id, baseline_start/end kolonları ve atanmış Activity ID'yi kilitleyen identity_guard trigger'ı |
+| project_register_settings | CANLI | project_id (PK, FK), proje kodu. Faz B'de dört göz kuralı ve claim bildirim süresi gibi proje ayarları buraya eklenebilir |
+| project_register_counters | CANLI | proje, tür, sayaç; authenticated erişimi yok, yalnızca numara fonksiyonları kullanır |
+| register_status_history | CANLI | Durum geçmişi; yalnızca okunabilir |
+| register_permissions | YENİ (Faz B) | role_key (FK roles(key)), register_type, can_view, can_create, can_edit, can_approve, can_delete (boolean). PK (role_key, register_type); yalnızca 4 aktif rol için satır |
+| register_status_transitions | YENİ (Faz B) | register_type, from_status, to_status. set_register_status yalnızca bu tablodaki geçişlere izin verir |
+| register_audit | YENİ (Faz B) | id, project_id, table_name, record_id, action, changed_by (varsayılan auth.uid()), changed_at, changed_fields jsonb (yalnızca değişen alanların eski ve yeni değeri), reason. Tam satırı iki kez saklamaz (ücretsiz plan veritabanı sınırı). UPDATE ve DELETE yetkisi kimseye verilmez, satırı yalnızca trigger yazar |
+| register_links | YENİ (Faz B-C) | Çok biçimli bağ: from_type, from_id, to_type, to_id, relation (relates_to, answers, caused_by, blocks, references), created_by. FK yok; varlık ve aynı proje kontrolü RPC'de |
+| register_drafts | YENİ (Faz C) | id, project_id, register_type, payload jsonb, field_confidence jsonb, source_document_id, job_id, run_id, prompt_version, status (ai_draft, approved, rejected, superseded), reviewed_fields text[], created_record_id, created_at, reviewed_by, reviewed_at, reject_reason |
+| document_jobs | YENİ (Faz C) | id, project_id, document_id, job_type (classify, extract), status (queued, running, done, failed), attempts, last_error, created_by, zaman damgaları |
 
-**B. Register tabloları** (ayrıntı `canli-sema-ozeti.md` §2)
+Dokümanın tam metni için ayrı bir tablo yoktur: metin yalnızca işlem sırasında kullanılır (500 MB'lık ücretsiz veritabanı sınırı ve gizlilik).
 
-| Tablo | Durum | Register'a özel kolonlar | status değerleri |
-|---|---|---|---|
-| documents | Canlı | document_no, title, document_type (CHECK yok), discipline, wbs/area/task. Ek UNIQUE (project_id, id, document_type) | active, void |
-| document_revisions | Canlı | document_id (kFK CASCADE), revision_no (CHECK biçim, UNIQUE doküman içi), revision_status, is_current (kısmi unique: tek güncel), issue_date, storage_provider, storage_file_id, file_name, mime_type, size_bytes, sha256, notes | ifr, ifa, ifc, as_built |
-| drawings | Canlı | document_id (UNIQUE, NN), drawing_type, document_type='drawing' (3 kolonlu FK yalnızca çizim türü dokümana bağlar) | (yok; durum revizyonda) |
-| rfis | Canlı | rfi_no, subject, question, description, response, raised_by (iç kullanıcı), assigned_to, responsible_discipline, raised_date, due_date, answered_date, drawing_id, document_id, decision_id | open, under_review, answered, closed, rejected |
-| project_actions | Canlı | action_no, title, description, assigned_to, responsible (serbest), due_date, completed_at, source_type (manual, risk, rfi, decision, meeting, other), decision_id, rfi_id, risk_id | open, in_progress, done, cancelled |
-| decisions | Canlı | decision_no, title, decision_text, decision_date, decision_maker, rfi_id, risk_id | proposed, approved, superseded, cancelled |
-| technical_submittals | Canlı | submittal_no, title, description, discipline, supplier_id, submitted/due/reviewed_date, reviewer_id, revision | draft, submitted, under_review, approved, approved_with_comments, rejected, resubmit_required |
-| material_approvals | Canlı | approval_no, material_name, manufacturer, model, supplier_id, submitted/approved_date, revision, technical_submittal_id | draft, submitted, approved, approved_with_comments, rejected, expired |
-| changes | Eklenecek (D) | title, description, origin (owner_request, design_change, site_condition, other), cost_estimate numeric(14,2) + currency, time_impact_days, contract_ref | identified, submitted, approved, rejected, implemented |
-| claims | Eklenecek (D) | change_id, title, notice_type (time, cost, both), event_date NN, notice_deadline, notice_sent_at, amount_claimed + currency, time_claimed_days, contract_ref | notice_due, notice_sent, submitted, negotiating, settled, rejected |
-| interfaces | Eklenecek (E) | title, interface_type, party_a, party_b, due_date | open, agreed, closed |
+**B. Register tabloları** (hedef alanlar; canlıdaki kesin kolonlar canli-sema-ozeti.md'de)
 
-**Faz C-D'de değerlendirilecek alan ekleri:**
-- **rfis:** raised_by_party, closed_at, schedule_impact_days, cost_impact, contract_ref; CHECK answered_date ≥ raised_date.
-- **technical_submittals:** spec_ref, submittal_type, review_comment.
-- **material_approvals:** required_on_site.
-- **decisions:** supersedes_id.
+| Tablo | Durum | Register'a özel alanlar |
+|---|---|---|
+| documents | CANLI | Doküman kimliği: numara (DOC ya da DRW öneki), başlık, doc_type (drawing, rfi, submittal, correspondence, report, contract, minutes, photo, other), disiplin, WBS ve alan. Revizyon ve dosya bilgisi burada değil document_revisions'ta |
+| document_revisions | CANLI, dosya alanları Faz B | Revizyon no, durum (IFR, IFA, IFC, As-Built), is_current (dokümanın tek güncel revizyonu, kısmi unique index), tarihler. Faz B'de eklenecek dosya alanları: storage_path, file_name, mime_type, size_bytes, sha256, upload_status (uploading, ready, aborted), uploaded_by |
+| drawings | CANLI | Dokümana bire bir bağlı uzantı; çizim yalnızca çizim türündeki dokümana bağlanabilir ve bağlı dokümanın türü sonradan değiştirilemez (bileşik anahtar). Çizim türü, saha ve BOQ etkisi |
+| rfis | CANLI | Konu, soru, cevap, raised_by_party (contractor, owner, subcontractor, engineer), tarihler, çizim bağı, süre etkisi (gün), maliyet etkisi (none, potential, confirmed), sözleşme maddesi. status: open, answered, closed, cancelled |
+| project_actions | CANLI | Ayrı aksiyon tablosu (ticket'tan bağımsız); sorumlu, termin, kaynak (kaynak listesinde inspection ve ncr yok), öncelik, durum |
+| decisions | CANLI | Karar konusu, karar metni, tarih, karar veren, durum (proposed, decided, superseded) |
+| technical_submittals | CANLI | TS öneki; konu, spec referansı, tür, gönderim ve dönüş tarihleri, durum |
+| material_approvals | CANLI | MA öneki; malzeme, procurement_items bağı, tedarikçi, durum, sahada gerekli tarih |
+| changes | YENİ (Faz D) | Başlık, açıklama, köken, maliyet (sayı + ayrı currency), süre etkisi (gün), sözleşme maddesi. status: identified, submitted, approved, rejected, implemented |
+| claims | YENİ (Faz D) | change_id, tür (time, cost, both), olay tarihi (zorunlu), bildirim son tarihi, bildirim gönderim tarihi, talep tutar ve süre, sözleşme maddesi. status: notice_due, notice_sent, submitted, negotiating, settled, rejected |
+| interfaces | YENİ (Faz E) | Başlık, tür, taraf A ve B, termin. status: open, agreed, closed |
 
-Hepsi AI şemasında ihtiyaç doğarsa, tablolar boşken eklenir.
+Para alanları sayı + ayrı currency kolonudur. Bildirim son tarihi, proje ayarında sözleşme süresi doluysa olay tarihinden RPC ile hesaplanır, boşsa elle girilir; AI bu tarihi hiçbir zaman kendi başına belirlemez.
 
 **C. Mevcut tablolara eklemeler**
 
-| Tablo | Canlı | Eklenecek |
+| Tablo | Durum | Eklenen |
 |---|---|---|
-| project_tasks | activity_id (değiştirilemez), wbs_id, area_id (kFK RESTRICT), discipline, baseline_start/end, forecast_start/end, primavera_id; is_critical yok | Yalnızca-admin activity_id düzeltme RPC'si (B7) |
-| project_risks | wbs/area/task + rfi_id, action_id, decision_id (kFK) | register_no (RSK), approved_by/at, source CHECK'e 'ai' (Faz D) |
-| purchase_requests, procurement_items | wbs/area/task + material_approval_id (+ technical_submittal_id) kFK, boş | Satın alma akışı bunlara yazmaz; köprü Faz D'de yalnızca okuma |
-| suppliers | supplier_type (malzeme_ekipman, hizmet, nakliye, diger) | Taşeron ayrımı için **party_type** (supplier, subcontractor, both). supplier_type adı dolu olduğu için yeni ad |
-| tickets | Değişmedi | Değişiklik yok (Action ayrı tablo) |
-| notifications | Değişmedi | meta jsonb; entity_type'a register_record, register_draft (Faz C) |
-| Realtime | Proje Kontrol tablolarının hiçbiri yayında değil | documents, document_revisions, document_jobs, register_drafts ve ekranı olan register tabloları (Faz B-C) |
+| project_tasks | CANLI | wbs_id, area_id, activity_id, baseline_start/end |
+| project_risks, purchase_requests, procurement_items | CANLI (boş) | Register bağları için FK kolonları (14 FK); project_risks'e Faz D'de kaynak, durum ve onaylayan kolonları eklenecek, source CHECK'ine ai değeri |
+| tickets | DEĞİŞMEZ | Ticket sahadan bildirim olarak kalır, genişletilmez; Action ayrı tablodadır |
+| suppliers | Faz D | supplier_type (supplier, subcontractor, both); varsayılan supplier |
+| notifications | Faz C | meta jsonb; entity_type CHECK'ine register_record ve register_draft eklenir |
+| Realtime yayını | Faz B-C | register_drafts, document_revisions, document_jobs ve register tabloları (RLS realtime'da da geçerli) |
 
 ## 4.3 Yetki matrisi ve RLS şablonu
 
-Kullanıcı önce projeye (`has_project_access`), sonra register eylemine (`register_can`) yetkili olmalı. V görüntüle,
-C oluştur, E düzenle, A onayla, D sil. **Öneridir; Karar #4 ile onaylanır.** Tablo değişince kod değişmez.
+Proje erişimi (has_project_access) ile register yetkisi (register_permissions) birlikte aranır: kullanıcı önce projeye, sonra o register'ın o eylemine yetkili olmalı. Harf anlamları: V görüntüle, C oluştur, E düzenle, A onayla, D sil. Bu değerler öneridir ve Karar 6 ile netleşir; register_permissions tablosu değiştirildiğinde kod değişmez.
 
 | Register | admin | proje_yoneticisi | santiye_sefi | muhasebe |
 |---|---|---|---|---|
 | document | VCEAD | VCEA | VC | yok |
 | drawing | VCEAD | VCEA | V | yok |
 | rfi | VCEAD | VCEA | VCE | yok |
-| technical_submittal | VCEAD | VCEA | V | yok |
+| submittal | VCEAD | VCEA | V | yok |
 | material_approval | VCEAD | VCEA | V | yok |
+| interface | VCEAD | VCEA | VC | yok |
 | decision | VCEAD | VCEA | V | yok |
-| action | VCEAD | VCEA | VCE | yok |
+| action (project_actions) | VCEAD | VCEA | VCE | yok |
 | risk | VCEAD | VCEA | VC | yok |
 | change | VCEAD | VCEA | VC | V |
 | claim | VCEAD | VCEA | yok | V |
-| interface | VCEAD | VCEA | VC | yok |
-| procurement, subcontractor, payment | köprü; mevcut satın alma/finans yetkileri aynen | | | |
+| procurement | V | V | V | V |
+| subcontractor | VCED | VCE | V | V |
+| payment | V | V | yok | V |
 
 Notlar:
-- santiye_sefi'nin E yetkisi yalnızca kendi oluşturduğu kayıtlar içindir.
-- Kritik register'larda dört göz kuralı geçerlidir: risk, change, claim, decision.
-- Silme yalnızca draft ve rejected kayıtlar içindir; onaylı kayıt `status` ile iptal edilir.
 
-**Bugün canlıda:**
-- Okuma `user_has_project_access`: muhasebe ve proje yöneticisi bütün projelerde her register'ı okur.
-- Yazma policy'leri (`can_write_project_control` / `can_manage_project_control`) duruyor ama G-01 ile yetki yok.
+- santiye_sefi'nin E yetkisi yalnızca kendi oluşturduğu kayıtlar içindir (created_by = auth.uid()); Action (project_actions) için aynı kural geçerlidir; ticket yetkileri değişmez.
+- procurement, subcontractor ve payment için register yalnızca bir köprü görünümüdür; bu tablolara yazma mevcut satın alma ve finans akışlarından devam eder. Muhasebe'nin satın alma kapsamı mevcut _internal RPC'lerinin sınırıyla aynı kalır, köprü bunu genişletmez.
+- Kritik register'lar (dört göz kuralı): risk, change, claim, decision. Bunlarda onaylayan kişi created_by'dan farklı olmak zorundadır; admin için de geçerlidir.
+- Silme yalnızca draft ve rejected kayıtlar içindir; onaylı kayıt silinmez, status ile iptal edilir.
 
-**Hedef RLS** (B2 + B4):
+**RLS şablonu** (her yeni register tablosu için aynı):
 
 ```sql
--- okuma
-create policy rfis_select on public.rfis for select to authenticated
+alter table public.rfis enable row level security;
+
+create policy rfis_select on public.rfis
+  for select to authenticated
   using (public.has_project_access(project_id) and public.register_can('rfi', 'view'));
--- INSERT/UPDATE/DELETE policy'si yok; eski rfis_insert/_update/_delete policy'leri düşürülür,
--- authenticated'a yalnızca SELECT GRANT'i kalır (G-01 kalıcılaşır).
+
+-- INSERT, UPDATE, DELETE için policy yok: yazma yalnızca SECURITY DEFINER RPC'lerle yapılır.
 ```
 
-`register_can(p_type, p_action)`:
-- SECURITY DEFINER, STABLE, `search_path=public`.
-- Rolü `get_my_role()` ile bulur.
-- Her yeni fonksiyonda `revoke … from public, anon` yazılır; trigger fonksiyonlarından `authenticated` da çıkarılır.
+register_can(p_type text, p_action text) returns boolean SECURITY DEFINER, STABLE, search_path = public; get_my_role() ile bulunan rolün register_permissions satırını okur. CLAUDE.md'deki uyarı gereği her yeni fonksiyonda revoke execute ... from public, anon ve grant execute ... to authenticated yazılır; trigger fonksiyonlarından authenticated da çıkarılır.
 
-Dosya erişimi: indirme RPC'si `has_project_access` ve `register_can('document','view')` doğrulamadan depo dosya kimliğini döndürmez.
+Dosya erişimi aynı kuralla çözülür: dosya depolama politikası, yoldaki projeye erişimi ve register_can('document', 'view') yetkisini doğrulamadan dosyayı vermez; ayrıntı 4.5'tedir.
+
 
 ## 4.4 RPC sözleşmeleri
 
-Ortak kurallar:
-- Okuma `get_*`; yazma `save_*`, `create_*` ve eylem fiilleri.
-- Hepsi SECURITY DEFINER, `search_path=public`.
-- İlk satırda `has_project_access` + `register_can` kontrolü.
-- anon/PUBLIC EXECUTE kapalı.
-- Kimlik her zaman `auth.uid()`'den alınır.
-- Register numarası parametre olarak alınmaz.
+İsimlendirme mevcut desenle aynı: okuma get_*, yazma save_*, create_* ve eylem fiilleri. Hepsi SECURITY DEFINER, search_path = public, ilk satırda has_project_access ve register_can kontrolü; anon ve PUBLIC EXECUTE yetkisi kapalı. Kimlik hiçbir zaman parametreden gelmez, auth.uid() kullanılır.
 
 **Okuma**
 
 | RPC | Parametreler | Dönüş |
 |---|---|---|
-| get_my_register_permissions | p_project_id | {role, registers: {rfi: {view, create, edit, approve, delete}, ...}} |
-| get_register_overview | p_project_id | Register başına {total, open, pending_approval, overdue} + bekleyen taslak sayısı |
-| get_register_list | p_project_id, p_register_type, p_filters jsonb, p_search, p_sort, p_limit 50, p_offset 0 | {items, total}; vw_reg_<tür> view'larından (security_invoker), tür beyaz listeden |
-| get_register_detail | p_register_type, p_id | {record, links, documents, revisions, permissions, allowed_status_transitions} |
-| get_register_audit | p_register_type, p_id, p_limit 50, p_before | Audit satırları (değişen alanlar) |
-| search_register_refs | p_project_id, p_ref_type, p_query, p_limit 10 | [{id, label, sublabel}] |
-| get_revision_for_download | p_revision_id (null ise güncel revizyon için p_document_id) | {storage_provider, storage_file_id, file_name, mime_type, size_bytes}; yalnızca gateway çağırır |
+| get_my_register_permissions | p_project_id text | {role, registers: {rfi: {view, create, edit, approve, delete}, ...}} |
+| get_register_overview | p_project_id text | Register başına {total, open, pending_approval, overdue} ve bekleyen AI taslağı sayısı (sol menü rozetleri) |
+| get_register_list | p_project_id, p_register_type, p_filters jsonb '{}', p_search text null, p_sort text null, p_limit int 50, p_offset int 0 | {items: [...], total}; veri vw_reg_<tür> view'larından (security_invoker = on), tür beyaz listeden CASE ile seçilir, dinamik SQL yok |
+| get_register_detail | p_register_type, p_id uuid | {record, links, documents, permissions, allowed_status_transitions} |
+| get_register_audit | p_register_type, p_id, p_limit 50, p_before bigint null | {items: [...]} audit satırları |
+| search_register_refs | p_project_id, p_ref_type (drawing, document, task, area, wbs, rfi...), p_query text, p_limit 10 | [{id, label, sublabel}] (bağlantı seçici için) |
 
-**Yazma ve durum geçişi**
+**Yazma ve durum geçişi** (register tabloları; Risk için mevcut akış Faz D'ye kadar kullanılır)
 
-| RPC | Kural |
+| RPC | Parametreler | Dönüş ve kural |
+|---|---|---|
+| save_register_record | p_register_type, p_project_id, p_id uuid null, p_data jsonb | {id, register_no, record_state}. Zorunlu alan, enum ve aynı-proje FK doğrulaması; yeni kayıtta numara atar; yalnızca draft ve rejected kayıt düzenlenir |
+| submit_register_record | p_register_type, p_id | draft → pending_approval |
+| approve_register_record | p_register_type, p_id, p_note null | Kritik register'da onaylayan created_by olamaz |
+| reject_register_record | p_register_type, p_id, p_reason | Gerekçe zorunlu |
+| reopen_register_record | p_register_type, p_id, p_reason | approved → draft, gerekçe zorunlu |
+| set_register_status | p_register_type, p_id, p_status, p_note null | İş durumu geçişi; izinli geçişler register_status_transitions(register_type, from_status, to_status) tablosunda |
+| delete_register_record | p_register_type, p_id | Yalnızca draft ve rejected |
+| link_register_records | p_project_id, p_from_type, p_from_id, p_to_type, p_to_id, p_relation 'relates_to' | Link id; iki kayıt aynı projede olmalı |
+| unlink_register_records | p_link_id uuid | |
+
+**AI taslakları**
+
+| RPC | Parametreler | Dönüş ve kural |
+|---|---|---|
+| list_register_drafts | p_project_id, p_status 'ai_draft', p_register_type null | Taslak listesi (onay kutusu) |
+| get_register_draft | p_draft_id uuid | {draft, document, matches, thresholds}; matches eşleşen çizim ve aktivite adaylarını içerir |
+| update_register_draft | p_draft_id, p_payload jsonb | Kullanıcı alan düzeltir; düzeltilen alanlar reviewed_fields'e eklenir |
+| approve_register_draft | p_draft_id, p_payload jsonb null, p_reviewed_fields text[] '{}' | {register_type, record_id, register_no}. Güveni eşiğin altındaki her alan p_reviewed_fields içinde değilse review_required hatası verir (sunucu tarafı zorlama). Hedef kayıt approved, source = ai; kritik register'da onaylayan taslağı üreten kullanıcıdan farklı olmalı |
+| reject_register_draft | p_draft_id, p_reason null | |
+
+**Doküman yükleme ve iş kuyruğu**
+
+| RPC | Parametreler | Dönüş ve kural |
+|---|---|---|
+| begin_document_upload | p_project_id, p_document_id null, p_meta jsonb, p_file_name, p_size, p_mime, p_sha256 | {document_id, revision_id, storage_path}. Yetki, tür ve boyut kontrolü; aynı projede aynı sha256 varsa duplicate. uploading durumunda revizyon satırı açar (dosya yoluna izin bu satırla verilir) |
+| complete_document_upload | p_revision_id | Dosyanın depoda var olduğunu ve boyutunu doğrular; tek işlemde eski güncel revizyonu is_current = false, yenisini true yapar, upload_status = ready yazar, document_jobs satırı açar |
+| abort_document_upload | p_revision_id | Yarım kalan yüklemeyi iptal eder, satırı ve varsa dosyayı siler |
+| void_document | p_document_id, p_reason | Onaylı dokümanı silmek yerine iptal eder; dosya saklanır |
+| get_storage_usage | (yok) | Yalnızca admin: toplam dosya kullanımı ve bucket başına doluluk |
+| enqueue_document_job, finish_document_job | p_document_id, p_job_type; p_job_id, p_status, p_error null | Job id; iş kapanışı |
+| save_ai_draft | p_document_id, p_register_type, p_payload jsonb, p_confidence jsonb, p_run_id uuid, p_job_id uuid | Draft id; aynı doküman ve türdeki önceki ai_draft taslağını superseded yapar |
+| log_ai_run | tür, sağlayıcı, model, prompt_version, token sayıları, süre, durum | Run id; bütçe aşıldıysa budget_exceeded |
+
+**Servis fonksiyonları (Faz E):** svc_ öneki; gövdenin ilk satırı auth.role() = 'service_role' kontrolü, aksi halde forbidden: svc_claim_next_job, svc_save_finding, svc_agent_get_* okuma tool'ları. Edge function'lardaki servis kodunda .from() çağrısı yasaktır, yalnızca bu RPC'ler çağrılır. Faz C'de process-document kullanıcının kendi yetkisiyle çalıştığı için servis fonksiyonu gerektirmez.
+
+**Hata sözleşmesi:** RPC'ler raise exception ile kısa bir kod fırlatır, ayrıntıyı detail içinde JSON olarak verir; frontend kodu Türkçe mesaja çevirir.
+
+| Kod | Anlamı |
 |---|---|
-| save_register_record(p_register_type, p_project_id, p_id null, p_data jsonb) | {id, register_no, record_state}. Zorunlu alan, enum, aynı-proje FK doğrulaması; yeni kayıtta numara trigger'dan; yalnızca draft/rejected düzenlenir |
-| submit / approve / reject / reopen_register_record | §4.1 tablosu; reject ve reopen'da gerekçe zorunlu; kritik register'da dört göz |
-| set_register_status(p_register_type, p_id, p_status, p_note) | Yalnızca register_status_transitions'taki geçişler |
-| delete_register_record | Yalnızca draft/rejected |
-| link_ / unlink_register_records | Aynı proje şartı (Faz C) |
-| add_document_revision(p_document_id, p_meta) | Yeni revizyon; is_current değişiminde önce eskisi false, sonra yenisi true (kısmi unique ertelenemez) |
-| admin_correct_task_activity_id(p_task_id, p_new_activity_id, p_reason) | Yalnızca admin; identity_guard'ı kontrollü atlatır, gerekçe ve eski/yeni değer audit'e yazılır (B7) |
+| forbidden | Proje erişimi veya register yetkisi yok |
+| not_found | Kayıt yok veya başka projede |
+| invalid_state | Bu record_state veya status geçişi yasak |
+| validation | Zorunlu alan, enum veya FK hatası; detail alan listesini verir |
+| review_required | Düşük güvenli alanlar gözden geçirilmedi; detail alan listesini verir |
+| duplicate | Aynı dosya (sha256) zaten kayıtlı; detail mevcut id'yi verir |
+| budget_exceeded | AI bütçesi doldu |
 
-**AI taslakları** (Faz B tablo, Faz C RPC):
-- list_register_drafts, get_register_draft, update_register_draft.
-- approve_register_draft: eşik altındaki her alan `p_reviewed_fields` içinde değilse `review_required` hatası verir. Hedef kayıt approved ve source = ai olarak yazılır.
-- reject_register_draft.
+## 4.5 Dosya deposu ve edge function tasarımı
 
-**Doküman ve iş kuyruğu:**
-- create_document_record: p_dry_run; aynı projede aynı sha256 varsa `duplicate` hatası ve mevcut id döner.
-- enqueue_document_job, finish_document_job, save_ai_draft, log_ai_run.
+**Depo.** Yeni özel bucket proje-dokumanlari (adı öneri); public değil, dosya boyutu sınırı plan sınırına eşit veya altında (ücretsiz planda tek dosya 50 MB). Mevcut saha-fotolari ve ticket-ekleri bucket'ları yerinde kalır. Yol biçimi: {project_id}/{document_id}/{revision_id}_{güvenli_dosya_adı}. Yolun ilk klasörü proje kimliğidir (saha-fotolari ile aynı desen); dosya adı ASCII'ye çevrilir ve 80 karakterle sınırlanır.
 
-**Servis fonksiyonları:**
-- `svc_` öneki; ilk satır `auth.role() = 'service_role'` kontrolü.
-- Edge function'daki servis kodunda `.from()` yasaktır.
+**Klasör ağacı arayüzdedir, depoda değil:** Proje > Disiplin > Doküman türü > Doküman, altında revizyonlar; hepsi documents ve document_revisions kayıtlarından üretilir. Kullanıcı klasör açmaz veya taşımaz, disiplin ve tür değerlerini listeden seçer. Böylece klasör kayması ve taşıma hatası doğmaz.
 
-**Hata kodları:** forbidden, not_found, invalid_state, validation, review_required, duplicate, budget_exceeded.
+**Storage politikaları (bu bucket için; 07.10'daki G-02/G-03 deseni ve G-04'ün çözümü):**
 
-## 4.5 Edge function ve dosya deposu tasarımı
+- SELECT: yoluyla eşleşen bir document_revisions kaydı olan, kullanıcının o projeye erişimi ve register_can('document', 'view') yetkisi bulunan dosya.
+- INSERT: yalnızca upload_status = 'uploading' ve uploaded_by = auth.uid() olan, yolu birebir aynı bir revizyon satırı varsa (begin_document_upload önceden açar); yolun projesi kayıtla eşleşmeli.
+- UPDATE ve DELETE: kullanıcıya kapalı. Silme yalnızca abort_document_upload ve zamanlanmış temizlik işiyle yapılır; onaylı doküman silinmez, void ile iptal edilir.
 
-**Değişmeyen ilke (Karar #1):**
-- Kullanıcı dosyaya yalnızca gateway üzerinden ulaşır.
-- Gateway kontrol sırası: JWT (401) → girdi (400; boş `project_id` dahil, çünkü `has_project_access(NULL)=true`) → proje erişimi ve register yetkisi (403) → tür/boyut (415/413) → depo yapılandırması (501).
-- Veritabanına yalnızca kullanıcı JWT'siyle gidilir.
-- Tarayıcıya kalıcı depo bağlantısı verilmez.
-- Yükleme sırası:
-  1. JWT ve yetki kontrolü.
-  2. sha256 hesaplanır.
-  3. `create_document_record(dry_run)`.
-  4. Depoya yükleme.
-  5. Kayıt + revizyon açılır.
-  6. `enqueue_document_job`.
+**Yükleme akışı:**
 
-  Kayıt açılamazsa yüklenen dosya silinir.
-- İzinli türler: pdf, png, jpg, docx, xlsx, dwg (dwg AI'a gitmez).
-- Dosya adı: `{register_no}_{revision_no}_{kisa-baslik}.{ext}` (ASCII, en çok 80 karakter).
+1. Tarayıcı dosyanın sha256 değerini hesaplar.
+2. begin_document_upload yetkiyi, türü, boyutu ve tekrarı (aynı sha256) kontrol eder, uploading durumunda revizyon satırı ve yolu döndürür.
+3. Tarayıcı dosyayı o yola Storage'a yükler.
+4. complete_document_upload dosyanın depoda olduğunu doğrular; tek işlemde eski güncel revizyonu is_current = false, yenisini true yapar, upload_status = ready yazar, document_jobs satırı açar.
+5. Yarıda kalırsa abort_document_upload çalışır; her gün çalışan zamanlanmış iş (pg_cron) 1 saatten eski uploading revizyonları ve dosyalarını siler. Böylece yetim dosya veya yetim kayıt kalmaz.
 
-Mevcut iskelet: `supabase/functions/drive-gateway/`. `handler.ts` (kontrol sırası) sağlayıcıdan bağımsız. Depo
-çağrıları `driveClient.ts` arayüzünde; seçilen seçeneğe göre bu dosya ve secret'lar değişir.
+İzinli türler: pdf, png, jpg, docx, xlsx, dwg (dwg saklanır, AI'a gönderilmez). Açma ve indirme: tarayıcı kısa ömürlü imzalı adres ister, politika yetkiyi denetler; kalıcı adres hiçbir yerde saklanmaz.
 
-### Dosya sağlayıcısı — KARAR BEKLİYOR (seçim yapılmadı)
+**Kullanım izleme.** get_storage_usage toplam kullanımı döndürür; ayarlar ekranında doluluk gösterilir ve %70'te uyarı verilir (ücretsiz plan 1 GB, Pro plan 100 GB). Fotoğraflar için istemci tarafında yüklemeden önce küçültme (yaklaşık 1600 px, JPEG %80) uygulanır.
 
-**A) Supabase Storage + Pro plan (aylık ~25 $, fiyat ve kotalar satın almadan önce doğrulanmalı)**
+**Genişletilebilirlik.** document_revisions'ta dosya sağlayıcısı ve dış bağlantı alanları (file_provider, file_url) tutulabilir; ileride SharePoint bağlantısı istenirse register'lar değişmeden yalnızca dosya bölümü genişler.
 
-| Konu | Değişiklik |
-|---|---|
-| Depo | Yeni private bucket (ör. `proje-dokumanlari`); yol `{project_id}/{document_id}/{revision_no}/{dosya_adı}` |
-| Adaptör | `driveClient.ts` yerine `storageClient.ts`. Yükleme gateway'den yapılır; bucket'ta `authenticated` için doğrudan INSERT/UPDATE/DELETE policy'si yazılmaz. İndirme iki yoldan biriyle: gateway akış olarak döndürür ya da yetki kontrolünden sonra kısa ömürlü (ör. 60 sn) signed URL verir. G-02/G-03 dersi: SELECT policy'si yazılırsa yolun ilk klasörü `project_id` olmalı, metadata satırıyla birlikte doğrulanmalı |
-| Kimlik | Depo yazımı gateway içinde servis kimliğiyle (Drive'daki servis hesabının karşılığı). Veritabanı yazımı kullanıcı JWT'siyle. service_role anahtarı yalnızca edge function ortamında; frontend'e girmez |
-| Senkron | drive-sync gerekmez: depoya yalnızca uygulama yazar. "Gelen kutusu" (elle bırakılan dosya) yok |
-| Secret'lar | Otomatik gelen SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY; ek olarak MAX_UPLOAD_BYTES. Google secret'ı yok |
-| Artı | Tek sistem; RLS ve yedek aynı yerde; Pro planla günlük otomatik yedek ve daha büyük veritabanı kotası gelir (db:backup sorununu da hafifletir) |
-| Eksi | Aylık maliyet; dosyalar Drive gibi elle göz atılamaz (gerekirse dışa aktarım) |
-
-**B) Ayrı (şirket kontrolünde) Gmail hesabında Google Drive, OAuth**
-
-| Konu | Değişiklik |
-|---|---|
-| Neden servis hesabı değil | Servis hesaplarının kendi Drive depolama kotası yok, yalnızca Shared Drive'a yazabilir. Shared Drive ise Workspace gerektirir. Kişisel hesapta servis hesabı kullanılamaz (kurulumda doğrulanmalı) |
-| Adaptör | `driveClient.ts`: servis hesabı JWT'si yerine OAuth refresh token ile erişim token'ı alınır (`grant_type=refresh_token`). Dosyalar hesabın "Drive'ım" altındaki bir kök klasörde açılır; `supportsAllDrives`/`driveId` parametreleri kaldırılır. Klasör kimlikleri project_drive_folders'ta tutulur |
-| Kapsam | `drive.file`: uygulama yalnızca kendi oluşturduğu dosyaları görür. Elle Drive'a bırakılan dosyaları göremez. Bu yüzden "Gelen kutusu" ve drive-sync yalnızca uygulamanın yüklediği dosyalar için çalışır (çöpe atılma/taşınma takibi). Tüm Drive'ı okumak `drive` kapsamı ister, o da kısıtlı kapsamdır ve Google güvenlik değerlendirmesi gerektirir |
-| Yayın durumu | OAuth uygulaması "Testing"de kalırsa refresh token 7 günde geçersiz olur; **"In production"a alınmalı**. drive.file hassas olmayan bir kapsam olduğundan doğrulama gerektirmemesi beklenir (kurulumda doğrulanmalı) |
-| Senkron | drive-sync (changes.list) yalnızca uygulamanın dosyaları için; pg_net yok, tetikleme zamanlanmış edge function ile |
-| Secret'lar | GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN, DRIVE_ROOT_FOLDER_ID, MAX_UPLOAD_BYTES, SYNC_SECRET (drive-sync varsa). Hiçbiri VITE_ önekli değildir, hiçbiri repoda bulunmaz |
-| Artı | Ücretsiz (15 GB; Gmail ve Fotoğraflar'la paylaşımlı); dosyalar Drive'da görülebilir |
-| Eksi | Tek hesaba bağımlılık (parola değişince ya da güvenlik olayında token iptal olur, sistem dosyaya erişemez); kota paylaşımlı; drive.file kısıtı; ikinci bir yetki sistemi (hesabın kendisi) korunmalı |
-
-v2'deki "servis hesabı + Shared Drive" seçeneği yalnızca Google Workspace varsa geçerlidir. Workspace yönetici yetkisi
-alınırsa üçüncü seçenek olarak geri gelir; secret'ları GOOGLE_SERVICE_ACCOUNT_JSON, DRIVE_SHARED_DRIVE_ID.
-
-**Ortak secret'lar (iki seçenekte de):** MAX_UPLOAD_BYTES (varsayılan 25 MiB, sınır betiğiyle ayarlanır), ileride AI_PROVIDER, AI_API_KEY.
-
-**process-document** (Faz C; kullanıcı JWT'siyle, ilerleme document_jobs + realtime):
+**process-document** (Faz C; kullanıcının kendi JWT'siyle çalışır; arka planda sürer, ilerleme document_jobs ve realtime ile arayüze akar)
 
 | Adım | İş | Çıktı |
 |---|---|---|
-| 1 | İşi al: status = running, attempts + 1 (en çok 3) | Job |
-| 2 | Dosyayı depodan indir (gateway'in adaptörüyle) | Bayt akışı (bellekte) |
-| 3 | Metin çıkar (metin katmanı; az metinli sayfalar görüntü olarak) | **Bellekte**; kalıcı yazılmaz |
-| 4 | Sınıflandır (hızlı model) | documents/revizyon boş alanları |
-| 5 | Şema varsa çıkar, alıntıları doğrula, eşleştir | save_ai_draft |
-| 6 | Her çağrı log_ai_run; iş finish_document_job ile kapanır | ai_runs |
+| 1 | İşi al: status = running, attempts + 1 (en çok 3 deneme) | Job |
+| 2 | Dosyayı Storage'dan indir (kullanıcının yetkisiyle) | Bayt akışı |
+| 3 | Metin çıkar: PDF metin katmanı; sayfa başına karakter min_text_chars altındaysa sayfa görüntüleri (en çok max_pages) modele gönderilir. Metin yalnızca bellekte kullanılır, kalıcı saklanmaz | Geçici metin |
+| 4 | Sınıflandır (hızlı model): doc_type, disiplin, revizyon, başlık, dil | Doküman boş alanlarını doldurur |
+| 5 | Türüne uygun bir çıkarım şeması varsa çıkar (güçlü model), alıntıları doğrula, çizim ve aktiviteyi eşleştir | save_ai_draft |
+| 6 | Her model çağrısı log_ai_run'a yazılır; iş finish_document_job ile kapanır | Kayıt |
 
-Kapatma anahtarı: `ai_settings.enabled = false` iken iş skipped olur, manuel akış etkilenmez.
+Hata davranışı: geçersiz JSON çıkarsa bir onarım denemesi yapılır, olmazsa iş failed olur ve arayüz "Elle doldur" gösterir. Kapatma anahtarı: ai_settings.enabled = false iken iş skipped olur ve manuel akış etkilenmez.
+
+**Gizli bilgiler (edge function secret'ları):** AI_PROVIDER, AI_API_KEY. Başka harici anahtar yoktur (Google veya Microsoft entegrasyonu yok); hiçbiri VITE_ önekli değildir ve hiçbiri repoda bulunmaz.
 
 ## 4.6 AI tasarımı
 
-**İlkeler:**
-- Şemalı JSON, sıcaklık 0.
-- Her alan `{value, confidence, source: {page, quote}}` biçiminde döner; belgede olmayan alan null gelir.
-- Çıkarım çağrısında araç (tool) yok.
-- Belge metni veridir, talimat değildir.
-- Prompt ve şemalar sürümlüdür: `scripts/proje-kontrol/ai-olcum/prompts/rfi_v1.md` ve `schemas/rfi_v1.json`. Faz C'de process-document'a taşınır.
+**İlkeler.** Model çıktısı serbest metin değil şemalı JSON'dur; sıcaklık 0. Her alan {value, confidence, source: {page, quote}} biçiminde döner, belgede olmayan alan null gelir. Çıkarım çağrısında model hiçbir araç (tool) çağıramaz. Belge içindeki cümleler talimat değil veridir; sistem mesajı bunu açıkça söyler (belgeye gömülü "önceki talimatları unut" türü metinlere karşı). Prompt ve şemalar repoda sürümlü dosyalardır: supabase/functions/process-document/prompts/rfi_v1.md ve schemas/rfi_v1.json; sürüm adı ai_runs.prompt_version'a ve taslağa yazılır, değişiklik yeni sürüm dosyasıdır.
 
-**RFI çıkarım şeması (rfi_v1)** — canlı kolonlara eşlenir:
+**Sınıflandırma çıktısı** (hızlı model): doc_type, discipline, revision, title, language. **RFI çıkarım şeması (rfi_v1):**
 
-| Alan | Hedef | Eşleştirme |
+| Alan | Tip | Doğrulama ve eşleştirme |
 |---|---|---|
-| subject, question | rfis.subject, rfis.question | Zorunlu |
-| raised_by_party | rfis.raised_by_party (Faz C'de eklenirse) | contractor, owner, subcontractor, engineer; emin değilse null |
-| raised_at, due_date | rfis.raised_date, due_date | Belgede açıkça yoksa null |
-| drawing_no | rfis.drawing_id | Belgedeki çizim no `documents.document_no` (DRW-…) ile birebir; olmazsa null + en çok 3 aday |
-| task_code | rfis.task_id | project_tasks.task_code veya activity_id ile birebir; olmazsa null |
-| area_code, wbs_code | rfis.area_id, wbs_id | project_areas.area_code, project_wbs.wbs_code ile birebir |
-| contract_ref, schedule_impact_days | Faz C'de eklenirse | Yalnızca belgede yazılıysa |
-| priority | rfis.priority | Yalnızca öneri (low, medium, high, critical) |
+| subject | text | Zorunlu |
+| question | text | Zorunlu; belgedeki soru metni |
+| raised_by_party | enum | contractor, owner, subcontractor, engineer; emin değilse null |
+| raised_at | date | ISO tarih; belgede yoksa null |
+| due_date | date | Belgede açıkça yazılı değilse null |
+| drawing_no | text | Normalize edilip drawings.drawing_no ile birebir eşleşir; olmazsa null ve en çok 3 aday |
+| task_code | text | project_tasks.task_code ile birebir; olmazsa null |
+| area_code, wbs_code | text | project_areas.area_code, project_wbs.wbs_code ile birebir; olmazsa null |
+| contract_ref | text | Belgede geçen madde numarası |
+| schedule_impact_days | int | Yalnızca belgede sayı olarak yazılıysa |
+| priority | enum | Yalnızca öneri; kullanıcı belirler |
 
-**Alıntı doğrulaması:** Alıntı belge metninde bulunmazsa alanın güveni en çok 0,3 olur ve alan `quote_not_found` ile işaretlenir. Belge metni bu kontrol sırasında bellektedir.
+**Alıntı doğrulaması.** source.quote belge metninde (boşluk ve büyük-küçük harf normalize edilerek) birebir bulunmuyorsa o alanın güveni en çok 0,3 yapılır ve alan quote_not_found ile işaretlenir. Bu, modelin uydurduğu bir değeri yüksek güvenle göstermesini engelleyen asıl önlemdir.
 
-**Güven eşikleri:** Başlangıç yeşil ≥ 0,9, sarı 0,7-0,9, kırmızı < 0,7. Ölçümden sonra `ai_settings.thresholds` içinde kalibre edilir.
+**Güven eşikleri.** Başlangıç değeri: yeşil 0,9 ve üzeri, sarı 0,7-0,9, kırmızı 0,7 altı. Bunlar varsayımdır; Faz B ölçümünden sonra ai_settings.thresholds içinde kalibre edilir. Sunucu zorlaması: approve_register_draft, eşiğin altındaki her alan p_reviewed_fields içinde değilse review_required verir.
 
-**Hiç doldurulmayan alanlar:** status, priority=critical, tutarlar, ihbar tarihleri, onay alanları.
+**Hiç doldurulmayan alanlar** (öneri olarak gösterilir, taslak değerine yazılmaz): iş durumu (status), priority = critical, tutarlar ve para birimi, ihbar tarihleri (notice_deadline, notice_sent_at), onay alanları. Kritik register'lar (risk, change, claim, decision) için taslak üretilir ama her dolu alan gözden geçirilmiş sayılmadan onaylanamaz.
 
-**Veri tabloları** (B6):
+**Veri tabloları**
 
 | Tablo | Kolonlar |
 |---|---|
-| ai_runs | id, project_id, run_type (classify, extract, agent), agent_name, document_id, revision_id, job_id, user_id, provider, model, prompt_version, input_tokens, output_tokens, cost_estimate, duration_ms, status (ok, error, timeout, rejected), error (kısa), created_at. **Belge içeriği saklanmaz** |
-| ai_settings | project_id (null = genel), enabled, monthly_token_cap, max_pages, min_text_chars, thresholds jsonb, provider, model_fast, model_strong |
-| ai_findings (Faz E) | project_id, agent_name, finding_type, severity, title, detail jsonb, related_type, related_id, status, run_id |
+| ai_runs | id, project_id, run_type (classify, extract, agent), agent_name null, document_id null, job_id null, user_id null, provider, model, prompt_version, input_tokens, output_tokens, cost_estimate numeric(10,4) null, duration_ms, status (ok, error, timeout, rejected), error, created_at |
+| ai_settings | project_id (null = genel), enabled boolean, monthly_token_cap bigint null, max_pages int, min_text_chars int, thresholds jsonb, provider, model_fast, model_strong. Sayısal varsayılanlar Faz B ölçümüyle belirlenir, bu dokümanda uydurulmadı |
+| ai_findings (Faz E) | id, project_id, agent_name, finding_type (reconciliation, delay_risk), severity (low, normal, high, critical), title, detail jsonb, related_type, related_id, status (open, acknowledged, dismissed, converted), run_id, created_at |
 
-**Ölçüm protokolü (Faz B sonu):**
-- 10-15 doküman, aynı şema, iki sağlayıcı.
-- Metrikler: alan bazında doğruluk, doğru boş bırakma, hatalı doldurma, **yüksek güvenle yanlış**, süre, maliyet.
-- Seçim: yüksek güvenle yanlışı en az olan; eşitlikte maliyeti düşük olan.
-- Betik: `scripts/proje-kontrol/ai-olcum/run.mjs`; gizlilik kapısı `AI_OLCUM_GIZLILIK_ONAYI=evet`.
+log_ai_run her çağrıdan önce ai_budget_ok(project_id) kontrolü yapar; bütçe doluysa budget_exceeded döner, iş failed olur ve manuel akış etkilenmez.
 
-**Agent'lar (Faz E):**
-- Reconciliation: register ↔ depo farkı.
-- Planning: geciken aktiviteler (`vw_delayed_tasks`, baseline/forecast sapması) ve onlara bağlı açık RFI/Submittal/Material.
+**Faz B ölçüm protokolü.** Aynı 10-15 doküman, aynı şema ve aynı prompt ile iki sağlayıcıya verilir; beklenen alanlar Faz A'da senin hazırladığın Excel'dir. Raporlanan metrikler: alan bazında doğruluk, doğru boş bırakma oranı, hatalı doldurma oranı, **yüksek güvenle yanlış** alan sayısı (en tehlikelisi), süre ve belge başına maliyet. Seçim kuralı: yüksek güvenle yanlış sayısı en düşük olan, eşitlikte maliyeti düşük olan. Kabul eşiği (örneğin hangi doğruluğun yeterli olduğu) veriyi görmeden belirlenmez.
 
-  `is_critical` kolonu kaldırıldığı için kritik yol bilgisi kullanılmaz.
-- Kimlik: Karar #7.
+**Agent'lar (Faz E).** Agent çıktıları kayıt değil ai_findings satırıdır; sayılar SQL'den gelir, model yalnızca yorumlar.
+
+| Agent | Veri araçları (yalnızca okuma RPC) | Bulgu | Zamanlama |
+|---|---|---|---|
+| Reconciliation | svc_agent_get_register_document_diff: yüklemesi yarım kalmış revizyonlar, kayıtla eşleşmeyen dosyalar, açık RFI'ya bağlı cevap benzeri yeni doküman, çizim revizyon tutarsızlığı | reconciliation | Gece, proje bazında kuyruktan |
+| Planning | svc_agent_get_schedule_overview: geciken ve kritik aktiviteler (mevcut vw_delayed_tasks ve is_critical), o aktivitelere bağlı açık RFI, Submittal ve Material Approval | delay_risk | Gece, proje bazında kuyruktan |
+
+Kimlik: Faz E'de iki seçenek var. Başlangıç seçeneği: edge function service_role ile çalışır ama kodunda .from() yasaktır ve yalnızca svc_* RPC'lerini çağırır. Sıkı seçenek: fons_agent adlı, yalnızca bu RPC'lere EXECUTE hakkı olan bir veritabanı rolü; edge function bu role ait kısa ömürlü bir JWT üretir. İkincisi daha güvenli ama JWT sırrının fonksiyona verilmesini gerektirir; Faz E başında seçilir.
+
 
 ## 4.7 Frontend tasarımı
 
-Arayüz Türkçe, kod İngilizce. Her ekran dört durumu ele alır: yükleniyor, boş, hata, yetkisiz. Mobilde kart listesi
-kullanılır (invoice-mobile-list deseni).
+Arayüz Türkçe, kod İngilizce. Her ekran dört durumu açıkça ele alır: yükleniyor (iskelet satırlar), boş (açıklama ve "Yeni" butonu), hata (mesaj ve "Yeniden dene"), yetkisiz ("Bu register için yetkiniz yok"). Mobilde tablo yerine kart listesi (mevcut invoice-mobile-list deseni) kullanılır.
 
-**Giriş noktaları** (frontend-tasarim-notu.md):
-- admin ve proje_yoneticisi: `/dashboard/projeler/{id}/kontrol` (ProjeDetay sekmesi).
-- santiye_sefi ve muhasebe: `/dashboard/kontrol` (üst seviye sekme).
-
-  Bunun için `role_allowed_tabs` + `role_sidebar_items` satırları ve Sidebar.jsx girdisi gerekir. ProjeDetay iç
-  sekmelerinin rol bazlı yetki mekanizması yok; görünürlük `get_my_register_permissions`'tan gelir.
-
-**Ekranlar:**
+**Ekran envanteri**
 
 | # | Ekran | URL | İçerik |
 |---|---|---|---|
-| 1 | Kabuk | …/kontrol | Sol menü: Dokümanlar (Document, Drawing), Teknik (RFI, Submittal, Material Approval), Yönetim (Action, Decision, Risk), Ticari (Change, Claim, Procurement, Subcontractor, Payment). Rozetler: bekleyen onay, geciken |
-| 2 | RegisterList | ?register=rfi | Arama, filtre, sunucu taraflı sayfalama (50), "Yeni" / "Dosyadan oluştur" |
-| 3 | RegisterDetail | ?register=rfi&kayit={uuid} | Sağ panel; sekmeler Genel, Dokümanlar, İlişkiler, AI Analiz (Faz D), Geçmiş (değişen alanlar) |
-| 4 | Kayıt formu | Detay içinde | formSections config'inden; "Kaydet" taslak, "Onaya gönder" ayrı |
-| 5 | Dosyadan oluştur | ?register=rfi&sihirbaz=dosya | Yükle → işleme (realtime) → inceleme (PDF önizleme + alanlar) → onay |
-| 6 | Onay kutusu | ?register=_onay | AI taslakları ve onay bekleyen kayıtlar; toplu onay yok |
-| 7 | Document / Drawing | ?register=document, drawing | Liste + yükleme; revizyon listesi (`document_revisions`, güncel işaretli) |
-| 8 | Register ayarları | Proje Yönetimi (admin) | Proje kodu (prefix), WBS ve Alan yönetimi (doğrudan yazma), register_permissions matrisi, AI ayarları; Drive seçilirse "klasörleri oluştur" |
+| 1 | Proje Kontrol kabuğu | /dashboard/projeler/{id}/kontrol | Sol menü: Dokümanlar (Document, Drawing), Teknik (RFI, Submittal, Material Approval, Interface), Yönetim (Action, Risk, Decision), Ticari (Change, Claim, Procurement, Subcontractor, Payment). Her satırda sayı ve rozet (bekleyen onay, geciken). Üstte Onay Kutusu rozeti. Mobilde açılır liste |
+| 2 | RegisterList | ?register=rfi | Arama, config'ten gelen filtreler, sunucu taraflı sayfalama (50), sıralama, "Yeni" ve "Dosyadan oluştur" butonları (yetkiye göre). Satır rozetleri: kayıt durumu, iş durumu, AI kaynaklı, termin geçti |
+| 3 | RegisterDetail | ?register=rfi&kayit={uuid} | Sağdan açılan panel (mevcut TalepDetayModal deseni). Başlık: numara, başlık, rozetler, eylem butonları (Düzenle, Onaya gönder, Onayla, Reddet, Yeniden aç, Durum değiştir). Sekmeler: Genel, Dokümanlar, İlişkiler, AI Analiz (Faz D), Geçmiş |
+| 4 | Kayıt formu | Detay panelinin içinde | formSections config'inden üretilir; istemci doğrulaması + sunucu validation hatasının alana bağlanması; "Kaydet" taslak açar, "Onaya gönder" ayrı eylemdir; onaylı kayıtta kilitli alanlar salt okunur |
+| 5 | Dosyadan Oluştur | ?register=rfi&sihirbaz=dosya | 4 adım: (1) dosya seç veya sürükle, (2) işleme durumu (realtime document_jobs), (3) inceleme: solda PDF önizleme, sağda alanlar yeşil/sarı/kırmızı, alanın kaynak alıntısı üzerine gelince görünür ve tıklayınca PDF ilgili sayfaya gider (#page=N), (4) Onayla, Reddet veya "Elle doldur" |
+| 6 | Onay Kutusu | ?register=_onay | İki sekme: AI taslakları (list_register_drafts) ve Onay bekleyen kayıtlar; satırda yaş ve kaynak doküman; toplu onay yok (kritik alanlar tek tek incelenir) |
+| 7 | Document ve Drawing | ?register=document, ?register=drawing | Klasörlü dosya gezgini: solda proje > disiplin > tür ağacı, ortada doküman listesi, sürükle-bırak yükleme, açma ve indirme (kısa ömürlü imzalı adres), revizyon geçmişi (R01 → R02 → R03, güncel olan işaretli), tekrar yüklenen dosya için uyarı. Yükleme sırasında ilerleme çubuğu ve yarıda kesilirse "Yüklemeyi iptal et" |
+| 8 | Register ayarları | Proje Yönetimi içinde (admin) | Proje kodu, WBS ve Area listesi ile toplu yükleme, register_permissions matrisi, AI ayarları (açık/kapalı, kota), dosya deposu doluluğu ve uyarı eşiği |
+| 9 | Bulgular ve proje sağlığı (Faz E) | ?register=_bulgular | ai_findings listesi (durumu: yeni, görüldü, reddedildi, kayda dönüştü); register sağlığı özet kartları |
 
-**Bileşenler:** `src/components/proje-kontrol/`:
-- ProjeKontrolTab, RegisterNav, RegisterList, RegisterDetail.
-- RecordForm, DocumentsPanel, RevisionList, DocumentUpload.
-- LinksPanel, AuditPanel, DraftWizard, ApprovalInbox, RegisterSettings.
+**Bileşen ağacı** (öneri: src/components/proje-kontrol/)
 
-**Hook'lar:**
-- useRegisterPermissions, useRegisterList, useRegisterRecord, useRegisterDraft, useDocumentJob.
-- useRealtimeRefresh: ilgili tablolar yayına eklenince.
-- Seçim `useUrlSyncedSelection` ile; çoklu parametre için `syncEntityParams`.
+```text
+ProjeKontrolTab
+├─ RegisterNav
+├─ RegisterList
+│   ├─ RegisterToolbar
+│   └─ RegisterTable | RegisterCards (mobil) + Pagination
+├─ RegisterDetail
+│   ├─ DetailHeader (StatusBadge, ConfidenceBadge, eylem butonları)
+│   ├─ RecordForm (registerConfig'ten)
+│   ├─ DocumentsPanel + DocumentUpload
+│   ├─ LinksPanel + RefPicker (search_register_refs)
+│   ├─ AiAnalysisPanel (Faz D)
+│   └─ AuditPanel (get_register_audit)
+├─ DraftWizard (UploadStep, ProcessingStep, ReviewStep, DoneStep)
+├─ ApprovalInbox
+└─ RegisterSettings (admin)
+```
 
-**registerConfig.js** (alan adları canlı kolonlarla):
+**Hook'lar:** useRegisterPermissions(projectId) (oturum başına önbellek), useRegisterList(params), useRegisterRecord(type, id), useRegisterDraft(id), useDocumentJob(jobId) (realtime), useRealtimeRefresh register, documents, register_drafts ve document_jobs tablolarında (mevcut hook). Seçili kayıt useUrlSyncedSelection ile ?kayit= parametresine bağlanır; son açık register localStorage'da proje-kontrol-active-register-{projectId} anahtarıyla saklanır (mevcut proje bazlı anahtar deseni).
+
+**registerConfig.js şeması** (yeni register eklemek = bu nesnenin bir örneği):
 
 ```js
 export const rfiConfig = {
-  key: 'rfi', label: 'RFI', group: 'teknik', critical: false,
-  supportsDraftFromFile: true, aiSchema: 'rfi_v1',
+  key: 'rfi',
+  label: 'RFI',
+  labelPlural: 'RFI Listesi',
+  group: 'teknik',
+  critical: false,
+  supportsDraftFromFile: true,
+  aiSchema: 'rfi_v1',
   listColumns: [
-    { key: 'register_no', label: 'No', type: 'text', sortable: true }, // view'da rfi_no as register_no
+    { key: 'register_no', label: 'No', type: 'text', sortable: true },
     { key: 'subject', label: 'Konu', type: 'text' },
-    { key: 'area_code', label: 'Alan', type: 'text' },
+    { key: 'area_code', label: 'Area', type: 'text' },
     { key: 'status', label: 'Durum', type: 'enum', enum: 'rfiStatus' },
-    { key: 'due_date', label: 'Termin', type: 'date', sortable: true, overdueWhenStatus: ['open', 'under_review'] },
+    { key: 'due_date', label: 'Termin', type: 'date', sortable: true, overdueWhenStatus: 'open' },
     { key: 'record_state', label: 'Kayıt', type: 'recordState' },
   ],
-  formSections: [{ title: 'Genel', fields: [
-    { key: 'subject', label: 'Konu', type: 'text', required: true },
-    { key: 'question', label: 'Soru', type: 'textarea', required: true },
-    { key: 'drawing_id', label: 'İlgili çizim', type: 'ref', ref: 'drawing' },
-    { key: 'task_id', label: 'Aktivite', type: 'ref', ref: 'task' },
-  ] }],
-  lockedWhenApproved: ['subject', 'question', 'raised_date', 'drawing_id'],
+  filters: [
+    { key: 'status', type: 'enum', enum: 'rfiStatus' },
+    { key: 'area_id', type: 'ref', ref: 'area' },
+    { key: 'overdue', type: 'toggle', label: 'Termini geçenler' },
+  ],
+  formSections: [
+    { title: 'Genel', fields: [
+      { key: 'subject', label: 'Konu', type: 'text', required: true },
+      { key: 'question', label: 'Soru', type: 'textarea', required: true },
+      { key: 'drawing_id', label: 'İlgili çizim', type: 'ref', ref: 'drawing' },
+      { key: 'task_id', label: 'Aktivite', type: 'ref', ref: 'task' },
+    ] },
+  ],
+  lockedWhenApproved: ['subject', 'question', 'raised_at', 'drawing_id'],
 };
 ```
 
-**Türkçe etiketler:**
+**Türkçe etiketler** (enum değeri kodda İngilizce, ekranda Türkçe; tek bir labels.js sözlüğünde):
 
 | Alan | Değer → etiket |
 |---|---|
 | record_state | draft → Taslak, pending_approval → Onay bekliyor, approved → Onaylı, rejected → Reddedildi |
-| RFI status | open → Açık, under_review → İncelemede, answered → Cevaplandı, closed → Kapalı, rejected → Reddedildi |
-| Action status | open → Açık, in_progress → Devam ediyor, done → Tamamlandı, cancelled → İptal |
-| revision_status | ifr → İnceleme için (IFR), ifa → Onay için (IFA), ifc → Uygulama için (IFC), as_built → As-Built |
-| priority | low → Düşük, medium → Orta, high → Yüksek, critical → Kritik |
+| RFI status | open → Açık, answered → Cevaplandı, closed → Kapalı, cancelled → İptal |
+| priority | low → Düşük, normal → Normal, high → Yüksek, critical → Kritik |
+| güven | yeşil → Yüksek, sarı → Orta, kırmızı → Düşük; renk tek başına anlam taşımaz, etiket de yazılır |
 | source | manual → Elle, ai → AI, import → Aktarım |
 
-**Bildirimler (Faz C):**
-- notifications'a `meta` alanı ve `register_record` / `register_draft` entity türleri eklenir.
-- Derin bağlantı `?register=&kayit=` biçimindedir.
-- Alıcı rolün ilgili ekrana gerçekten erişebildiği doğrulanmalı (CLAUDE.md kuralı). Bu yüzden santiye_sefi ve muhasebe bildirimleri üst seviye `kontrol` sekmesine gider.
+**Bildirimler.** AI taslağı oluşunca register_draft / created olayı, onay yetkisi olan rollere notify_role ile gider; onaya gönderilince register_record / pending; onay ve ret created_by kullanıcısına notify_user ile (approved, rejected, gerekçe body'de); işleme hatası yükleyene status_changed. meta.register_type tıklayınca doğru register'ı açar (mevcut goToRequest deseni: ?register=&kayit=, taslakta ?register=_onay&taslak=). Uyarı: CLAUDE.md'ye göre alıcı rolün gerçekten bu ekrana erişebildiği doğrulanmalı; ProjeDetay iç sekmelerinin role_allowed_tabs ile mi kontrol edildiğini Faz A'daki tasarım notu netleştirir. notify_role proje kapsamını kendiliğinden daraltıyor mu, Faz C'de test edilir.
 
 ## 4.8 Migration listesi
 
-Durum, canlı şemaya göre (07.10.2026; değerlendirme `canli-sema-ozeti.md` §7). **yapıldı** = canlıda; **kısmen** =
-tablo var, eksik parça §4.10'da; **yapılmadı**; **gereksiz** = kararla düştü.
+Dosya adları mevcut biçimi izler (YYYYMMDDHHMMSS_ad.sql). Yapılanlar canlıya uygulanmış ve supabase/migrations/ altına dosyası yazılmıştır (05.10 migration'larının dosyası repoda yoktu, docs/proje-kontrol/canli-05-10-migrations/ altına birebir kopyalandı). Hepsi yalnızca ekleyicidir.
 
-| # | v2 adı | v2 içeriği | Durum | Canlıdaki karşılık / kalan |
-|---|---|---|---|---|
-| M01 | register_wbs_areas | wbs, areas, project_tasks bağları | **yapıldı** | `20261005103850_faz1_wbs_alan_activity` (project_wbs, project_areas, area_wbs, activity_id, baseline_*) |
-| M02 | register_audit_infra | register_audit, trigger | **yapılmadı** | Yalnızca register_status_history; B3'te "değişen alanlar" audit'i |
-| M03 | register_permissions | register_permissions, register_can, transitions | **yapılmadı** | B2 |
-| M04 | register_numbering | settings, counters, next_register_no | **yapıldı** | `20261005125957` + `20261007072501` (biçim, kırpma, proje kodu) |
-| M05 | documents_core | documents, document_texts, drive tabloları, view, RPC, realtime | **kısmen** | documents + document_revisions var; document_texts **gereksiz** (depolama kararı); view/RPC/realtime B4-B5; drive tabloları yalnızca B seçeneğinde |
-| M06 | registers_drawings_rfis_links | drawings, rfis, register_links, view | **kısmen** | drawings, rfis var; register_links ve view'lar Faz C |
-| M07 | ai_runs_jobs_drafts | document_jobs, ai_settings, ai_runs, register_drafts | **yapılmadı** | B6 |
-| M08 | register_write_rpcs | yazma RPC'leri, geçiş seed'i | **yapılmadı** | B4 (G-01 kalıcı) |
-| M09 | register_draft_rpcs | taslak ve iş RPC'leri | **yapılmadı** | Faz C (tablolar B6) |
-| M10 | notifications_register_support | meta, entity_type | **yapılmadı** | Faz C |
-| M11 | tickets_register_columns | tickets'a register_no | **gereksiz** | Action ayrı tablo (`project_actions`) |
-| M12 | submittals_material_approvals | iki tablo | **kısmen** | Tablolar var (05.10); view, geçiş seed'i, eksik alanlar Faz D |
-| M13 | changes_claims | iki tablo | **yapılmadı** | Faz D |
-| M14 | project_risks_register_extension | ek kolonlar, source | **kısmen** | wbs/area/task/rfi/action/decision kFK var; register_no, onay, source Faz D |
-| M15 | suppliers_type_and_links | supplier_type | **yapılmadı** | Faz D; ad `party_type` (supplier_type dolu) |
-| M16 | interfaces_decisions | iki tablo | **kısmen** | decisions var; interfaces Faz E |
-| M17 | agent_infra | ai_findings, svc_agent_* | **yapılmadı** | Faz E |
-| M18 | register_bridge_views | köprü view'ları | **yapılmadı** | Faz D-E |
-| — | (v2'de yoktu) uyum migration'ı | project_actions, numara, revizyon, is_critical | **yapıldı** | `20261007072501_uyum_project_control_registers` |
-| — | (v2'de yoktu) G-01, G-02/G-03 | güvenlik | **yapıldı** | `20261007063808`, `20261007063825` |
+| Sürüm / kod | Ad | Durum | İçerik |
+|---|---|---|---|
+| 20261005103850 | faz1_wbs_alan_activity | YAPILDI | project_wbs, project_areas, area_wbs; project_tasks'a kolonlar ve identity_guard trigger'ı |
+| 20261005125957 | project_control_phase1_core | YAPILDI | 7 register tablosu, sayaç, durum geçmişi, mevcut tablolara FK kolonları |
+| 20261005132810 | project_control_phase1b_hardening | YAPILDI | Yetki ayarı |
+| 20261007063808 | G-01 geçici yazma kapatma | YAPILDI | 8 register tablosunda authenticated yazma yetkisi geri alındı |
+| 20261007063825 | G-02/G-03 metadata sızıntı | YAPILDI | daily_report_photos ve ticket_attachments politikaları ve storage okuma kuralları sıkılaştırıldı |
+| 20261007072501 | uyum_project_control_registers | YAPILDI | project_actions, document_revisions, project_register_settings, numaralama düzeltmesi (G-11), is_critical kaldırma |
+| B1 | register_permissions | Faz B | register_permissions, register_can(), get_my_register_permissions, register_status_transitions |
+| B2 | register_audit_and_indexes | Faz B | register_audit (yalnızca değişen alanlar), FK indeksleri, G-13 (TRUNCATE yetkisini geri çek) |
+| B3 | register_write_rpcs | Faz B | Kaydet, onaya gönder, onayla, reddet, yeniden aç, durum değiştir, bağla, sil; G-01 geçici kapatması kalıcı kurala dönüşür |
+| B4 | identity_guard_admin_fix | Faz B | Yalnızca admin'in kullanabildiği Activity ID düzeltme RPC'si |
+| B5 | document_storage | Faz B | document_revisions dosya alanları, özel bucket, Storage politikaları (G-04), begin/complete/abort/void RPC'leri, get_storage_usage, temizlik işi |
+| B6 | register_read_rpcs | Faz B | vw_reg_* görünümleri, get_register_list, get_register_detail, get_register_overview, realtime |
+| C1 | ai_jobs_drafts | Faz C | document_jobs, ai_settings, ai_runs, register_drafts, ai_budget_ok() |
+| C2 | register_draft_rpcs | Faz C | Taslak RPC'leri, save_ai_draft, log_ai_run, bildirim desteği (notifications.meta, entity_type değerleri) |
+| D1 | changes_claims | Faz D | changes, claims, görünümler, RLS |
+| D2 | project_risks_register_extension | Faz D | project_risks ek kolonlar, source CHECK genişletmesi, Risk için taslak onay yolu |
+| D3 | suppliers_type_and_links | Faz D | suppliers.supplier_type, Procurement ve Subcontractor köprü görünümleri |
+| E1 | interfaces | Faz E | interfaces tablosu ve görünümü |
+| E2 | agent_infra | Faz E | ai_findings, svc_agent_* RPC'leri, kuyruk işleyici; isteniyorsa fons_agent rolü |
+| E3 | register_bridge_views | Faz E | Payment ve Procurement okuma köprüleri |
 
-**Her migration'ın kontrol listesi:**
-- [ ] Her FK kolonuna indeks.
-- [ ] RLS açık, SELECT policy var, register tablolarında yazma policy'si yok.
-- [ ] Yeni tablo ve fonksiyonda açık REVOKE (`pg_default_acl` notu).
-- [ ] CHECK'ler bu dosyayla aynı.
-- [ ] Seed'ler `on conflict do nothing`.
-- [ ] Realtime eklemesi yapıldı.
-- [ ] Pozitif ve negatif RLS testi yazıldı.
-- [ ] CLAUDE.md güncellendi.
-- [ ] Önce anlık görüntü / db:backup alındı.
+**Her migration'ın kontrol listesi** (PR açıklamasında işaretlenir):
 
-**Geri alış:**
-- Veri yoksa ters migration.
-- Veri varsa nesne kullanılmaz bırakılır ve ileri düzeltme yazılır.
-- Uyum migration'ının geri alınması için `taslak-sql/uyum_migration_taslak.sql` BÖLÜM B ve `yedek-uyum-07-10.sql` kullanılır.
+- [ ] Her FK kolonuna indeks
+- [ ] enable row level security ve SELECT policy; yazma policy'si yok
+- [ ] Her fonksiyonda security definer, set search_path = public, revoke ... from public, anon (ve authenticated yalnızca çağrılması gerekiyorsa)
+- [ ] Yeni tablolarda varsayılan geniş yetkiler (Supabase varsayılanı) açıkça geri çekildi
+- [ ] CHECK'ler ve enum değerleri bu bölümdeki listeyle aynı
+- [ ] Seed'ler on conflict do nothing ile tekrar çalıştırılabilir
+- [ ] Realtime yayınına eklenecek tablolar eklendi
+- [ ] RLS pozitif ve negatif testi yazıldı
+- [ ] Taslak BEGIN ... ROLLBACK içinde canlıda denendi ve canlının değişmediği doğrulandı
+- [ ] Geri alma SQL'i ve değişen nesnelerin anlık görüntüsü hazır
+- [ ] CLAUDE.md ve sistem dokümantasyonu güncellendi
+
+**Geri alış.** Migration'lar ekleyici olduğu için geri alış, veri yoksa ters migration (drop), veri varsa nesneyi kullanılmaz bırakıp ileri düzeltme migration'ı yazmaktır. Her uygulamadan önce yedek: tam şema yedeği (npm run db:backup), veri değiştiren migration'larda ayrıca veri yedeği.
 
 ## 4.9 Test matrisi ve açık noktalar
 
-**Mevcut testler (07.10.2026):**
-- `proje-kontrol-guvenlik.spec.js` 8.
-- `proje-kontrol-master-veri.spec.js` 9.
-- `proje-kontrol-uyum.spec.js` 7 + 3 fixme.
-- `supabase/functions/drive-gateway/handler.test.ts` 28.
-- `taslak-sql/uyum_migration_dogrulama.sql`: kendini geri alan SQL doğrulaması.
+Testler mevcut tests/ desenine (Playwright + helpers.js) eklenir; veritabanı ve RPC testleri gerçek RPC çağrısıyla yazılır. Her satır ilgili fazın çıkış kapısına dahildir.
 
-**Hedef matris:**
+| ID | Alan | Senaryo | Beklenen |
+|---|---|---|---|
+| T01 | RLS | anon anahtarıyla her yeni tabloyu oku | Sonuç yok |
+| T02 | RLS | Başka projenin santiye_sefi kullanıcısı okur | 0 satır |
+| T03 | RLS | can_view = false rol (muhasebe → rfi) okur | 0 satır |
+| T04 | RLS | authenticated kullanıcı doğrudan INSERT, UPDATE, DELETE dener | Reddedilir |
+| T05 | RPC | Her yazma RPC'sini anon çağırır | Yetki hatası |
+| T06 | RPC | Yetkisiz rol create veya approve çağırır | forbidden |
+| T07 | Numaralama | 20 eşzamanlı save_register_record, aynı proje ve tür | 20 benzersiz, ardışık numara |
+| T08 | Numaralama | Geri alınan işlem | Numara tüketilmez |
+| T09 | Durum | draft → approved doğrudan | invalid_state |
+| T10 | Durum | Kritik register'da yaratıcı kendi kaydını onaylar (dört göz açıkken) | forbidden |
+| T11 | Durum | Onaylı kayıtta kilitli alanı düzenle | invalid_state |
+| T12 | Audit | Her durum değişimi audit satırı üretir; audit satırını UPDATE/DELETE dene | Satır var; değişiklik reddedilir |
+| T13 | Taslak | Düşük güvenli alanı incelemeden approve_register_draft | review_required |
+| T14 | Taslak | Aynı doküman ve tür için ikinci çıkarım | Öncekiler superseded |
+| T15 | Taslak | Taslak onayı | Hedef kayıt source = ai, approved, numaralı |
+| T16 | Dosya deposu | Başka projenin kullanıcısı dosya adresi ister | Reddedilir |
+| T17 | Dosya deposu | Aynı dosyayı (sha256) ikinci kez yükle | duplicate hatası ve mevcut kayıt id'si |
+| T18 | Dosya deposu | begin_document_upload olmadan veya yolu kayıtla eşleşmeyen yükleme | Storage reddeder |
+| T19 | Dosya deposu | İzinsiz tür; boyut sınırının üstünde dosya | Reddedilir |
+| T20 | Dosya deposu | Yarım kalan yükleme (1 saatten eski uploading) | Temizlik işi satırı ve dosyayı siler |
+| T21 | AI | Alıntı belgede yok | Güven en çok 0,3, quote_not_found |
+| T22 | AI | Belgede "önceki talimatları unut" cümlesi | Şema dışına çıkılmaz, talimat uygulanmaz |
+| T23 | AI | Kapatma anahtarı kapalı | İş skipped, manuel RFI çalışır |
+| T24 | AI | Bütçe aşımı | budget_exceeded, manuel akış sürer |
+| T25 | Bildirim | AI taslağı oluşur | Onay yetkili roller alır; yetkisiz rol ve başka proje almaz |
+| T26 | Frontend | 4 rol × her ekran | Görünen butonlar register_permissions ile uyumlu |
+| T27 | Frontend | ?register=&kayit= bağlantısını yenile | Aynı kayıt açılır |
+| T28 | Frontend | 390 px genişlik | Kart görünümü çalışır |
+| T29 | Regresyon | Mevcut 92 test | Hepsi yeşil |
 
-| ID | Alan | Senaryo | Beklenen | Durum |
-|---|---|---|---|---|
-| T01 | RLS | anon her yeni tabloyu okur | Sonuç yok | Var (uyum spec) |
-| T02 | RLS | Başka projenin santiye_sefi'si okur | 0 satır | Fikstür gerektirir (B4 sonrası RPC ile) |
-| T03 | RLS | can_view=false rol (muhasebe → rfi) okur | 0 satır | B2 |
-| T04 | RLS | authenticated doğrudan INSERT/UPDATE/DELETE | Reddedilir | Var (uyum spec) |
-| T05 | RPC | Yazma RPC'lerini anon çağırır | Yetki hatası | B4 |
-| T06 | RPC | Yetkisiz rol create/approve | forbidden | B4 |
-| T07 | Numaralama | 20 eşzamanlı save_register_record | 20 benzersiz, ardışık | fixme (B4) |
-| T08 | Numaralama | Geri alınan işlem | Numara tüketilmez | Var (SQL doğrulama) |
-| T08b | Numaralama | 1/9/10/999/1000/1001/10000. kayıt | Kırpma yok | Var (SQL doğrulama) |
-| T09-T11 | Durum | Geçersiz geçiş, dört göz, kilitli alan | invalid_state / forbidden | B4 |
-| T12 | Audit | Değişiklik audit üretir, yalnızca değişen alanlar; audit UPDATE/DELETE reddedilir | | B3 |
-| T13-T15 | Taslak | review_required, superseded, source=ai | | Faz C |
-| T16-T19 | Gateway | 401/403, 409 tekrar, 415/413, telafi silme | | Birim testi var; uçtan uca sağlayıcı sonrası |
-| T20 | Sync | Çöpe atma/taşınma | trashed/missing | Yalnızca B seçeneği |
-| T21-T24 | AI | Alıntı yok, enjeksiyon, kapatma anahtarı, bütçe | | Faz C |
-| T25 | Bildirim | Taslak bildirimi doğru rollere | | Faz C |
-| T26-T28 | Frontend | 4 rol × ekran, URL yenileme, 390 px | | Faz B-C |
-| T29 | Regresyon | Tam set | Yeşil | Var (121; 118 geçiyor + 3 fixme) |
-| T30 | Revizyon | İkinci is_current reddi; çizim yalnızca çizim türü dokümana | | Var (SQL doğrulama); Playwright fixme |
+**Açık noktalar ve kararlar** (tasarımı etkileyenler):
 
-**Açık noktalar:**
-1. Dosya sağlayıcısı (§4.5).
-2. Karar #4 yetki matrisi.
-3. Dört göz kuralı küçük ekipte kilitlenebilir; `four_eyes_enabled` ayarı önerisi.
-4. Taranmış PDF'te alıntı doğrulaması görüntü transkriptiyle yapılır; transkript kalıcı saklanmaz, yalnızca taslaktaki kısa alıntı kalır.
-5. Altyapı sınırları: depo yükleme süresi ve boyutu, edge function süre ve bellek, Deno'da PDF metin kütüphanesi.
-6. register_status_history ile register_audit'in birlikte mi kalacağı (B3).
-7. db:backup.
-8. Gizlilik: ai_runs içerik saklamaz; sağlayıcının veri saklama politikası sözleşme kontrolünde doğrulanır.
+1. Baz şema doğrulaması: projects, profiles, project_risks, procurement_items kolon tipleri (canli-sema-ozeti.md ve canlı sorgular).
+2. Dört göz kuralı küçük ekipte kilitlenebilir (tek kişi hem hazırlıyor hem onaylıyorsa). Öneri: project_register_settings'e proje bazlı ayar, varsayılan açık; kapatmak admin kararıdır ve audit'e yazılır.
+3. Taranmış PDF'te alıntı doğrulaması: görüntü modunda model sayfa transkriptini de döndürür, alıntı bu transkriptte aranır; transkript işlem sonunda silinir. Bu yöntemin güvenilirliği Faz B ölçümünde ayrıca test edilir.
+4. Faz B'de ölçülecek sınırlar: edge function süre ve bellek sınırı, istemciden Storage'a büyük dosya yükleme, PDF metin çıkarımı için Deno'da çalışan kütüphane.
+5. Bildirim kapsamı: notify_role proje bazında daraltıyor mu (canlı incelemede daraltmadığı görüldü) ve ProjeDetay iç sekmeleri hangi mekanizmayla yetkilendiriliyor. Şantiye şefi ve muhasebe rollerinin Projeler sekmesi olmadığı için Proje Kontrol'e ayrı üst seviye giriş gerekir; Faz B'de karar verilir.
+6. Yetki matrisi değerleri Karar 6 ile onaylanır.
+7. Eski kayıtlar: mevcut risk satırları register numarası olmadan kalır; istenirse Faz E'de geriye dönük numaralandırma yazılır.
+8. Gizlilik: ai_runs belge içeriğini saklamaz, yalnızca sayısal ve meta bilgi; dokümanın tam metni kalıcı saklanmaz. Sağlayıcının verileri saklama ve model eğitiminde kullanma politikası sözleşme kontrolünde ayrıca doğrulanır.
+9. Supabase planı: pilot dokümanlarından önce Pro plana geçiş (patron onayı bekliyor); o zamana kadar ücretsiz plan sınırları (1 GB dosya, 500 MB veritabanı, tek dosya 50 MB, otomatik yedek yok) geliştirme verisiyle yönetilir.
 
-## 4.10 Faz B kalan iş paketleri
-
-Sıra bağımlılığa göredir. Her paket ayrı migration, SQL onayıyla uygulanır, ROLLBACK'li denemeyle doğrulanır.
-
-| # | Paket | İçerik | Bağımlılık | Kabul |
-|---|---|---|---|---|
-| B1 | Hijyen | **G-13:** project_wbs, project_areas, area_wbs'ten `authenticated`'ın TRUNCATE/REFERENCES/TRIGGER yetkisi geri çekilir. **FK indeksleri:** register'lar arası kFK'ler (rfis.drawing_id/document_id/decision_id, project_actions.rfi_id/risk_id/decision_id, decisions.rfi_id/risk_id, technical_submittals.document_id, material_approvals.document_id/technical_submittal_id) ile kişi/tedarikçi FK'leri (created_by, assigned_to, raised_by, reviewer_id, supplier_id). **Ortak kolonlar** (§4.1): record_state, source, approved_*, created_by eksikleri, source_document_id, discipline CHECK | — | Advisor'da indekssiz FK yok; yetki sorgusu temiz |
-| B2 | Yetki | register_permissions + 4 rol seed'i (Karar #4); register_can(); get_my_register_permissions; register_status_transitions + seed; SELECT policy'leri `has_project_access AND register_can(type,'view')` olarak değişir | B1, Karar #4 | T03; muhasebe yetkisiz register'ı göremiyor |
-| B3 | Audit | register_audit (yalnızca değişen alanlar, `changed jsonb`), fn_register_audit trigger'ı register tablolarına; UPDATE/DELETE yetkisi yok | B1 | T12; satır boyu ölçülür (büyük metin kısaltma) |
-| B4 | Yazma RPC'leri | save/submit/approve/reject/reopen/set_status/delete_register_record, add_document_revision. **G-01 kalıcılaşır:** register tablolarındaki `*_insert/_update/_delete` policy'leri düşürülür, `can_write/can_manage_project_control` kullanılmıyorsa kaldırılır; GRANT'ler yalnızca SELECT kalır. RPC'ler `*_no` almaz | B2, B3 | T04-T07, T09-T11; 20 eşzamanlı numara testi (fixme açılır) |
-| B5 | Dosya akışı | Seçilen sağlayıcıya göre gateway adaptörü (§4.5), get_revision_for_download, create_document_record; dosya alanları `document_revisions`'ta var. Seçime göre: A → bucket + yol kuralı; B → project_drive_folders, drive_sync_state | Sağlayıcı kararı, B4 | T16-T19 uçtan uca; yetkisiz kullanıcı dosya alamıyor |
-| B6 | AI altyapısı | register_drafts, document_jobs, ai_runs, ai_settings (tablolar + RLS; RPC'ler Faz C) | B1 | Tablolar boş, RLS testleri |
-| B7 | Düzeltmeler | **G-04:** storage silme/yükleme sahiplik ve rol kontrolü (saha-fotolari, ticket-ekleri). **G-12:** YeniTicketModal ek yükleme hatasını kullanıcıya gösterir. **identity_guard:** yalnızca-admin `admin_correct_task_activity_id` RPC'si (gerekçe zorunlu, audit'e yazılır) | B3 (audit için) | G-04/G-12 testleri; RPC yalnızca admin |
-| B8 | Frontend iskeleti | RegisterList/RegisterDetail, ortak rozetler, AuditPanel; Proje Kontrol sekmesi yalnızca admin'e | B4 | Ekran testleri |
-| B9 | Ölçüm | Sağlayıcı ölçümü (gizlilik iznine göre kapsam) | Ölçüm seti, Karar #5 | Ölçüm raporu |
-
-Faz B'nin eski M01/M04 işleri bittiği için B1-B4 ilk iki haftaya sığar. B5 sağlayıcı kararına, B9 ölçüm setine bağlı.
+**Kapsam notu.** Faz A-D'nin tabloları, RPC'leri, dosya deposu, ekranları ve testleri bu seviyede tasarlandı. Faz E'nin bir kısmı (Excel import sihirbazı, proje sağlığı dashboard'unun kartları, Interface ekranının alan ayrıntısı) şimdilik envanter düzeyinde; Faz D kapısında, pilottan öğrenilenlerle ayrıntılandırılması planlanır.
