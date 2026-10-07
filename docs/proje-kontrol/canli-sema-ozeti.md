@@ -327,6 +327,9 @@ Hepsinde ortak olanlar:
 
 ## 7. tasarim.md ile farklar (Bölüm 4.1, 4.2, 4.8 ↔ canlı)
 
+> Not (07.10.2026): Bu tablo v3'ten önceki tasarım sürümüyle (`arsiv/`) karşılaştırır. Güncel tasarim.md v3 ile
+> farklar ve yapılan düzeltmeler `v3-uyum-notlari.md`'dedir.
+
 | Nesne | Tasarımda | Canlıda |
 |---|---|---|
 | **4.1 ortak sözleşme** | | |
