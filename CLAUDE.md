@@ -1555,6 +1555,7 @@ Risk girişi yalnızca proje **düzenleme** akışında var, **oluşturmada yok*
 | Kullanıcı yönetimi / navigasyon | roles, role_allowed_tabs, role_sidebar_items, profiles, user_project_access, user_management_audit |
 | Bildirim | notifications |
 | Destek / diğer | tickets, ticket_comments, ticket_history, ticket_attachments, agent_reports, procurement_items, procurement_item_adjustments, procurement_item_change_requests |
+| Proje kontrol (register, 05-07.10.2026; canlıda toplam 55 tablo) | project_wbs, project_areas, area_wbs, project_actions, documents, document_revisions, drawings, rfis, decisions, technical_submittals, material_approvals, project_register_settings, project_register_counters, register_status_history — bkz. "Proje Kontrol (Faz A)" |
 
 View'lar (hepsi `security_invoker=on`): `project_cost_summary`, `personnel_logs`,
 `v_invoice_payment_overview`, `vw_delayed_tasks`, `vw_monthly_progress`,
@@ -1687,7 +1688,7 @@ onaylanmamış karar uygulanmaz. Kararlar `tasarim.md` ile çelişirse kararlar 
 
 | # | Karar | İçerik | Durum |
 |---|---|---|---|
-| 0 | 05.10 ön şemasının akıbeti | **(a) yolu:** tablolar korunur, onaylanan alt kararlara uyum migration'ıyla hizalanır. Alt kararlar: **0.1** Action ayrı tablo, adı `project_actions` (`actions` yeniden adlandırılır; ticket sahadan bildirim olarak kalır, genişletilmez); kaynak listesinden `inspection`/`ncr` çıkar. **0.2** Numara `{TÜR}-{PROJE_KODU}-{SIRA}` (`RFI-DYB-0032`): yıl ve disiplin yok, sıra proje+tür bazında boşluksuz, 4 haneye kadar sıfır, uzun sayı kırpılmaz; proje kodu `project_register_settings` (ADN1, ADN2, TIZ, TKY; DYB Diyarbakır açılınca); çizim türündeki dokümanlar `DRW`, diğerleri `DOC`; `TS`/`MA` önekleri kalır. **0.3** bkz. #3. **0.4** `technical_submittals` ve `material_approvals` iki ayrı tablo, dokunulmaz. **0.5** `project_tasks.is_critical` yeniden kaldırılır (03.08 kararı). Gerekçe: tablolar boş, (a) mevcut kompozit FK ve WBS/Alan yapısını koruyor | **ONAYLANDI (07.10.2026)** — migration taslağı hazır ve ROLLBACK'li denemede geçti, **canlıya henüz uygulanmadı** |
+| 0 | 05.10 ön şemasının akıbeti | **(a) yolu:** tablolar korunur, onaylanan alt kararlara uyum migration'ıyla hizalanır. Alt kararlar: **0.1** Action ayrı tablo, adı `project_actions` (`actions` yeniden adlandırılır; ticket sahadan bildirim olarak kalır, genişletilmez); kaynak listesinden `inspection`/`ncr` çıkar. **0.2** Numara `{TÜR}-{PROJE_KODU}-{SIRA}` (`RFI-DYB-0032`): yıl ve disiplin yok, sıra proje+tür bazında boşluksuz, 4 haneye kadar sıfır, uzun sayı kırpılmaz; proje kodu `project_register_settings` (ADN1, ADN2, TIZ, TKY; DYB Diyarbakır açılınca); çizim türündeki dokümanlar `DRW`, diğerleri `DOC`; `TS`/`MA` önekleri kalır. **0.3** bkz. #3. **0.4** `technical_submittals` ve `material_approvals` iki ayrı tablo, dokunulmaz. **0.5** `project_tasks.is_critical` yeniden kaldırılır (03.08 kararı). Gerekçe: tablolar boş, (a) mevcut kompozit FK ve WBS/Alan yapısını koruyor | **ONAYLANDI (07.10.2026)** — **migration uygulandı** (`20261007072501_uyum_project_control_registers`) |
 | 1 | Drive erişim modeli | Tek servis hesabı Shared Drive'a erişir; kullanıcı dosyayı yalnızca drive-gateway üzerinden açar (her çağrıda JWT + `has_project_access`) | **ONAY BEKLİYOR** |
 | 2 | Drive klasör yapısı | Shared Drive "Fons Projects" > Proje > `01_Dokumanlar` > Disiplin > Register türü (+ `00_Gelen_Kutusu`, `99_Arsiv`); dosya adı `{register_no}_{rev}_{kisa-baslik}.{ext}` (ör. `DRW-DYB-0125_R03_…`) | **ONAY BEKLİYOR** |
 | 3 | Revizyon modeli | Tek doküman, çok revizyon: `documents` doküman kimliğini tutar, revizyonlar `document_revisions`'ta (revizyon no, durum `ifr`/`ifa`/`ifc`/`as_built`, dosya bilgisi, `is_current`); dokümanın tek `is_current` satırı olur (kısmi unique index). Her revizyon ayrı Drive dosyası. `drawings` dokümana bire bir bağlı uzantı, kendi numarası yok, yalnızca `document_type='drawing'` dokümana bağlanır (3 kolonlu FK). Tasarımdaki `supersedes_id` zinciri yerine geçer | **ONAYLANDI (07.10.2026)** |
@@ -1727,9 +1728,10 @@ onaylanmamış karar uygulanmaz. Kararlar `tasarim.md` ile çelişirse kararlar 
 - Geri alma: `docs/proje-kontrol/yedek-policy-07-10.sql` (değişen nesnelerin anlık görüntüsü; tam şema dökümü
   `.env.local` olmadığı için alınamadı — Faz B'deki veri değiştiren migration'lardan önce `npm run db:backup`
   çalışır hale getirilmeli).
-- Açık: G-04 ORTA (storage silme/yükleme sahiplik ve rol kontrolü yok, muhasebe dahil), G-11 ORTA
-  (`next_register_no` 1000. kayıtta çakışır), G-12 DÜŞÜK (YeniTicketModal ek hatasını yok sayıyor),
-  G-05..G-09 düşük/bilgi.
+- G-11 ORTA — **DÜZELTİLDİ (07.10.2026, uyum migration'ı):** `next_register_no` artık 4 haneye kadar sıfır
+  dolduruyor, uzun sayıyı kırpmıyor (`RFI-TIZ-10000` doğrulandı).
+- Açık: G-04 ORTA (storage silme/yükleme sahiplik ve rol kontrolü yok, muhasebe dahil), G-12 DÜŞÜK
+  (YeniTicketModal ek hatasını yok sayıyor), G-05..G-09 düşük/bilgi.
 
 **Yeni dosyalar:**
 - `docs/proje-kontrol/` — `tasarim.md`, `sema-dogrulama.md`, `guvenlik-bulgulari.md`, `frontend-tasarim-notu.md`,
@@ -1741,12 +1743,27 @@ onaylanmamış karar uygulanmaz. Kararlar `tasarim.md` ile çelişirse kararlar 
 - `supabase/migrations/20261007063808_…`, `20261007063825_…` — G-01 ve G-02/G-03 (canlıya uygulanan SQL'in birebir aynısı)
 - `docs/proje-kontrol/yedek-policy-07-10.sql` — bu iki migration öncesi policy/yetki anlık görüntüsü (geri yükleme betiği;
   action tablosunun adını `actions`/`project_actions` hangisi varsa ondan seçer)
-- **Uyum migration'ı (Karar #0, UYGULANMADI):** `docs/proje-kontrol/uyum-migration-plani.md`,
-  `taslak-sql/uyum_migration_taslak.sql` (v2; A uygula / B geri al), `taslak-sql/uyum_migration_dogrulama.sql`,
-  `yedek-uyum-07-10.sql`, `tests/proje-kontrol-uyum.spec.js` (migration yoksa kendini atlar; 3 yazma testi fixme).
-  07.10.2026'da migration + doğrulama tek ROLLBACK'li blokta canlıda denendi: tüm kontroller OK, sonrasında katalog
-  parmak izi birebir aynı. Not: `pg_default_acl` yeni tablolarda `authenticated`'a tüm yetkileri, yeni fonksiyonlarda
+- **Uyum migration'ı (Karar #0) — UYGULANDI 07.10.2026, `supabase/migrations/20261007072501_uyum_project_control_registers.sql`.**
+  Belgeler: `docs/proje-kontrol/uyum-migration-plani.md`, `taslak-sql/uyum_migration_taslak.sql` (v2; A uygulandı /
+  B geri alma), `taslak-sql/uyum_migration_dogrulama.sql` (kendini geri alan kontrol; uygulama sonrası OK),
+  `yedek-uyum-07-10.sql` (uygulama öncesi görüntü), `tests/proje-kontrol-uyum.spec.js` (7 test + Faz B'yi bekleyen
+  3 fixme). Not: `pg_default_acl` yeni tablolarda `authenticated`'a tüm yetkileri, yeni fonksiyonlarda
   `anon`/`authenticated`'a EXECUTE veriyor — yeni nesnelerde açık REVOKE şart.
+
+**Register şeması (07.10.2026 itibarıyla canlı):**
+- `project_actions` (eski `actions`): aksiyon register'ı; `source_type` ∈ manual/risk/rfi/decision/meeting/other.
+- Numara `{TÜR}-{PROJE_KODU}-{SIRA}` (ör. `RFI-TIZ-0032`). Proje kodu `project_register_settings(project_id, prefix)`
+  (ADN1, ADN2, TIZ, TKY; yeni projede satır eklenmezse o projede register kaydı açılamaz, açık hata verir).
+  Sıra `project_register_counters(project_id, register_code)`; yıl yok, kaydı ekleyen transaction içinde artar
+  (boşluksuz). Önekler: RFI, DEC, ACT, TS, MA (trigger argümanı), dokümanda `fn_assign_document_no` →
+  `document_type='drawing'` ise DRW, değilse DOC. Numara elle verilirse sayaçla çakışabilir → Faz B RPC'leri
+  `register_no` almamalı.
+- `documents` yalnızca kimlik (no, başlık, tür, disiplin, WBS/alan/görev, `status` active/void); dosya ve revizyon
+  `document_revisions`'ta (`revision_status` ifr/ifa/ifc/as_built, `is_current` — kısmi unique index, değişimde önce
+  eskisi false sonra yenisi true; sha256/size_bytes; `storage_url` yok). PDF tam metni DB'de kalıcı tutulmaz.
+- `drawings` dokümana bire bir uzantı: kendi numarası yok, `(project_id, document_id, document_type)` 3 kolonlu FK ile
+  yalnızca `document_type='drawing'` dokümana bağlanır; bağlı dokümanın türü değiştirilemez.
+- `project_tasks.is_critical` yeniden kaldırıldı.
 - `supabase/functions/drive-gateway/` — `index.ts`, `handler.ts`, `driveClient.ts`, `validation.ts`,
   `handler.test.ts` (`node --test …`, 28 test), `README.md` (deploy sonrası curl senaryosu)
 - `scripts/proje-kontrol/drive-limit-test.mjs` — Drive yükle/indir süre-boyut-hata tablosu (kimlik bilgisi gerekir)
@@ -2059,7 +2076,17 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**07.10.2026 (2. tur) — Karar #0 alt kararları ve #3 onaylandı; uyum migration'ı hazır, canlıya uygulanmadı.**
+**07.10.2026 (3. tur) — Uyum migration'ı canlıya uygulandı (`20261007072501`).**
+Uygulama öncesinde aktif sorgu ve hedef tablolarda kilit yoktu. Uygulama sonrası doğrulama betiği OK verdi ve test satırı kalmadı. Testler: uyum + iki güvenlik spec'i 24/24 geçti (3 fixme atlandı). Tam Playwright seti 118/118 geçti (3 fixme atlandı, başarısız yok).
+`fons_solar_sistem_dokumantasyonu.docx` güncellendi:
+- Tablo sayısı 55 oldu.
+- Modül haritasına "Proje kontrol" satırı eklendi.
+- 6.8 bölümü eklendi.
+- Önceki hâli `…yedek-07-10.docx` olarak saklandı.
+
+Veritabanı dokümantasyonu docx'u (`fons_solar_teknik_veritabani_v2.docx` / `fons_solar_veritabani_dokumantasyonu.docx`) bilgisayarda bulunamadı, güncellenmedi.
+
+**07.10.2026 (2. tur) — Karar #0 alt kararları ve #3 onaylandı; uyum migration'ı ROLLBACK'li denemede geçti.**
 Migration ve doğrulama betiği tek bir ROLLBACK'li blokta canlıda denendi. Tüm kontroller geçti:
 - Yeni tablolarda yetki ve RLS kontrolü.
 - Numaralar `RFI-TIZ-0001` … `RFI-TIZ-10000`; kırpma yok, boşluk yok.
