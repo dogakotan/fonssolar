@@ -36,6 +36,7 @@ end $$;
 -- ── 1. Migration'ın eklediği nesneleri kaldır ──
 drop table if exists public.document_revisions;
 drop trigger if exists trg_documents_assign_no on public.documents;
+drop function if exists public.fn_assign_document_no();
 
 -- ── 2. Gelen FK'leri bırak (tablolar yeniden kurulacak) ──
 alter table public.rfis                 drop constraint if exists rfis_document_id_fk;

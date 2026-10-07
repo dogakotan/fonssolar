@@ -12,8 +12,22 @@ Kararlar `tasarim.md` ile çelişirse **kararlar** geçerlidir.
 | `taslak-sql/uyum_migration_dogrulama.sql` | Uygulamadan hemen sonra çalıştırılacak, kendini geri alan doğrulama bloğu |
 | `tests/proje-kontrol-uyum.spec.js` | Yetki ve ad testleri. Migration yoksa kendini atlar; yazma gerektiren 3 test `fixme` |
 
-Hiçbir SQL çalıştırılmadı. Söz dizimi de canlıda denenmedi: bu turda yalnızca SELECT'e izin vardı.
-Bu yüzden ilk adım, onaydan sonra taslağın ROLLBACK'li bir denemesi olmalı (bkz. §7).
+**v2 (07.10.2026, kullanıcı yanıtlarından sonra):**
+- Proje kodları eklendi: ADN1, ADN2, TIZ, TKY.
+- Önekler: çizim türü dokümanlar DRW, diğerleri DOC.
+- `drawings`'in kendi numarası kaldırıldı. Çizimler yalnızca çizim türündeki dokümana bağlanabiliyor (3 kolonlu FK).
+- Aksiyon kaynak listesinden `inspection`/`ncr` çıkarıldı. `TS`/`MA` önekleri kaldı.
+- Yeni tablo ve fonksiyonların yetkileri doğrulama betiğinde kontrol ediliyor.
+- G-01 geri alma betikleri yeni ada uyumlu hale getirildi.
+
+**Canlı deneme (07.10.2026):** BÖLÜM A ve doğrulama betiği tek bir DO bloğunda çalıştırıldı. Blok sonunda zorunlu hatayla geri alındı. Deneme bloğu dosyalardan üretildi; iki fark var:
+- Bazı yorum satırları çıkarıldı.
+- `do $$ … end $$` blokları iç içe `begin … end` bloğa çevrildi.
+
+Sonuç:
+`DOGRULAMA SONUCU: OK | yetki/RLS kontrolü 6 tablo | numaralar=RFI-TIZ-0001,RFI-TIZ-0009,RFI-TIZ-0010,RFI-TIZ-0999,RFI-TIZ-1000,RFI-TIZ-1001,RFI-TIZ-9999,RFI-TIZ-10000 | DRW/DOC ayrı | çizim türü bağı zorunlu | tek is_current | ncr/inspection red`.
+
+Deneme öncesi ve sonrası katalog parmak izi karşılaştırıldı (kolonlar, kısıtlar, index, policy, trigger, yetki, fonksiyon md5'leri, yorumlar, satır sayıları). Hepsi **birebir aynı**; canlı değişmedi. **Kalıcı uygulama yapılmadı.**
 
 ## 0. Ön koşul (SQL'de kontrol ediliyor)
 
@@ -90,16 +104,18 @@ Bugün G-01 yüzünden kimse doğrudan yazamıyor. Faz B RPC'leri `register_no`'
 - **İndeksler:** proje+doküman, proje+sha256 (tekrar yükleme kontrolü için), created_by.
 - **Yetki:** RLS SELECT `user_has_project_access`. authenticated yalnızca SELECT, anon hiçbir şey; G-01 ile aynı model.
 
-**`drawings` (documents'a bağlı küçük uzantı):**
+**`drawings` (documents'a bağlı küçük uzantı, v2):**
 - **Kalanlar:** id, project_id, `document_id` (artık NOT NULL ve UNIQUE: dokümanla bire bir), drawing_type, created_by, timestamps.
-- `drawing_no` → `client_drawing_no` olur; boş bırakılabilir. Tasarımcının kendi çizim numarası; proje içinde benzersiz.
-- **Çıkanlar:** title, discipline, revision, status, issue_date, wbs/area/task, storage_*, supersedes_drawing_id. Bunlar documents ya da document_revisions'ta duruyor, tek kaynak ilkesi.
+- **Kendi numarası yok:** `drawing_no` kaldırıldı. Çizimin numarası dokümanın numarası: `DRW-…`.
+- **Tür bağı:** Yeni bir `document_type` kolonu var. NOT NULL, varsayılan `'drawing'`, `CHECK (= 'drawing')`. Bununla birlikte 3 kolonlu bir FK kuruluyor: `(project_id, document_id, document_type)` → `documents(project_id, id, document_type)`. FK'nin hedefi için `documents`'a yeni bir UNIQUE eklendi.
+- **Sonuç:** Çizim yalnızca çizim türündeki dokümana bağlanabilir. Bağlı bir dokümanın türü sonradan değiştirilemez (FK NO ACTION). Denemede ikisi de doğrulandı.
+- **Çıkanlar:** title, discipline, revision, status, issue_date, wbs/area/task, storage_*, supersedes_drawing_id. Bunlar documents ya da document_revisions'ta duruyor (tek kaynak ilkesi).
 - `rfis.drawing_id` FK'si değişmiyor.
 
 | Risk | Açıklama |
 |---|---|
 | R1 | Kısmi unique index ertelenemez. Güncel revizyonu değiştiren RPC önce eskisini `false`, sonra yenisini `true` yapmalı; tek bir UPDATE ile iki satırı değiştirmek de hata verebilir |
-| R2 | Bir `drawings` satırının yalnızca `document_type = 'drawing'` olan dokümana bağlanmasını DB zorlamıyor (tablolar arası CHECK yok). Faz B RPC'si kontrol etmeli ya da küçük bir trigger eklenmeli |
+| R2 | ~~Çizim, çizim olmayan dokümana bağlanabilir~~. v2'de 3 kolonlu FK ile zorlanıyor (denemede doğrulandı) |
 
 ### A4 · `project_tasks.is_critical` kaldırma (Karar 5) — en son
 
@@ -134,7 +150,7 @@ Risk düşük. Tablo realtime yayınında, ancak kolon listesi tanımlanmamış;
 | R1 | `is_current` değişiminde sıra hatası | RPC'de önce false, sonra true; doğrulama betiği deniyor |
 | R2 | Çizim, çizim olmayan dokümana bağlanabilir | Faz B RPC kontrolü veya trigger |
 | R3 | Elle verilen numara sayaçla çakışır | Faz B RPC'leri `register_no` almaz |
-| R4 | Rename sonrası G-01 geri alma betikleri `actions` adını kullanıyor | Uygulamadan sonra iki betikte ad güncellenir |
+| R4 | ~~Rename sonrası G-01 geri alma betikleri `actions` adını kullanıyor~~ | v2'de güncellendi: `yedek-policy-07-10.sql` ve g01 BÖLÜM B adı `to_regclass` ile kendisi seçiyor |
 | R5 | Prefix'i tanımlanmamış projede register kaydı açılamaz | Bilinçli; §8'de prefix'ler girilir |
 | R6 | Söz dizimi canlıda denenmedi | Onaydan sonra önce ROLLBACK'li deneme |
 | R7 | `documents.status` anlamı değişiyor | Tablo boş ve kullanan kod yok |
@@ -147,11 +163,11 @@ Risk düşük. Tablo realtime yayınında, ancak kolon listesi tanımlanmamış;
 - `technical_submittals` / `material_approvals`: Karar 4 gereği dokunulmadı.
 - `tasarim.md`'nin güncellenmesi: kullanıcı ayrıca gönderecek.
 
-## 5. Açık sorular (uygulamayı engellemez, Faz B'den önce yanıtlanmalı)
+## 5. Sorular — yanıtlandı (07.10.2026)
 
-- **S1:** Çizim türündeki dokümanlar `DOC` yerine `DRW` öneki mi almalı? Tasarım örneği `DRW-DYB-0125`. Taslakta tüm dokümanlar `DOC`.
-- **S2:** Submittal/Material önekleri canlıdaki `TS`/`MA` mı kalacak, tasarımdaki `SUB`/`MAT` mı olacak? Değişecekse yalnızca trigger argümanı değişir; tablolara dokunulmaz.
-- **S3:** `project_actions.source_type` içinde `inspection` ve `ncr` değerleri var. Karar #6'ya (pilotta NCR yok) göre kalsın mı?
+- **S1:** Çizim türündeki dokümanlar `DRW`, diğerleri `DOC`. `drawings`'in kendi numarası yok. → v2'ye işlendi (`fn_assign_document_no`).
+- **S2:** `TS` / `MA` kalır.
+- **S3:** `inspection` ve `ncr` kaynak listesinden çıkar. → v2'ye işlendi.
 
 ## 6. Geri alınabilirlik
 
@@ -169,7 +185,7 @@ Risk düşük. Tablo realtime yayınında, ancak kolon listesi tanımlanmamış;
    - Tam Playwright seti
 5. G-01 geri alma betiklerinde `actions` adını `project_actions` olarak güncelle (R4). CLAUDE.md'yi güncelle. docx dokümantasyonu hatırlatmasını yap.
 
-## 8. Uygulamadan önce kullanıcının yapması gerekenler
+## 8. Uygulamadan önce kullanıcının yapması gerekenler (v1 listesi; 1-3 tamamlandı, 4 yapıldı)
 
 1. **Proje kodlarını belirle.** Her proje için 2-6 karakter (büyük harf/rakam), projeler arasında benzersiz. Canlıdaki 4 proje:
    - `kaptan-demir-adana-arazi-faz1` (Adana GES-1)

@@ -19,6 +19,11 @@
 --   TRIGGER phase1b ile zaten alınmış); anon: yok.
 --
 -- Uygulama sırası: npm run db:backup → BÖLÜM A → doğrulama sorgusu.
+--
+-- DURUM (07.10.2026): BÖLÜM A canlıya 20261007063808 ile UYGULANDI (o an tablo adı actions'tı).
+-- Ad güncellemesi: uyum migration'ı actions → project_actions yeniden adlandırıyor. Aşağıdaki
+-- bölümler artık project_actions adını kullanır; uyum migration'ından ÖNCE çalıştırılacaksa
+-- project_actions yerine actions yazılmalı. BÖLÜM B, hangisi varsa onu kendisi seçer.
 -- ============================================================================
 
 
@@ -29,7 +34,7 @@ revoke insert, update, delete on table
   public.documents,
   public.drawings,
   public.rfis,
-  public.actions,
+  public.project_actions,
   public.decisions,
   public.technical_submittals,
   public.material_approvals,
@@ -46,7 +51,7 @@ commit;
 -- select table_name, string_agg(privilege_type, ',' order by privilege_type) privs
 -- from information_schema.role_table_grants
 -- where table_schema = 'public' and grantee = 'authenticated'
---   and table_name in ('documents','drawings','rfis','actions','decisions',
+--   and table_name in ('documents','drawings','rfis','project_actions','decisions',
 --                      'technical_submittals','material_approvals','register_status_history')
 -- group by 1 order by 1;
 
@@ -58,12 +63,21 @@ commit;
 --   public.documents,
 --   public.drawings,
 --   public.rfis,
---   public.actions,
 --   public.decisions,
 --   public.technical_submittals,
 --   public.material_approvals,
 --   public.register_status_history
 --   to authenticated;
+--
+-- -- Action tablosu: uyum migration'ından önce actions, sonra project_actions
+-- do $$
+-- begin
+--   execute format('grant insert, update, delete on table %s to authenticated',
+--                  coalesce(to_regclass('public.project_actions'), to_regclass('public.actions')));
+-- end $$;
+--
+-- -- Uyum migration'ından sonra yeni tablo: document_revisions (G-01 ile aynı model, yalnızca SELECT).
+-- -- G-01 geri alınırken buna yazma yetkisi VERİLMEZ; 05.10 şemasında yoktu.
 --
 -- comment on table public.rfis is null;   -- rfis'in G-01 öncesi yorumu yoktu (06.10.2026'da doğrulandı)
 --

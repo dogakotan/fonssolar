@@ -9,6 +9,8 @@
 -- Tam şema dökümü (npm run db:backup) DEĞİLDİR; yalnızca bu değişikliklerin geri alınması içindir.
 -- Faz B'de veri değiştiren migration'lardan önce db:backup çalışır hale getirilmeli.
 -- Çalıştırma: tek transaction; tamamı birlikte çalıştırılır.
+-- Uyum migration'ı sonrası: actions → project_actions adı aşağıda otomatik seçilir. Uyum migration'ının
+-- eklediği document_revisions bu betiğin kapsamında değildir (yetkisi yalnızca SELECT kalır).
 -- ============================================================================
 
 begin;
@@ -56,8 +58,14 @@ create policy storage_select_ticket on storage.objects as PERMISSIVE for SELECT 
 
 -- ── authenticated yetkileri (information_schema.role_table_grants'ten birebir) ──
 
-revoke all on table public.actions from authenticated;
-grant DELETE, INSERT, SELECT, UPDATE on table public.actions to authenticated;
+-- Action tablosu: anlık görüntü alındığında adı actions'tı; uyum migration'ı project_actions yapıyor.
+-- Hangisi varsa ona uygulanır (07.10.2026 güncellemesi).
+do $$
+declare t regclass := coalesce(to_regclass('public.project_actions'), to_regclass('public.actions'));
+begin
+  execute format('revoke all on table %s from authenticated', t);
+  execute format('grant DELETE, INSERT, SELECT, UPDATE on table %s to authenticated', t);
+end $$;
 
 revoke all on table public.daily_report_photos from authenticated;
 grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on table public.daily_report_photos to authenticated;

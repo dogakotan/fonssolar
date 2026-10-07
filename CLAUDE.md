@@ -1682,15 +1682,15 @@ tablosu, `record_state` yokluğu, `project_tasks.is_critical`'ın **geri eklenme
 ad çakışması) `docs/proje-kontrol/sema-dogrulama.md` Bölüm 0'da. Faz B şeması bu durum
 kararlaştırılmadan kilitlenemez (Karar #0).
 
-**Kararlar — TASLAK, hiçbiri kesinleşmedi.** Kullanıcı bir kararı onaylayınca etiket "ONAYLANDI
-(tarih)" olur ve gerekçesi yazılır; onaylanmamış karar uygulanmaz.
+**Kararlar.** Kullanıcı bir kararı onaylayınca etiket "ONAYLANDI (tarih)" olur ve gerekçesi yazılır;
+onaylanmamış karar uygulanmaz. Kararlar `tasarim.md` ile çelişirse kararlar geçerlidir.
 
-| # | Karar | Taslak (tasarım önerisi) | Durum |
+| # | Karar | İçerik | Durum |
 |---|---|---|---|
-| 0 | 05.10 ön şemasının akıbeti | (a) tabloları koru, tasarımı bu adlara uyarla + doğrudan yazma policy'lerini kaldır (G-01); (b) boş oldukları için ters migration'la kaldır, tasarımdaki M01-M05'le yeniden kur; (c) olduğu gibi bırak. Tablolar boş → (b) ucuz; seçimden önce kimin/neden uyguladığı netleşmeli. `is_critical`'ın geri gelmesi ayrıca onaylanmalı (03.08 kararıyla çelişiyor) | **ONAY BEKLİYOR** |
+| 0 | 05.10 ön şemasının akıbeti | **(a) yolu:** tablolar korunur, onaylanan alt kararlara uyum migration'ıyla hizalanır. Alt kararlar: **0.1** Action ayrı tablo, adı `project_actions` (`actions` yeniden adlandırılır; ticket sahadan bildirim olarak kalır, genişletilmez); kaynak listesinden `inspection`/`ncr` çıkar. **0.2** Numara `{TÜR}-{PROJE_KODU}-{SIRA}` (`RFI-DYB-0032`): yıl ve disiplin yok, sıra proje+tür bazında boşluksuz, 4 haneye kadar sıfır, uzun sayı kırpılmaz; proje kodu `project_register_settings` (ADN1, ADN2, TIZ, TKY; DYB Diyarbakır açılınca); çizim türündeki dokümanlar `DRW`, diğerleri `DOC`; `TS`/`MA` önekleri kalır. **0.3** bkz. #3. **0.4** `technical_submittals` ve `material_approvals` iki ayrı tablo, dokunulmaz. **0.5** `project_tasks.is_critical` yeniden kaldırılır (03.08 kararı). Gerekçe: tablolar boş, (a) mevcut kompozit FK ve WBS/Alan yapısını koruyor | **ONAYLANDI (07.10.2026)** — migration taslağı hazır ve ROLLBACK'li denemede geçti, **canlıya henüz uygulanmadı** |
 | 1 | Drive erişim modeli | Tek servis hesabı Shared Drive'a erişir; kullanıcı dosyayı yalnızca drive-gateway üzerinden açar (her çağrıda JWT + `has_project_access`) | **ONAY BEKLİYOR** |
 | 2 | Drive klasör yapısı | Shared Drive "Fons Projects" > Proje > `01_Dokumanlar` > Disiplin > Register türü (+ `00_Gelen_Kutusu`, `99_Arsiv`); dosya adı `{register_no}_{rev}_{kisa-baslik}.{ext}` (ör. `DRW-DYB-0125_R03_…`) | **ONAY BEKLİYOR** |
-| 3 | Revizyon modeli | Her revizyon ayrı Drive dosyası ve ayrı `documents` satırı, `supersedes_id` zinciri | **ONAY BEKLİYOR** |
+| 3 | Revizyon modeli | Tek doküman, çok revizyon: `documents` doküman kimliğini tutar, revizyonlar `document_revisions`'ta (revizyon no, durum `ifr`/`ifa`/`ifc`/`as_built`, dosya bilgisi, `is_current`); dokümanın tek `is_current` satırı olur (kısmi unique index). Her revizyon ayrı Drive dosyası. `drawings` dokümana bire bir bağlı uzantı, kendi numarası yok, yalnızca `document_type='drawing'` dokümana bağlanır (3 kolonlu FK). Tasarımdaki `supersedes_id` zinciri yerine geçer | **ONAYLANDI (07.10.2026)** |
 | 4 | Roller | Mevcut 4 rol korunur; register × eylem yetkisi `register_permissions` tablosunda (tasarım 4.3 matrisi öneridir) | **ONAY BEKLİYOR** |
 | 5 | AI sağlayıcı ve gizlilik | Önce İsdemir OYAK'tan harici modele belge gönderme izni; sonra Faz B'de 10-15 belgeyle iki sağlayıcı ölçümü (`scripts/proje-kontrol/ai-olcum/`), seçim "yüksek güvenle yanlış" en az olan. İzin yoksa AI yalnızca metadata | **ONAY BEKLİYOR** |
 | 6 | NCR ve Inspection | Pilotta yok; mobilizasyondan sonra, kalite modülünün kaldırılma kararı hatırlanarak | **ONAY BEKLİYOR** |
@@ -1739,7 +1739,14 @@ kararlaştırılmadan kilitlenemez (Karar #0).
 - `tests/proje-kontrol-guvenlik.spec.js` — 8 senaryo (07.10.2026'dan beri 8/8; son ikisi G-02/G-03'ün regresyon testi)
 - `tests/proje-kontrol-master-veri.spec.js` — WBS/Alan master tabloları yetki testi (9 senaryo)
 - `supabase/migrations/20261007063808_…`, `20261007063825_…` — G-01 ve G-02/G-03 (canlıya uygulanan SQL'in birebir aynısı)
-- `docs/proje-kontrol/yedek-policy-07-10.sql` — bu iki migration öncesi policy/yetki anlık görüntüsü (geri yükleme betiği)
+- `docs/proje-kontrol/yedek-policy-07-10.sql` — bu iki migration öncesi policy/yetki anlık görüntüsü (geri yükleme betiği;
+  action tablosunun adını `actions`/`project_actions` hangisi varsa ondan seçer)
+- **Uyum migration'ı (Karar #0, UYGULANMADI):** `docs/proje-kontrol/uyum-migration-plani.md`,
+  `taslak-sql/uyum_migration_taslak.sql` (v2; A uygula / B geri al), `taslak-sql/uyum_migration_dogrulama.sql`,
+  `yedek-uyum-07-10.sql`, `tests/proje-kontrol-uyum.spec.js` (migration yoksa kendini atlar; 3 yazma testi fixme).
+  07.10.2026'da migration + doğrulama tek ROLLBACK'li blokta canlıda denendi: tüm kontroller OK, sonrasında katalog
+  parmak izi birebir aynı. Not: `pg_default_acl` yeni tablolarda `authenticated`'a tüm yetkileri, yeni fonksiyonlarda
+  `anon`/`authenticated`'a EXECUTE veriyor — yeni nesnelerde açık REVOKE şart.
 - `supabase/functions/drive-gateway/` — `index.ts`, `handler.ts`, `driveClient.ts`, `validation.ts`,
   `handler.test.ts` (`node --test …`, 28 test), `README.md` (deploy sonrası curl senaryosu)
 - `scripts/proje-kontrol/drive-limit-test.mjs` — Drive yükle/indir süre-boyut-hata tablosu (kimlik bilgisi gerekir)
@@ -2051,6 +2058,17 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**07.10.2026 (2. tur) — Karar #0 alt kararları ve #3 onaylandı; uyum migration'ı hazır, canlıya uygulanmadı.**
+Migration ve doğrulama betiği tek bir ROLLBACK'li blokta canlıda denendi. Tüm kontroller geçti:
+- Yeni tablolarda yetki ve RLS kontrolü.
+- Numaralar `RFI-TIZ-0001` … `RFI-TIZ-10000`; kırpma yok, boşluk yok.
+- DRW/DOC önekleri ayrı.
+- Çizim yalnızca çizim türündeki dokümana bağlanıyor.
+- Dokümanın tek güncel revizyonu oluyor.
+- `ncr`/`inspection` kaynakları reddediliyor.
+
+Denemeden sonra katalog parmak izi birebir aynıydı. Kalıcı uygulama, kullanıcının SQL'i gözden geçirip onaylamasını bekliyor. Ayrıntı: "Proje Kontrol (Faz A)".
 
 **07.10.2026 — G-01 (geçici) ve G-02/G-03 canlıya uygulandı.** Başka projenin saha fotoğrafını/ticket ekini
 sahte metadata satırıyla indirme açığı kapatıldı; 05.10 register tablolarında `authenticated` yazma yetkisi
