@@ -1667,10 +1667,11 @@ profiles where role_key='admin'` ile doğrula.
 
 ### Proje Kontrol (Faz A — zemin ve kararlar, 06.10.2026'da başladı)
 
-Kaynak tasarım: `docs/proje-kontrol/tasarim.md` (v2; eski `FONS_Diyarbakir_Sistem_Revizyon_Yol_Haritasi.docx`
-v1 geçersiz, çelişkide tasarim.md kazanır). Faz A'da **şema değişmez**; yalnızca kararlar, Drive
-kurulumu, güvenlik doğrulaması, drive-gateway iskeleti ve AI ölçüm hazırlığı yapılır. Branch:
-`faz-a-proje-kontrol`.
+Kaynak tasarım: `docs/proje-kontrol/tasarim.md` (**v3, 07.10.2026**, canlı şemaya göre yeniden yazıldı; v2 ve
+`FONS_Diyarbakir_Sistem_Revizyon_Yol_Haritasi.docx` v1 geçersiz). Öncelik: onaylı kararlar (bu bölüm) > canlı şema
+(`docs/proje-kontrol/canli-sema-ozeti.md`) > tasarim.md. Faz B'nin kalan işleri tasarim.md §4.10'da (B1-B9);
+dosya sağlayıcısı (A: Supabase Storage + Pro / B: ayrı Gmail hesabında Drive, OAuth) §4.5'te **karar bekliyor**.
+Faz A'da yalnızca güvenlik düzeltmeleri ve onaylı uyum migration'ı uygulandı. Branch: `faz-a-proje-kontrol`.
 
 **Canlıda tasarımla çelişen bir ön şema var (06.10.2026'da bulundu).** 05.10.2026'da yerel dosyası
 olmayan 3 migration (`faz1_wbs_alan_activity`, `project_control_phase1_core`,
