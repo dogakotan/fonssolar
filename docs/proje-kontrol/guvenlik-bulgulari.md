@@ -114,7 +114,12 @@ Testle değil, policy incelemesiyle tespit edildi (tablolar boş, frontend'de ku
   tablolarını okuyabilir (tasarım matrisinde çoğu register için "yok").
 - `project_wbs` / `project_areas` / `area_wbs` da doğrudan yazma policy'li (şantiye şefi Area ekleyip silebilir).
 
-Taslak (Karar #0'a bağlı — tablolar korunacaksa; yeniden adlandırma/yeniden kurma seçilirse bu taslak geçersiz):
+**Güncel geçici kapatma taslağı (07.10.2026, v2):** `taslak-sql/g01_gecici_yazma_kapatma.sql` — yalnızca 8 register/geçmiş
+tablosunda `authenticated`'ın INSERT/UPDATE/DELETE GRANT'ini geri alır, geri alma bölümü dahil. `project_wbs`,
+`project_areas`, `area_wbs` kapsam dışı (WBS/Alan ekranı doğrudan yazacak; yetkileri G-10'da testle doğrulandı).
+UYGULANMADI — onay bekliyor. Aşağıdaki eski policy-DROP taslağı kalıcı çözüm seçeneği olarak duruyor.
+
+Eski taslak (Karar #0'a bağlı — tablolar korunacaksa; yeniden adlandırma/yeniden kurma seçilirse bu taslak geçersiz):
 
 ```sql
 -- TASLAK — UYGULANMADI. Önce Karar #0 (05.10 şemasının akıbeti) kapanmalı.
@@ -200,6 +205,43 @@ revoke execute on function public.update_updated_at_column() from public, anon, 
 - `exportUtils.js:839` PDF'teki saha fotoğrafları için `storagePublicUrl` (public URL) kullanıyor; bucket private
   olduğundan bu istek 200 dönmez (testte doğrulandı) → PDF'te fotoğraf kutuları boş kalır. İmzalı URL'e
   (`withSignedStorageUrls`) geçilmeli.
+
+### G-10 · BİLGİ (açık bulunmadı) · WBS/Alan master tabloları başka projeye yazmaya kapalı (07.10.2026, testle)
+
+`tests/proje-kontrol-master-veri.spec.js` — 9 senaryo, **9/9 geçti**; fikstürler temizlendi (3 tablo tekrar 0 satır,
+`project_tasks`'a kalıcı yazım yok).
+
+| Senaryo | Sonuç |
+|---|---|
+| anon okuma/yazma | reddedildi (GRANT yok) |
+| İzmir şantiye şefi → Kayseri `project_wbs` okuma/ekleme/güncelleme/silme | reddedildi |
+| Şantiye şefi kendi projesinde `project_wbs` ekleme | reddedildi (yalnızca admin/PM — policy gereği) |
+| İzmir şantiye şefi → Kayseri `project_areas` ekleme/güncelleme/silme | reddedildi |
+| Şantiye şefi kendi `project_areas` satırını açma | **izinli** (tasarım gereği); başka projeye taşıma ve silme reddedildi |
+| İzmir şantiye şefi → Kayseri `area_wbs` ekleme/silme; projeler arası bağ (İzmir satırı + Kayseri alanı) | reddedildi (policy + kompozit FK) |
+| Muhasebe → üç tabloda yazma | reddedildi (okuma: `is_manager` olduğu için tüm projeler — G-01 okuma notuyla aynı) |
+| Proje yöneticisi → Kayseri `project_wbs` ekleme | **izinli** — `cross_project=true` tasarımı; açık değil, bilgi |
+| `trg_project_tasks_identity_guard`: pasif WBS'i göreve atama | reddedildi ("Pasif WBS aktiviteye atanamaz"), görev değişmedi |
+
+Policy notları: `area_wbs`'te UPDATE policy'si yok (satır yalnızca silinip yeniden eklenir); şantiye şefi dalı
+`has_project_access` yerine `profiles.project_id` eşitliği kullanıyor — `user_project_access` ile ek projeye atanmış
+bir şantiye şefi o projede Alan açamaz (bugün bu durumda kullanıcı yok; daha dar, güvenli yönde).
+
+**Canlı akış regresyonu (identity_guard):** `is-plani-hiyerarsi`, `manual-task-progress`, `project-excel-layout`,
+`category-weights` spec'leri — **10/10 geçti** (07.10.2026). Bu testler `project_tasks`'a INSERT ve UPDATE yapıyor;
+trigger yalnızca `activity_id`/`wbs_id`/`area_id` doluyken etkili olduğu için mevcut akışlar etkilenmedi.
+Dikkat: guard bir kez atanmış `activity_id`'nin değişmesini **ve NULL'a geri alınmasını** engelliyor — Faz B'de
+Excel içe aktarımı/proje sihirbazı activity_id yazarsa düzeltme yolu yalnızca migration olur.
+
+### G-11 · ORTA (veri bütünlüğü) · `next_register_no` 1000. kayıtta numara çakışması üretiyor
+
+- `lpad(v::text, 3, '0')` — PostgreSQL `lpad` hedef uzunluktan uzun metni **kırpar**:
+  `lpad('1000',3,'0') = '100'`, `lpad('1100',3,'0') = '110'` (canlıda SELECT ile doğrulandı).
+- Bir proje × yıl × register türünde 1000. kayıt `RFI-2026-100` alır → 100. kayıtla `unique (project_id, rfi_no)`
+  ihlali → o yıl o türde **yeni kayıt açılamaz**. Tablolar boş, bugün etkisi yok; Diyarbakır ölçeğinde Action/RFI
+  sayısı 1000'i bir yılda aşabilir.
+- Düzeltme yönü (taslak, uygulanmadı; numara biçimi kararıyla birlikte yazılmalı):
+  `lpad(v::text, greatest(length(v::text), <pad>), '0')`. Ayrıntı: `uyum-tablosu.md` §3.
 
 ## drive-gateway için not
 
