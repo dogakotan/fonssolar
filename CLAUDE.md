@@ -1711,18 +1711,35 @@ kararlaştırılmadan kilitlenemez (Karar #0).
   **`agent-chat` repoda var ama deploy edilmemiş** — `AgentChat.jsx` onu çağırıyor (doğrulanmadı, G-09).
 - pg_cron kurulu; **pg_net kurulu değil** (kurulabilir) — drive-sync tetiklemesi için Faz B'de karar.
 
-**Faz A güvenlik bulguları** (`docs/proje-kontrol/guvenlik-bulgulari.md`, SQL'ler taslak, uygulanmadı):
-G-02/G-03 YÜKSEK — `daily_report_photos`/`ticket_attachments` INSERT policy'leri yalnızca oturum
-kontrol ettiği için sahte metadata satırıyla **başka projenin saha fotoğrafı/ticket eki indirilebiliyor**
-(testle kanıtlı); G-01 YÜKSEK — 05.10 register tablolarında doğrudan yazma policy'leri; G-04 ORTA —
-storage silme/yükleme sahiplik ve rol kontrolü yok (muhasebe dahil); G-05..G-09 düşük/bilgi.
+**Faz A güvenlik bulguları** (`docs/proje-kontrol/guvenlik-bulgulari.md`):
+- **G-02/G-03 YÜKSEK — UYGULANDI (07.10.2026, `20261007063825`).** `daily_report_photos`/`ticket_attachments`
+  INSERT policy'leri yalnızca oturum kontrol ediyordu; sahte metadata satırıyla başka projenin saha
+  fotoğrafı/ticket eki indirilebiliyordu. Artık metadata satırı kendi adına (`uploaded_by = auth.uid()`),
+  erişilebilir projede ve **dosya yolunun ilk klasörü proje id'si (foto) / ticket id'si (ek) olmak zorunda**;
+  storage SELECT policy'leri de klasör = proje/ticket eşleşmesini arıyor (ikinci katman). İki tabloda
+  `authenticated`'ın UPDATE/TRUNCATE yetkisi geri alındı (UPDATE policy'si zaten yoktu). Yeni bir yükleme
+  akışı yazılırsa yol biçimi `{project_id}/…` (saha-fotolari) ve `{ticket_id}/…` (ticket-ekleri) olmak zorunda,
+  aksi halde INSERT RLS'te reddedilir.
+- **G-01 YÜKSEK — yazma tarafı GEÇİCİ olarak kapatıldı (07.10.2026, `20261007063808`):** 8 register/geçmiş
+  tablosunda `authenticated` yalnızca SELECT. Policy'ler duruyor; kalıcı çözüm Faz B RPC'leri. Okuma tarafı
+  (muhasebe tüm projelerde okur) açık. `project_wbs`/`project_areas`/`area_wbs` bilinçli olarak kapsam dışı
+  (WBS/Alan ekranı doğrudan yazacak; G-10 testiyle başka projeye yazma kapalı olduğu doğrulandı).
+- Geri alma: `docs/proje-kontrol/yedek-policy-07-10.sql` (değişen nesnelerin anlık görüntüsü; tam şema dökümü
+  `.env.local` olmadığı için alınamadı — Faz B'deki veri değiştiren migration'lardan önce `npm run db:backup`
+  çalışır hale getirilmeli).
+- Açık: G-04 ORTA (storage silme/yükleme sahiplik ve rol kontrolü yok, muhasebe dahil), G-11 ORTA
+  (`next_register_no` 1000. kayıtta çakışır), G-12 DÜŞÜK (YeniTicketModal ek hatasını yok sayıyor),
+  G-05..G-09 düşük/bilgi.
 
 **Yeni dosyalar:**
 - `docs/proje-kontrol/` — `tasarim.md`, `sema-dogrulama.md`, `guvenlik-bulgulari.md`, `frontend-tasarim-notu.md`,
   `canli-05-10-migrations/` (05.10 migration'larının md5-doğrulamalı birebir arşivi; çalıştırılmaz,
   `supabase/migrations/`'a taşınması Karar #0'a bağlı), `taslak-sql/g01_gecici_yazma_kapatma.sql`
-  (G-01 geçici REVOKE + geri alma; UYGULANMADI)
-- `tests/proje-kontrol-guvenlik.spec.js` — 8 senaryo (6 geçiyor, 2'si G-02/G-03 düzeltilene kadar bilerek kırmızı)
+  (G-01 geçici REVOKE + geri alma; BÖLÜM A `20261007063808` ile uygulandı), `taslak-sql/g02_g03_metadata_sizinti.sql`
+- `tests/proje-kontrol-guvenlik.spec.js` — 8 senaryo (07.10.2026'dan beri 8/8; son ikisi G-02/G-03'ün regresyon testi)
+- `tests/proje-kontrol-master-veri.spec.js` — WBS/Alan master tabloları yetki testi (9 senaryo)
+- `supabase/migrations/20261007063808_…`, `20261007063825_…` — G-01 ve G-02/G-03 (canlıya uygulanan SQL'in birebir aynısı)
+- `docs/proje-kontrol/yedek-policy-07-10.sql` — bu iki migration öncesi policy/yetki anlık görüntüsü (geri yükleme betiği)
 - `supabase/functions/drive-gateway/` — `index.ts`, `handler.ts`, `driveClient.ts`, `validation.ts`,
   `handler.test.ts` (`node --test …`, 28 test), `README.md` (deploy sonrası curl senaryosu)
 - `scripts/proje-kontrol/drive-limit-test.mjs` — Drive yükle/indir süre-boyut-hata tablosu (kimlik bilgisi gerekir)
@@ -2034,6 +2051,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**07.10.2026 — G-01 (geçici) ve G-02/G-03 canlıya uygulandı.** Başka projenin saha fotoğrafını/ticket ekini
+sahte metadata satırıyla indirme açığı kapatıldı; 05.10 register tablolarında `authenticated` yazma yetkisi
+geçici olarak geri alındı. Tam şema yedeği alınamadığı için kullanıcı onayıyla değişen nesnelerin doğrulanmış
+anlık görüntüsü (`docs/proje-kontrol/yedek-policy-07-10.sql`) yedek olarak kullanıldı. `tests/proje-kontrol-guvenlik.spec.js`
+8/8. Ayrıntı: "Sistem mimarisi" → "Proje Kontrol (Faz A)".
 
 **06.10.2026 — Proje Kontrol Faz A başladı (şema değişmedi).** Canlı şema doğrulandı; 05.10'da
 tasarımla çelişen, yerel dosyası olmayan 3 Proje Kontrol migration'ı bulundu (Karar #0). Güvenlik

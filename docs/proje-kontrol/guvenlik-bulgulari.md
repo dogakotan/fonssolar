@@ -1,10 +1,21 @@
 # Proje Kontrol — Faz A güvenlik bulguları
 
-Tarih: 2026-10-06 · Test: `tests/proje-kontrol-guvenlik.spec.js` (8 senaryo: **6 geçti, 2 başarısız**).
+Tarih: 2026-10-06 · Test: `tests/proje-kontrol-guvenlik.spec.js` (8 senaryo: 06.10'da **6 geçti, 2 başarısız**;
+G-02/G-03 uygulandıktan sonra 07.10'da **8/8**).
 Kaynaklar: test koşusu + canlı `pg_policies` / `pg_proc` / `storage.objects` policy incelemesi.
 
-**Bu dosyadaki SQL'lerin hiçbiri uygulanmadı.** Hepsi taslaktır; CLAUDE.md kuralı #1 gereği
-tek tek gösterilip onay alındıktan sonra `npm run db:backup` + migration ile uygulanır.
+**Durum (07.10.2026):**
+
+| Bulgu | Durum |
+|---|---|
+| G-01 (yazma tarafı, 8 register tablosu) | **UYGULANDI (geçici)** — `20261007063808_g01_temporary_revoke_register_table_writes` |
+| G-02, G-03 (+ UPDATE/TRUNCATE geri çekme) | **UYGULANDI** — `20261007063825_g02_g03_scope_photo_and_attachment_metadata_to_path` |
+| G-01 okuma tarafı, G-04, G-05..G-09, G-11, G-12 | Açık — taslak / öneri |
+
+Yedek: tam şema dökümü (`npm run db:backup`) çalıştırılamadı (`.env.local` yok); kullanıcı onayıyla yerine
+`docs/proje-kontrol/yedek-policy-07-10.sql` anlık görüntüsü kullanıldı — değişen nesnelerin tamamını kapsar, geri
+yüklemenin birebir olduğu ROLLBACK'li denemede parmak iziyle doğrulandı. Diğer SQL'ler taslaktır; CLAUDE.md kuralı #1
+gereği tek tek gösterilip onay alındıktan sonra uygulanır.
 
 ## Geçen senaryolar (mevcut durum doğrulandı)
 
@@ -98,6 +109,42 @@ create policy storage_select_ticket on storage.objects
 
 Ön kontrol: mevcut `ticket_attachments` satırlarında `split_part(storage_path,'/',1) = ticket_id::text`
 (`YeniTicketModal.jsx:109` yolu bu biçimde üretiyor).
+
+### G-02/G-03 düzeltmesinin ROLLBACK'li denemesi (07.10.2026)
+
+Güncel taslak: `taslak-sql/g02_g03_metadata_sizinti.sql` (v2: + `revoke update, truncate`; geri alma
+bölümündeki `to public` hatası düzeltildi). Canlıda tek bir `DO` bloğu içinde, İzmir şantiye şefi kimliğiyle
+(`set local role authenticated` + JWT claim) denendi; blok sonunda kasıtlı `raise exception` ile **tamamı geri
+alındı** — sonrasında policy'lerin eski halinde, GRANT'lerin yerinde ve deneme satırlarının yok olduğu doğrulandı.
+
+| # | Senaryo | Sonuç |
+|---|---|---|
+| 0 | Mevcut kurallar: sahte foto kaydı (İzmir projesi, Kayseri dosya yolu) | **kabul edildi**, Kayseri dosyası görünür (açık yeniden üretildi) |
+| 1a | Yeni kurallar: meşru foto kaydı (kendi projesi, kendi raporu, kendi yolu) | kabul |
+| 1b | Sahte yol (İzmir kaydı, Kayseri dosyası) | reddedildi (42501) |
+| 1c | Başka projeye kayıt | reddedildi |
+| 1d | `uploaded_by` = başka kullanıcı | reddedildi |
+| 1e | İzmir kaydı + Kayseri raporu | reddedildi |
+| 1f | Meşru kaydın `storage_path`'ini UPDATE ile Kayseri dosyasına çevirme | reddedildi (UPDATE yetkisi yok) |
+| 1g | Aşama 0'daki sahte satır duruyorken Kayseri dosyasını görme | **0** — ikinci katman (klasör = proje) tek başına da kapatıyor |
+| 1h | Kendi projesinin gerçek fotoğrafını görme (regresyon) | 1 — çalışıyor |
+| 2a | Meşru ek kaydı (kendi ticket'ı, `{ticketId}/…` yolu) | kabul |
+| 2b | Sahte yol (kendi ticket'ı, Kayseri ticket klasörü) | reddedildi |
+| 2c | Görünmeyen Kayseri ticket'ına ek | reddedildi |
+| 2d | `uploaded_by` = başka kullanıcı | reddedildi |
+| 2e | Meşru ekin yolunu UPDATE ile değiştirme | reddedildi |
+
+UPDATE yolu (bulgu sorusu): iki tabloda UPDATE policy'si hiç yok → RLS bugün de reddediyor; taslak ayrıca
+GRANT'i geri çekiyor. storage.objects'te hiçbir bucket için UPDATE policy'si yok (taşıma/üzerine yazma kapalı).
+Yazan kod (grep, çok satırlı desen): yalnızca `DailyReportForm.jsx:766/768` ve `YeniTicketModal.jsx:110/112`;
+edge function'larda yok; ikisi de yeni kuralı geçen yol biçimini kullanıyor.
+
+### G-12 · DÜŞÜK · YeniTicketModal ek kaydı hatasını yok sayıyor
+
+`YeniTicketModal.jsx:111-117`: `ticket_attachments` insert'inin sonucu kontrol edilmiyor; kural bir eki reddederse
+kullanıcı hata görmeden eki kaybeder (dosya storage'da sahipsiz kalır). Bugünkü akış yeni kuralı geçtiği için
+etkisi yok; Faz B'den önce hata kontrolü + kullanıcıya mesaj eklenmeli. G-04 (storage yükleme/silme
+sahipliği) G-02/G-03'ten bağımsız, açık kalıyor.
 
 ### G-01 · YÜKSEK (tasarım/şema) · 05.10.2026'da canlıya eklenen register tabloları tasarımın güvenlik ilkesini çiğniyor
 
