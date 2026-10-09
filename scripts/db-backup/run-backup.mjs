@@ -4,6 +4,10 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import dotenv from 'dotenv'
 
+// Varsayılan: şema dökümü (supabase db dump; tablolar, fonksiyonlar, policy'ler — VERİ YOK).
+// --data: yalnızca veri dökümü (supabase db dump --data-only). Bkz. README.md.
+const dataOnly = process.argv.includes('--data')
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const envPath = path.join(scriptDir, '.env.local')
 
@@ -25,12 +29,14 @@ const backupDir = path.join(scriptDir, 'backups')
 if (!existsSync(backupDir)) mkdirSync(backupDir, { recursive: true })
 
 const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)
-const outFile = path.join(backupDir, `dump_${stamp}.sql`)
+const outFile = path.join(backupDir, `${dataOnly ? 'data' : 'dump'}_${stamp}.sql`)
 
-console.log(`Yedek aliniyor -> ${outFile}`)
+console.log(`${dataOnly ? 'Veri' : 'Sema'} yedegi aliniyor -> ${outFile}`)
 
 const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-const result = spawnSync(npxCmd, ['supabase@latest', 'db', 'dump', '--db-url', dbUrl, '-f', outFile], {
+const args = ['supabase@latest', 'db', 'dump', '--db-url', dbUrl, '-f', outFile]
+if (dataOnly) args.push('--data-only', '--use-copy')
+const result = spawnSync(npxCmd, args, {
   stdio: 'inherit',
 })
 
