@@ -1731,6 +1731,13 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 34 | F1 A4 ayrı migration | Adım 6 sırası: (1) F1 A1-A3 → (2) frontend + `import-project-excel` deploy → (3) sihirbaz ve Excel import ile kodlu proje oluşturmanın canlıda doğrulanması → (4) A4 (kodsuz projeyi reddeden kural) | **ONAYLANDI (09.10.2026)** |
 | 35 | Proje oluşturma yetkisi | admin ve proje_yoneticisi. Bugünkü `projects_insert_admin` (yalnızca admin) bir tutarsızlıktı; `create_project_with_code` ile düzeltiliyor | **ONAYLANDI (09.10.2026)** |
 | 36 | F1 A4 trigger yapısı | Tek `fn_require_project_code` (CASE ile NEW/OLD seçimi) yerine tablo başına iki trigger fonksiyonu (`fn_projects_require_code`, `fn_project_register_settings_keep_code`) + ortak `project_code_missing()`. Gerekçe: her fonksiyon yalnızca kendi tablosunun kaydına bakar, "record has no field" hata sınıfı yapısal olarak ortadan kalkar; IF/ELSE de çalışırdı ama tablo adına göre dallanma yeni tablo eklenince aynı hatayı tekrar üretebilir. `f1_dogrulama.sql`'e kuralı fiilen tetikleyen R1-R5 regresyon testleri eklendi (Adım 6'da da çalışır) | **UYGULANDI (taslakta), Adım 2'de doğrulandı (09.10.2026)** |
+| 37 | Disiplin listesi | `task_disciplines` tablosu (anahtar → ID kısaltması: mechanical=MEC, dc=DC, ac=AC, mv=MV, hv=HV, enh=EIH, civil=CIV, scada=SCA, general=GEN); `project_tasks.discipline` ona FK ile bağlı, boş değer serbest. Canlıda daha önce DB listesi yoktu (yalnızca ekran sözlüğü) | **ONAYLANDI (09.10.2026)**, taslak `f1_aid_activity_id.sql` |
+| 38 | Alan-WBS kuralı (Activity ID) | Görevin WBS'inde (veya üst WBS'lerinde) alan bağı tanımlıysa ve görevin alanı aralarında yoksa atama engellenir; hiç bağ yoksa uyarı verilip atanır | **ONAYLANDI (09.10.2026)** |
+| 39 | ID sonrası kilit | Activity ID atanmış görevde disiplin ve alan kilitli; düzeltme yalnızca genişletilmiş B4 (`admin_correct_task_activity_id`, admin, gerekçe zorunlu, ID + alan/disiplin birlikte, yeni ID görevin proje/disiplin/alanıyla uyumlu olmalı). WBS değişikliği serbest ama `register_audit`'e yazılır | **ONAYLANDI (09.10.2026)** |
+| 40 | ID'li görev silinmez | Activity ID atanmış görev silinemez, durumu `iptal` yapılır; proje silme zinciri çalışır. Sihirbazın sil-yeniden-yaz akışının görev koduna göre güncellemeye çevrilmesi Adım 5'e eklendi ve Adım 6 deploy'unun ön koşulu. İptal görevler ilerleme/ağırlık/S-eğrisi hesaplarından çıkarılır | **ONAYLANDI (09.10.2026)** |
+| 41 | Atama çağrısı | Önizleme (`p_dry_run`) varsayılan açık; çağrı başına en fazla 500 görev, tek proje; gerçek atamada hepsi ya da hiçbiri | **ONAYLANDI (09.10.2026)** |
+| 42 | Adım 3 migration sırası | Ayrı migration, B4'ten sonra; `fn_project_tasks_identity_guard`'ın son hali Adım 3'te (B4'ün kuralını içerir) | **ONAYLANDI (09.10.2026)** |
+| 43 | Önizleme yetkisi | Önizleme de yalnızca admin ve proje_yoneticisi | **ONAYLANDI (09.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1792,6 +1799,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10), yeniden test bekliyor** |
 | B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
 | F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; **Adım 2 kapandı** (`faz1-adim2-sonuclar.md`): B1, B2, B4, F1 canlıda ROLLBACK ile tüm oturumlarda geçti, rollback parmak izi birebir; uygulanmadı (Adım 6) |
+| F1-AID | Activity ID: `task_disciplines` + FK, `activity_id_counters`, `assign_activity_ids`/`assign_activity_id` (önizleme varsayılan), kimlik korumasının son hali (Ç16: yalnızca atama fonksiyonu ve B4 yazar; ID'li görevde disiplin/alan kilidi; ID'li görev silinmez), genişletilmiş B4 (5 parametre), iptal görevleri ilerleme/S-eğrisi/ağırlık hesaplarından çıkarma (7 fonksiyon/görünüm) | `taslak-sql/f1_aid_activity_id.sql`, tasarım `faz1-adim3-tasarim.md` | Faz 1 Adım 3; ROLLBACK testleri sürüyor (`faz1-adim3-sonuclar.md`): Oturum 1a geçti, 1c'de R15 test betiği hatası (düzeltildi, yeniden koşum onay bekliyor); B4'ten sonra ayrı migration (Karar 42) |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -1872,6 +1880,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   statik dosyaya taşındı.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
+
+- **Proje sihirbazının İş Kalemleri kaydı ilerlemesi olan projede kırık (09.10.2026'da ROLLBACK ile doğrulandı,
+  Faz 1'den bağımsız, bugün canlıda).** `ProjeEditWizard.jsx` (adım kaydı) ve `Adim8Tamamlandi.jsx` (düzenleme)
+  projenin tüm `project_tasks` satırlarını silip yeniden ekliyor. `progress_daily.task_id` FK'si silmeye izin
+  vermediğinden, günlük rapor ilerlemesi girilmiş bir projede (ör. TIZ: 35 görevin 16'sı) kayıt
+  `progress_daily_task_id_fkey` hatasıyla düşer. İlerleme yoksa kayıt geçer ama görev ID'leri değişir. Düzeltme Faz 1
+  Adım 5'te: görev koduna göre güncelleme (Karar 40), Adım 6 deploy'unun ön koşulu. Ayrıntı: `docs/proje-kontrol/faz1-adim3-tasarim.md` §7.
 
 - ~~`xlsx` (SheetJS) bağımlılığı — HIGH severity güvenlik açığı~~ — **çözüldü
   (10.09.2026, 2. tur).** Önceki "kabul et/izle" kararı, gerçek saldırı
@@ -2113,6 +2128,25 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**09.10.2026 (8. tur) — Faz 1 Adım 3 taslağı yazıldı; canlıda ROLLBACK testleri başladı, Oturum 1c'de durdu.**
+Karar 37-43 eklendi. Taslak `f1_aid_activity_id.sql`:
+- disiplin sözlüğü;
+- Activity ID atama ve önizleme;
+- Ç16 kimlik koruması;
+- genişletilmiş B4;
+- iptal görevlerin ilerleme hesaplarından çıkarılması.
+
+Kontrol (a): `iptal` durumu canlıda var ama ilerleme, kategori ağırlıkları, S-eğrisi, şantiye kalemleri ve özet
+görünüm onu saymaya devam ediyordu. İptal göreve ilerleme girilince görev yeniden `devam_ediyor` oluyordu. 7 fonksiyon/görünüm
+düzeltildi. Kontrol (b): `activity_id` kontrolü 5 haneye ve uzun alan koduna izin veriyor; değişiklik gerekmedi.
+
+Ç-B (sihirbaz sil-yeniden-yaz) bugün canlıda hata veriyor ("Bilinen açık noktalar"). Canlıda yalnızca ROLLBACK:
+- Oturum 1b ve 1a geçti.
+- Oturum 1c'de R15 test betiği hatası çıktı. Varsayılan kategori ağırlıklarında `mekanik` yok; betik düzeltildi, yeniden koşulmadı.
+- Oturum 5 parmak izi Oturum 0 ile birebir aynı.
+
+Ç16 güvenlik notunun tek açık maddesi (PostgREST exposed schemas) kullanıcının panel kontrolünü bekliyor.
 
 **09.10.2026 (7. tur) — Faz 1 Adım 2 kapandı.** Oturum 4 düzeltilmiş betikle 10/10 geçti, Oturum 5 parmak izi
 Oturum 0 ile birebir. `register-gap-analizi.md` başına 16 register durum tablosu ve fazların 15 Aralık MVP'ye göre

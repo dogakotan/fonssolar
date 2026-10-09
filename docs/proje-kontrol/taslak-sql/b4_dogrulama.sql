@@ -12,6 +12,12 @@ declare
   checks int := 0;
 begin
   reset role;
+  -- Adım 3 (f1_aid_activity_id.sql) kuruluysa B4 genişletilmiştir (5 parametre, biçim/disiplin/alan uyumu, guard'ın son hali).
+  -- Bu bloktaki serbest biçimli test ID'leri artık geçersiz olduğundan genişletilmiş B4 f1_dogrulama R8/R14/R16'da test edilir.
+  if to_regclass('public.task_disciplines') is not null
+     and to_regprocedure('public.admin_correct_task_activity_id(uuid,text,text,text,uuid)') is not null then
+    raise exception 'DOGRULAMA SONUCU: OK | B4 | Adım 3 kurulu: genişletilmiş B4 f1_dogrulama R8/R14/R16''da doğrulanır';
+  end if;
   create or replace function pg_temp.as_user(p_uid uuid) returns void language plpgsql as $f$
   begin
     reset role;
