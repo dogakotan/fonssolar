@@ -1,5 +1,7 @@
 -- ============================================================================
 -- FAZ 1 · F1 — proje kodu kuralı, proje oluşturma fonksiyonu, alan kodu kısıtı — TASLAK (UYGULANMADI)
+-- ★ DEĞİŞTİRİLDİ (09.10.2026, Adım 2 Oturum 2 sonrası), YENİDEN TEST BEKLİYOR ★ fn_require_project_code'da
+--   CASE → IF (T2f/T2g/T2h "record has no field" hatasıyla kaldı). Düzeltilmiş hâli canlıda denenmedi.
 -- Tarih: 09.10.2026 · Kararlar: 21 + Ç14 (biçim), Ç15 (b) (tek fonksiyon + reddeden kural), Ç18 (alan kodu)
 -- Doğrulama: taslak-sql/f1_dogrulama.sql · Edge function diff'i: docs/proje-kontrol/f1-import-project-excel-diff.md
 -- Bağımlılık: yok (B1'den bağımsız; hata sözleşmesi register_raise ile aynı biçim, ama onu çağırmaz).
@@ -112,7 +114,13 @@ set search_path = public
 as $$
 declare v_pid text;
 begin
-  v_pid := case when tg_table_name = 'projects' then new.id else old.project_id end;
+  -- CASE yerine IF: PL/pgSQL CASE'in iki dalındaki kayıt alanlarını birlikte çözer; projects trigger'ında
+  -- old.project_id, settings trigger'ında new.id yok → "record has no field" (Adım 2 Oturum 2'de bulundu).
+  if tg_table_name = 'projects' then
+    v_pid := new.id;
+  else
+    v_pid := old.project_id;
+  end if;
   if exists (select 1 from public.projects where id = v_pid)
      and not exists (select 1 from public.project_register_settings where project_id = v_pid) then
     raise exception using message = 'validation',

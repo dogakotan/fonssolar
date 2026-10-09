@@ -1725,6 +1725,8 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 31 | Test ortamı (Ç17) | Faz 1 Adım 2 canlıda BEGIN…ROLLBACK ile; Faz 2'den itibaren lokal Docker testi zorunlu; Adım 6'dan önce yedek zorunlu | **ONAYLANDI (09.10.2026)** |
 | 32 | Alan kodu (Ç18) | `^[A-Z0-9]+$` (tiresiz) | **ONAYLANDI (09.10.2026)**, taslak F1 |
 | 33 | İş Planı toplu atama | Adım 5'e ek: seçili görevlere toplu disiplin/alan/WBS atama | **ONAYLANDI (09.10.2026)** |
+| 34 | F1 A4 ayrı migration | Adım 6 sırası: (1) F1 A1-A3 → (2) frontend + `import-project-excel` deploy → (3) sihirbaz ve Excel import ile kodlu proje oluşturmanın canlıda doğrulanması → (4) A4 (kodsuz projeyi reddeden kural) | **ONAYLANDI (09.10.2026)** |
+| 35 | Proje oluşturma yetkisi | admin ve proje_yoneticisi. Bugünkü `projects_insert_admin` (yalnızca admin) bir tutarsızlıktı; `create_project_with_code` ile düzeltiliyor | **ONAYLANDI (09.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1785,7 +1787,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | B4 | `admin_correct_task_activity_id` (yalnızca admin, gerekçe zorunlu, audit) | `taslak-sql/b4_identity_guard_admin_fix.sql` | Onay bekliyor (B2'ye bağlı) |
 | B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10), yeniden test bekliyor** |
 | B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
-| F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; test planı `faz1-adim2-test-plani.md` ("başla" bekliyor) |
+| F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; Adım 2 Oturum 1-2 koşuldu (`faz1-adim2-sonuclar.md`): A1-A3 geçti, A4'te hata bulundu ve taslakta düzeltildi — **yeniden test bekliyor**; Oturum 3-4 koşulmadı |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -2107,6 +2109,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**09.10.2026 (5. tur) — Faz 1 Adım 2 canlıda ROLLBACK ile koşuldu, Oturum 2'de durdu.** Karar 34-35 eklendi.
+Ön kontroller temiz (http/pg_net/webhook yok, aktif bağlantı yok). Oturum 1 (B1, B2, B4, F1 doğrulamaları) ve
+Oturum 2'nin 18 testinden 15'i geçti; F1 A4'teki `fn_require_project_code` `CASE` içinde iki trigger'ın kayıt
+alanlarını birlikte çözdüğü için her tetiklenmede hata veriyordu (uygulansaydı proje oluşturma/silme kırılırdı).
+Taslakta `IF`'e çevrildi, yeniden test bekliyor. Oturum 3-4 koşulmadı. Rollback sonrası parmak izi Oturum 0 ile
+birebir aynı (`faz1-adim2-sonuclar.md`).
 
 **09.10.2026 (4. tur) — Faz 1 Adım 1 tamamlandı (yalnızca taslak, canlıya uygulama yok).** Karar 17-33 eklendi.
 F1 taslağı (proje kodu biçimi, `create_project_with_code`, kodsuz projeyi reddeden ertelenmiş kural, tiresiz alan
