@@ -1706,8 +1706,18 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 12 | Subcontractor | `suppliers.party_type` (tedarikci \| taseron \| ikisi; `supplier_type` adı başka anlamla dolu). Ayrıca proje bazlı `subcontracts` tablosu (kapsam, bedel, süre, teminat), Faz 6 | **ONAYLANDI (09.10.2026)** |
 | 13 | Faz tanımları | Faz 0 zemin (kapandı); 1 WBS/Area/Activity kodu; 2 ortak altyapı (numaralama, links, files, history, `register_permissions`); 3 mevcut 8 register'ı standarda getirme + UI, RFI pilot; 4 köprüler (procurement görünümü + sahada gerekli tarih, tedarikçi ödeme görünümü); 5 Change, Claim, Interface; 6 `subcontracts`, `progress_payments`, faturalara WBS/aktivite bağı; 7 Aktivite 360 ve KPI; 8 alarmlar; 9 import, test, go-live. Ertelenen: NCR, Inspection (Karar 8), SharePoint (M365 sonrası). Tasarımın A-E fazlarıyla eşleşme ve açık çakışmalar: `docs/proje-kontrol/register-gap-analizi.md` §c | **ONAYLANDI (09.10.2026)**, çakışmalar kullanıcıda |
 | 14 | Risk numarası | `project_risks`'e RSK önekli numara; otomatik riskler de numara alır; ayrım `source` (manuel \| otomatik) ile; numara boşlukları kabul | **ONAYLANDI (09.10.2026)** |
-| 15 | Satın alma köprüsü | Faz 4'te `purchase_requests`'e nullable "sahada gerekli tarih" kolonu; doküman bağı kolonla değil Faz 2'nin ortak links yapısıyla; `SAT-YYYY-NNN` numaraları değişmez | **ONAYLANDI (09.10.2026)**, links yapısıyla çakışma kullanıcıda |
+| 15 | Satın alma köprüsü | Faz 4'te `purchase_requests`'e nullable "sahada gerekli tarih" kolonu; doküman bağı Faz 4'te `purchase_documents` ara tablosuyla (talep × doküman, çoka çok; Karar 22 ile düzeltildi — `register_links` açılmıyor); `SAT-YYYY-NNN` numaraları değişmez | **ONAYLANDI (09.10.2026)** |
 | 16 | NCR / Inspection kodları | Mobilizasyon sonrası yeniden değerlendirilir (Karar 8 geçerli); `ncr` ve `inspection` register tipi kodları Faz 2'de şimdiden ayrılır | **ONAYLANDI (09.10.2026)** |
+| 17 | Faz sırası (Ç2, Ç5) | B1, B2, B4 Faz 1'e taşındı. B5 Faz 2'de tek başına; patron onayı paralel alınır | **ONAYLANDI (09.10.2026)** |
+| 18 | Activity ID | Sistem üretir, elle yazılmaz. Biçim `{PROJE}-{DİSİPLİN}-{ALAN}-{NNNN}`, sıra onar artar. Yalnızca disiplin, alan ve WBS doluyken "Kod ata" ile atanır; düzeltme yalnızca B4. Mevcut `task_code` görünen kısa kod olarak kalır. Önce tek WBS grubunda pilot, onaydan sonra toplu atama | **ONAYLANDI (09.10.2026)** |
+| 19 | WBS ve alan verisi | İlk yükleme Excel import script'iyle, sonrası ekrandan. Başlangıç projesi Diyarbakır İsdemir | **ONAYLANDI (09.10.2026)** — Diyarbakır projesi canlıda yok (bkz. gap Ç13) |
+| 20 | Disiplin | Liste: mechanical, dc, ac, mv, hv, enh, civil, scada, general. ID kısaltmaları MEC, DC, AC, MV, HV, EIH, CIV, SCA, GEN. Mevcut görevlerde DB zorunluluğu yok; yeni görev formunda ve ID atamada zorunlu | **ONAYLANDI (09.10.2026)** |
+| 21 | Proje kodu (Ç7) | NOT NULL + unique + biçim kontrolü (2-5 büyük harf); proje oluşturma formunda zorunlu | **ONAYLANDI (09.10.2026)** — canlı CHECK ve ADN1/ADN2 ile çakışıyor (gap Ç14, Ç15) |
+| 22 | Links (Ç1) | `register_links` açılmıyor; satın alma-doküman bağı Faz 4'te `purchase_documents` ara tablosuyla | **ONAYLANDI (09.10.2026)** |
+| 23 | AI (Ç3) | RFI pilotu AI'sız. AI akışları (`register_drafts`, `process-document`, agent'lar) Faz 7 sonrası ayrı faz | **ONAYLANDI (09.10.2026)** |
+| 24 | MVP takvimi (Ç4) | 1 Ocak 2027 MVP = Faz 1-4, hedef 15 Aralık 2026 | **ONAYLANDI (09.10.2026)** |
+| 25 | Tip kodları (Ç12) | `ncr`, `inspection` B1'e şimdi eklenir (yetkisiz seed) | **ONAYLANDI ve taslağa işlendi (09.10.2026)** |
+| 26 | Ertelenen çakışmalar | Ç6 Faz 3 başında; Ç8, Ç10, Ç11 Faz 6 başında çözülür | **ONAYLANDI (09.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1762,7 +1772,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 
 | Paket | İçerik | Taslak | Durum |
 |---|---|---|---|
-| B1 | `register_permissions` (+`edit_scope` own/all), `register_status_transitions`, `register_can()`, `get_my_register_permissions()`, admin `set_register_permission()`, 4 rol seed | `taslak-sql/b1_register_permissions.sql` | Onay bekliyor |
+| B1 | `register_permissions` (+`edit_scope` own/all), `register_status_transitions`, `register_can()`, `get_my_register_permissions()`, admin `set_register_permission()`, 4 rol seed | `taslak-sql/b1_register_permissions.sql` | Onay bekliyor; **Faz 1'e taşındı (Karar 17)**; ncr/inspection eklendi, yeniden test bekliyor |
 | B2 | `register_audit` (yalnızca değişen alanlar) + trigger, 30 indekssiz FK'ye indeks, G-13 | `taslak-sql/b2_register_audit_indexes.sql` | Onay bekliyor |
 | B3 | Ortak kolonlar, `save/submit/approve/reject/reopen/delete_register_record`, `set_register_status`, `link/unlink_register_records`, dört göz, G-01'in kalıcılaşması | `taslak-sql/b3_register_write_rpcs.sql` | Onay bekliyor (B1, B2'ye bağlı) |
 | B4 | `admin_correct_task_activity_id` (yalnızca admin, gerekçe zorunlu, audit) | `taslak-sql/b4_identity_guard_admin_fix.sql` | Onay bekliyor (B2'ye bağlı) |

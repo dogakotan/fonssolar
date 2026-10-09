@@ -1,5 +1,7 @@
 -- ============================================================================
 -- FAZ B · B1 — register_permissions — TASLAK (UYGULANMADI, onay bekliyor) · 07.10.2026
+-- ★ DEĞİŞTİRİLDİ (09.10.2026), YENİDEN TEST BEKLİYOR ★ ncr/inspection tipleri CHECK'e ve seed'e (yetkisiz)
+--   eklendi (Karar 16). Seed 56 → 64 satır. Faz 1'e taşındı (Karar 17).
 -- Plan: docs/proje-kontrol/faz-b-migration-plani.md · Tasarım: tasarim.md §4.2 A, §4.3, §4.4
 -- Doğrulama: taslak-sql/b1_dogrulama.sql · Anlık görüntü: yedek-faz-b-07-10.sql (B1 yeni nesne ekler,
 -- mevcut nesneye dokunmaz) · Test: tests/proje-kontrol-b1-yetki.spec.js
@@ -38,7 +40,8 @@ create table public.register_permissions (
   primary key (role_key, register_type),
   constraint register_permissions_type_check check (register_type in (
     'document','drawing','rfi','submittal','material_approval','interface','decision','action',
-    'risk','change','claim','procurement','subcontractor','payment')),
+    'risk','change','claim','procurement','subcontractor','payment',
+    'ncr','inspection')),  -- Karar 16/26: tip kodları ayrıldı; tablo yok, Karar 8 (ertelendi)
   constraint register_permissions_edit_scope_check check (edit_scope in ('all','own')),
   -- Görmeyen düzenleyemez/onaylayamaz/silemez
   constraint register_permissions_view_implied check (
@@ -93,7 +96,10 @@ from (values
   ('admin','claim','VCEAD'), ('proje_yoneticisi','claim','VCEA'), ('santiye_sefi','claim',''), ('muhasebe','claim','V'),
   ('admin','procurement','V'), ('proje_yoneticisi','procurement','V'), ('santiye_sefi','procurement','V'), ('muhasebe','procurement','V'),
   ('admin','subcontractor','VCED'), ('proje_yoneticisi','subcontractor','VCE'), ('santiye_sefi','subcontractor','V'), ('muhasebe','subcontractor','V'),
-  ('admin','payment','V'), ('proje_yoneticisi','payment','V'), ('santiye_sefi','payment',''), ('muhasebe','payment','V')
+  ('admin','payment','V'), ('proje_yoneticisi','payment','V'), ('santiye_sefi','payment',''), ('muhasebe','payment','V'),
+  -- Ayrılmış tipler (Karar 16): tablo olmadığı için hiçbir role yetki yok
+  ('admin','ncr',''), ('proje_yoneticisi','ncr',''), ('santiye_sefi','ncr',''), ('muhasebe','ncr',''),
+  ('admin','inspection',''), ('proje_yoneticisi','inspection',''), ('santiye_sefi','inspection',''), ('muhasebe','inspection','')
 ) as m(role_key, register_type, f)
 on conflict (role_key, register_type) do nothing;
 

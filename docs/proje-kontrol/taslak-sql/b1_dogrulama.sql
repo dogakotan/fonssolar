@@ -67,7 +67,10 @@ begin
   end loop;
 
   select count(*) into n from public.register_permissions;
-  if n <> 56 then raise exception 'seed 56 satır olmalıydı: %', n; end if;
+  if n <> 64 then raise exception 'seed 64 satır olmalıydı (16 tip × 4 rol): %', n; end if;
+  if exists (select 1 from public.register_permissions where register_type in ('ncr','inspection') and can_view) then
+    raise exception 'ayrılmış tiplerde (ncr, inspection) yetki olmamalı';
+  end if;
   if exists (select 1 from public.roles ro where not exists (select 1 from public.register_permissions rp where rp.role_key = ro.key)) then
     raise exception 'seed''de olmayan rol var';
   end if;
@@ -123,5 +126,5 @@ begin
   reset role;
   checks := checks + 1;
 
-  raise exception 'DOGRULAMA SONUCU: OK | B1 | % kontrol grubu | seed 56 | geçiş durumları canlı CHECK ile uyumlu', checks;
+  raise exception 'DOGRULAMA SONUCU: OK | B1 | % kontrol grubu | seed 64 | geçiş durumları canlı CHECK ile uyumlu', checks;
 end $$;

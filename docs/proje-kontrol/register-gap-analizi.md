@@ -165,7 +165,58 @@ eksikleri tamamlar.
 | **9 · Import, test, go-live** | Playwright altyapısı, 118 test; Faz B test taslakları (paket yoksa kendini atlar) | ✔ | ✔ | |
 | | Excel import sihirbazı, go-live kontrol listesi | | | ✔ |
 
-## d. Çakışmalar ve mantık sorunları (değiştirilmedi, kararını bekliyor)
+## d. Çakışmalar ve mantık sorunları
+
+**Durum (09.10.2026, Karar 17-26 sonrası):**
+
+| Ç | Durum |
+|---|---|
+| Ç1 | **Çözüldü (Karar 22):** `register_links` açılmıyor; Faz 4'te `purchase_documents` ara tablosu. Karar 15 düzeltildi |
+| Ç2 | **Çözüldü (Karar 17):** B1, B2, B4 Faz 1'e taşındı |
+| Ç3 | **Çözüldü (Karar 23):** RFI pilotu AI'sız; AI Faz 7 sonrası ayrı faz |
+| Ç4 | **Çözüldü (Karar 24):** MVP = Faz 1-4, hedef 15.12.2026 |
+| Ç5 | **Çözüldü (Karar 17):** B5 Faz 2'de tek başına, patron onayı paralel |
+| Ç6 | Ertelendi: Faz 3 başında (Karar 26) |
+| Ç7 | **Çözüldü (Karar 21)**, ancak uygulaması Ç14 ve Ç15'e bağlı |
+| Ç8, Ç10, Ç11 | Ertelendi: Faz 6 başında (Karar 26) |
+| Ç9 | Açık (Faz 6 varsayımı sürüyor) |
+| Ç12 | **Çözüldü (Karar 25):** B1 taslağına işlendi (seed 64 satır) |
+| Ç13-Ç18 | **Yeni, kararını bekliyor** (aşağıda) |
+
+**Yeni çakışmalar (Karar 18-21 ile canlı arasında):**
+
+- **Ç13 · Diyarbakır İsdemir projesi canlıda yok.**
+  - Canlıda 4 proje var: ADN1, ADN2 (Kaptan Demir Adana) ve iki test projesi (TIZ, TKY).
+  - 228 görevin dağılımı: 120 / 59 / 35 / 14.
+  - Pilotun yapılabilmesi için önce Diyarbakır projesinin oluşturulması (kod ve iş planıyla) gerekiyor. Bunun Faz 1'in içinde mi, dışında mı yapılacağı belirsiz.
+- **Ç14 · Proje kodu biçimi.**
+  - Karar 21 "2-5 büyük harf" diyor.
+  - Canlıdaki CHECK `^[A-Z0-9]{2,6}$` (rakam serbest, 6 karaktere kadar).
+  - Karar 2 ile onaylanan ADN1 ve ADN2 rakam içeriyor. Harf zorunluluğu bu iki kodu geçersiz kılar.
+  - Seçenekler:
+    - (a) `^[A-Z][A-Z0-9]{1,4}$`: harfle başlar, 2-5 karakter, rakam serbest. ADN1/ADN2 geçerli kalır.
+    - (b) Yalnızca harf. ADN1 ve ADN2 yeniden adlandırılır; register kaydı olmadığı için numara kaybı yok.
+- **Ç15 · "NOT NULL" nerede.**
+  - Kod `projects` üzerinde değil, ayrı `project_register_settings` tablosunda (prefix zaten NOT NULL + UNIQUE).
+  - "Her projenin kodu olsun" kuralı iki yoldan biriyle kurulur:
+    - (a) `projects`'e `code` kolonu. İki kaynak olur; `project_register_settings.prefix` ile senkron gerekir.
+    - (b) Proje oluşturma tek bir RPC'ye taşınır ve `projects` + `project_register_settings` aynı işlemde yazılır. Buna ek olarak ayar satırı olmayan projeyi reddeden ertelenmiş bir constraint trigger konur.
+  - Proje bugün iki yoldan oluşuyor:
+    - sihirbaz: istemciden doğrudan `projects` insert;
+    - `import-project-excel` edge function.
+  - (b) seçilirse edge function'ın da değişip yeniden deploy edilmesi gerekir; bu, ayrıca onay ister.
+- **Ç16 · "Elle yazılmaz" kuralı DB'de yok.** Bugün `project_tasks` UPDATE yetkisi olan herkes `activity_id`'yi NULL'dan ilk kez doldurabiliyor (guard yalnızca sonraki değişikliği engelliyor). Karar 18 için guard, değeri yalnızca kod atama fonksiyonu ve B4 üzerinden kabul edecek şekilde değişmeli. Bu, Adım 3'te yazılacak.
+- **Ç17 · Lokal test ortamı yok.**
+  - Bu bilgisayarda Docker ve Supabase CLI yok.
+  - Canlı şema kopyası için dökümü (`npm run db:backup`) `scripts/db-backup/.env.local` gerektiriyor; bu dosya yok ve Claude okumaz.
+  - Repodaki migration'lar canlıyı birebir üretmiyor: 13 dosya kalıcı olarak eksik, 05.10 migration'ları yalnızca `docs/` altında.
+  - Adım 2 için gerekenler:
+    1. Docker Desktop kurulumu;
+    2. `.env.local` hazırlanıp şema dökümünün alınması;
+    3. Bu döküm lokale yüklenir.
+- **Ç18 (küçük) · Alan kodunda tire.** `area_code` CHECK'i tireye izin veriyor (`^[A-Z0-9][A-Z0-9-]*$`). Activity ID `{PROJE}-{DİSİPLİN}-{ALAN}-{NNNN}` biçiminde tire ayırıcı olduğundan, tireli bir alan kodu ID'yi ayrıştırmayı belirsizleştirir. Öneri: ID'de kullanılacak alan kodunu tiresiz zorunlu kılmak.
+
+**Önceki maddeler (tarihçe):**
 
 - **Ç1 · Links yapısı ve Karar 15.**
   - Karar 15 doküman bağını "kolon değil, ortak links yapısı" ile istiyor.

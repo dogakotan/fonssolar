@@ -14,7 +14,7 @@ Değişen canlı nesnelerin anlık görüntüsü: `yedek-faz-b-07-10.sql`.
 
 | Paket | SQL | Doğrulama | Test | Bağımlılık | Durum |
 |---|---|---|---|---|---|
-| B1 yetki matrisi | `taslak-sql/b1_register_permissions.sql` | `b1_dogrulama.sql` | `proje-kontrol-b1-yetki.spec.js` | — | Onay bekliyor |
+| B1 yetki matrisi | `taslak-sql/b1_register_permissions.sql` | `b1_dogrulama.sql` | `proje-kontrol-b1-yetki.spec.js` | — | Onay bekliyor. **Faz 1'e taşındı (Karar 17); değiştirildi (09.10: ncr/inspection, seed 64), yeniden test bekliyor** |
 | B2 audit, FK indeksleri, G-13 | `taslak-sql/b2_register_audit_indexes.sql` | `b2_dogrulama.sql` | `proje-kontrol-b2-audit.spec.js` | B1 | Onay bekliyor |
 | B3 yazma RPC'leri, G-01 kalıcı | `taslak-sql/b3_register_write_rpcs.sql` | `b3_dogrulama.sql` | `proje-kontrol-b3-yazma.spec.js` (+ uyum spec'teki 3 fixme) | B1, B2 | Onay bekliyor |
 | B4 Activity ID düzeltme | `taslak-sql/b4_identity_guard_admin_fix.sql` | `b4_dogrulama.sql` | `proje-kontrol-b4-activity.spec.js` | B1, B2 | Onay bekliyor |
