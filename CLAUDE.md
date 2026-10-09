@@ -1702,6 +1702,12 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 8 | NCR ve Inspection | Pilotta yok; mobilizasyondan sonra, kalite modülünün kaldırılma kararı hatırlanarak | **AÇIK** (tasarımda öneri) |
 | 9 | Agent kimliği ve ilk agent'lar | Her agent için ayrı, proje kapsamlı rol, yalnızca izinli RPC'ler; ilk agent'lar Reconciliation ve Planning (Faz E) | **AÇIK** (tasarımda öneri) |
 | 10 | Dört göz kuralı | Kritik register'larda (risk, change, claim, decision) onaylayan hazırlayandan farklı; küçük ekipte proje bazında kapatılabilir (B3 taslağında `project_register_settings.four_eyes_enabled`, varsayılan açık) | **AÇIK** |
+| 11 | Payment | Şimdi (Faz 4): tedarikçi ödemeleri mevcut tablolar (`invoices`, `invoice_payments`, `financial_transactions`) üzerinden okuma görünümü. Faz 6: taşeron hakedişi ve işveren hakedişi tek `progress_payments` tablosunda, `direction` (alacak \| borç). `financial_transactions.transaction_type='hakedis'` yalnızca nakit hareketi; hakediş detayı `progress_payments`'ta | **ONAYLANDI (09.10.2026)** |
+| 12 | Subcontractor | `suppliers.party_type` (tedarikci \| taseron \| ikisi; `supplier_type` adı başka anlamla dolu). Ayrıca proje bazlı `subcontracts` tablosu (kapsam, bedel, süre, teminat), Faz 6 | **ONAYLANDI (09.10.2026)** |
+| 13 | Faz tanımları | Faz 0 zemin (kapandı); 1 WBS/Area/Activity kodu; 2 ortak altyapı (numaralama, links, files, history, `register_permissions`); 3 mevcut 8 register'ı standarda getirme + UI, RFI pilot; 4 köprüler (procurement görünümü + sahada gerekli tarih, tedarikçi ödeme görünümü); 5 Change, Claim, Interface; 6 `subcontracts`, `progress_payments`, faturalara WBS/aktivite bağı; 7 Aktivite 360 ve KPI; 8 alarmlar; 9 import, test, go-live. Ertelenen: NCR, Inspection (Karar 8), SharePoint (M365 sonrası). Tasarımın A-E fazlarıyla eşleşme ve açık çakışmalar: `docs/proje-kontrol/register-gap-analizi.md` §c | **ONAYLANDI (09.10.2026)**, çakışmalar kullanıcıda |
+| 14 | Risk numarası | `project_risks`'e RSK önekli numara; otomatik riskler de numara alır; ayrım `source` (manuel \| otomatik) ile; numara boşlukları kabul | **ONAYLANDI (09.10.2026)** |
+| 15 | Satın alma köprüsü | Faz 4'te `purchase_requests`'e nullable "sahada gerekli tarih" kolonu; doküman bağı kolonla değil Faz 2'nin ortak links yapısıyla; `SAT-YYYY-NNN` numaraları değişmez | **ONAYLANDI (09.10.2026)**, links yapısıyla çakışma kullanıcıda |
+| 16 | NCR / Inspection kodları | Mobilizasyon sonrası yeniden değerlendirilir (Karar 8 geçerli); `ncr` ve `inspection` register tipi kodları Faz 2'de şimdiden ayrılır | **ONAYLANDI (09.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1760,7 +1766,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | B2 | `register_audit` (yalnızca değişen alanlar) + trigger, 30 indekssiz FK'ye indeks, G-13 | `taslak-sql/b2_register_audit_indexes.sql` | Onay bekliyor |
 | B3 | Ortak kolonlar, `save/submit/approve/reject/reopen/delete_register_record`, `set_register_status`, `link/unlink_register_records`, dört göz, G-01'in kalıcılaşması | `taslak-sql/b3_register_write_rpcs.sql` | Onay bekliyor (B1, B2'ye bağlı) |
 | B4 | `admin_correct_task_activity_id` (yalnızca admin, gerekçe zorunlu, audit) | `taslak-sql/b4_identity_guard_admin_fix.sql` | Onay bekliyor (B2'ye bağlı) |
-| B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı) |
+| B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10), yeniden test bekliyor** |
 | B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
@@ -2083,6 +2089,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**09.10.2026 (3. tur) — Faz 0 kapandı; Karar 11-16 eklendi (yalnızca doküman, migration yok).** Payment,
+Subcontractor, Faz 1-9 tanımları, RSK numarası, satın alma köprüsü ve NCR/Inspection kodları karar tablosuna
+yazıldı. `register-gap-analizi.md` faz tablosu yeni fazlarla yeniden yazıldı; kullanıcı kararı bekleyen 12
+çakışma (Ç1-Ç12: links yapısı, Faz 1'in B1/B2 bağımlılığı, AI/agent'ın fazsızlığı, takvim, RSK ve proje kodu
+zorunluluğu…) ve Faz 1 kapsam paragrafı aynı dosyada. B5 "değiştirildi, yeniden test bekliyor" olarak işaretlendi.
 
 **09.10.2026 (2. tur) — Proje Kontrol kuralları ve register eksik analizi yazıldı (şema değişmedi).**
 `docs/proje-kontrol/CONVENTIONS.md` ve `register-gap-analizi.md` eklendi; CLAUDE.md'ye kural 8 (çelişen talimatta

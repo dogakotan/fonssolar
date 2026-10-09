@@ -1,6 +1,9 @@
 -- ============================================================================
 -- FAZ B · B5 — doküman deposu (Supabase Storage) — TASLAK · ★ PATRON ONAYI BEKLİYOR (Karar 5) ★
 -- UYGULANMAYACAK: patron dosya deposunu ve Supabase Pro planını onaylamadan bu dosya canlıya uygulanmaz.
+-- ★ DEĞİŞTİRİLDİ (09.10.2026), YENİDEN TEST BEKLİYOR ★ fn_cleanup_stale_document_uploads yalnızca
+--   storage_provider = 'supabase_storage' satırlarına daraltıldı (CONVENTIONS.md §5). 07.10'daki BEGIN…ROLLBACK
+--   denemesi önceki sürüme aittir; bu sürüm canlıda denenmedi.
 -- Tarih: 07.10.2026 · Plan: docs/proje-kontrol/faz-b-migration-plani.md · Tasarım: tasarim.md §4.4 (Doküman yükleme), §4.5
 -- Doğrulama: taslak-sql/b5_dogrulama.sql · Anlık görüntü: yedek-faz-b-07-10.sql §B5 (storage.objects policy'leri, bucket'lar, cron işleri)
 -- Test: tests/proje-kontrol-b5-dosya.spec.js

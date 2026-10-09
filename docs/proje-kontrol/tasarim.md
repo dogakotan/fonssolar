@@ -2,6 +2,7 @@
 
 > Bu dosya önceki tasarım sürümlerinin ve `FONS_Diyarbakir_Sistem_Revizyon_Yol_Haritasi.docx` dosyasının YERİNE geçer. Çelişirse bu dosya geçerlidir; yalnızca kolon düzeyindeki canlı şema konusunda `docs/proje-kontrol/canli-sema-ozeti.md` geçerlidir (canlı veritabanı tasarımdan önce gelir, fark bulursan bu dosyayı düzelt).
 > v3 farkları: dosya deposu Supabase Storage'dır (Fons içi klasörlü dosya gezgini); Google Drive ve SharePoint YOKTUR (şirkette Microsoft 365 ve Google Workspace yok). Canlı şema 07.10.2026 itibarıyla esas alınmıştır. Karar 0-4 onaylanmış ve uygulanmıştır; Karar 5 (dosya deposu ve Supabase Pro planı) patron onayı beklemektedir.
+> **09.10.2026 notu:** Karar 11-16 (Payment, Subcontractor, Faz 1-9 tanımları, RSK numarası, satın alma köprüsü, NCR/Inspection kodları) CLAUDE.md karar tablosundadır. Bu dosyadaki A-E fazlarının Faz 1-9 karşılığı `register-gap-analizi.md` §c'dedir; çelişirse kararlar geçerlidir.
 > Diyagramlar yalnızca Word sürümünde görsel olarak yer alır; içerikleri metinde de anlatılmıştır.
 
 # Bölüm 1 · Yol haritası

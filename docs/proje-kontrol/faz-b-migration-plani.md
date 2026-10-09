@@ -19,7 +19,7 @@ Değişen canlı nesnelerin anlık görüntüsü: `yedek-faz-b-07-10.sql`.
 | B3 yazma RPC'leri, G-01 kalıcı | `taslak-sql/b3_register_write_rpcs.sql` | `b3_dogrulama.sql` | `proje-kontrol-b3-yazma.spec.js` (+ uyum spec'teki 3 fixme) | B1, B2 | Onay bekliyor |
 | B4 Activity ID düzeltme | `taslak-sql/b4_identity_guard_admin_fix.sql` | `b4_dogrulama.sql` | `proje-kontrol-b4-activity.spec.js` | B1, B2 | Onay bekliyor |
 | B6 okuma görünümleri ve RPC'leri | `taslak-sql/b6_register_read_rpcs.sql` | `b6_dogrulama.sql` | `proje-kontrol-b6-okuma.spec.js` | B1, B2, B3 | Onay bekliyor |
-| B5 doküman deposu | `taslak-sql/b5_document_storage.sql` | `b5_dogrulama.sql` | `proje-kontrol-b5-dosya.spec.js` | B1, B2, B3 | **PATRON ONAYI BEKLİYOR** (Karar 5) |
+| B5 doküman deposu | `taslak-sql/b5_document_storage.sql` | `b5_dogrulama.sql` | `proje-kontrol-b5-dosya.spec.js` | B1, B2, B3 | **PATRON ONAYI BEKLİYOR** (Karar 5). **Değiştirildi (09.10.2026), yeniden test bekliyor:** temizlik işi yalnızca `storage_provider='supabase_storage'` satırlarına daraltıldı; önceki ROLLBACK denemesi eski sürüme aittir |
 
 **Önerilen uygulama sırası:** B1 → B2 → B3 → B4 → B6. B5 patron onayından sonra gelir.
 
