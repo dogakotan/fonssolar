@@ -1665,117 +1665,120 @@ Playwright regresyon suite'i (`npm run test:e2e`), kimlik bilgileri `.env.test`'
 yazılmaz.** Admin test hesabının `profiles.id`'si değişebilir — `select id from
 profiles where role_key='admin'` ile doğrula.
 
-### Proje Kontrol (Faz A — zemin ve kararlar, 06.10.2026'da başladı)
+### Proje Kontrol (Faz A tamamlanıyor, Faz B taslakları hazır — 06-07.10.2026)
 
-Kaynak tasarım: `docs/proje-kontrol/tasarim.md` (**v3, 07.10.2026**, canlı şemaya göre yeniden yazıldı; v2 ve
-`FONS_Diyarbakir_Sistem_Revizyon_Yol_Haritasi.docx` v1 geçersiz). Öncelik: onaylı kararlar (bu bölüm) > canlı şema
-(`docs/proje-kontrol/canli-sema-ozeti.md`) > tasarim.md. Faz B'nin kalan işleri tasarim.md §4.10'da (B1-B9);
-dosya sağlayıcısı (A: Supabase Storage + Pro / B: ayrı Gmail hesabında Drive, OAuth) §4.5'te **karar bekliyor**.
-Faz A'da yalnızca güvenlik düzeltmeleri ve onaylı uyum migration'ı uygulandı. Branch: `faz-a-proje-kontrol`.
+Kaynak tasarım: `docs/proje-kontrol/tasarim.md` (**v3, 07.10.2026** — kullanıcının verdiği sürüm; önceki taslak
+`docs/proje-kontrol/arsiv/` altında, v2 ve `FONS_Diyarbakir_Sistem_Revizyon_Yol_Haritasi.docx` v1 geçersiz).
+Öncelik: onaylı kararlar (bu bölüm) > canlı şema (`docs/proje-kontrol/canli-sema-ozeti.md`) > tasarim.md; tasarım
+canlıyla çelişirse tasarim.md düzeltilir ve fark `docs/proje-kontrol/v3-uyum-notlari.md`'ye yazılır.
+Branch: `faz-a-proje-kontrol` (push edilmedi).
 
-**Canlıda tasarımla çelişen bir ön şema var (06.10.2026'da bulundu).** 05.10.2026'da yerel dosyası
-olmayan 3 migration (`faz1_wbs_alan_activity`, `project_control_phase1_core`,
-`project_control_phase1b_hardening`) uygulanmış: `project_wbs`, `project_areas`, `area_wbs`,
-`documents`, `drawings`, `rfis`, `actions`, `decisions`, `technical_submittals`,
-`material_approvals`, `project_register_counters`, `register_status_history` (hepsi boş, frontend
-kullanmıyor) + `project_tasks`/`project_risks`/`procurement_items`/`purchase_requests`'e kolonlar.
-Tasarımdan farkları (ad, numara biçimi `RFI-2026-001`, doğrudan yazma policy'leri, ayrı `actions`
-tablosu, `record_state` yokluğu, `project_tasks.is_critical`'ın **geri eklenmesi**, `suppliers.supplier_type`
-ad çakışması) `docs/proje-kontrol/sema-dogrulama.md` Bölüm 0'da. Faz B şeması bu durum
-kararlaştırılmadan kilitlenemez (Karar #0).
+**Dosya deposu: Supabase Storage, Google Drive / SharePoint YOK.** Şirkette Microsoft 365 ve Google Workspace
+olmadığı için dosyalar yeni bir özel (private) bucket'ta tutulur; kullanıcı Fons içindeki klasörlü dosya gezgininden
+ulaşır (klasör ağacı arayüzde, `documents`/`document_revisions` kayıtlarından üretilir; depoda klasör yönetimi yok).
+drive-gateway, drive-sync, Google/Microsoft entegrasyonu ve bunların secret'ları planda yok. Bu karar (Karar 5)
+**PATRON ONAYI BEKLİYOR** (öneri: Supabase Pro, aylık 25 $). Onay gelmeden bucket ve yükleme akışı (B5) uygulanmaz,
+yalnızca taslağı durur; kayıt/yetki işleri (B1-B4, B6) onayı beklemez.
 
-**Kararlar.** Kullanıcı bir kararı onaylayınca etiket "ONAYLANDI (tarih)" olur ve gerekçesi yazılır;
-onaylanmamış karar uygulanmaz. Kararlar `tasarim.md` ile çelişirse kararlar geçerlidir.
+**Ücretsiz plan sınırları (bugün geçerli):** 500 MB veritabanı (07.10'da 28 MB), 1 GB dosya (07.10'da ~2,2 MB),
+tek dosya 50 MB, otomatik yedek yok, 1 hafta işlemsizlikte duraklama. Bu yüzden: dokümanın tam metni DB'de kalıcı
+saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları tutar, AI taslakları hedef tabloya değil
+`register_drafts`'a yazılır (Faz C), register tablolarına yazma yalnızca RPC ile (G-01 bugün geçici; B3 ile kalıcı).
+
+**Kararlar.** Onaylanmamış karar uygulanmaz; kararlar tasarim.md ile çelişirse kararlar geçerlidir.
 
 | # | Karar | İçerik | Durum |
 |---|---|---|---|
-| 0 | 05.10 ön şemasının akıbeti | **(a) yolu:** tablolar korunur, onaylanan alt kararlara uyum migration'ıyla hizalanır. Alt kararlar: **0.1** Action ayrı tablo, adı `project_actions` (`actions` yeniden adlandırılır; ticket sahadan bildirim olarak kalır, genişletilmez); kaynak listesinden `inspection`/`ncr` çıkar. **0.2** Numara `{TÜR}-{PROJE_KODU}-{SIRA}` (`RFI-DYB-0032`): yıl ve disiplin yok, sıra proje+tür bazında boşluksuz, 4 haneye kadar sıfır, uzun sayı kırpılmaz; proje kodu `project_register_settings` (ADN1, ADN2, TIZ, TKY; DYB Diyarbakır açılınca); çizim türündeki dokümanlar `DRW`, diğerleri `DOC`; `TS`/`MA` önekleri kalır. **0.3** bkz. #3. **0.4** `technical_submittals` ve `material_approvals` iki ayrı tablo, dokunulmaz. **0.5** `project_tasks.is_critical` yeniden kaldırılır (03.08 kararı). Gerekçe: tablolar boş, (a) mevcut kompozit FK ve WBS/Alan yapısını koruyor | **ONAYLANDI (07.10.2026)** — **migration uygulandı** (`20261007072501_uyum_project_control_registers`) |
-| 1 | Drive erişim modeli | Tek servis hesabı Shared Drive'a erişir; kullanıcı dosyayı yalnızca drive-gateway üzerinden açar (her çağrıda JWT + `has_project_access`) | **ONAY BEKLİYOR** |
-| 2 | Drive klasör yapısı | Shared Drive "Fons Projects" > Proje > `01_Dokumanlar` > Disiplin > Register türü (+ `00_Gelen_Kutusu`, `99_Arsiv`); dosya adı `{register_no}_{rev}_{kisa-baslik}.{ext}` (ör. `DRW-DYB-0125_R03_…`) | **ONAY BEKLİYOR** |
-| 3 | Revizyon modeli | Tek doküman, çok revizyon: `documents` doküman kimliğini tutar, revizyonlar `document_revisions`'ta (revizyon no, durum `ifr`/`ifa`/`ifc`/`as_built`, dosya bilgisi, `is_current`); dokümanın tek `is_current` satırı olur (kısmi unique index). Her revizyon ayrı Drive dosyası. `drawings` dokümana bire bir bağlı uzantı, kendi numarası yok, yalnızca `document_type='drawing'` dokümana bağlanır (3 kolonlu FK). Tasarımdaki `supersedes_id` zinciri yerine geçer | **ONAYLANDI (07.10.2026)** |
-| 4 | Roller | Mevcut 4 rol korunur; register × eylem yetkisi `register_permissions` tablosunda (tasarım 4.3 matrisi öneridir) | **ONAY BEKLİYOR** |
-| 5 | AI sağlayıcı ve gizlilik | Önce İsdemir OYAK'tan harici modele belge gönderme izni; sonra Faz B'de 10-15 belgeyle iki sağlayıcı ölçümü (`scripts/proje-kontrol/ai-olcum/`), seçim "yüksek güvenle yanlış" en az olan. İzin yoksa AI yalnızca metadata | **ONAY BEKLİYOR** |
-| 6 | NCR ve Inspection | Pilotta yok; mobilizasyondan sonra, kalite modülünün kaldırılma kararı hatırlanarak | **ONAY BEKLİYOR** |
-| 7 | Agent kimliği | Her agent için ayrı, proje kapsamlı rol; yalnızca izinli RPC'ler; service_role ile serbest tablo erişimi yok | **ONAY BEKLİYOR** |
-| 8 | İlk agent'lar | Yalnızca Reconciliation ve Planning | **ONAY BEKLİYOR** |
+| 0 | 05.10 canlı şeması | Tablolar korunup tasarıma hizalandı (`20261007072501_uyum_project_control_registers`) | **ONAYLANDI ve UYGULANDI (07.10.2026)** |
+| 1 | Action | Ayrı tablo `project_actions` (eski `actions`); ticket sahadan bildirim olarak kalır, genişletilmez; kaynak listesinde `inspection`/`ncr` yok | **ONAYLANDI (07.10.2026)** |
+| 2 | Numara biçimi | `{TÜR}-{PROJE_KODU}-{SIRA}` (ör. `RFI-ADN1-0007`): yıl ve disiplin yok, sıra proje+tür bazında boşluksuz, 4 haneye kadar sıfır, kırpma yok; proje kodları ADN1, ADN2, TIZ, TKY; çizim türü doküman `DRW`, diğerleri `DOC`; `TS`/`MA` önekleri | **ONAYLANDI (07.10.2026)** |
+| 3 | Revizyon | Tek doküman + `document_revisions` (ifr/ifa/ifc/as_built), dokümanın tek `is_current` revizyonu; `drawings` dokümana bire bir uzantı (3 kolonlu FK) | **ONAYLANDI (07.10.2026)** |
+| 4 | Submittal / Material Approval | `technical_submittals` ve `material_approvals` iki ayrı tablo | **ONAYLANDI (07.10.2026)** |
+| 5 | Dosya deposu | Supabase Storage özel bucket + Fons içi klasörlü gezgin; Supabase Pro (25 $/ay) önerisi | **PATRON ONAYI BEKLİYOR** |
+| 6 | Roller | Mevcut 4 rol; register × eylem yetkisi `register_permissions`'ta (tasarım 4.3 matrisi öneri; B1 taslağı bu matrisi seed eder) | **AÇIK** (tasarımda öneri, açık onay yok) |
+| 7 | AI sağlayıcı ve gizlilik | Önce İsdemir OYAK izni; sağlayıcı 10-15 gerçek belgeyle iki aday ölçülerek seçilir (ChatGPT de aday); izin yoksa AI yalnızca metadata | **AÇIK** |
+| 8 | NCR ve Inspection | Pilotta yok; mobilizasyondan sonra, kalite modülünün kaldırılma kararı hatırlanarak | **AÇIK** (tasarımda öneri) |
+| 9 | Agent kimliği ve ilk agent'lar | Her agent için ayrı, proje kapsamlı rol, yalnızca izinli RPC'ler; ilk agent'lar Reconciliation ve Planning (Faz E) | **AÇIK** (tasarımda öneri) |
+| 10 | Dört göz kuralı | Kritik register'larda (risk, change, claim, decision) onaylayan hazırlayandan farklı; küçük ekipte proje bazında kapatılabilir (B3 taslağında `project_register_settings.four_eyes_enabled`, varsayılan açık) | **AÇIK** |
 
-**Drive / edge function / secret'lar:**
-- Yeni edge function: `drive-gateway` (iskelet, **deploy edilmedi**) — `?action=upload|download|provision_folders`;
-  kontrol sırası JWT (401) → girdi (400) → `has_project_access` (403) → tür/boyut (415/413) →
-  Drive yapılandırması (501). `has_project_access(NULL)=true` olduğu için boş `project_id` gateway'de 400.
-  Drive çağrıları `driveClient.ts`'te TODO; `create_document_record`/`get_document_for_download`/
-  `enqueue_document_job` Faz B RPC'leri yokken 501 `register_rpc_missing` döner, dosya vermez.
-- Secret'lar (yalnızca `supabase secrets set`; repoda, `.env`'de ve `VITE_` önekli değişkende asla):
-  `GOOGLE_SERVICE_ACCOUNT_JSON`, `DRIVE_SHARED_DRIVE_ID`, `MAX_UPLOAD_BYTES` (varsayılan 25 MiB, geçici),
-  ileride `AI_PROVIDER`, `AI_API_KEY`, `SYNC_SECRET`. AI ölçümü için yerel kabuk değişkenleri
-  `AI_OLCUM_{A,B}_*` + `AI_OLCUM_GIZLILIK_ONAYI=evet` (yoksa harici gönderim engellenir).
-- Canlı edge function'lar 4 adet (create-user, manage-user, import/export-project-excel);
-  **`agent-chat` repoda var ama deploy edilmemiş** — `AgentChat.jsx` onu çağırıyor (doğrulanmadı, G-09).
-- pg_cron kurulu; **pg_net kurulu değil** (kurulabilir) — drive-sync tetiklemesi için Faz B'de karar.
+**Edge function / secret'lar:**
+- Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
+  deploy edilmemiş — `AgentChat.jsx` onu çağırıyor (G-09). Proje Kontrol için planlanan tek yeni function
+  `process-document` (Faz C); dosya erişimi için function gerekmez (süreli imzalı adres + Storage politikaları).
+- Secret'lar yalnızca `supabase secrets set` ile: `AI_PROVIDER`, `AI_API_KEY` (Faz C). Google/Microsoft anahtarı yok.
+  Repoda, `.env`'de ve `VITE_` önekli değişkende asla. AI ölçümü için yerel kabuk değişkenleri `AI_OLCUM_{A,B}_*` +
+  `AI_OLCUM_GIZLILIK_ONAYI=evet`.
+- **Eskiyen dosyalar (v3 ile geçersiz, silinmedi — kullanıcı kararı bekliyor):** `supabase/functions/drive-gateway/`
+  (iskelet, hiç deploy edilmedi) ve `scripts/proje-kontrol/drive-limit-test.mjs`. Yeni iş bunlara dayanmamalı.
+- pg_cron 1.6.4 kurulu (tek iş: `daily-report-reminders`); pg_net kurulu değil.
+- **Storage notu (07.10'da doğrulandı):** `storage.objects` ve `storage.buckets`'ta `protect_*_delete` trigger'ı
+  SQL'den doğrudan silmeyi engelliyor ("Use the Storage API instead"). Yani bir pg_cron işi dosyanın kendisini
+  silemez; yalnızca kayıtları işaretleyebilir. Dosya silme Storage API'si (istemci veya edge function) ile olur.
 
 **Faz A güvenlik bulguları** (`docs/proje-kontrol/guvenlik-bulgulari.md`):
 - **G-02/G-03 YÜKSEK — UYGULANDI (07.10.2026, `20261007063825`).** `daily_report_photos`/`ticket_attachments`
   INSERT policy'leri yalnızca oturum kontrol ediyordu; sahte metadata satırıyla başka projenin saha
   fotoğrafı/ticket eki indirilebiliyordu. Artık metadata satırı kendi adına (`uploaded_by = auth.uid()`),
   erişilebilir projede ve **dosya yolunun ilk klasörü proje id'si (foto) / ticket id'si (ek) olmak zorunda**;
-  storage SELECT policy'leri de klasör = proje/ticket eşleşmesini arıyor (ikinci katman). İki tabloda
-  `authenticated`'ın UPDATE/TRUNCATE yetkisi geri alındı (UPDATE policy'si zaten yoktu). Yeni bir yükleme
-  akışı yazılırsa yol biçimi `{project_id}/…` (saha-fotolari) ve `{ticket_id}/…` (ticket-ekleri) olmak zorunda,
-  aksi halde INSERT RLS'te reddedilir.
+  storage SELECT policy'leri de klasör = proje/ticket eşleşmesini arıyor (ikinci katman). Yeni bir yükleme
+  akışı yazılırsa yol biçimi `{project_id}/…` (saha-fotolari) ve `{ticket_id}/…` (ticket-ekleri) olmak zorunda.
 - **G-01 YÜKSEK — yazma tarafı GEÇİCİ olarak kapatıldı (07.10.2026, `20261007063808`):** 8 register/geçmiş
-  tablosunda `authenticated` yalnızca SELECT. Policy'ler duruyor; kalıcı çözüm Faz B RPC'leri. Okuma tarafı
-  (muhasebe tüm projelerde okur) açık. `project_wbs`/`project_areas`/`area_wbs` bilinçli olarak kapsam dışı
-  (WBS/Alan ekranı doğrudan yazacak; G-10 testiyle başka projeye yazma kapalı olduğu doğrulandı).
-- Geri alma: `docs/proje-kontrol/yedek-policy-07-10.sql` (değişen nesnelerin anlık görüntüsü; tam şema dökümü
-  `.env.local` olmadığı için alınamadı — Faz B'deki veri değiştiren migration'lardan önce `npm run db:backup`
-  çalışır hale getirilmeli).
-- G-11 ORTA — **DÜZELTİLDİ (07.10.2026, uyum migration'ı):** `next_register_no` artık 4 haneye kadar sıfır
-  dolduruyor, uzun sayıyı kırpmıyor (`RFI-TIZ-10000` doğrulandı).
-- Açık: G-04 ORTA (storage silme/yükleme sahiplik ve rol kontrolü yok, muhasebe dahil), G-12 DÜŞÜK
-  (YeniTicketModal ek hatasını yok sayıyor), G-05..G-09 düşük/bilgi.
+  tablosunda `authenticated` yalnızca SELECT; doğrudan yazma policy'leri duruyor ama etkisiz. Kalıcı çözüm B3
+  (policy'ler düşer, SELECT `register_can(..., 'view')` ile daralır, yazma yalnızca RPC). `project_wbs`/
+  `project_areas`/`area_wbs` bilinçli olarak kapsam dışı (WBS/Alan ekranı doğrudan yazacak).
+- G-11 ORTA — **DÜZELTİLDİ (07.10.2026, uyum migration'ı):** numara 4 haneye kadar sıfır, kırpma yok.
+- Açık: G-04 ORTA (mevcut `saha-fotolari`/`ticket-ekleri` bucket'larında storage silme/yükleme sahiplik ve rol
+  kontrolü yok; yeni doküman bucket'ı için çözüm B5 taslağında), G-12 DÜŞÜK (YeniTicketModal ek hatasını yok sayıyor),
+  G-13 DÜŞÜK (master tablolarda `authenticated` TRUNCATE/REFERENCES/TRIGGER; çözüm B2 taslağında), G-05..G-09 düşük/bilgi.
+- Geri alma: `docs/proje-kontrol/yedek-policy-07-10.sql`, `yedek-uyum-07-10.sql` (nesne anlık görüntüleri). Tam şema
+  ve veri yedeği hâlâ yok: `npm run db:backup` (şema) / `npm run db:backup:data` (veri) `.env.local` ister
+  (`scripts/db-backup/README.md`).
 
-**Yeni dosyalar:**
-- `docs/proje-kontrol/` — `tasarim.md`, `sema-dogrulama.md`, `guvenlik-bulgulari.md`, `frontend-tasarim-notu.md`,
-  `canli-05-10-migrations/` (05.10 migration'larının md5-doğrulamalı birebir arşivi; çalıştırılmaz,
-  `supabase/migrations/`'a taşınması Karar #0'a bağlı), `taslak-sql/g01_gecici_yazma_kapatma.sql`
-  (G-01 geçici REVOKE + geri alma; BÖLÜM A `20261007063808` ile uygulandı), `taslak-sql/g02_g03_metadata_sizinti.sql`
-- `tests/proje-kontrol-guvenlik.spec.js` — 8 senaryo (07.10.2026'dan beri 8/8; son ikisi G-02/G-03'ün regresyon testi)
-- `tests/proje-kontrol-master-veri.spec.js` — WBS/Alan master tabloları yetki testi (9 senaryo)
-- `supabase/migrations/20261007063808_…`, `20261007063825_…` — G-01 ve G-02/G-03 (canlıya uygulanan SQL'in birebir aynısı)
-- `docs/proje-kontrol/yedek-policy-07-10.sql` — bu iki migration öncesi policy/yetki anlık görüntüsü (geri yükleme betiği;
-  action tablosunun adını `actions`/`project_actions` hangisi varsa ondan seçer)
-- **Uyum migration'ı (Karar #0) — UYGULANDI 07.10.2026, `supabase/migrations/20261007072501_uyum_project_control_registers.sql`.**
-  Belgeler: `docs/proje-kontrol/uyum-migration-plani.md`, `taslak-sql/uyum_migration_taslak.sql` (v2; A uygulandı /
-  B geri alma), `taslak-sql/uyum_migration_dogrulama.sql` (kendini geri alan kontrol; uygulama sonrası OK),
-  `yedek-uyum-07-10.sql` (uygulama öncesi görüntü), `tests/proje-kontrol-uyum.spec.js` (7 test + Faz B'yi bekleyen
-  3 fixme). Not: `pg_default_acl` yeni tablolarda `authenticated`'a tüm yetkileri, yeni fonksiyonlarda
-  `anon`/`authenticated`'a EXECUTE veriyor — yeni nesnelerde açık REVOKE şart.
+**Register şeması (07.10.2026 itibarıyla canlı; kolon düzeyi `canli-sema-ozeti.md`):**
+- `project_actions` (eski `actions`); `source_type` ∈ manual/risk/rfi/decision/meeting/other.
+- Numara kolonu tabloya özel: `document_no`, `rfi_no`, `action_no`, `decision_no`, `submittal_no`, `approval_no`
+  (`drawings`'te yok; çizimin numarası dokümanınki). Trigger boş gelen numarayı `next_register_no` ile doldurur;
+  elle verilen numara sayaçla çakışabilir → yazma RPC'leri numarayı dışarıdan kabul etmez.
+- Proje kodu `project_register_settings(project_id, prefix)` (ADN1, ADN2, TIZ, TKY). Yeni projede satır eklenmezse
+  o projede register kaydı açılamaz (açık hata). Sıra `project_register_counters(project_id, register_code)`.
+- `documents` yalnızca kimlik (`status` active/void); dosya ve revizyon `document_revisions`'ta (`storage_provider`,
+  `storage_file_id`, `file_name`, `mime_type`, `size_bytes`, `sha256` kolonları zaten var; `is_current` kısmi unique,
+  değişimde önce eskisi false sonra yenisi true). `drawings` yalnızca `document_id` + `drawing_type`.
+- Bugün canlıda olmayan ama tasarımın beklediği ortak kolonlar (`record_state`, `source`, `approved_by/at`,
+  `rejected_reason`, eksik `created_by`) B3 taslağında `ADD COLUMN` ile ekleniyor.
+- `project_tasks.is_critical` yeniden kaldırıldı; `activity_id` atandıktan sonra `trg_project_tasks_identity_guard`
+  ile değiştirilemez (düzeltme yolu B4 taslağı: yalnızca admin, gerekçeli, audit'li RPC).
 
-**Register şeması (07.10.2026 itibarıyla canlı):**
-- `project_actions` (eski `actions`): aksiyon register'ı; `source_type` ∈ manual/risk/rfi/decision/meeting/other.
-- Numara `{TÜR}-{PROJE_KODU}-{SIRA}` (ör. `RFI-TIZ-0032`). Proje kodu `project_register_settings(project_id, prefix)`
-  (ADN1, ADN2, TIZ, TKY; yeni projede satır eklenmezse o projede register kaydı açılamaz, açık hata verir).
-  Sıra `project_register_counters(project_id, register_code)`; yıl yok, kaydı ekleyen transaction içinde artar
-  (boşluksuz). Önekler: RFI, DEC, ACT, TS, MA (trigger argümanı), dokümanda `fn_assign_document_no` →
-  `document_type='drawing'` ise DRW, değilse DOC. Numara elle verilirse sayaçla çakışabilir → Faz B RPC'leri
-  `register_no` almamalı.
-- `documents` yalnızca kimlik (no, başlık, tür, disiplin, WBS/alan/görev, `status` active/void); dosya ve revizyon
-  `document_revisions`'ta (`revision_status` ifr/ifa/ifc/as_built, `is_current` — kısmi unique index, değişimde önce
-  eskisi false sonra yenisi true; sha256/size_bytes; `storage_url` yok). PDF tam metni DB'de kalıcı tutulmaz.
-- `drawings` dokümana bire bir uzantı: kendi numarası yok, `(project_id, document_id, document_type)` 3 kolonlu FK ile
-  yalnızca `document_type='drawing'` dokümana bağlanır; bağlı dokümanın türü değiştirilemez.
-- `project_tasks.is_critical` yeniden kaldırıldı.
-- `supabase/functions/drive-gateway/` — `index.ts`, `handler.ts`, `driveClient.ts`, `validation.ts`,
-  `handler.test.ts` (`node --test …`, 28 test), `README.md` (deploy sonrası curl senaryosu)
-- `scripts/proje-kontrol/drive-limit-test.mjs` — Drive yükle/indir süre-boyut-hata tablosu (kimlik bilgisi gerekir)
-- `scripts/proje-kontrol/ai-olcum/` — `run.mjs`, `metrics.mjs`, `schemas/rfi_v1.json`, `prompts/rfi_v1.md`,
-  `providers/` (ortak arayüz, boş `adapter-a/b`, `mock`), `make-sample-set.mjs` (sentetik set);
-  `olcum-seti/`, `sonuclar/` gitignore'da (gerçek belge repoya girmez)
+**Faz B iş listesi** (ayrıntı: `docs/proje-kontrol/faz-b-migration-plani.md`; hiçbiri uygulanmadı, hepsi
+BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca uygulanır):
 
-**Frontend kararı için not** (`frontend-tasarim-notu.md`): ProjeDetay iç sekmelerinin rol bazlı
-yetki mekanizması yok; santiye_sefi ve muhasebe `projeler` sekmesine sahip olmadığından ProjeDetay'a
-hiç ulaşamaz → "Proje Kontrol" bu roller için ayrı üst seviye `kontrol` sekmesi gerektirir.
+| Paket | İçerik | Taslak | Durum |
+|---|---|---|---|
+| B1 | `register_permissions` (+`edit_scope` own/all), `register_status_transitions`, `register_can()`, `get_my_register_permissions()`, admin `set_register_permission()`, 4 rol seed | `taslak-sql/b1_register_permissions.sql` | Onay bekliyor |
+| B2 | `register_audit` (yalnızca değişen alanlar) + trigger, 30 indekssiz FK'ye indeks, G-13 | `taslak-sql/b2_register_audit_indexes.sql` | Onay bekliyor |
+| B3 | Ortak kolonlar, `save/submit/approve/reject/reopen/delete_register_record`, `set_register_status`, `link/unlink_register_records`, dört göz, G-01'in kalıcılaşması | `taslak-sql/b3_register_write_rpcs.sql` | Onay bekliyor (B1, B2'ye bağlı) |
+| B4 | `admin_correct_task_activity_id` (yalnızca admin, gerekçe zorunlu, audit) | `taslak-sql/b4_identity_guard_admin_fix.sql` | Onay bekliyor (B2'ye bağlı) |
+| B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı) |
+| B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
+| — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
+**Dosyalar:**
+- `docs/proje-kontrol/` — `tasarim.md` (v3), `canli-sema-ozeti.md`, `v3-uyum-notlari.md`, `faz-b-migration-plani.md`,
+  `frontend-giris-karari.md`, `uyum-migration-plani.md`, `sema-dogrulama.md`, `guvenlik-bulgulari.md`,
+  `frontend-tasarim-notu.md`, `canli-05-10-migrations/` (05.10 migration'larının birebir arşivi), `arsiv/`.
+- `docs/proje-kontrol/taslak-sql/` — uygulanmışlar (`g01_…`, `g02_g03_…`, `uyum_migration_*`) ve Faz B taslakları
+  (`b1`…`b6`, her biri: BÖLÜM A uygula / BÖLÜM B geri al + `*_dogrulama.sql`); `yedek-faz-b-07-10.sql` (Faz B'nin
+  değiştireceği canlı nesnelerin anlık görüntüsü).
+- `supabase/migrations/20261007063808_…`, `20261007063825_…`, `20261007072501_…` — canlıya uygulanan SQL'in birebir aynısı.
+- Testler: `proje-kontrol-guvenlik.spec.js` (8), `proje-kontrol-master-veri.spec.js` (9), `proje-kontrol-uyum.spec.js`
+  (7 + 3 fixme, B3 gelince açılır), Faz B test taslakları `proje-kontrol-b{1..6}-*.spec.js` (ilgili paket canlıda
+  yoksa kendini atlar).
+- `scripts/proje-kontrol/ai-olcum/` — ölçüm iskeleti (`olcum-seti/`, `sonuclar/` gitignore'da).
+- Not: `pg_default_acl` yeni tablolarda `authenticated`'a tüm yetkileri, yeni fonksiyonlarda `anon`/`authenticated`'a
+  EXECUTE veriyor — yeni nesnelerde açık REVOKE şart.
+
+**Frontend girişi:** santiye_sefi ve muhasebe `projeler` sekmesine sahip olmadığından ProjeDetay'a ulaşamaz;
+seçenekler ve öneri `docs/proje-kontrol/frontend-giris-karari.md`'de (karar Faz B'de).
 ---
 
 ## Tamamlanan büyük görevler (özet)
@@ -2076,6 +2079,24 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**09.10.2026 — Proje Kontrol tasarım v3'e geçildi; Faz B migration taslakları (B1-B6) yazıldı ve canlıda yalnızca
+BEGIN…ROLLBACK ile denendi (hiçbiri uygulanmadı).**
+- Kullanıcının verdiği tasarim.md v3 yerleşti, önceki sürüm `docs/proje-kontrol/arsiv/`'e alındı.
+- v3'ün §4.1/4.2/4.8'i canlıyla satır satır karşılaştırıldı ve canlıya göre düzeltildi (`v3-uyum-notlari.md`). Örnekler: tabloya özel numara kolonları, kompozit FK, `priority` medium, `suppliers.supplier_type` ad çakışması → `party_type`, `document_revisions`'ta zaten var olan dosya kolonları.
+- B1-B6 taslakları, doğrulama betikleri, anlık görüntü ve test taslakları hazır (`docs/proje-kontrol/faz-b-migration-plani.md`).
+- Denemelerin hepsi OK. B5 denemesi gerçek bir hata yakaladı: iptal edilen revizyon numarasını tutuyordu, sonraki yükleme çakışıyordu. Taslakta düzeltildi.
+- Canlıda doğrulanan iki kısıt:
+  - Supabase `storage.objects`'ten SQL ile silmeyi engelliyor → dosya silme Storage API ile yapılır.
+  - MCP aracı ~95 KB üstü isteği düşürüyor → altı paket tek blokta denenemedi.
+- Katalog parmak izi bütün denemelerden önce ve sonra birebir aynı.
+- `npm run db:backup:data` eklendi (`scripts/db-backup/README.md`; `.env.local` olmadığı için çalıştırılmadı).
+- Giriş kararı notu yazıldı (`frontend-giris-karari.md`, öneri: şantiye şefine üst seviye `kontrol` sekmesi, muhasebeye Faz D'de).
+- Doğrulama:
+  - lint 0 hata;
+  - build başarılı;
+  - Proje Kontrol spec'leri 24 geçti, 25 atlandı (B taslakları + 3 fixme), başarısız yok.
+- Şema değişmediği için docx dokümantasyonu güncellenmedi.
 
 **07.10.2026 (3. tur) — Uyum migration'ı canlıya uygulandı (`20261007072501`).**
 Uygulama öncesinde aktif sorgu ve hedef tablolarda kilit yoktu. Uygulama sonrası doğrulama betiği OK verdi ve test satırı kalmadı. Testler: uyum + iki güvenlik spec'i 24/24 geçti (3 fixme atlandı). Tam Playwright seti 118/118 geçti (3 fixme atlandı, başarısız yok).
