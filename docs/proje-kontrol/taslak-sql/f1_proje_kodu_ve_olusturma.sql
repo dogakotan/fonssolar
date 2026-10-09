@@ -1,7 +1,7 @@
 -- ============================================================================
 -- FAZ 1 · F1 — proje kodu kuralı, proje oluşturma fonksiyonu, alan kodu kısıtı — TASLAK (UYGULANMADI)
--- ★ DEĞİŞTİRİLDİ (09.10.2026, Adım 2 Oturum 2 sonrası), YENİDEN TEST BEKLİYOR ★ fn_require_project_code'da
---   CASE → IF (T2f/T2g/T2h "record has no field" hatasıyla kaldı). Düzeltilmiş hâli canlıda denenmedi.
+-- ★ DEĞİŞTİRİLDİ (09.10.2026, Adım 2 Oturum 2 sonrası) ★ tek fn_require_project_code yerine tablo başına iki
+--   trigger fonksiyonu + ortak project_code_missing() (T2f/T2g/T2h "record has no field" hatasıyla kalmıştı).
 -- Tarih: 09.10.2026 · Kararlar: 21 + Ç14 (biçim), Ç15 (b) (tek fonksiyon + reddeden kural), Ç18 (alan kodu)
 -- Doğrulama: taslak-sql/f1_dogrulama.sql · Edge function diff'i: docs/proje-kontrol/f1-import-project-excel-diff.md
 -- Bağımlılık: yok (B1'den bağımsız; hata sözleşmesi register_raise ile aynı biçim, ama onu çağırmaz).
@@ -106,40 +106,62 @@ grant execute on function public.create_project_with_code(jsonb, text) to authen
 -- ── A4 · Kodu olmayan projeyi reddeden kural (ertelenmiş, işlem sonunda kontrol) ──
 -- projects INSERT'inde ve project_register_settings DELETE / project_id değişiminde çalışır. Proje silinirken
 -- ayar satırı CASCADE ile gider; işlem sonunda proje de yok olduğu için hata vermez.
-create function public.fn_require_project_code()
+-- Tablo başına ayrı fonksiyon (09.10.2026, Adım 2 sonrası): tek fonksiyonda NEW/OLD alanları tabloya göre
+-- değiştiği için CASE "record has no field" hatası veriyordu. Ayrı fonksiyonda her biri yalnızca kendi
+-- tablosunun kaydına bakar; bu hata sınıfı yapısal olarak ortadan kalkar. Ortak kontrol tek yardımcıda.
+create function public.project_code_missing(p_project_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.projects where id = p_project_id)
+     and not exists (select 1 from public.project_register_settings where project_id = p_project_id);
+$$;
+revoke all on function public.project_code_missing(text) from public, anon, authenticated;
+
+create function public.fn_projects_require_code()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
-declare v_pid text;
 begin
-  -- CASE yerine IF: PL/pgSQL CASE'in iki dalındaki kayıt alanlarını birlikte çözer; projects trigger'ında
-  -- old.project_id, settings trigger'ında new.id yok → "record has no field" (Adım 2 Oturum 2'de bulundu).
-  if tg_table_name = 'projects' then
-    v_pid := new.id;
-  else
-    v_pid := old.project_id;
-  end if;
-  if exists (select 1 from public.projects where id = v_pid)
-     and not exists (select 1 from public.project_register_settings where project_id = v_pid) then
+  if public.project_code_missing(new.id) then
     raise exception using message = 'validation',
       hint = 'Proje kodu olmadan proje kaydedilemez (project_register_settings)',
-      detail = jsonb_build_object('fields', jsonb_build_array('code'), 'project_id', v_pid)::text;
+      detail = jsonb_build_object('fields', jsonb_build_array('code'), 'project_id', new.id)::text;
   end if;
   return null;
 end $$;
-revoke all on function public.fn_require_project_code() from public, anon, authenticated;
+revoke all on function public.fn_projects_require_code() from public, anon, authenticated;
+
+create function public.fn_project_register_settings_keep_code()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public.project_code_missing(old.project_id) then
+    raise exception using message = 'validation',
+      hint = 'Projenin kodu silinemez; proje silinirse kod da silinir',
+      detail = jsonb_build_object('fields', jsonb_build_array('code'), 'project_id', old.project_id)::text;
+  end if;
+  return null;
+end $$;
+revoke all on function public.fn_project_register_settings_keep_code() from public, anon, authenticated;
 
 create constraint trigger trg_projects_require_code
   after insert on public.projects
   deferrable initially deferred
-  for each row execute function public.fn_require_project_code();
+  for each row execute function public.fn_projects_require_code();
 
 create constraint trigger trg_project_register_settings_keep_code
   after delete or update of project_id on public.project_register_settings
   deferrable initially deferred
-  for each row execute function public.fn_require_project_code();
+  for each row execute function public.fn_project_register_settings_keep_code();
 
 commit;
 
@@ -155,7 +177,9 @@ commit;
 -- begin;
 -- drop trigger if exists trg_project_register_settings_keep_code on public.project_register_settings;
 -- drop trigger if exists trg_projects_require_code on public.projects;
--- drop function if exists public.fn_require_project_code();
+-- drop function if exists public.fn_project_register_settings_keep_code();
+-- drop function if exists public.fn_projects_require_code();
+-- drop function if exists public.project_code_missing(text);
 -- drop function if exists public.create_project_with_code(jsonb, text);
 -- alter table public.project_areas drop constraint project_areas_code_format,
 --   add constraint project_areas_code_format check (area_code ~ '^[A-Z0-9][A-Z0-9-]*$');

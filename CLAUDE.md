@@ -1727,6 +1727,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 33 | İş Planı toplu atama | Adım 5'e ek: seçili görevlere toplu disiplin/alan/WBS atama | **ONAYLANDI (09.10.2026)** |
 | 34 | F1 A4 ayrı migration | Adım 6 sırası: (1) F1 A1-A3 → (2) frontend + `import-project-excel` deploy → (3) sihirbaz ve Excel import ile kodlu proje oluşturmanın canlıda doğrulanması → (4) A4 (kodsuz projeyi reddeden kural) | **ONAYLANDI (09.10.2026)** |
 | 35 | Proje oluşturma yetkisi | admin ve proje_yoneticisi. Bugünkü `projects_insert_admin` (yalnızca admin) bir tutarsızlıktı; `create_project_with_code` ile düzeltiliyor | **ONAYLANDI (09.10.2026)** |
+| 36 | F1 A4 trigger yapısı | Tek `fn_require_project_code` (CASE ile NEW/OLD seçimi) yerine tablo başına iki trigger fonksiyonu (`fn_projects_require_code`, `fn_project_register_settings_keep_code`) + ortak `project_code_missing()`. Gerekçe: her fonksiyon yalnızca kendi tablosunun kaydına bakar, "record has no field" hata sınıfı yapısal olarak ortadan kalkar; IF/ELSE de çalışırdı ama tablo adına göre dallanma yeni tablo eklenince aynı hatayı tekrar üretebilir. `f1_dogrulama.sql`'e kuralı fiilen tetikleyen R1-R5 regresyon testleri eklendi (Adım 6'da da çalışır) | **UYGULANDI (taslakta), Adım 2'de doğrulandı (09.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1787,7 +1788,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | B4 | `admin_correct_task_activity_id` (yalnızca admin, gerekçe zorunlu, audit) | `taslak-sql/b4_identity_guard_admin_fix.sql` | Onay bekliyor (B2'ye bağlı) |
 | B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10), yeniden test bekliyor** |
 | B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
-| F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; Adım 2 Oturum 1-2 koşuldu (`faz1-adim2-sonuclar.md`): A1-A3 geçti, A4'te hata bulundu ve taslakta düzeltildi — **yeniden test bekliyor**; Oturum 3-4 koşulmadı |
+| F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; Adım 2 tamamlandı (`faz1-adim2-sonuclar.md`): Oturum 1-3 tamamen geçti (A4 düzeltmesi dahil), Oturum 4'te yalnızca test betiği karşılaştırma hatası (değerler doğru), rollback parmak izi birebir |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -2109,6 +2110,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**09.10.2026 (6. tur) — Faz 1 Adım 2 düzeltilmiş F1 ile yeniden koşuldu.** F1 A4 iki trigger fonksiyonuna bölündü
+(Karar 36), `f1_dogrulama.sql`'e R1-R5 regresyon testleri eklendi. Canlıda ROLLBACK ile: Oturum 1-3 tamamen geçti
+(T2f-h artık geçiyor; satın alma, görev ve günlük rapor risk akışları hatasız), Oturum 4'te rol yetkileri doğru
+ama 5 satır test betiğinin boolean→metin karşılaştırması (`f` ≠ `false`) yüzünden "KALDI" yazdı — betik düzeltildi,
+kural gereği yeniden koşulmadı. Oturum 5 parmak izi Oturum 0 ile birebir aynı. Test blokları
+`taslak-sql/f1_adim2_testler_oturum{2,3,4}.sql`.
 
 **09.10.2026 (5. tur) — Faz 1 Adım 2 canlıda ROLLBACK ile koşuldu, Oturum 2'de durdu.** Karar 34-35 eklendi.
 Ön kontroller temiz (http/pg_net/webhook yok, aktif bağlantı yok). Oturum 1 (B1, B2, B4, F1 doğrulamaları) ve
