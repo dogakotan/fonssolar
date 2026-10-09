@@ -1718,6 +1718,13 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 24 | MVP takvimi (Ç4) | 1 Ocak 2027 MVP = Faz 1-4, hedef 15 Aralık 2026 | **ONAYLANDI (09.10.2026)** |
 | 25 | Tip kodları (Ç12) | `ncr`, `inspection` B1'e şimdi eklenir (yetkisiz seed) | **ONAYLANDI ve taslağa işlendi (09.10.2026)** |
 | 26 | Ertelenen çakışmalar | Ç6 Faz 3 başında; Ç8, Ç10, Ç11 Faz 6 başında çözülür | **ONAYLANDI (09.10.2026)** |
+| 27 | Pilot projesi (Ç13) | Mekanizma pilotu TIZ'de. Diyarbakır, Faz 1 Adım 6'da güncellenmiş `import-project-excel` ile oluşturulur, gerçek pilot orada. ADN1/ADN2'ye Faz 1'de dokunulmaz. Diyarbakır kodu (DYB / DYB1 / DYB2) Adım 6'ya kadar bekliyor | **ONAYLANDI (09.10.2026)** |
+| 28 | Proje kodu biçimi (Ç14) | `^[A-Z][A-Z0-9]{1,4}$`; mevcut 4 kod (ADN1, ADN2, TIZ, TKY) geçerli | **ONAYLANDI (09.10.2026)**, taslak `f1_proje_kodu_ve_olusturma.sql` |
+| 29 | Proje oluşturma (Ç15) | Tek DB fonksiyonu (`create_project_with_code`): proje + kod aynı işlemde; kodsuz projeyi reddeden ertelenmiş kural. Sihirbaz ve `import-project-excel` bu fonksiyonu kullanır; deploy Adım 6'da | **ONAYLANDI (09.10.2026)**, taslak F1 + `f1-import-project-excel-diff.md` |
+| 30 | Activity ID yazımı (Ç16) | Yalnızca kod atama fonksiyonu ve B4 düzeltmesi yazabilir (Adım 3'te guard'a eklenecek) | **ONAYLANDI (09.10.2026)** |
+| 31 | Test ortamı (Ç17) | Faz 1 Adım 2 canlıda BEGIN…ROLLBACK ile; Faz 2'den itibaren lokal Docker testi zorunlu; Adım 6'dan önce yedek zorunlu | **ONAYLANDI (09.10.2026)** |
+| 32 | Alan kodu (Ç18) | `^[A-Z0-9]+$` (tiresiz) | **ONAYLANDI (09.10.2026)**, taslak F1 |
+| 33 | İş Planı toplu atama | Adım 5'e ek: seçili görevlere toplu disiplin/alan/WBS atama | **ONAYLANDI (09.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1778,6 +1785,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | B4 | `admin_correct_task_activity_id` (yalnızca admin, gerekçe zorunlu, audit) | `taslak-sql/b4_identity_guard_admin_fix.sql` | Onay bekliyor (B2'ye bağlı) |
 | B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10), yeniden test bekliyor** |
 | B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
+| F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; test planı `faz1-adim2-test-plani.md` ("başla" bekliyor) |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -2099,6 +2107,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**09.10.2026 (4. tur) — Faz 1 Adım 1 tamamlandı (yalnızca taslak, canlıya uygulama yok).** Karar 17-33 eklendi.
+F1 taslağı (proje kodu biçimi, `create_project_with_code`, kodsuz projeyi reddeden ertelenmiş kural, tiresiz alan
+kodu) + doğrulama betiği, `import-project-excel`/sihirbaz diff'i ve Adım 2 test planı yazıldı. B1'e ncr/inspection
+eklendi. Bulgu: `projects` INSERT policy'si yalnızca admin — sihirbaz proje yöneticisinde bugün muhtemelen
+başarısız (doğrulanmadı); yeni fonksiyon admin + proje_yoneticisi'ne izin veriyor.
 
 **09.10.2026 (3. tur) — Faz 0 kapandı; Karar 11-16 eklendi (yalnızca doküman, migration yok).** Payment,
 Subcontractor, Faz 1-9 tanımları, RSK numarası, satın alma köprüsü ve NCR/Inspection kodları karar tablosuna

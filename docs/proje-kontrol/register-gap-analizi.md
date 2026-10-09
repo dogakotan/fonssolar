@@ -181,7 +181,12 @@ eksikleri tamamlar.
 | Ç8, Ç10, Ç11 | Ertelendi: Faz 6 başında (Karar 26) |
 | Ç9 | Açık (Faz 6 varsayımı sürüyor) |
 | Ç12 | **Çözüldü (Karar 25):** B1 taslağına işlendi (seed 64 satır) |
-| Ç13-Ç18 | **Yeni, kararını bekliyor** (aşağıda) |
+| Ç13 | **Çözüldü (Karar 27):** mekanizma pilotu TIZ; Diyarbakır Adım 6'da Excel ile oluşturulur |
+| Ç14 | **Çözüldü (Karar 28):** `^[A-Z][A-Z0-9]{1,4}$`; taslak F1 A1 |
+| Ç15 | **Çözüldü (Karar 29):** `create_project_with_code` + ertelenmiş kural; taslak F1 A3-A4, edge diff'i `f1-import-project-excel-diff.md` |
+| Ç16 | **Çözüldü (Karar 30):** Adım 3'te |
+| Ç17 | **Çözüldü (Karar 31):** Adım 2 canlıda ROLLBACK ile |
+| Ç18 | **Çözüldü (Karar 32):** `^[A-Z0-9]+$`; taslak F1 A2 |
 
 **Yeni çakışmalar (Karar 18-21 ile canlı arasında):**
 
