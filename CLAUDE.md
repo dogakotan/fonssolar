@@ -49,6 +49,9 @@ arası ilişkileri içeren bir bilgi grafiği var.
    `fons_solar_veritabani_dokumantasyonu.docx` dosyalarının güncellenmesi gerektiğini hatırlat (varsa).
 8. **Çelişen talimat.** Bir talimat canlı şema veya `docs/proje-kontrol` kararlarıyla çelişirse uygulamadan önce
    çelişkiyi listele ve onay iste. Proje Kontrol işlerinde kurallar: `docs/proje-kontrol/CONVENTIONS.md`.
+9. **Durum tablosu.** Proje Kontrol'de her adım ve faz kapanışında `docs/proje-kontrol/register-gap-analizi.md`
+   başındaki durum tablosunu (16 register × faz × güncel durum × Faz 1 bağımlılığı) ve fazların 15 Aralık MVP'ye
+   göre tahmini bitiş tablosunu güncelle; "Son güncelleme" satırına tarih ve kapanan adımı yaz.
 
 ### Kod tarama notu — supabase.from() sayımı
 `grep -rn "supabase\.from(" src/` **tek satırlık** desendir ve kodda zincirleme
@@ -1788,7 +1791,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | B4 | `admin_correct_task_activity_id` (yalnızca admin, gerekçe zorunlu, audit) | `taslak-sql/b4_identity_guard_admin_fix.sql` | Onay bekliyor (B2'ye bağlı) |
 | B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10), yeniden test bekliyor** |
 | B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
-| F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; Adım 2 tamamlandı (`faz1-adim2-sonuclar.md`): Oturum 1-3 tamamen geçti (A4 düzeltmesi dahil), Oturum 4'te yalnızca test betiği karşılaştırma hatası (değerler doğru), rollback parmak izi birebir |
+| F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; **Adım 2 kapandı** (`faz1-adim2-sonuclar.md`): B1, B2, B4, F1 canlıda ROLLBACK ile tüm oturumlarda geçti, rollback parmak izi birebir; uygulanmadı (Adım 6) |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -2110,6 +2113,10 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**09.10.2026 (7. tur) — Faz 1 Adım 2 kapandı.** Oturum 4 düzeltilmiş betikle 10/10 geçti, Oturum 5 parmak izi
+Oturum 0 ile birebir. `register-gap-analizi.md` başına 16 register durum tablosu ve fazların 15 Aralık MVP'ye göre
+tahmini bitişi eklendi; her adım/faz kapanışında güncellenmesi kural 9 oldu.
 
 **09.10.2026 (6. tur) — Faz 1 Adım 2 düzeltilmiş F1 ile yeniden koşuldu.** F1 A4 iki trigger fonksiyonuna bölündü
 (Karar 36), `f1_dogrulama.sql`'e R1-R5 regresyon testleri eklendi. Canlıda ROLLBACK ile: Oturum 1-3 tamamen geçti

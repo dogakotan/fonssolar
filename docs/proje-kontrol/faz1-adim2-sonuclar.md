@@ -2,10 +2,10 @@
 
 Tarih: 09.10.2026. Plan: `faz1-adim2-test-plani.md`.
 - **Test blokları:** `taslak-sql/f1_adim2_testler_oturum{2,3,4}.sql`. Her oturum = B1 + B2 + B4 + F1'in BÖLÜM A'sı + test bloğu.
-- **Durum:**
+- **Durum: ADIM 2 KAPANDI (09.10.2026).** Tüm oturumlar geçti, rollback parmak izi birebir.
   - 1. çalıştırma: Oturum 2'de F1 A4 hatası bulundu, durduruldu.
-  - 2. çalıştırma: F1 düzeltildi, Oturum 1-3 tamamen geçti. Oturum 4'te 5 satır test betiğindeki karşılaştırma hatası yüzünden "KALDI" yazdı; veritabanı davranışı beklenenle aynı. Kural gereği Oturum 4 yeniden çalıştırılmadı.
-  - Oturum 5 (rollback doğrulaması) çalıştırıldı ve geçti.
+  - 2. çalıştırma: F1 düzeltildi, Oturum 1-3 tamamen geçti. Oturum 4'te 5 satır test betiğindeki karşılaştırma hatası yüzünden "KALDI" yazdı; veritabanı davranışı beklenenle aynıydı.
+  - 3. çalıştırma: Oturum 4 düzeltilmiş betikle yeniden koşuldu, 10/10 geçti. Oturum 5 yeniden koşuldu, Oturum 0 ile birebir.
 
 ## Ön kontroller (Oturum 0)
 
@@ -85,17 +85,16 @@ Her test kendi alt işleminde çalışır ve geri alınır. Adım 6'da canlı do
 | 4 | T7 proje_yoneticisi | admin ile aynı | aynı | GEÇTİ |
 | 4 | T7 santiye_sefi | WBS yazamaz; kendi projesinde alan ve bağ yazar, TKY'de yazamaz | aynı | GEÇTİ |
 | 4 | T7 muhasebe | yalnızca okur | aynı (okuma 3 satır) | GEÇTİ |
-| 4 | T7 authenticated TRUNCATE/REFERENCES/TRIGGER/area_wbs UPDATE | hepsi false | `f,f,f,f` | KALDI* |
-| 4 | T8a admin: okuma 64, doğrudan yazma yok, `set_register_permission` OK, rfi haritası VCEAD, ncr/inspection `register_can` false | aynı | sayı/yazma/set/harita aynı; ncr/inspection `f,f,f,f` | KALDI* |
-| 4 | T8a proje_yoneticisi (set → forbidden, rfi VCEA) | aynı | aynı; ncr/inspection `f,f,f,f` | KALDI* |
-| 4 | T8a santiye_sefi (set → forbidden, rfi VCE + own) | aynı | aynı; ncr/inspection `f,f,f,f` | KALDI* |
-| 4 | T8a muhasebe (set → forbidden, rfi yetkisi yok) | aynı | aynı; ncr/inspection `f,f,f,f` | KALDI* |
+| 4 | T7 authenticated TRUNCATE/REFERENCES/TRIGGER/area_wbs UPDATE | hepsi false | false,false,false,false | GEÇTİ (3. çalıştırma) |
+| 4 | T8a admin: okuma 64, doğrudan yazma yok, `set_register_permission` OK, rfi haritası VCEAD, ncr/inspection `register_can` false | aynı | aynı | GEÇTİ (3. çalıştırma) |
+| 4 | T8a proje_yoneticisi (set → forbidden, rfi VCEA) | aynı | aynı | GEÇTİ (3. çalıştırma) |
+| 4 | T8a santiye_sefi (set → forbidden, rfi VCE + own) | aynı | aynı | GEÇTİ (3. çalıştırma) |
+| 4 | T8a muhasebe (set → forbidden, rfi yetkisi yok) | aynı | aynı | GEÇTİ (3. çalıştırma) |
 | 4 | T8b ncr/inspection satırları | 8 satır, 0 yetkili | 8 satır, 0 yetkili | GEÇTİ |
 
-**\* KALDI'nın sebebi test betiği.**
-- Betik boolean değerleri `concat_ws` ile metne çeviriyordu. PostgreSQL bunları `t`/`f` olarak yazar; beklenen metin ise `false` olarak yazılmıştı.
-- Gerçekleşen değerlerin hepsi `f` (false), yani beklenen davranış.
-- Betik `::text` ile düzeltildi (`true`/`false` üretir), ama Oturum 4 kullanıcı kuralı gereği yeniden çalıştırılmadı.
+**2. çalıştırmadaki 5 KALDI'nın sebebi test betiğiydi.**
+- Betik boolean değerleri `concat_ws` ile metne çeviriyordu; PostgreSQL bunları `t`/`f` yazar, beklenen metin `false`'tu.
+- Betik `::text` ile düzeltildi; 3. çalıştırmada hepsi geçti. T7 rol satırları her iki çalıştırmada da geçti.
 
 ## T2f-h: düzeltme öncesi / sonrası
 
@@ -106,7 +105,7 @@ Her test kendi alt işleminde çalışır ve geri alınır. Adım 6'da canlı do
 | T2h kodlu projeyi silme | `record "old" has no field "project_id"` — KALDI | `OK` — GEÇTİ |
 | F1 doğrulama R1-R5 (yeni) | — | 5/5 geçti |
 
-## Rollback sonrası doğrulama (Oturum 5)
+## Rollback sonrası doğrulama (Oturum 5, 3. çalıştırmadan sonra yeniden alındı; değerler aynı)
 
 | Alan | Oturum 0 | Oturum 5 |
 |---|---|---|

@@ -1,5 +1,62 @@
 # 16 register — eksik analizi (gap)
 
+## Durum tablosu (güncel)
+
+> Bu tablo her adım ve faz kapanışında güncellenir (CLAUDE.md kural 9).
+
+**Son güncelleme:** 09.10.2026, Faz 1 Adım 2 kapandı.
+
+**Faz 1 parçaları:**
+- **B1** yetki matrisi;
+- **B2** audit + FK indeksleri + G-13;
+- **B4** Activity ID düzeltme;
+- **F1** proje kodu kuralı + `create_project_with_code` + alan kodu;
+- **AID** Activity ID üretimi (Adım 3);
+- **WA** WBS/alan importu ve ekranı (Adım 4-5).
+
+B1, B2, B4 ve F1 canlıda ROLLBACK ile doğrulandı (Adım 2), uygulanmadı. AID ve WA yok.
+
+| # | Register | Faz | Güncel durum | Bağımlı olduğu Faz 1 parçası |
+|---|---|---|---|---|
+| 1 | Document | 3 (dosya: 2) | Canlıda (`documents`, `document_revisions`); yazma/okuma taslakta (B3, B6); dosya deposu taslakta (B5, patron onayı) | B1, B2, F1 (DOC numarası koda bağlı) |
+| 2 | Drawing | 3 | Canlıda (`drawings`); yazma/okuma taslakta (B3, B6) | B1, B2, F1 (DRW numarası) |
+| 3 | RFI (pilot) | 3 | Canlıda (`rfis`); yazma/okuma taslakta (B3, B6) | B1, B2, F1; aktivite bağı için AID |
+| 4 | Technical Submittal | 3 | Canlıda; yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
+| 5 | Material Approval | 3 | Canlıda; yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
+| 6 | Procurement | 4 | Kaynak tablolar canlıda; köprü görünümü, "sahada gerekli tarih", `purchase_documents` yok | B1 (görme yetkisi); WBS/aktivite bağı için WA, AID |
+| 7 | Subcontractor | 6 | Yok (`party_type`, `subcontracts`) | B1; WA (sözleşmenin WBS/alan bağı) |
+| 8 | Action | 3 | Canlıda (`project_actions`); yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
+| 9 | Decision | 3 | Canlıda; yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
+| 10 | Risk | 3 | Canlıda (`project_risks`, otomatik motor çalışıyor); RSK numarası ve onay alanları yok | B1, F1 (RSK numarası proje koduna bağlı, Ç7), AID (görev bağı) |
+| 11 | Change / Variation | 5 | Yok | B1, B2, F1 |
+| 12 | Claim & Notice | 5 | Yok | B1, B2, F1 |
+| 13 | NCR | Ertelendi (Karar 8) | Ertelendi; tip kodu B1'de ayrıldı (taslakta) | B1 |
+| 14 | Inspection | Ertelendi (Karar 8) | Ertelendi; tip kodu B1'de ayrıldı (taslakta) | B1 |
+| 15 | Interface | 5 | Yok | B1, B2, F1, WA |
+| 16 | Payment | 4 (tedarikçi görünümü) + 6 (`progress_payments`) | Kaynak tablolar canlıda; görünüm ve `progress_payments` yok | B1; Faz 6'daki fatura WBS/aktivite bağı için WA, AID |
+
+**Fazların tahmini bitişi (15 Aralık 2026 MVP hedefine göre; MVP = Faz 1-4, Karar 24):**
+
+Tahminler, kararların ve girdilerin (Excel, proje kodu, patron onayı) en geç 2 iş gününde geldiği varsayımıyla
+yazıldı; kayarlarsa tablo güncellenir.
+
+| Faz | İçerik | Tahmini bitiş | MVP'ye göre | Ana risk |
+|---|---|---|---|---|
+| 1 | WBS, Area, Activity ID | 24 Ekim 2026 | 52 gün önce | Diyarbakır Excel'i ve proje kodu (DYB) gelmeden Adım 6 tamamlanamaz |
+| 2 | Ortak altyapı (B3, B5, B6, links, history) | 7 Kasım 2026 | 38 gün önce | B5 patron onayına bağlı (Karar 5); lokal Docker testi zorunlu (Karar 31) |
+| 3 | 8 register standardı + UI, RFI pilot | 28 Kasım 2026 | 17 gün önce | Ç6 (8 register listesi) Faz 3 başında; Document ekranı B5'e bağlı |
+| 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 12 Aralık 2026 | 3 gün tampon | Satın alma ve finans regresyonu |
+| 5 | Change, Claim, Interface | Ocak 2027 (MVP sonrası) | — | — |
+| 6 | `subcontracts`, `progress_payments`, fatura WBS/aktivite bağı | Şubat 2027 | — | Ç8, Ç10, Ç11 Faz 6 başında |
+| 7 | Aktivite 360, KPI | Mart 2027 | — | — |
+| 8 | Alarmlar | Mart 2027 | — | — |
+| 9 | Import, test, go-live | Nisan 2027 | — | — |
+| Ayrı faz | AI akışları (Karar 23) | Faz 7 sonrası | — | Karar 7 (İsdemir OYAK izni) |
+
+Faz 5-9 tarihleri kaba tahmindir; MVP'den sonra kapasiteye göre yeniden yazılır.
+
+---
+
 Tarih: 09.10.2026 (2. sürüm, Karar 11-16 sonrası). Bu dosya yeni bir keşif değil; mevcut dosyaların üzerine
 eksikleri tamamlar.
 
