@@ -47,6 +47,8 @@ arası ilişkileri içeren bir bilgi grafiği var.
    (`save_daily_report`, `create_purchase_request_with_items` deseni).
 7. Şema değişikliğinde kullanıcıya `fons_solar_sistem_dokumantasyonu.docx` ve
    `fons_solar_veritabani_dokumantasyonu.docx` dosyalarının güncellenmesi gerektiğini hatırlat (varsa).
+8. **Çelişen talimat.** Bir talimat canlı şema veya `docs/proje-kontrol` kararlarıyla çelişirse uygulamadan önce
+   çelişkiyi listele ve onay iste. Proje Kontrol işlerinde kurallar: `docs/proje-kontrol/CONVENTIONS.md`.
 
 ### Kod tarama notu — supabase.from() sayımı
 `grep -rn "supabase\.from(" src/` **tek satırlık** desendir ve kodda zincirleme
@@ -1694,7 +1696,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 2 | Numara biçimi | `{TÜR}-{PROJE_KODU}-{SIRA}` (ör. `RFI-ADN1-0007`): yıl ve disiplin yok, sıra proje+tür bazında boşluksuz, 4 haneye kadar sıfır, kırpma yok; proje kodları ADN1, ADN2, TIZ, TKY; çizim türü doküman `DRW`, diğerleri `DOC`; `TS`/`MA` önekleri | **ONAYLANDI (07.10.2026)** |
 | 3 | Revizyon | Tek doküman + `document_revisions` (ifr/ifa/ifc/as_built), dokümanın tek `is_current` revizyonu; `drawings` dokümana bire bir uzantı (3 kolonlu FK) | **ONAYLANDI (07.10.2026)** |
 | 4 | Submittal / Material Approval | `technical_submittals` ve `material_approvals` iki ayrı tablo | **ONAYLANDI (07.10.2026)** |
-| 5 | Dosya deposu | Supabase Storage özel bucket + Fons içi klasörlü gezgin; Supabase Pro (25 $/ay) önerisi | **PATRON ONAYI BEKLİYOR** |
+| 5 | Dosya deposu | Supabase Storage özel bucket + Fons içi klasörlü gezgin; Supabase Pro (25 $/ay) önerisi. **Ek not (09.10):** şirket M365'e geçiyor; dosya bağlantısı sağlayıcıdan bağımsız tutulur (`document_revisions.storage_provider` canlıda `supabase_storage`/`sharepoint`/`external` destekliyor), SharePoint ileride şema değişmeden eklenebilir — karar tersine dönmedi (`CONVENTIONS.md` §5) | **PATRON ONAYI BEKLİYOR** |
 | 6 | Roller | Mevcut 4 rol; register × eylem yetkisi `register_permissions`'ta (tasarım 4.3 matrisi öneri; B1 taslağı bu matrisi seed eder) | **AÇIK** (tasarımda öneri, açık onay yok) |
 | 7 | AI sağlayıcı ve gizlilik | Önce İsdemir OYAK izni; sağlayıcı 10-15 gerçek belgeyle iki aday ölçülerek seçilir (ChatGPT de aday); izin yoksa AI yalnızca metadata | **AÇIK** |
 | 8 | NCR ve Inspection | Pilotta yok; mobilizasyondan sonra, kalite modülünün kaldırılma kararı hatırlanarak | **AÇIK** (tasarımda öneri) |
@@ -1763,7 +1765,9 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
-- `docs/proje-kontrol/` — `tasarim.md` (v3), `canli-sema-ozeti.md`, `v3-uyum-notlari.md`, `faz-b-migration-plani.md`,
+- `docs/proje-kontrol/` — `CONVENTIONS.md` (adlandırma, ortak kolonlar, yetki, dosya, migration kuralları),
+  `register-gap-analizi.md` (16 register durumu, satın alma/finans köprü eksikleri, faz durum tablosu),
+  `tasarim.md` (v3), `canli-sema-ozeti.md`, `v3-uyum-notlari.md`, `faz-b-migration-plani.md`,
   `frontend-giris-karari.md`, `uyum-migration-plani.md`, `sema-dogrulama.md`, `guvenlik-bulgulari.md`,
   `frontend-tasarim-notu.md`, `canli-05-10-migrations/` (05.10 migration'larının birebir arşivi), `arsiv/`.
 - `docs/proje-kontrol/taslak-sql/` — uygulanmışlar (`g01_…`, `g02_g03_…`, `uyum_migration_*`) ve Faz B taslakları
@@ -2079,6 +2083,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**09.10.2026 (2. tur) — Proje Kontrol kuralları ve register eksik analizi yazıldı (şema değişmedi).**
+`docs/proje-kontrol/CONVENTIONS.md` ve `register-gap-analizi.md` eklendi; CLAUDE.md'ye kural 8 (çelişen talimatta
+önce listele, onay iste) ve Karar 5'e sağlayıcıdan bağımsız dosya bağlantısı notu eklendi. B5 taslağındaki
+temizlik işi yalnızca `storage_provider='supabase_storage'` satırlarına daraltıldı (taslak, uygulanmadı). Canlıya
+yalnızca salt okunur SELECT yapıldı.
 
 **09.10.2026 — Proje Kontrol tasarım v3'e geçildi; Faz B migration taslakları (B1-B6) yazıldı ve canlıda yalnızca
 BEGIN…ROLLBACK ile denendi (hiçbiri uygulanmadı).**

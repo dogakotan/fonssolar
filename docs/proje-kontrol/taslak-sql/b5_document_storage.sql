@@ -295,10 +295,12 @@ begin
   perform set_config('fons.audit_reason', 'cron: yarım yükleme temizliği', true);
   update public.document_revisions
      set upload_status = 'aborted', revision_no = 'X' || upper(left(replace(id::text, '-', ''), 8))
-   where upload_status = 'uploading' and upload_started_at < now() - interval '1 hour';
+   where storage_provider = 'supabase_storage'
+     and upload_status = 'uploading' and upload_started_at < now() - interval '1 hour';
   get diagnostics v_aborted = row_count;
   delete from public.document_revisions r
-   where r.upload_status = 'aborted'
+   where r.storage_provider = 'supabase_storage'
+     and r.upload_status = 'aborted'
      and not exists (select 1 from storage.objects o where o.bucket_id = 'proje-dokumanlari' and o.name = r.storage_file_id);
   get diagnostics v_deleted = row_count;
   return jsonb_build_object('aborted', v_aborted, 'rows_deleted', v_deleted);
