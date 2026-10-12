@@ -9,6 +9,7 @@
 --   A1 task_disciplines + project_tasks.discipline FK (Karar 37)
 --   A2 activity_id_counters (grup başına son numara; kullanıcı erişimi yok)
 --   A3 fn_project_tasks_identity_guard son hali (Ç16 + Karar 39) ve silme koruması (Karar 40)
+--   A3b görev tarafında alan-WBS kuralı (Karar 51): ID'li görevde WBS/alan değişikliği Karar 38'e uymalı
 --   A4 WBS değişikliği audit'i (Karar 39)
 --   A5 assign_activity_ids / assign_activity_id (Karar 18, 38, 41, 43)
 --   A6 admin_correct_task_activity_id genişletilmiş (Karar 39; B4'ün 3 parametreli sürümünün yerine)
@@ -154,6 +155,49 @@ revoke all on function public.fn_project_tasks_delete_guard() from public, anon,
 create trigger trg_project_tasks_delete_guard
   before delete on public.project_tasks
   for each row execute function public.fn_project_tasks_delete_guard();
+
+-- A3b · Görev tarafında alan-WBS kuralı (Karar 51; Karar 39'u daraltır). ID'li görevde WBS veya alan değişirse
+-- (doğrudan yazma veya B4 alan düzeltmesi) Karar 38'in karma kuralı uygulanır: yeni WBS zincirinde (WBS + üstleri)
+-- alan bağı tanımlıysa görevin alanı aralarında olmalı; hiç bağ yoksa serbest. ID'siz görev ve ID'nin temizlendiği
+-- B4 çağrısı kontrol dışı.
+-- Ayrı trigger, çünkü fn_project_tasks_identity_guard invoker kalmak zorunda (bayrak sahipliği current_user'a bakar);
+-- bu kontrol SECURITY DEFINER: RLS bağ satırlarını gizlese de sonuç değişmez. Ad sırası: BEFORE trigger'lar ada göre
+-- çalışır; "trg_project_tasks_wbs_area_link_guard" kimlik korumasından sonra gelir, kilit mesajı önce görünür.
+create function public.fn_project_tasks_wbs_area_link_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_has_links boolean;
+  v_linked    boolean;
+  v_area_code text;
+begin
+  if new.activity_id is null or new.wbs_id is null or new.area_id is null
+     or (new.wbs_id is not distinct from old.wbs_id and new.area_id is not distinct from old.area_id) then
+    return new;
+  end if;
+  with recursive anc as (
+    select w.id, w.parent_id from public.project_wbs w where w.id = new.wbs_id
+    union all
+    select w.id, w.parent_id from public.project_wbs w join anc on w.id = anc.parent_id
+  )
+  select exists (select 1 from public.area_wbs aw where aw.wbs_id in (select id from anc)),
+         exists (select 1 from public.area_wbs aw where aw.wbs_id in (select id from anc) and aw.area_id = new.area_id)
+    into v_has_links, v_linked;
+  if v_has_links and not v_linked then
+    select a.area_code into v_area_code from public.project_areas a where a.id = new.area_id;
+    raise exception 'Activity ID''li görevin alanı (%) yeni WBS''e veya üst WBS''lerine bağlı değil (%)', v_area_code, new.activity_id
+      using hint = 'Önce Alan-WBS bağını ekleyin ya da bağlı bir alan/WBS seçin (Karar 38)';
+  end if;
+  return new;
+end $$;
+revoke all on function public.fn_project_tasks_wbs_area_link_guard() from public, anon, authenticated;
+
+create trigger trg_project_tasks_wbs_area_link_guard
+  before update of wbs_id, area_id on public.project_tasks
+  for each row execute function public.fn_project_tasks_wbs_area_link_guard();
 
 -- ── A4 · ID'li görevde WBS değişikliği audit'e (Karar 39) ──
 create function public.fn_project_tasks_wbs_audit()
@@ -1428,6 +1472,8 @@ drop function if exists public.assign_activity_ids(uuid[], boolean);
 
 drop trigger if exists trg_project_tasks_wbs_audit on public.project_tasks;
 drop function if exists public.fn_project_tasks_wbs_audit();
+drop trigger if exists trg_project_tasks_wbs_area_link_guard on public.project_tasks;
+drop function if exists public.fn_project_tasks_wbs_area_link_guard();
 drop trigger if exists trg_project_tasks_delete_guard on public.project_tasks;
 drop function if exists public.fn_project_tasks_delete_guard();
 -- A3: guard'ı B4 haline döndür (b4_identity_guard_admin_fix.sql BÖLÜM A'daki fn_project_tasks_identity_guard gövdesi)

@@ -410,5 +410,64 @@
     rs := rs || '|' || ex || '|' || pg_temp.lvl('TIZ-510') || pg_temp.lvl('TIZ-511');
     out := out || pg_temp.chk('T34 level', rs, '23|OK(1)|34|OK(1)|12');
 
+  -- [K51]
+    -- T35 · Karar 51: görev tarafında alan-WBS kuralı. Kurulum (AIDKUR): bağlar B1/TIZ-210, B2/TIZ-210, B1/TIZ-310;
+    --       t1 ID'li B1/TIZ-210, t2 ID'li B2/TIZ-220 (TIZ-220 ve üstü TIZ-200 bağsız), t3 ID'siz B1/TIZ-310.
+    -- Her yazma ayrı ifade (sıra bağımlı); okuma ayrı ifadede. BAG = "Activity ID'li görevin alanı … bağlı değil".
+    create function pg_temp.k5(m text) returns text language sql as $f$
+      select case when m like 'ERR:Activity ID''li görevin alanı (%) yeni WBS''e veya üst WBS''lerine bağlı değil%' then 'BAG' else m end $f$;
+    -- B4 çağrısı: register_raise mesajı + ayrıntıdaki asıl hata Karar 51 ise "+K51"
+    create function pg_temp.b4(p_uid uuid, p_sql text) returns text language plpgsql as $f$
+    declare res text; m text; dt text;
+    begin
+      perform pg_temp.as_user(p_uid);
+      begin execute p_sql; res := 'OK';
+      exception when others then
+        get stacked diagnostics m = message_text, dt = pg_exception_detail;
+        res := 'ERR:' || m || case when dt like '%yeni WBS''e veya üst WBS''lerine bağlı değil%' then '+K51' else '' end;
+      end;
+      perform pg_temp.as_user(null);
+      return res;
+    end $f$;
+    t4 := pg_temp.mk('A4-T4', 'mechanical', a_b2, w100);
+    -- a · WBS değişikliği: bağsız WBS'e serbest, alanı içeren kümeye serbest, alanı içermeyen kümeye engel (PM ve şantiye şefi)
+    rs := pg_temp.k5(pg_temp.tryas(u_pm, format('update public.project_tasks set wbs_id = %L where id = %L', w100, t1)));
+    ex := pg_temp.k5(pg_temp.tryas(u_pm, format('update public.project_tasks set wbs_id = %L where id = %L', w310, t1)));
+    rs := rs || '|' || ex;
+    ex := pg_temp.k5(pg_temp.tryas(u_pm, format('update public.project_tasks set wbs_id = %L where id = %L', w310, t2)));
+    rs := rs || '|' || ex;
+    ex := pg_temp.k5(pg_temp.tryas(u_ss, format('update public.project_tasks set wbs_id = %L where id = %L', w310, t2)));
+    rs := rs || '|' || ex;
+    ex := pg_temp.k5(pg_temp.tryas(u_admin, format('update public.project_tasks set wbs_id = %L where id = %L', w210, t2)));
+    rs := rs || '|' || ex;
+    out := out || pg_temp.chk('T35a WBS değişikliği (bağsız / kümede / kümede değil PM / şş / admin kümede)', rs, 'OK(1)|OK(1)|BAG|BAG|OK(1)');
+    -- b · üst WBS bağı: B1→TIZ-200 eklenince TIZ-220'nin zinciri {B1}; B2'li t2 TIZ-220'ye taşınamaz
+    rs := pg_temp.tryas(null, format('insert into public.area_wbs (project_id, area_id, wbs_id) values (%L, %L, %L)', p, a_b1, w200));
+    ex := pg_temp.k5(pg_temp.tryas(u_pm, format('update public.project_tasks set wbs_id = %L where id = %L', w220, t2)));
+    rs := rs || '|' || ex;
+    out := out || pg_temp.chk('T35b üst WBS bağı üzerinden', rs, 'OK(1)|BAG');
+    -- c · ID'siz görev kontrol dışı: B2'li t4 {B1} kümeli TIZ-310'a taşınır
+    rs := pg_temp.tryas(u_pm, format('update public.project_tasks set wbs_id = %L where id = %L', w310, t4));
+    out := out || pg_temp.chk('T35c ID''siz görev', rs, 'OK(1)');
+    -- d · B4: kümede olmayan alana düzeltme reddedilir; kümedeki alana geçer; ID temizlenirken kontrol yok
+    rs := pg_temp.b4(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L, null, %L)', t1, 'TIZ-MEC-B2-0020', 'T35 bağsız alan', a_b2));
+    ex := pg_temp.b4(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L, null, %L)', t2, 'TIZ-MEC-B1-0020', 'T35 bağlı alan', a_b1));
+    rs := rs || '|' || ex;
+    ex := pg_temp.b4(u_admin, format('select public.admin_correct_task_activity_id(%L, null, %L, null, %L)', t2, 'T35 temizle', a_depo));
+    rs := rs || '|' || ex;
+    out := out || pg_temp.chk('T35d B4 (bağsız alan / bağlı alan / ID temizle)', rs, 'ERR:validation+K51|OK|OK');
+    -- e · son durum ve audit: t1 TIZ-310'da ID'si korunmuş; t2 ID'siz DEPO'da; WBS audit'i yalnızca geçen değişiklikler
+    rs := concat_ws('|',
+      (select project_wbs.wbs_code || '/' || project_areas.area_code || '/' || coalesce(project_tasks.activity_id, '∅')
+         from public.project_tasks join public.project_wbs on project_wbs.id = project_tasks.wbs_id
+         join public.project_areas on project_areas.id = project_tasks.area_id where project_tasks.id = t1),
+      (select project_wbs.wbs_code || '/' || project_areas.area_code || '/' || coalesce(project_tasks.activity_id, '∅')
+         from public.project_tasks join public.project_wbs on project_wbs.id = project_tasks.wbs_id
+         join public.project_areas on project_areas.id = project_tasks.area_id where project_tasks.id = t2),
+      (select count(*) from public.register_audit where register_audit.record_id = t1 and register_audit.changed_fields ? 'wbs_id')::text,
+      (select count(*) from public.register_audit where register_audit.record_id = t2 and register_audit.changed_fields ? 'wbs_id')::text,
+      (select count(*) from public.register_audit where register_audit.record_id in (t1, t2) and register_audit.reason like 'T35%')::text);
+    out := out || pg_temp.chk('T35e son durum / audit', rs, 'TIZ-310/B1/TIZ-MEC-B1-0010|TIZ-210/DEPO/∅|2|1|2');
+
   -- [SON]
   end;

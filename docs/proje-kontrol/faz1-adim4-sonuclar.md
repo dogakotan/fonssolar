@@ -143,6 +143,41 @@ Tam zincir (F1 ve AID A7-A8 dahil) Adım 6'da `f1_dogrulama.sql` ile birlikte ç
 - R25 ID'siz 7×`OK(1)`;
 - R26 `ALT|23|OK(1)|12`, proje silme `del=0/0`.
 
+## Karar 51 — görev tarafında alan-WBS kuralı (12.10.2026, ek oturumlar)
+
+Taslak: `f1_aid_activity_id.sql` A3b, `fn_project_tasks_wbs_area_link_guard` + `trg_project_tasks_wbs_area_link_guard`
+(BEFORE UPDATE OF wbs_id, area_id; SECURITY DEFINER; `authenticated`'a kapalı).
+- **Neden ayrı trigger:** `fn_project_tasks_identity_guard` invoker kalmak zorunda, çünkü bayrak sahipliği `current_user`'a bakıyor.
+- **Neden DEFINER:** RLS bağ satırlarını gizlese bile kontrol açık kalmasın.
+- **Ad seçimi:** BEFORE trigger'lar ada göre çalışır; bu ad kimlik korumasından ve `updated_at`'ten sonra gelir. Böylece ID'li görevde doğrudan alan değişikliği önce "kilitli" mesajını alır (R14, T14 değişmedi). Canlıda `project_tasks`'taki trigger adları SELECT ile okunup doğrulandı.
+
+**Kural 10 ön kontrolü:**
+- R27'de iki hata koşmadan önce düzeltildi.
+  - **Sıra:** B4 alanı B3'e çektikten sonra görevi W1'e taşımak yeni kurala takılırdı; adımların sırası değiştirildi.
+  - **Kesme:** `left(…,45)` sona bir boşluk alıyordu; 44'e indirildi.
+- Sıra bağımlı yazmalar ayrı ifadede.
+- `OK` / `OK(n)` biçimleri ilgili yardımcıdan türetildi.
+
+**Ön kontrol:** `pg_stat_activity` aktif bağlantı 0; Oturum 0 parmak izi = `fp4_0` birebir.
+
+| Oturum | Kurulum | İçerik | Sonuç |
+|---|---|---|---|
+| K1 | B1, B2 (A3 hariç), B4, AID A1-A6, Adım 4 | ORTAK + AIDKUR + T35a-e (`f1_adim4_testler.sql` [K51]) | **7/7 geçti** |
+| K2 | B1, B2 (A3 hariç), B4, F1, AID A1-A8 | `f1_dogrulama.sql` §5: R6-R16 + R27 ve katalog | **Geçti** (kontrol grubu 2) |
+| 5 | — | Parmak izi | **Oturum 0 ile birebir** |
+
+| Test | Gelen |
+|---|---|
+| T35a | PM bağsız WBS'e `OK(1)`; {B1} kümeli TIZ-310'a B1'li görev `OK(1)`; B2'li görev PM ve şantiye şefi ile `BAG\|BAG`; admin {B1,B2} kümeli TIZ-210'a `OK(1)` |
+| T35b | B1→TIZ-200 bağı eklenir `OK(1)`; B2'li görev TIZ-220'ye (zincir {B1}, üst WBS üzerinden) `BAG` |
+| T35c | ID'siz görev {B1} kümesine `OK(1)` |
+| T35d | B4 bağsız alana `ERR:validation` (ayrıntıda Karar 51 mesajı); bağlı alana `OK`; ID temizlenirken bağsız alana `OK` |
+| T35e | `TIZ-310/B1/TIZ-MEC-B1-0010 \| TIZ-210/DEPO/∅`; WBS audit yalnızca geçen değişiklikler (2 ve 1); B4 audit 2 |
+| R27 | `B4 W1=validation \| Activity ID'li görevin alanı (A1) yeni WBS'e \| W4 \| B4 W4=BASARILI \| ZZFH-GEN-B3-0010` |
+
+**Sınırlama:** K1 ve K2 ayrı oturumlar, çünkü MCP 95 KB sınırı tüm zinciri tek oturumda kurmaya izin vermiyor. Tam zincir
+provası Adım 6 ön koşulu oldu (`faz1-adim3-tasarim.md` §9 madde 5).
+
 ## JS tarafı
 
 - `tests/proje-kontrol-wbs-alan-excel.spec.js`: **23/23 geçti** (DB'siz).

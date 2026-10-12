@@ -154,7 +154,9 @@ Adım 4 şunlara bağlı:
    - Canlı RLS izin veriyor: `project_areas` insert/update ve `area_wbs` insert/delete kendi projesinde.
    - Import'u admin/PM'e kısıtlamak bu yolu kapatmaz; ama Activity ID kuralları artık trigger'da olduğu için şantiye şefi de ID'li görevi bozamaz (T32).
    - Karar Adım 5'te ekranla birlikte verilecek.
-2. **Görev tarafında Karar 38 açığı (bulgu, karar bekliyor).**
+2. **Görev tarafında Karar 38 açığı — KAPANDI (Karar 51, 12.10.2026).** Kullanıcı karma kuralı onayladı; ayrı bir
+   SECURITY DEFINER trigger olarak AID taslağına (A3b) eklendi, T35a-e ve R27 ROLLBACK ile geçti
+   (`faz1-adim4-sonuclar.md` "Karar 51"). Orijinal bulgu:
    - Adım 4 trigger'ları alan/WBS/bağ tablolarını koruyor.
    - Ama ID'li görevin WBS'i Karar 39 gereği serbestçe değiştirilebiliyor (yalnızca audit'e yazılıyor). `fn_project_tasks_identity_guard` yeni WBS'in bağ kümesinin görevin alanını içerip içermediğine bakmıyor.
    - B4'ün alan düzeltmesi de bu kontrolü yapmıyor.

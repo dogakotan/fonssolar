@@ -67,7 +67,7 @@ Adım 3'tedir (Karar 42) ve şu kuralları uygular:
 | ID'li görevde disiplin/alan değişikliği | Yalnızca `fix` (Karar 39) |
 | ID'li görevde proje değişikliği | Her zaman red |
 | ID'li görevi silme | Proje hâlâ varsa red; proje silinirken izin (Karar 40) |
-| ID'li görevde WBS değişikliği | Serbest; `register_audit`'e yazılır (Karar 39) |
+| ID'li görevde WBS değişikliği | `register_audit`'e yazılır (Karar 39). Karar 51 (12.10.2026): yeni WBS zincirinde alan bağı varsa görevin alanı içinde olmalı, yoksa red; B4'ün alan düzeltmesi de aynı kontrolden geçer (A3b, ayrı DEFINER trigger) |
 
 **Kolon yetkisi neden seçilmedi:**
 - `authenticated` bugün `project_tasks`'ın tamamına INSERT/UPDATE yetkisine sahip (sihirbaz ve Excel bunu kullanıyor).
@@ -210,4 +210,12 @@ Adım 6 yalnızca kullanıcı "uygula" dediğinde başlar. Aşağıdakiler tamam
      - Hangi kategoriye ne ağırlık verileceği iş kararıdır; kullanıcı bildirir.
    - b) Excel import ve sihirbaz, ağırlık tablosunda olmayan bir kategoriyle görev yazarken uyarı verir veya reddeder. Hangisinin olacağı Adım 5 tasarımında önerilir.
 4. **Ç16 madde 5 (exposed schemas).** 12.10.2026'da doğrulandı: yalnızca `public, graphql_public`. Adım 6 öncesi aynı GET ile yeniden kontrol edilir; liste değiştiyse dur.
+5. **Tam zincir provası (12.10.2026'da eklendi).** MCP aracı ~95 KB üstü isteği düşürdüğü için B1 + B2 + B4 + F1 + AID +
+   Adım 4 hiçbir oturumda birlikte kurulmadı (her oturum bir alt kümeyi kurdu, `faz1-adim4-sonuclar.md`). Canlıya ilk
+   birlikte çalışma Adım 6 olmasın diye:
+   - `.env.local` bağlantısıyla psql üzerinden (bağlantı adresi çıktıya yazılmaz) Adım 6 sırasıyla tek transaction'da kurulur:
+     B1 → B2 (A1-A4) → B4 → F1 A1-A3 → AID (A1-A8) → Adım 4 (`f1_wbs_alan_import.sql`).
+   - `f1_dogrulama.sql`'in tamamı (R1-R27) koşulur; `DOGRULAMA SONUCU: OK` beklenir; ROLLBACK.
+   - Öncesi ve sonrası parmak izi (`taslak-sql/parmak_izi.sql`) birebir aynı olmalı.
+   - Beklenmeyen sonuçta dur; Adım 6 başlamaz.
 - Disiplin açılır listesi `task_disciplines`'ten okunsun.

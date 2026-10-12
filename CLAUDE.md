@@ -1749,7 +1749,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 36 | F1 A4 trigger yapısı | Tek `fn_require_project_code` (CASE ile NEW/OLD seçimi) yerine tablo başına iki trigger fonksiyonu (`fn_projects_require_code`, `fn_project_register_settings_keep_code`) + ortak `project_code_missing()`. Gerekçe: her fonksiyon yalnızca kendi tablosunun kaydına bakar, "record has no field" hata sınıfı yapısal olarak ortadan kalkar; IF/ELSE de çalışırdı ama tablo adına göre dallanma yeni tablo eklenince aynı hatayı tekrar üretebilir. `f1_dogrulama.sql`'e kuralı fiilen tetikleyen R1-R5 regresyon testleri eklendi (Adım 6'da da çalışır) | **UYGULANDI (taslakta), Adım 2'de doğrulandı (09.10.2026)** |
 | 37 | Disiplin listesi | `task_disciplines` tablosu (anahtar → ID kısaltması: mechanical=MEC, dc=DC, ac=AC, mv=MV, hv=HV, enh=EIH, civil=CIV, scada=SCA, general=GEN); `project_tasks.discipline` ona FK ile bağlı, boş değer serbest. Canlıda daha önce DB listesi yoktu (yalnızca ekran sözlüğü) | **ONAYLANDI (09.10.2026)**, taslak `f1_aid_activity_id.sql` |
 | 38 | Alan-WBS kuralı (Activity ID) | Görevin WBS'inde (veya üst WBS'lerinde) alan bağı tanımlıysa ve görevin alanı aralarında yoksa atama engellenir; hiç bağ yoksa uyarı verilip atanır | **ONAYLANDI (09.10.2026)** |
-| 39 | ID sonrası kilit | Activity ID atanmış görevde disiplin ve alan kilitli; düzeltme yalnızca genişletilmiş B4 (`admin_correct_task_activity_id`, admin, gerekçe zorunlu, ID + alan/disiplin birlikte, yeni ID görevin proje/disiplin/alanıyla uyumlu olmalı). WBS değişikliği serbest ama `register_audit`'e yazılır | **ONAYLANDI (09.10.2026)** |
+| 39 | ID sonrası kilit | Activity ID atanmış görevde disiplin ve alan kilitli; düzeltme yalnızca genişletilmiş B4 (`admin_correct_task_activity_id`, admin, gerekçe zorunlu, ID + alan/disiplin birlikte, yeni ID görevin proje/disiplin/alanıyla uyumlu olmalı). WBS değişikliği `register_audit`'e yazılır; **Karar 51 ile daraltıldı:** yeni WBS zinciri Karar 38'e uymalı | **ONAYLANDI (09.10.2026)**, Karar 51 ile daraltıldı (12.10.2026) |
 | 40 | ID'li görev silinmez | Activity ID atanmış görev silinemez, durumu `iptal` yapılır; proje silme zinciri çalışır. Sihirbazın sil-yeniden-yaz akışının görev koduna göre güncellemeye çevrilmesi Adım 5'e eklendi ve Adım 6 deploy'unun ön koşulu. İptal görevler ilerleme/ağırlık/S-eğrisi hesaplarından çıkarılır. **Ek (12.10):** iptal göreve ilerleme DB'de her yoldan (günlük rapor dahil) "İptal edilmiş göreve ilerleme girilemez" ile reddedilir; iptal görevi yalnızca admin ve proje_yoneticisi yeniden açar (taslak A8) | **ONAYLANDI (09.10.2026)** |
 | 41 | Atama çağrısı | Önizleme (`p_dry_run`) varsayılan açık; çağrı başına en fazla 500 görev, tek proje; gerçek atamada hepsi ya da hiçbiri | **ONAYLANDI (09.10.2026)** |
 | 42 | Adım 3 migration sırası | Ayrı migration, B4'ten sonra; `fn_project_tasks_identity_guard`'ın son hali Adım 3'te (B4'ün kuralını içerir) | **ONAYLANDI (09.10.2026)** |
@@ -1761,6 +1761,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 48 | Activity ID bütünlüğü DB'de | Trigger düzeyinde: görevi olan alan/WBS kodu değişmez (canlı kural); ID'li görevin alanı, WBS'i veya üst WBS'i pasifleştirilemez / taşınamaz; Karar 38'i bozan `area_wbs` INSERT'i ve ID'li görevin alanını kümeden çıkaran DELETE reddedilir; ID'li görevin alanı/WBS'i silinemez. Import yalnızca rapor (`aid_impact`). B4 muafiyeti önerilmedi (B4 `project_tasks`'ı yazar, bu trigger'lar alan/WBS/bağ tablolarında) | **ONAYLANDI (12.10.2026)**, taslak A2-A5 |
 | 49 | Ç-7 guard düzeltmesi | Aktif alt kaydı olan alan/WBS pasifleştirilemez; taşınan WBS'in alt WBS'lerinin `level`'ı güncellenir | **ONAYLANDI (12.10.2026)**, taslak A3 |
 | 50 | WBS/alan importu | Excel ön yüzde (`src/utils/wbsAreaExcel.js`) okunur → `import_wbs_areas(p_project_id, p_payload, p_dry_run default true)` (DEFINER). Yalnızca admin/PM; hepsi ya da hiçbiri; koda göre eşleşme; silme yok, bağ yalnızca eklenir; `not_in_file` raporu; her yazma audit'e (`project_wbs`/`project_areas` B2 trigger'ı, `area_wbs` ayrı trigger). Projesiz kontrol: `p_project_id = null` önizleme ve `scripts/proje-kontrol/wbs-alan/kontrol.mjs` | **ONAYLANDI (12.10.2026)**, taslak A6-A7 |
+| 51 | Görev tarafında alan-WBS kuralı | ID'li görevde WBS veya alan değişince görevin trigger'ı (`trg_project_tasks_wbs_area_link_guard`, SECURITY DEFINER) Karar 38'in karma kuralını uygular: yeni WBS zincirinde (WBS + üstleri) alan bağı tanımlıysa görevin alanı içinde olmalı, hiç bağ yoksa serbest. B4'ün alan düzeltmesi de aynı kontrolden geçer (red → `validation`). ID'siz görev ve ID'nin temizlendiği B4 çağrısı kontrol dışı | **ONAYLANDI (12.10.2026)**, taslak `f1_aid_activity_id.sql` A3b; ROLLBACK testleri T35a-e ve R27 geçti |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1914,16 +1915,19 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   vermediğinden, günlük rapor ilerlemesi girilmiş bir projede (ör. TIZ: 35 görevin 16'sı) kayıt
   `progress_daily_task_id_fkey` hatasıyla düşer. İlerleme yoksa kayıt geçer ama görev ID'leri değişir. Düzeltme Faz 1
   Adım 5'te: görev koduna göre güncelleme (Karar 40), Adım 6 deploy'unun ön koşulu. Ayrıntı: `docs/proje-kontrol/faz1-adim3-tasarim.md` §7.
+  **Ek bulgu (12.10.2026, kod okumasıyla):** `Adim2IsKalemleri.jsx` `handleSave` yükünde `group_label`,
+  `responsible_role`, `duration_days` yok; düzenleme sihirbazından geçen her kayıt `group_label`'ı silip İş Planı
+  hiyerarşisini düzleştiriyor. Düzeltme aynı paket (`faz1-adim5-tasarim.md` §3).
 
 - **Ç-6 · Şantiye şefinin alan ve alan-WBS yazma yetkisi (açık, Adım 5'te ekranla birlikte karar).** Canlı RLS
   şantiye şefine kendi projesinde `project_areas` insert/update ve `area_wbs` insert/delete izni veriyor. Import admin/PM ile
   sınırlı ama bu doğrudan yolu kapatmıyor. Activity ID kuralları trigger'da olduğu için şantiye şefi ID'li görevi bozamaz
   (Adım 4 T32).
 
-- **Görev tarafında Karar 38 açığı (12.10.2026 bulgusu, karar bekliyor).** Karar 39 gereği ID'li görevin WBS'i serbest
-  değişiyor ve `fn_project_tasks_identity_guard` yeni WBS zincirinin bağ kümesinin görevin alanını içerip içermediğine
-  bakmıyor; B4'ün alan düzeltmesi de bakmıyor. Alan/WBS/bağ tarafı Adım 4 trigger'larıyla korunuyor, görev tarafı korunmuyor.
-  Öneri ve ayrıntı: `docs/proje-kontrol/faz1-adim4-tasarim.md` §8.
+- **Adım 6 ön koşulu — tam zincir provası (12.10.2026).** MCP ~95 KB sınırı yüzünden B1 + B2 + B4 + F1 + AID + Adım 4
+  hiçbir oturumda birlikte kurulmadı. Adım 6'dan önce `.env.local` bağlantısıyla psql üzerinden hepsi tek transaction'da
+  kurulur, `f1_dogrulama.sql`'in tamamı (R1-R27) koşulur, ROLLBACK; öncesi/sonrası parmak izi. Ayrıntı:
+  `docs/proje-kontrol/faz1-adim3-tasarim.md` §9.
 
 - **Kategori ağırlık tablosunda olmayan kategorilerdeki görevler proje ilerlemesine hiç katılmıyor (12.10.2026'da salt
   okunur sorguyla bulundu, Faz 1'den bağımsız, bugün canlıda).**
@@ -2197,6 +2201,20 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**12.10.2026 (13. tur) — Karar 51 (görev tarafında alan-WBS kuralı) ve Adım 5 tasarımı (kod yok, uygulama yok).**
+- **Karar 51:**
+  - Ayrı SECURITY DEFINER trigger olarak AID taslağına eklendi (A3b); Karar 39 daraltıldı.
+  - Canlıda yalnızca ROLLBACK:
+    - K1: T35a-e 7/7 geçti;
+    - K2: §5 R6-R16 + yeni R27 geçti;
+    - parmak izi öncesi = sonrası.
+- **Adım 6 ön koşulu:** tam zincir provası (psql, tek transaction, R1-R27, ROLLBACK). Parmak izi sorgusu `taslak-sql/parmak_izi.sql`'e alındı.
+- **Adım 5 tasarımı:** `docs/proje-kontrol/faz1-adim5-tasarim.md`.
+  - Yerel Docker + canlı şema dökümü tabanı. `supabase/migrations` sıfırdan kuramıyor: ilk migration `projects`/`profiles`'a dayanıyor.
+  - Ekranlar, sihirbaz Ç-B, proje kodu, ağırlıksız kategori reddi, Playwright matrisi.
+  - 8 karar sorusu var.
+- **Yeni bulgu:** sihirbaz düzenlemesi `group_label`'ı siliyor ("Bilinen açık noktalar", Ç-B maddesi).
 
 **12.10.2026 (12. tur) — Faz 1 Adım 4 kapandı (WBS/alan bütünlüğü ve Excel importu; yalnızca taslak, uygulama yok).**
 - **Kararlar:** 45-50 eklendi.

@@ -4,7 +4,7 @@
 -- 'GERI_AL' hatasıyla geri alınır; geçici test projeleri (zzf1-*) hiçbir durumda kalıcı olmaz.
 -- A4 (kodsuz projeyi reddeden kural) ayrı migration'dır (Karar 34): trigger'lar yoksa A4 kontrolleri atlanır
 -- ve sonuç satırında "A4 yok" yazar.
--- Adım 3 (Activity ID, f1_aid_activity_id.sql) kuruluysa R6-R16 da çalışır; değilse "AID yok" yazar.
+-- Adım 3 (Activity ID, f1_aid_activity_id.sql) kuruluysa R6-R16 ve R27 (Karar 51) da çalışır; değilse "AID yok" yazar.
 -- R6-R16 her biri kendi alt işleminde geçici bir test projesi (zzf1-a*) kurar ve 'GERI_AL:<sonuç>' ile geri alır.
 -- Postgres (tablo sahibi) bağlamında çalıştırılmalıdır (RLS'i aşması gerekir).
 do $$
@@ -167,18 +167,24 @@ begin
       end if;
     end loop;
     foreach f in array array['public.assign_activity_ids(uuid[],boolean)', 'public.admin_correct_task_activity_id(uuid,text,text,text,uuid)',
-                             'public.fn_project_tasks_delete_guard()', 'public.fn_project_tasks_wbs_audit()'] loop
+                             'public.fn_project_tasks_delete_guard()', 'public.fn_project_tasks_wbs_audit()',
+                             'public.fn_project_tasks_wbs_area_link_guard()'] loop
       if not (select prosecdef and coalesce(proconfig::text, '') like '%search_path=public%' from pg_proc where oid = f::regprocedure) then
         raise exception '% DEFINER/search_path değil', f;
       end if;
     end loop;
     foreach f in array array['public.fn_project_tasks_delete_guard()', 'public.fn_project_tasks_wbs_audit()',
-                             'public.fn_progress_daily_cancelled_guard()', 'public.fn_project_tasks_reopen_guard()'] loop
+                             'public.fn_progress_daily_cancelled_guard()', 'public.fn_project_tasks_reopen_guard()',
+                             'public.fn_project_tasks_wbs_area_link_guard()'] loop
       if has_function_privilege('authenticated', f, 'EXECUTE') then raise exception '% dışarıya açık', f; end if;
     end loop;
     -- A8 · iptal görev koruması trigger'ları
     if (select count(*) from pg_trigger where not tgisinternal and tgname in ('trg_progress_daily_cancelled_guard', 'trg_project_tasks_reopen_guard')) <> 2 then
       raise exception 'R15b iptal görev koruması trigger''ları eksik';
+    end if;
+    if not exists (select 1 from pg_trigger where not tgisinternal and tgname = 'trg_project_tasks_wbs_area_link_guard'
+                     and tgrelid = 'public.project_tasks'::regclass) then
+      raise exception 'R27 görev tarafı alan-WBS trigger''ı eksik';
     end if;
     if has_table_privilege('authenticated', 'public.activity_id_counters', 'SELECT')
        or has_table_privilege('authenticated', 'public.activity_id_counters', 'UPDATE')
@@ -341,6 +347,49 @@ begin
     perform pg_temp.as_user(null);
     if e <> 'GERI_AL:forbidden|validation|validation|ZZFG-MEC-A1-0010/mechanical|audit=1' then
       raise exception 'R16 genişletilmiş B4: %', e;
+    end if;
+
+    -- R27 · Karar 51: ID'li görevin WBS'i, bağ kümesi görevin alanını içermeyen WBS'e taşınamaz; bağsız WBS'e
+    --       taşınabilir; B4 bağsız alana düzeltemez. Sıra bağımlı yazmalar ayrı ifadelerde.
+    begin
+      t := pg_temp.f1_aid_fx('zzf1-a27', 'ZZFH');
+      perform pg_temp.as_user(u_admin);
+      j := public.assign_activity_ids(array[t[1]], false);
+      perform pg_temp.as_user(null);
+      insert into public.project_wbs (project_id, wbs_code, name) values ('zzf1-a27', 'W3', 'W3 bağlı');
+      insert into public.project_wbs (project_id, wbs_code, name) values ('zzf1-a27', 'W4', 'W4 bağsız');
+      insert into public.project_areas (project_id, area_code, name) values ('zzf1-a27', 'B3', 'B3');
+      insert into public.area_wbs (project_id, area_id, wbs_id)
+      select 'zzf1-a27', (select id from public.project_areas where project_id = 'zzf1-a27' and area_code = 'B3'),
+             (select id from public.project_wbs where project_id = 'zzf1-a27' and wbs_code = 'W3');
+      -- 1) W1 (A1'e bağlı) üzerindeyken B4 alanı bağsız B3'e çekemez
+      perform pg_temp.as_user(u_admin);
+      begin perform public.admin_correct_task_activity_id(t[1], 'ZZFH-GEN-B3-0010', 'R27',
+              null, (select id from public.project_areas where project_id = 'zzf1-a27' and area_code = 'B3'));
+        e := 'BASARILI';
+      exception when others then e := sqlerrm; end;
+      perform pg_temp.as_user(null);
+      e := 'B4 W1=' || e;
+      -- 2) W3'ün bağ kümesi {B3}: A1'li görev taşınamaz (mesajın ilk 44 karakteri)
+      begin update public.project_tasks set wbs_id = (select id from public.project_wbs where project_id = 'zzf1-a27' and wbs_code = 'W3') where id = t[1];
+        f := 'BASARILI';
+      exception when others then f := left(sqlerrm, 44); end;
+      e := e || '|' || f;
+      -- 3) bağsız W4'e taşınabilir; 4) orada B4 alanı B3'e çekebilir
+      update public.project_tasks set wbs_id = (select id from public.project_wbs where project_id = 'zzf1-a27' and wbs_code = 'W4') where id = t[1];
+      e := e || '|W4';
+      perform pg_temp.as_user(u_admin);
+      begin perform public.admin_correct_task_activity_id(t[1], 'ZZFH-GEN-B3-0010', 'R27',
+              null, (select id from public.project_areas where project_id = 'zzf1-a27' and area_code = 'B3'));
+        f := 'BASARILI';
+      exception when others then f := sqlerrm; end;
+      perform pg_temp.as_user(null);
+      e := e || '|B4 W4=' || f || '|' || (select activity_id from public.project_tasks where id = t[1]);
+      raise exception 'GERI_AL:%', e;
+    exception when others then e := sqlerrm; end;
+    perform pg_temp.as_user(null);
+    if e <> 'GERI_AL:B4 W1=validation|Activity ID''li görevin alanı (A1) yeni WBS''e|W4|B4 W4=BASARILI|ZZFH-GEN-B3-0010' then
+      raise exception 'R27 görev tarafı alan-WBS kuralı: %', e;
     end if;
 
     if exists (select 1 from public.projects where id like 'zzf1-a%') then raise exception 'AID test projesi kaldı'; end if;
@@ -536,7 +585,7 @@ begin
 
   raise exception 'DOGRULAMA SONUCU: OK | F1 | % kontrol grubu | % | % | %', checks,
     case when a4 then 'A4 var, R1-R5 regresyon geçti' else 'A4 yok (ayrı migration, Karar 34) — R1-R5 atlandı' end,
-    case when aid then 'AID var, R6-R16 geçti' else 'AID yok (Adım 3 ayrı migration, Karar 42) — R6-R16 atlandı' end,
+    case when aid then 'AID var, R6-R16 ve R27 geçti' else 'AID yok (Adım 3 ayrı migration, Karar 42) — R6-R16 atlandı' end,
     case when to_regprocedure('public.import_wbs_areas(text,jsonb,boolean)') is not null then 'Adım 4 var, R17-R26 geçti'
          else 'Adım 4 yok — R17-R26 atlandı' end;
 end $$;
