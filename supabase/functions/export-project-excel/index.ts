@@ -56,12 +56,13 @@ Deno.serve(async (req) => {
     if (accErr) throw new Error(accErr.message);
     if (!allowed) return jsonErr({ error: `Bu projeye erisim yetkiniz yok: ${projectId}` }, 403);
 
-    const [tasks, risks, budget, proc, weights] = await Promise.all([
+    const [tasks, risks, budget, proc, weights, settings] = await Promise.all([
       sb.from("project_tasks").select("*").eq("project_id", projectId).order("planned_start").order("task_code"),
       sb.from("project_risks").select("*").eq("project_id", projectId).order("created_at"),
       sb.from("budget_lines").select("*").eq("project_id", projectId).order("order_index"),
       sb.from("procurement_items").select("*").eq("project_id", projectId).order("item_no"),
       sb.from("project_category_weights").select("*").eq("project_id", projectId),
+      sb.from("project_register_settings").select("prefix").eq("project_id", projectId).maybeSingle(),
     ]);
     for (const r of [tasks, risks, budget, proc, weights]) if (r.error) throw new Error(r.error.message);
 
@@ -88,6 +89,7 @@ Deno.serve(async (req) => {
     const p = ws("Proje Bilgileri");
     p.getCell("E5").value = proj.id;
     p.getCell("E6").value = proj.name;
+    p.getCell("E13").value = settings.data?.prefix ?? null; // Şablon v8: proje kodu
     p.getCell("E7").value = proj.location ?? null;
     p.getCell("E8").value = PROJECT_TYPE_TO_LABEL[proj.project_type] ?? proj.project_type ?? null;
     p.getCell("E9").value = proj.status ?? null;

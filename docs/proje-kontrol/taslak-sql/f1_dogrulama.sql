@@ -310,7 +310,13 @@ begin
       begin delete from public.project_tasks where id = t[2]; e := 'BASARILI';
       exception when others then e := sqlerrm; end;
       e := case when e like 'Activity ID atanmış görev silinemez (ZZFF-GEN-A1-0020)%' then 'silinemez' else e end;
+      -- Karar 44 (12.10.2026): iptal yalnızca admin/PM; oturumsuz bağlam reddedilir
+      begin update public.project_tasks set status = 'iptal' where id = t[2]; f := 'BASARILI';
+      exception when others then f := sqlerrm; end;
+      e := e || '|postgres=' || case when f like 'Görevi yalnızca admin veya proje yöneticisi iptal edebilir%' then 'red' else f end;
+      perform pg_temp.as_user(u_admin);
       update public.project_tasks set status = 'iptal' where id = t[2];
+      perform pg_temp.as_user(null);
       update public.project_tasks set progress_pct = 50 where id = t[1];
       e := e || '|progress=' || (select progress from public.projects where id = 'zzf1-a15');
       begin delete from public.projects where id = 'zzf1-a15'; f := 'proje_silindi';
@@ -318,7 +324,7 @@ begin
       raise exception 'GERI_AL:%|%', e, f;
     exception when others then e := sqlerrm; end;
     perform pg_temp.as_user(null);
-    if e <> 'GERI_AL:silinemez|progress=10|proje_silindi' then
+    if e <> 'GERI_AL:silinemez|postgres=red|progress=10|proje_silindi' then
       raise exception 'R15 iptal/silme: %', e;
     end if;
 
@@ -582,6 +588,100 @@ begin
     end;
   end if;
   -- [ADIM4-BITIR]
+
+  -- [ADIM5-BASLA]
+  -- 7 · Adım 5 (f1_adim5_ekran_rpc.sql): R28-R31. AID kuruluysa ve save_project_tasks varsa çalışır.
+  --     Her test kendi alt işleminde geçici proje (zzf1-a2x) kurar ve 'GERI_AL:' ile geri alır.
+  if aid and to_regprocedure('public.save_project_tasks(text,jsonb,boolean,jsonb)') is not null then
+    -- R28 katalog: yardımcılar dışarıya kapalı, RPC'ler authenticated'a açık, DEFINER/INVOKER beklenen
+    foreach f in array array['public.fn_wbs_chain_area_state(uuid,uuid)', 'public.fn_task_keep_reason(uuid)',
+                             'public.fn_project_tasks_category_weight_guard()', 'public.fn_project_category_weights_keep_used()'] loop
+      if has_function_privilege('authenticated', f, 'EXECUTE') then raise exception 'R28 % dışarıya açık', f; end if;
+    end loop;
+    foreach f in array array['public.save_project_tasks(text,jsonb,boolean,jsonb)', 'public.set_tasks_classification(uuid[],text,uuid,uuid,boolean)',
+                             'public.save_area_wbs_links(uuid,uuid[])'] loop
+      if has_function_privilege('anon', f, 'EXECUTE') or not has_function_privilege('authenticated', f, 'EXECUTE') then
+        raise exception 'R28 % yetkileri yanlış', f;
+      end if;
+    end loop;
+    if (select pg_proc.prosecdef from pg_proc where pg_proc.oid = 'public.save_area_wbs_links(uuid,uuid[])'::regprocedure) then
+      raise exception 'R28 save_area_wbs_links INVOKER olmalı';
+    end if;
+    if exists (select 1 from pg_policy where pg_policy.polname in ('project_areas_insert', 'project_areas_update', 'area_wbs_insert', 'area_wbs_delete')
+                 and coalesce(pg_get_expr(pg_policy.polqual, pg_policy.polrelid), '') || coalesce(pg_get_expr(pg_policy.polwithcheck, pg_policy.polrelid), '') like '%santiye_sefi%') then
+      raise exception 'R28 Ç-6: şantiye şefi dalı policy''lerde duruyor';
+    end if;
+    checks := checks + 1;
+
+    -- R29 · save_project_tasks: id ile güncelleme group_label'ı korur; çıkarılan ilerlemeli görev iptal, bağsız görev silinir;
+    --       önizleme yazmaz. Sıra bağımlı yazmalar ayrı ifadelerde; okumalar ayrı ifadede.
+    begin
+      t := pg_temp.f1_aid_fx('zzf1-a29', 'ZZFI');
+      update public.project_tasks set group_label = 'G › H' where project_tasks.id = t[1];
+      update public.project_tasks set total_progress = 5 where project_tasks.id = t[2];
+      insert into public.project_tasks (project_id, task_code, task_name, category, planned_start, planned_end)
+      values ('zzf1-a29', 'R-3', 'R görev 3', 'panel_montaji', current_date, current_date + 5);
+      perform pg_temp.as_user(u_admin);
+      j := public.save_project_tasks('zzf1-a29', jsonb_build_array(jsonb_build_object('id', t[1], 'task_code', 'R-1', 'task_name', 'R görev 1 yeni')), true);
+      perform pg_temp.as_user(null);
+      e := concat_ws('/', j #>> '{summary,update}', j #>> '{summary,cancel}', j #>> '{summary,delete}', j #>> '{summary,error_count}')
+           || '|' || (select project_tasks.task_name from public.project_tasks where project_tasks.id = t[1]);
+      perform pg_temp.as_user(u_admin);
+      j := public.save_project_tasks('zzf1-a29', jsonb_build_array(jsonb_build_object('id', t[1], 'task_code', 'R-1', 'task_name', 'R görev 1 yeni')), false);
+      perform pg_temp.as_user(null);
+      e := e || '|' || (select project_tasks.task_name || '/' || coalesce(project_tasks.group_label, '∅') from public.project_tasks where project_tasks.id = t[1]);
+      e := e || '|' || (select project_tasks.status::text from public.project_tasks where project_tasks.id = t[2]);
+      e := e || '|R-3=' || (select count(*) from public.project_tasks where project_tasks.project_id = 'zzf1-a29' and project_tasks.task_code = 'R-3')::text;
+      raise exception 'GERI_AL:%', e;
+    exception when others then e := sqlerrm; end;
+    perform pg_temp.as_user(null);
+    if e <> 'GERI_AL:1/1/1/0|R görev 1|R görev 1 yeni/G › H|iptal|R-3=0' then
+      raise exception 'R29 save_project_tasks: %', e;
+    end if;
+
+    -- R30 · ağırlıksız kategori: varsayılan ağırlıklarda olmayan kategoriye görev yazılamaz; görevi olan kategori
+    --       ağırlıktan çıkarılamaz (ertelenmiş kontrol, set constraints immediate ile tetiklenir)
+    begin
+      t := pg_temp.f1_aid_fx('zzf1-a30', 'ZZFJ');
+      begin
+        insert into public.project_tasks (project_id, task_code, task_name, category, planned_start, planned_end)
+        values ('zzf1-a30', 'R-M', 'mobilizasyon', 'mobilizasyon', current_date, current_date);
+        e := 'BASARILI';
+      exception when others then e := sqlerrm; end;
+      begin
+        -- toplam %100 kontrolü (trg_check_category_weights_sum, ertelenebilir) önce tetiklenmesin
+        set constraints trg_check_category_weights_sum deferred;
+        delete from public.project_category_weights where project_category_weights.project_id = 'zzf1-a30' and project_category_weights.category = 'panel_montaji';
+        set constraints public.trg_project_category_weights_keep_used immediate;
+        f := 'BASARILI';
+      exception when others then f := sqlerrm; end;
+      raise exception 'GERI_AL:%|%', e, f;
+    exception when others then e := sqlerrm; end;
+    -- Fixture'da panel_montaji kategorili 2 görev (R-1, R-2) var
+    if e <> 'GERI_AL:Bu kategori için ağırlık tanımlayın; fiziksel değilse %0 girin: mobilizasyon|Görevi olan kategori ağırlık tablosundan çıkarılamaz: panel_montaji (2 görev); fiziksel değilse %0 girin' then
+      raise exception 'R30 ağırlıksız kategori: %', e;
+    end if;
+
+    -- R31 · Karar 44: oturumsuz bağlam ve şantiye şefi görevi iptal edemez; admin eder
+    begin
+      t := pg_temp.f1_aid_fx('zzf1-a31', 'ZZFK');
+      begin update public.project_tasks set status = 'iptal' where project_tasks.id = t[1]; e := 'BASARILI';
+      exception when others then e := 'red'; end;
+      perform pg_temp.as_user(u_admin);
+      update public.project_tasks set status = 'iptal' where project_tasks.id = t[1];
+      perform pg_temp.as_user(null);
+      e := e || '|' || (select project_tasks.status::text from public.project_tasks where project_tasks.id = t[1]);
+      raise exception 'GERI_AL:%', e;
+    exception when others then e := sqlerrm; end;
+    perform pg_temp.as_user(null);
+    if e <> 'GERI_AL:red|iptal' then raise exception 'R31 iptal yetkisi: %', e; end if;
+
+    if exists (select 1 from public.projects where projects.id like 'zzf1-a2%' or projects.id like 'zzf1-a3%') then
+      raise exception 'Adım 5 test projesi kaldı';
+    end if;
+    checks := checks + 1;
+  end if;
+  -- [ADIM5-BITIR]
 
   raise exception 'DOGRULAMA SONUCU: OK | F1 | % kontrol grubu | % | % | %', checks,
     case when a4 then 'A4 var, R1-R5 regresyon geçti' else 'A4 yok (ayrı migration, Karar 34) — R1-R5 atlandı' end,

@@ -90,6 +90,8 @@ export function buildWorkbook(ExcelJS, categoryWeights = CANONICAL_CATEGORY_WEIG
     label(11, "Hedef Bitiş *", "GG.AA.YYYY");
     label(12, "Toplam Gün", "otomatik");
     ws.getCell("E12").value = { formula: 'IFERROR(E11-E10,"")' };
+    // Şablon v8 (Karar 21, 57): proje kodu. Yeni projede zorunlu; güncellemede projenin koduyla aynı olmalı.
+    label(13, "Proje Kodu *", "2-5 karakter, harfle başlar, büyük harf/rakam (ör. DYB). Değiştirilemez");
     ws.getCell("E10").numFmt = "dd.mm.yyyy"; ws.getCell("E11").numFmt = "dd.mm.yyyy";
     dv(ws, "E8", "Arazi GES,Endüstriyel Çatı GES,Evsel GES");
     dv(ws, "E9", "aktif,beklemede,tamamlandı,iptal edildi");
@@ -250,12 +252,12 @@ export function buildWorkbook(ExcelJS, categoryWeights = CANONICAL_CATEGORY_WEIG
 
   {
     const ws = wb.addWorksheet("📘 Kullanım Kılavuzu");
-    band(ws, "KULLANIM KILAVUZU", "Şablon v7 (03.08.2026: İş Kalemleri'nden Dashboard Göster/Sıra ve Kritik mi? kolonları kaldırıldı)", 4);
+    band(ws, "KULLANIM KILAVUZU", "Şablon v8 (12.10.2026: Proje Bilgileri E13 Proje Kodu eklendi; ağırlıksız kategoriye görev yazılamaz)", 4);
     [6,34,70].forEach((w,i)=>ws.getColumn(i+1).width=w);
     const rowsG = [
-      ["1","Proje Bilgileri -> projects","Proje ID: kucuk harf, bosluksuz, tire."],
+      ["1","Proje Bilgileri -> projects","Proje ID: kucuk harf, bosluksuz, tire. Proje Kodu (E13): 2-5 karakter, harfle baslar, buyuk harf/rakam (or. DYB); yeni projede zorunlu, sonradan degistirilemez. Mevcut projeyi guncellerken E13 projenin koduyla ayni olmali, yoksa yukleme reddedilir."],
       ["2","İş Kalemleri -> project_tasks","Kategori/Durum dropdown. Birim+Hedef Miktar doldurulursa gorev sahadan gunluk raporla miktar bazli takip edilir, bos birakilirsa Durum kolonuyla takip edilir."],
-      ["3","Kategori Ağırlıkları (salt okunur) -> project_category_weights","Panel montaji %20, digerleri %10/%5, toplam %100."],
+      ["3","Kategori Ağırlıkları (salt okunur) -> project_category_weights","Panel montaji %20, digerleri %10/%5, toplam %100. Agirlik tablosunda olmayan kategoriye gorev yazilamaz: once agirlik tanimlayin, fiziksel degilse %0 girin."],
       ["4","Riskler -> project_risks","Manuel risklerde siddet Olasilik x Etki skorundan hesaplanir. Otomatik risklerde orta/yuksek/kritik seviyesi Supabase risk motorundan gelir. Kategori: Is Kalemi/Satin Alma/Diger."],
       ["5","Bütçe -> budget_lines","Planlanan tutarlar."],
       ["6","Malzeme Listesi -> procurement_items","BOM planlanan miktarlar."],

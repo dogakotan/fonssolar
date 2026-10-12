@@ -1,4 +1,9 @@
 import { useState, useEffect } from 'react'
+import { supabase } from '../../../lib/supabase'
+
+// Proje kodu (Karar 21, 28, 57): harfle başlar, 2-5 karakter, büyük harf/rakam. Yeni projede zorunlu, düzenlemede
+// salt okunur (project_register_settings.prefix). Activity ID ve register numaralarının önekidir.
+export const PROJECT_CODE_RE = /^[A-Z][A-Z0-9]{1,4}$/
 
 const F = {
   label:        { fontSize: 13, fontWeight: 600, color: 'var(--color-text-sub)', marginBottom: 3, display: 'block' },
@@ -23,6 +28,7 @@ export default function Adim1ProjeBilgileri({
 
   const [form, setForm] = useState({
     id:               mode === 'edit' ? (src.id ?? '') : (src.id ?? ''),
+    code:             src.code             ?? '',
     name:             src.name             ?? '',
     project_type:     src.project_type     ?? '',
     location:         src.location         ?? '',
@@ -62,6 +68,13 @@ export default function Adim1ProjeBilgileri({
 
   useEffect(() => { onDraftChange?.({ ...form }) }, [form]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Düzenlemede kod DB'den okunur (salt okunur gösterim)
+  useEffect(() => {
+    if (mode !== 'edit' || !form.id || form.code) return
+    supabase.from('project_register_settings').select('prefix').eq('project_id', form.id).maybeSingle()
+      .then(({ data }) => { if (data?.prefix) setForm(f => ({ ...f, code: data.prefix })) })
+  }, [mode, form.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleIdChange(e) {
     const slug = e.target.value.toLowerCase().replace(/\s+/g, '-')
     setForm(f => ({ ...f, id: slug }))
@@ -76,6 +89,10 @@ export default function Adim1ProjeBilgileri({
     setError(null)
     if (!form.id?.trim()) { setError('Proje ID zorunludur.'); return }
     if (!form.name?.trim()) { setError('Proje Adı zorunludur.'); return }
+    if (mode !== 'edit' && !PROJECT_CODE_RE.test(form.code || '')) {
+      setError('Proje kodu zorunludur: harfle başlar, 2-5 karakter, yalnızca büyük harf ve rakam (ör. DYB, ADN1).')
+      return
+    }
     onDone({ ...form })
   }
 
@@ -113,6 +130,20 @@ export default function Adim1ProjeBilgileri({
             <div style={F.group}>
               <label style={F.label}>Proje Adı <span style={{ color: 'var(--color-danger)' }}>*</span></label>
               <input style={F.input} value={form.name} onChange={set('name')} required placeholder="Kayseri GES Projesi" />
+            </div>
+
+            <div style={F.group}>
+              <label style={F.label}>
+                Proje Kodu {mode !== 'edit' && <span style={{ color: 'var(--color-danger)' }}>*</span>}
+              </label>
+              {mode === 'edit'
+                ? <input style={F.inputRo} value={form.code || '—'} readOnly data-testid="proje-kodu" />
+                : <input style={F.input} value={form.code} maxLength={5} data-testid="proje-kodu"
+                    onChange={e => setForm(f => ({ ...f, code: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') }))}
+                    placeholder="DYB" />}
+              <span style={F.hint}>
+                {mode === 'edit' ? 'Proje kodu değiştirilemez' : 'Harfle başlar, 2-5 karakter (DYB, ADN1). Activity ID ve kayıt numaralarının öneki'}
+              </span>
             </div>
 
             {/* Proje Türü */}

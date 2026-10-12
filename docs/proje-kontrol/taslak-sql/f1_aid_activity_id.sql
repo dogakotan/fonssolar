@@ -1318,16 +1318,23 @@ create trigger trg_progress_daily_cancelled_guard
   before insert or update of task_id, qty_added on public.progress_daily
   for each row execute function public.fn_progress_daily_cancelled_guard();
 
--- A8b · iptal görevi yalnızca admin ve proje_yoneticisi yeniden açar (iptal etmeye dokunulmaz).
--- Oturumsuz bağlam (postgres/service_role, get_my_role() boş) de reddedilir.
+-- A8b · iptal görevi yalnızca admin ve proje_yoneticisi iptal eder ve yeniden açar (Karar 44, 12.10.2026 güncellemesi:
+-- iptal etme de kısıtlandı; önceden yalnızca yeniden açma kısıtlıydı). Ad geriye uyum için "reopen_guard" kaldı.
+-- Oturumsuz bağlam (postgres/service_role, get_my_role() boş) de reddedilir. Sonuç: service role ile çalışan
+-- import-project-excel görev durumunu iptal'e çekemez / iptalden çıkaramaz; bu işlem ekrandan yapılır.
+-- INSERT kapsam dışı (yeni görev doğrudan iptal durumunda eklenebilir; ilerlemesi yoktur).
 create function public.fn_project_tasks_reopen_guard()
 returns trigger
 language plpgsql
 set search_path = public
 as $$
 begin
-  if old.status = 'iptal' and new.status is distinct from 'iptal'
+  if (old.status = 'iptal') is distinct from (new.status = 'iptal')
      and coalesce(public.get_my_role(), '') not in ('admin', 'proje_yoneticisi') then
+    if new.status = 'iptal' then
+      raise exception 'Görevi yalnızca admin veya proje yöneticisi iptal edebilir'
+        using errcode = 'insufficient_privilege';
+    end if;
     raise exception 'İptal edilmiş görevi yalnızca admin veya proje yöneticisi yeniden açabilir'
       using errcode = 'insufficient_privilege';
   end if;

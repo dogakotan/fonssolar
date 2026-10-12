@@ -1685,6 +1685,11 @@ Playwright regresyon suite'i (`npm run test:e2e`), kimlik bilgileri `.env.test`'
 (gitignore'da). **Credential değerleri (şifre/token) hiçbir zaman chat metnine
 yazılmaz.** Admin test hesabının `profiles.id`'si değişebilir — `select id from
 profiles where role_key='admin'` ile doğrula.
+**12.10.2026'dan beri (Karar 52) Playwright'ın varsayılan hedefi YEREL Supabase.**
+- Kurulum: `node scripts/local-db/setup.mjs`. Docker ve `npm run db:backup` şema dökümü gerekir (`docs/proje-kontrol/faz1-adim5-yerel-ortam.md`).
+- Adres, anahtar ve kurgu test kullanıcıları `supabase/.local/env.json`'dan (gitignore) okunur.
+- Vite 5183 portunda ayrı süreçte çalışır.
+- Canlıya karşı koşmak yalnızca açıkça `PW_TARGET=live` ile mümkün; bu durumda `.env.test` ve 5173 kullanılır.
 
 ### Proje Kontrol (Faz A tamamlanıyor, Faz B taslakları hazır — 06-07.10.2026)
 
@@ -1754,7 +1759,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 41 | Atama çağrısı | Önizleme (`p_dry_run`) varsayılan açık; çağrı başına en fazla 500 görev, tek proje; gerçek atamada hepsi ya da hiçbiri | **ONAYLANDI (09.10.2026)** |
 | 42 | Adım 3 migration sırası | Ayrı migration, B4'ten sonra; `fn_project_tasks_identity_guard`'ın son hali Adım 3'te (B4'ün kuralını içerir) | **ONAYLANDI (09.10.2026)** |
 | 43 | Önizleme yetkisi | Önizleme de yalnızca admin ve proje_yoneticisi | **ONAYLANDI (09.10.2026)** |
-| 44 | İptal görev koruması (A8) | İptal göreve ilerleme her yoldan reddedilir (`add_task_progress`, günlük rapor, `progress_daily`'ye doğrudan yazma): "İptal edilmiş göreve ilerleme girilemez". İptal görevi yalnızca admin ve proje_yoneticisi yeniden açar. Eski raporun aynen yeniden kaydı korunur; iptal görevin eski ilerlemesinin düşürülmesi yeniden açma ile yapılır | **ONAYLANDI (12.10.2026)**, taslak `f1_aid_activity_id.sql` A8 |
+| 44 | İptal görev koruması (A8) | İptal göreve ilerleme her yoldan reddedilir (`add_task_progress`, günlük rapor, `progress_daily`'ye doğrudan yazma): "İptal edilmiş göreve ilerleme girilemez". **Görevi iptal etmek ve iptal görevi yeniden açmak yalnızca admin ve proje_yoneticisi** (12.10.2026 güncellemesi: iptal etme de kısıtlandı; oturumsuz bağlam — service role ile çalışan Excel import dahil — durumu iptale çekemez/iptalden çıkaramaz). Eski raporun aynen yeniden kaydı korunur; iptal görevin eski ilerlemesinin düşürülmesi yeniden açma ile yapılır | **ONAYLANDI (12.10.2026)**, güncellendi (12.10.2026, 14. tur); taslak `f1_aid_activity_id.sql` A8b |
 | 45 | MVP senaryosu (b) | Technical Submittal ve Material Approval ekranları Ocak 2027'ye. Document ekranı external link ile başlar; Storage yüklemesi B5 onayından sonra. Ç6 kapandı: Faz 3 kapsamı Document, Drawing, RFI, Action, Risk, Decision. MVP canlı 11 Aralık 2026 (durum tablosu) | **ONAYLANDI (12.10.2026)** |
 | 46 | WBS/alan şablonu | WBS'te sıra kolonu yok, liste koda göre; şablonda "kodları sabit haneli yazın (DYB-020, DYB-100)" notu. Örnek satırlar kurgu (TIZ tarzı). Not kolonları şablonda. Kolonlar canlı tablolardan | **ONAYLANDI (12.10.2026)**, `docs/proje-kontrol/sablon/` |
 | 47 | WBS disiplini | `project_wbs_discipline_fk` → `task_disciplines` | **ONAYLANDI (12.10.2026)**, taslak `f1_wbs_alan_import.sql` A1 |
@@ -1762,6 +1767,14 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 49 | Ç-7 guard düzeltmesi | Aktif alt kaydı olan alan/WBS pasifleştirilemez; taşınan WBS'in alt WBS'lerinin `level`'ı güncellenir | **ONAYLANDI (12.10.2026)**, taslak A3 |
 | 50 | WBS/alan importu | Excel ön yüzde (`src/utils/wbsAreaExcel.js`) okunur → `import_wbs_areas(p_project_id, p_payload, p_dry_run default true)` (DEFINER). Yalnızca admin/PM; hepsi ya da hiçbiri; koda göre eşleşme; silme yok, bağ yalnızca eklenir; `not_in_file` raporu; her yazma audit'e (`project_wbs`/`project_areas` B2 trigger'ı, `area_wbs` ayrı trigger). Projesiz kontrol: `p_project_id = null` önizleme ve `scripts/proje-kontrol/wbs-alan/kontrol.mjs` | **ONAYLANDI (12.10.2026)**, taslak A6-A7 |
 | 51 | Görev tarafında alan-WBS kuralı | ID'li görevde WBS veya alan değişince görevin trigger'ı (`trg_project_tasks_wbs_area_link_guard`, SECURITY DEFINER) Karar 38'in karma kuralını uygular: yeni WBS zincirinde (WBS + üstleri) alan bağı tanımlıysa görevin alanı içinde olmalı, hiç bağ yoksa serbest. B4'ün alan düzeltmesi de aynı kontrolden geçer (red → `validation`). ID'siz görev ve ID'nin temizlendiği B4 çağrısı kontrol dışı | **ONAYLANDI (12.10.2026)**, taslak `f1_aid_activity_id.sql` A3b; ROLLBACK testleri T35a-e ve R27 geçti |
+| 52 | Test ortamı (Adım 5) | Yerel Supabase (Docker); taban canlı şema dökümü (`npm run db:backup`'ı kullanıcı çalıştırır; `.env*` okunmaz). Playwright'ın varsayılan hedefi yerel; canlıya karşı koşmak yalnızca açık ortam değişkeniyle (`PW_TARGET=live`). Döküm baseline migration olarak repoya alınması önerildi (plan `faz1-adim5-yerel-ortam.md`, **onay bekliyor**) | **ONAYLANDI (12.10.2026)** |
+| 53 | Kullanıcının iki dosyası | `DailyReportList.jsx` ve `projectExcelBridge.js`'e kullanıcı kendi değişikliklerini commit edip haber verene kadar dokunulmaz; gereken değişiklikler tasarımda hazır tutulur (`faz1-adim5-tasarim.md` Ek A) | **ONAYLANDI (12.10.2026)** |
+| 54 | Kod ata sınırı | Seçim başına en fazla 500 görev; parçalı yazma yok (Karar 41'in "hepsi ya da hiçbiri"si ekranda da geçerli) | **ONAYLANDI (12.10.2026)** |
+| 55 | Ç-6 kapandı | Şantiye şefi WBS/alan/alan-WBS'te yalnızca okuma; RLS daraltması Adım 5 migration'ında (`f1_adim5_ekran_rpc.sql` A7). Alan talebi Ticket ile | **ONAYLANDI (12.10.2026)** |
+| 56 | Ağırlıksız kategori | DB'de red: yeni görevde veya kategori değişince, proje ağırlık tablosu doluysa ve kategori yoksa "Bu kategori için ağırlık tanımlayın; fiziksel değilse %0 girin". Ağırlık tarafında görevi (iptal hariç) olan kategori silinemez. İkisi de ertelenebilir constraint trigger (`f1_adim5_ekran_rpc.sql` A6) | **ONAYLANDI (12.10.2026)** |
+| 57 | Excel v8 proje kodu | E13 proje kodu; yeni projede zorunlu; güncellemede E13 projenin koduyla uyuşmazsa import reddedilir; kopya yeni kod ister | **ONAYLANDI (12.10.2026)** |
+| 58 | WBS/alan ekranının yeri | ProjeDetay › Proje Ayarları › WBS ve Alanlar. Şantiye şefi görür, düzenleyemez. (ProjeDetay.jsx kullanıcının commit'lenmemiş dosyası; sekme bağlantısı Karar 53 gibi bekliyor) | **ONAYLANDI (12.10.2026)** |
+| 59 | Sihirbaz Ç-B | Sil-yeniden-yaz yerine `save_project_tasks` (id, yoksa görev kodu ile eşleşme; çıkarılan görev Activity ID / ilerleme / bağlı kayıt varsa iptal, yoksa silinir; önizleme). `group_label` kaybı aynı pakette düzelir; ilerlemesi olan ve grup etiketli projede düzenleme testi zorunlu | **ONAYLANDI (12.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1828,6 +1841,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 - Oturum 5 = Oturum 0.
 - Uygulanmadı; Adım 6'da B4'ten sonra ayrı migration (Karar 42). |
 | F1-WA | WBS/alan bütünlüğü ve importu: `project_wbs_discipline_fk`, Activity ID'li göreve etki eden alan/WBS/bağ değişikliklerini reddeden trigger'lar (Karar 48), Ç-7 guard düzeltmesi (Karar 49), audit trigger'ları, `import_wbs_areas` (Karar 50); şablon, ayrıştırıcı, projesiz kontrol betiği | `taslak-sql/f1_wbs_alan_import.sql`, tasarım `faz1-adim4-tasarim.md` | Faz 1 **Adım 4 kapandı (12.10.2026)** (`faz1-adim4-sonuclar.md`): 4a 10/10, 4b 20/20, 4c 10/10, 4d 12/12, 4e (R17-R26) canlıda ROLLBACK ile geçti; Oturum 5 = Oturum 0. Uygulanmadı; Adım 6'da F1-AID'den sonra ayrı migration |
+| F1-W5 | Adım 5 ekran DB parçaları: `get_project_gantt` yeni alanlar, `save_area_wbs_links`, `set_tasks_classification`, `save_project_tasks` (Ç-B), ağırlıksız kategori constraint trigger'ları (Karar 56), Ç-6 RLS (Karar 55); Karar 44 güncellemesi AID A8b'de | `taslak-sql/f1_adim5_ekran_rpc.sql`, tasarım `faz1-adim5-tasarim.md` (Ek B: uygulama durumu) | **Yazıldı, test edilmedi** (yerel ortam bekleniyor; `faz1-adim5-yerel-ortam.md`). Uygulanmadı; Adım 6'da Adım 4'ten sonra ayrı migration |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -1919,10 +1933,9 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `responsible_role`, `duration_days` yok; düzenleme sihirbazından geçen her kayıt `group_label`'ı silip İş Planı
   hiyerarşisini düzleştiriyor. Düzeltme aynı paket (`faz1-adim5-tasarim.md` §3).
 
-- **Ç-6 · Şantiye şefinin alan ve alan-WBS yazma yetkisi (açık, Adım 5'te ekranla birlikte karar).** Canlı RLS
-  şantiye şefine kendi projesinde `project_areas` insert/update ve `area_wbs` insert/delete izni veriyor. Import admin/PM ile
-  sınırlı ama bu doğrudan yolu kapatmıyor. Activity ID kuralları trigger'da olduğu için şantiye şefi ID'li görevi bozamaz
-  (Adım 4 T32).
+- **Ç-6 — KAPANDI (Karar 55, 12.10.2026).** Şantiye şefi WBS/alan/alan-WBS'te yalnızca okuma; RLS daraltması
+  `f1_adim5_ekran_rpc.sql` A7'de (uygulanmadı). Canlıda bugün hâlâ şantiye şefi `project_areas` insert/update ve `area_wbs`
+  insert/delete yapabiliyor; Adım 6'ya kadar böyle kalır.
 
 - **Adım 6 ön koşulu — tam zincir provası (12.10.2026).** MCP ~95 KB sınırı yüzünden B1 + B2 + B4 + F1 + AID + Adım 4
   hiçbir oturumda birlikte kurulmadı. Adım 6'dan önce `.env.local` bağlantısıyla psql üzerinden hepsi tek transaction'da
@@ -2201,6 +2214,27 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**12.10.2026 (14. tur) — Karar 52-59; Adım 5 kodu ve yerel ortam betikleri yazıldı (test yok, canlı/deploy yok).**
+- **Kararlar:** 52-59 eklendi, Karar 44 güncellendi: iptal etme de yalnızca admin/PM; AID A8b ve R15 buna göre.
+- **Yerel ortam** (`faz1-adim5-yerel-ortam.md`):
+  - `scripts/local-db/setup.mjs` + `seed.mjs`; yığın `supabase/local/stack`'ten migration'sız başlar;
+  - taban `npm run db:backup` dökümü + `supabase/local/reference_data.sql` (auth tetikleyicisi, roller/navigasyon, bucket'lar);
+  - Playwright'ın varsayılan hedefi yerel, canlı yalnızca `PW_TARGET=live`;
+  - baseline migration önerisi **onay bekliyor**.
+- **DB taslağı:**
+  - `f1_adim5_ekran_rpc.sql`;
+  - `f1_dogrulama.sql`: §7 R28-R31 eklendi, §5 R15 güncellendi.
+- **Ön yüz:**
+  - İş Planı: Activity ID/disiplin/alan/WBS kolonları, filtreler, seçim, toplu atama, Kod ata (500 sınırı), sınıflandırma ve admin ID düzeltme, iptal/yeniden aç, KPI iptal hariç;
+  - Proje Ayarları › WBS ve Alanlar bileşenleri: ProjeDetay bağlantısı kullanıcı dosyası, Ek A;
+  - sihirbaz: proje kodu, `save_project_tasks` önizlemesi, `group_label` korunur, ağırlıksız kategori uyarısı;
+  - Excel v8: E13; şablon dosyası güncellendi; edge function kodu güncellendi, **deploy yok**;
+  - günlük rapor formunda iptal görev yok.
+- **Testler:** `tests/proje-kontrol-adim5.spec.js` yazıldı; yerel + taslaklı ortamda koşar.
+- **Doğrulama:** build ve lint temiz.
+- **Kullanıcı dosyalarına dokunulmadı:** `DailyReportList.jsx`, `projectExcelBridge.js`, `ProjeDetay.jsx`; hazır diff'ler Ek A'da.
+- **Yeni çakışma Ç5-6:** şantiye şefi ProjeDetay'a ulaşamadığı için Proje Ayarları'nı göremez.
 
 **12.10.2026 (13. tur) — Karar 51 (görev tarafında alan-WBS kuralı) ve Adım 5 tasarımı (kod yok, uygulama yok).**
 - **Karar 51:**

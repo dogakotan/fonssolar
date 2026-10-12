@@ -1,4 +1,4 @@
-// import-project-excel — Fons Solar v6 sablonunu Supabase'e aktarir (upsert)
+// import-project-excel — Fons Solar v8 sablonunu Supabase'e aktarir (yeni proje create_project_with_code, gorevler upsert)
 import { createClient } from "npm:@supabase/supabase-js@2";
 import ExcelJS from "npm:exceljs@4.4.0";
 import {
@@ -90,10 +90,11 @@ Deno.serve(async (req) => {
     );
 
     let buf;
+    let form = null;
     let mode = "ask"; // 'ask' | 'update' | 'duplicate' — bkz. asagidaki collision kontrolu
     const ct = req.headers.get("content-type") || "";
     if (ct.includes("multipart/form-data")) {
-      const form = await req.formData();
+      form = await req.formData();
       const f = form.get("file") ?? form.get("excel");
       if (!f || typeof f === "string") return json({ error: "form-data icinde 'file' bulunamadi" }, 400);
       buf = await f.arrayBuffer();
@@ -114,6 +115,8 @@ Deno.serve(async (req) => {
     const projectId = toStr(cell(p, "E5"));
     const projectName = toStr(cell(p, "E6"));
     if (!projectId || !projectName) return json({ error: "Proje ID ve Proje Adi zorunludur (E5, E6)" }, 400);
+    // Proje kodu (Sablon v8, Karar 21, 57): E13. Yeni projede zorunlu; guncellemede projenin koduyla ayni olmali.
+    const projectCode = toStr(cell(p, "E13"))?.toUpperCase() ?? null;
 
     const authHeader = req.headers.get("Authorization") || "";
     const userClient = createClient(Deno.env.get("SUPABASE_URL"), Deno.env.get("SUPABASE_ANON_KEY"), { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } });
@@ -133,12 +136,19 @@ Deno.serve(async (req) => {
     let projectIdToUse = projectId;
     let isNewProject = !existsRow;
     let duplicated = false;
+    let duplicateCode = null;
 
     if (existsRow && mode === "duplicate") {
       const { data: callerProfile } = await sb.from("profiles").select("role_key").eq("id", uinfo.user.id).single();
       if (!ALLOWED_NEW_PROJECT_ROLES.includes(callerProfile?.role_key)) {
         return json({ error: "Yeni proje olusturma yetkiniz yok." }, 403);
       }
+      // Kopya aslinin kodunu kullanamaz (prefix UNIQUE); istemci yeni kodu form alaniyla gonderir.
+      const codeField = form?.get?.("code");
+      if (typeof codeField !== "string" || !codeField.trim()) {
+        return json({ error: "Kopya proje icin yeni bir proje kodu gerekli.", need_code: true }, 400);
+      }
+      duplicateCode = codeField.trim().toUpperCase();
       projectIdToUse = await nextDuplicateId(sb, projectId);
       isNewProject = true;
       duplicated = true;
@@ -147,6 +157,17 @@ Deno.serve(async (req) => {
       const { data: allowed, error: accErr } = await userClient.rpc("user_has_project_access", { p_project_id: projectId });
       if (accErr) throw new Error(`erisim kontrolu: ${accErr.message}`);
       if (!allowed) return json({ error: `Bu projeye erisim yetkiniz yok: ${projectId}` }, 403);
+      // Karar 57: E13 projenin koduyla uyusmazsa (bos dahil) hicbir sey yazilmaz.
+      const { data: settings } = await sb.from("project_register_settings").select("prefix").eq("project_id", projectId).maybeSingle();
+      const currentCode = settings?.prefix ?? null;
+      if (currentCode && projectCode !== currentCode) {
+        return json({
+          error: projectCode
+            ? `Proje kodu degistirilemez: Excel'de ${projectCode}, projede ${currentCode} (Proje Bilgileri, E13).`
+            : `Proje kodu (Proje Bilgileri, E13) bos. Bu projenin kodu ${currentCode}; sablon v8 ile indirilen dosyayi kullanin.`,
+          code_mismatch: true, current_code: currentCode,
+        }, 400);
+      }
     } else {
       const { data: callerProfile } = await sb.from("profiles").select("role_key").eq("id", uinfo.user.id).single();
       if (!ALLOWED_NEW_PROJECT_ROLES.includes(callerProfile?.role_key)) {
@@ -175,9 +196,18 @@ Deno.serve(async (req) => {
       battery_count: toInt(cell(p, "J23")),
     };
     Object.keys(projectRow).forEach((k) => projectRow[k] === null && delete projectRow[k]);
-    const { error: pe } = await sb.from("projects").upsert(projectRow, { onConflict: "id" });
-    if (pe) throw new Error(`projects upsert: ${pe.message}`);
-    log["projects"] = { id: projectIdToUse, saved: true };
+    if (isNewProject) {
+      const code = duplicated ? duplicateCode : projectCode;
+      if (!code) return json({ error: "Proje kodu zorunludur (Proje Bilgileri, E13)." }, 400);
+      // Kullanicinin oturumuyla: rol kontrolu ve proje + kod tek islemde DB fonksiyonunda (Karar 29, 35).
+      const { error: ce } = await userClient.rpc("create_project_with_code", { p_project: projectRow, p_code: code });
+      if (ce) return json({ error: ce.hint ?? ce.message, code: ce.message, detail: ce.details }, 400);
+    } else {
+      const { id: _id, ...upd } = projectRow;
+      const { error: pe } = await sb.from("projects").update(upd).eq("id", projectIdToUse);
+      if (pe) throw new Error(`projects update: ${pe.message}`);
+    }
+    log["projects"] = { id: projectIdToUse, saved: true, code: isNewProject ? (duplicated ? duplicateCode : projectCode) : undefined };
 
     if (isNewProject) {
       const { error: cwErr } = await sb.from("project_category_weights").insert(

@@ -1,7 +1,12 @@
 # Faz 1 · Adım 5 — Ekranlar, sihirbaz düzeltmesi ve test ortamı (tasarım)
 
-Tarih: 12.10.2026. Durum: **yalnızca tasarım; kod yazılmadı, canlıya bir şey uygulanmadı.**
-Kararlar: CLAUDE.md Karar 18-51. Önceki adımlar: `faz1-adim3-tasarim.md`, `faz1-adim4-tasarim.md`.
+Tarih: 12.10.2026. Durum:
+- Tasarım onaylandı (Karar 52-59).
+- Kod yazıldı ama test edilmedi; yerel ortam bekleniyor (Ek B).
+- Canlıya ve edge function'lara hiçbir şey uygulanmadı.
+- §9'daki sorular kararlarla kapandı. Yeni açık: Ç5-6 (Ek B).
+
+Kararlar: CLAUDE.md Karar 18-59. Önceki adımlar: `faz1-adim3-tasarim.md`, `faz1-adim4-tasarim.md`.
 Kaynak tarama (12.10.2026):
 - repo kodu (satır numaralarıyla aşağıda);
 - canlıda salt okunur SELECT:
@@ -379,3 +384,83 @@ Hepsi ayrı taslak dosyasında (`f1_adim5_ekran_rpc.sql`), BÖLÜM A/B. Önce ye
 6. §5: ağırlıksız kategoride DB trigger'ıyla red ve ağırlık ekranında ters yön kontrolü.
 7. §4: Excel güncellemede E13 farklıysa red.
 8. §1.1: "Proje Ayarları" sekmesinin ProjeDetay'da yeni sekme olarak yeri.
+
+## Ek A — Sizin commit'lenmemiş dosyalarınızda hazır bekleyen değişiklikler (Karar 53)
+
+Bu dosyalara dokunulmadı. Siz kendi değişikliklerinizi commit edip haber verince aşağıdakiler uygulanacak.
+
+1. **`src/pages/DailyReportList.jsx`** (Excel export görev sorgusu, ~265. satır): iptal görev rapor dışına.
+   ```diff
+   - supabase.from('project_tasks').select('id, task_code, task_name, category, unit, target_qty, notes').eq('project_id', exportProjectId).gt('target_qty', 0).order('planned_start'),
+   + supabase.from('project_tasks').select('id, task_code, task_name, category, unit, target_qty, notes').eq('project_id', exportProjectId).gt('target_qty', 0).neq('status', 'iptal').order('planned_start'),
+   ```
+2. **`src/utils/projectExcelBridge.js`**: kopya için yeni proje kodu (Karar 57).
+   - `TabProjeYonetimi.jsx` bu argümanı zaten gönderiyor; köprü şimdilik yok sayıyor.
+   - Edge function'ın 400 hata gövdeleri (`need_code`, `code_mismatch`) mevcut `friendlyError` yoluyla gösteriliyor mu, uygulamada doğrulanacak.
+   ```diff
+   - export async function importProjectExcel(file, mode = 'ask') {
+   + export async function importProjectExcel(file, mode = 'ask', code = null) {
+       const formData = new FormData()
+       formData.append('file', file)
+       formData.append('mode', mode)
+   +   if (code) formData.append('code', code)
+   ```
+3. **`src/pages/dashboard/components/ProjeDetay.jsx`**: Proje Ayarları sekmesi (Karar 58).
+   - Bileşen `proje-ayarlari/ProjeAyarlari.jsx`'te hazır.
+   - `index.jsx`'te sekme anahtarı kısıtı yok (kontrol edildi).
+   ```diff
+   + import ProjeAyarlari from './proje-ayarlari/ProjeAyarlari'
+     export default function ProjeDetay({ projectId, … }) {
+   +   const { role } = useAuth()
+     …
+           <button onClick={() => setTab('ekip')} style={tab === 'ekip' ? tabBtnActive : tabBtn}>Ekip</button>
+   +       <button onClick={() => setTab('ayarlar')} style={tab === 'ayarlar' ? tabBtnActive : tabBtn}>Proje Ayarları</button>
+     …
+   -   {tab === 'ekip' ? (
+   +   {tab === 'ayarlar' ? (
+   +     <ProjeAyarlari projectId={projectId} role={role} />
+   +   ) : tab === 'ekip' ? (
+   ```
+
+## Ek B — Kararlardan sonra uygulama durumu (12.10.2026, 14. tur)
+
+### Kod (commit'li, push yok; canlıya ve edge function'lara hiçbir şey uygulanmadı)
+
+| Parça | Dosya | Durum |
+|---|---|---|
+| DB taslağı | `taslak-sql/f1_adim5_ekran_rpc.sql` | Yazıldı (A1-A7). Test edilmedi; yerel ortamda koşulacak |
+| Karar 44 güncellemesi | `taslak-sql/f1_aid_activity_id.sql` A8b | İptal etme de admin/PM |
+| Regresyon | `taslak-sql/f1_dogrulama.sql` §7 R28-R31; R15 güncellendi | Koşulmadı |
+| Yerel ortam | `scripts/local-db/setup.mjs`, `seed.mjs`, `supabase/local/`, `playwright.config.js` | Çalıştırılmadı (Docker yok) |
+| İş Planı | `TabIsPlan.jsx`, `TabIsPlaniDetay.jsx`, `is-plani/*`, `hooks/useProjectStructure.js`, `utils/wbsAreaErrors.js` | Yazıldı |
+| WBS ve Alanlar | `proje-ayarlari/*` | Yazıldı; ProjeDetay bağlantısı Ek A |
+| Sihirbaz | `Adim1`, `Adim2`, `Adim3`, `Adim8`, `ProjeEditWizard`, `GorevKayitOnizleme`, `saveProjectTasks.js` | Yazıldı |
+| Proje kodu / Excel v8 | `import-project-excel`, `export-project-excel` (+ `template_builder.ts`), `public/excel/fons-solar-proje-sablonu.xlsx`, `scripts/proje-kontrol/sablon-v8.mjs`, `TabProjeYonetimi.jsx` | Yazıldı; **deploy yok** |
+| Günlük rapor | `DailyReportForm.jsx` | İptal görev İlerleme Girişi'nde yok |
+| Testler | `tests/proje-kontrol-adim5.spec.js` | Yazıldı; yerel + taslaklı ortamda koşar, aksi halde atlar |
+
+Doğrulama: `npm run build` başarılı; değişen dosyalarda ESLint hatası yok.
+
+### Uygulamada verilen ara kararlar (onayınıza sunulur)
+
+- **`set_tasks_classification` ve `save_project_tasks` SECURITY DEFINER** (tasarım INVOKER diyordu).
+  - Gerekçe: iç yardımcılar `authenticated`'a kapalı.
+  - Yetki (admin/PM) ve `has_project_access` fonksiyon içinde kontrol ediliyor. Kimlik ve iptal korumaları trigger'da olduğu için DEFINER bunları aşmıyor: bayrak açılmıyor, `get_my_role()` çağıranın rolünü döndürüyor.
+  - `save_area_wbs_links` INVOKER kaldı (RLS Ç-6'yı zorunlu kılar).
+- **Ağırlıksız kategori kontrolleri ertelenebilir constraint trigger** olarak yazıldı.
+  - Görev tarafı başlangıçta anında, ağırlık tarafı başlangıçta ertelenmiş.
+  - Sihirbaz bugün görevleri ağırlıklardan önce kaydediyor. İki ayrı çağrıda yeni kategori ile kategori silme birbirini kilitlerdi. Bu yüzden `save_project_tasks` isteğe bağlı `p_weights` alıyor: ikisi tek işlemde yazılıyor, kontrol commit anında.
+- **Çıkarılan görev hangi durumda silinmez:** Activity ID ya da ilerlemenin yanında, `project_tasks`'a NO ACTION FK ile bağlı bir kayıt varsa da (satın alma talebi, BOM kalemi, risk, register kayıtları; canlı FK listesi 12.10.2026) görev iptal edilir (`fn_task_keep_reason`). Yoksa silme FK hatasıyla düşerdi.
+- **Sihirbaz görevlerde disiplin/alan/WBS göndermiyor.** Bunlar İş Planı'ndan yönetiliyor; `save_project_tasks` yükte olmayan kolonu korur.
+- **Görev kodu sihirbazda zorunlu ve tekil.** Canlıda kolon zaten NOT NULL ve proje içinde UNIQUE.
+- **Karar 44 sonucu:** service role ile çalışan Excel import, görev durumunu iptale çekemez veya iptalden çıkaramaz (oturumsuz bağlam). İptal ekrandan yapılır.
+- **Karar 57'nin yorumu:** güncellemede boş E13 de uyuşmazlık sayıldı. Eski v7 dosyalarıyla güncelleme reddedilir; kullanıcı v8 ile indirilen dosyayı kullanmalı. Boş E13'ün yok sayılmasını isterseniz tek satırlık değişiklik.
+- **Geriye uyum:** `create_project_with_code`, `save_project_tasks` ve `task_disciplines` veritabanında yoksa (Faz 1 migration'ı öncesi) ekranlar eski yola düşer ya da yeni özellikleri gizler.
+
+### Yeni çakışma (kural 8) — Ç5-6
+
+- **Çakışma:** Karar 58 "şantiye şefi WBS ve Alanlar'ı görür, düzenleyemez" diyor. Ama şantiye şefinin `projeler` sekmesi yok, ProjeDetay'a hiç ulaşamıyor (`frontend-giris-karari.md`). Proje Ayarları yalnızca admin ve PM'e görünür olur.
+- **Seçenekler:**
+  - (a) Şantiye şefinin kendi "İş Planı" sekmesine salt okunur bir "WBS ve Alanlar" bölümü (aynı bileşen, `role=santiye_sefi`). En küçük değişiklik; önerim bu.
+  - (b) Şantiye şefine ProjeDetay erişimi açmak. Daha geniş bir navigasyon kararı.
+- Karar bekliyor; testte şantiye şefi görünümü bu yüzden yok.

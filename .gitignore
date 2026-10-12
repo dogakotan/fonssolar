@@ -61,3 +61,9 @@ Thumbs.db
 
 # Supabase CLI
 supabase/.temp/
+
+# Yerel Supabase test ortamı (Karar 52): env.json / seed-env.json yerel anahtar ve test şifresi içerir
+supabase/.local/
+supabase/local/stack/supabase/.temp/
+supabase/local/stack/supabase/.branches/
+supabase/.temp/
