@@ -4,7 +4,8 @@
 
 > Bu tablo her adım ve faz kapanışında güncellenir (CLAUDE.md kural 9).
 
-**Son güncelleme:** 09.10.2026, Faz 1 Adım 2 kapandı.
+**Son güncelleme:** 12.10.2026, Faz 1 Adım 3 kapandı (Activity ID: ROLLBACK oturumları 1a-1d, 2a, 2b geçti; uygulanmadı).
+Önceki: 09.10.2026, Faz 1 Adım 2 kapandı.
 
 **Faz 1 parçaları:**
 - **B1** yetki matrisi;
@@ -14,7 +15,8 @@
 - **AID** Activity ID üretimi (Adım 3);
 - **WA** WBS/alan importu ve ekranı (Adım 4-5).
 
-B1, B2, B4 ve F1 canlıda ROLLBACK ile doğrulandı (Adım 2), uygulanmadı. AID ve WA yok.
+B1, B2, B4, F1 (Adım 2) ve AID (Adım 3, iptal görev koruması A8 dahil) canlıda ROLLBACK ile doğrulandı, uygulanmadı
+(Adım 6). WA yok (Adım 4-5).
 
 | # | Register | Faz | Güncel durum | Bağımlı olduğu Faz 1 parçası |
 |---|---|---|---|---|
@@ -37,15 +39,39 @@ B1, B2, B4 ve F1 canlıda ROLLBACK ile doğrulandı (Adım 2), uygulanmadı. AID
 
 **Fazların tahmini bitişi (15 Aralık 2026 MVP hedefine göre; MVP = Faz 1-4, Karar 24):**
 
-Tahminler, kararların ve girdilerin (Excel, proje kodu, patron onayı) en geç 2 iş gününde geldiği varsayımıyla
-yazıldı; kayarlarsa tablo güncellenir.
+Tahmin varsayımları:
+- Kararlar ve girdiler en geç 2 iş gününde gelir (Excel, proje kodu, patron onayı, kategori ağırlıkları).
+- Hafta sonu çalışılmaz.
+- Kayma olursa tablo güncellenir.
 
-| Faz | İçerik | Tahmini bitiş | MVP'ye göre | Ana risk |
+**12.10 değişikliği:**
+- Adım 3, 09.10 planına göre 1 iş günü geç kapandı.
+- Adım 5'e yeni işler eklendi: sihirbazın görev koduna göre güncellemesi (Ç-B), İptal et / Yeniden aç, ağırlıksız kategori uyarısı, disiplin listesi.
+- Faz 1 bu yüzden 4 takvim günü kaydı (24 → 28 Ekim). Faz 2-4 aynı süreyle kaydırıldı.
+
+Kalan Faz 1 (13 Ekim'den):
+- Adım 4 (şablon + import dry-run): 2 iş günü;
+- Adım 5 (frontend): 6 iş günü;
+- Adım 6 (uygulama + Diyarbakır importu + pilot): 2 iş günü;
+- Diyarbakır girdileri için bekleme: 2 iş günü.
+
+| Faz | İçerik | Tahmini bitiş | MVP'ye (15 Aralık) göre | Ana risk |
 |---|---|---|---|---|
-| 1 | WBS, Area, Activity ID | 24 Ekim 2026 | 52 gün önce | Diyarbakır Excel'i ve proje kodu (DYB) gelmeden Adım 6 tamamlanamaz |
-| 2 | Ortak altyapı (B3, B5, B6, links, history) | 7 Kasım 2026 | 38 gün önce | B5 patron onayına bağlı (Karar 5); lokal Docker testi zorunlu (Karar 31) |
-| 3 | 8 register standardı + UI, RFI pilot | 28 Kasım 2026 | 17 gün önce | Ç6 (8 register listesi) Faz 3 başında; Document ekranı B5'e bağlı |
-| 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 12 Aralık 2026 | 3 gün tampon | Satın alma ve finans regresyonu |
+| 1 | WBS, Area, Activity ID | 28 Ekim 2026 (09.10'da 24 Ekim) | 48 gün önce | Diyarbakır Excel'i, proje kodu (DYB) ve kategori ağırlıkları gelmeden Adım 6 tamamlanamaz |
+| 2 | Ortak altyapı (B3, B5, B6, links, history) | 11 Kasım 2026 | 34 gün önce | B5 patron onayına bağlı (Karar 5); lokal Docker testi zorunlu (Karar 31) |
+| 3 | 8 register standardı + UI, RFI pilot | 2 Aralık 2026 | 13 gün önce | Ç6 (8 register listesi) Faz 3 başında; Document ekranı B5'e bağlı |
+| 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 16 Aralık 2026 | 1 gün geç | Satın alma ve finans regresyonu |
+| 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü), kullanıcı hesapları ve rol/proje atamaları (0,5), kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5): hazırlık 3 iş günü (17, 18, 21 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **22 Aralık 2026**; destek 22-28 Aralık | 7 gün geç; 1 Ocak 2027 sınırından 10 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
+
+**MVP tahmini, iki senaryo** (yalnızca tarih; seçim kullanıcıda):
+
+| Senaryo | Kapsam farkı | Faz 2 | Faz 3 | Faz 4 | MVP canlı | İlk hafta destek |
+|---|---|---|---|---|---|---|
+| (a) Mevcut kapsam | — | 11 Kasım | 2 Aralık | 16 Aralık | **22 Aralık 2026** | 22-28 Aralık |
+| (b) Daraltılmış | Technical Submittal ve Material Approval Ocak'a; Document ekranı B5'ten bağımsız (external link ile başlar) | 6 Kasım (B5 MVP kritik yolundan çıkar, ~3 iş günü) | 23 Kasım (iki register ekranı çıkar, ~4 iş günü) | 7 Aralık | **11 Aralık 2026** | 11-17 Aralık |
+
+Her iki senaryoda canlıya alma hazırlığı, Faz 4 bitişinden sonra 3 iş günüdür. Senaryo (b) tasarrufları kaba
+tahmindir; B5 yine Faz 2'de yapılır, ama MVP'yi bekletmez.
 | 5 | Change, Claim, Interface | Ocak 2027 (MVP sonrası) | — | — |
 | 6 | `subcontracts`, `progress_payments`, fatura WBS/aktivite bağı | Şubat 2027 | — | Ç8, Ç10, Ç11 Faz 6 başında |
 | 7 | Aktivite 360, KPI | Mart 2027 | — | — |

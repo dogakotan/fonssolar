@@ -52,6 +52,21 @@ arası ilişkileri içeren bir bilgi grafiği var.
 9. **Durum tablosu.** Proje Kontrol'de her adım ve faz kapanışında `docs/proje-kontrol/register-gap-analizi.md`
    başındaki durum tablosunu (16 register × faz × güncel durum × Faz 1 bağımlılığı) ve fazların 15 Aralık MVP'ye
    göre tahmini bitiş tablosunu güncelle; "Son güncelleme" satırına tarih ve kapanan adımı yaz.
+10. **Test betiği ön kontrolü.** Canlıda (BEGIN…ROLLBACK) veya yerelde koşulacak her PL/pgSQL test betiği, koşmadan önce
+    şu üç hata türüne karşı gözden geçirilir ve bulunanlar düzeltilir (Faz 1 Adım 3'te üçü de koşuları durdurdu):
+    - **Ad çakışması:**
+      - bloktaki PL/pgSQL değişkenleri (dış bloktakiler dahil: `out`, `r`, `n`, `v`, `ok`…) ile sorgudaki takma ad ve kolon adları aynı olmamalı (`column reference "v" is ambiguous`);
+      - takma adlar değişken adlarından ayrışacak şekilde seçilir.
+    - **Beklenen metin kolon tipinden türetilir:**
+      - numeric ölçeği: `numeric(5,2)` → `5.00`, `5.0` değil;
+      - boolean metne `true`/`false` değil `t`/`f` olarak, `::text` ile çevrilir;
+      - tarih ve zaman damgası biçimi;
+      - enum metni.
+      - Gerekirse önce `information_schema.columns` okunur.
+    - **Aynı ifadede yaz-oku yok:**
+      - bir SQL ifadesindeki alt sorgu, ifade başındaki anlık görüntüyü görür; aynı ifadede çağrılan fonksiyonların yazdıklarını görmez.
+      - Tek ifadedeki birden fazla çağrının değerlendirme sırası da garanti değildir.
+      - Bu yüzden sıra bağımlı her yazma ayrı bir ifadededir (`a := …; a := a || … ;`) ve sonuç ayrı bir ifadede okunur.
 
 ### Kod tarama notu — supabase.from() sayımı
 `grep -rn "supabase\.from(" src/` **tek satırlık** desendir ve kodda zincirleme
@@ -1800,7 +1815,10 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10), yeniden test bekliyor** |
 | B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
 | F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; **Adım 2 kapandı** (`faz1-adim2-sonuclar.md`): B1, B2, B4, F1 canlıda ROLLBACK ile tüm oturumlarda geçti, rollback parmak izi birebir; uygulanmadı (Adım 6) |
-| F1-AID | Activity ID: `task_disciplines` + FK, `activity_id_counters`, `assign_activity_ids`/`assign_activity_id` (önizleme varsayılan), kimlik korumasının son hali (Ç16: yalnızca atama fonksiyonu ve B4 yazar; ID'li görevde disiplin/alan kilidi; ID'li görev silinmez), genişletilmiş B4 (5 parametre), iptal görevleri ilerleme/S-eğrisi/ağırlık hesaplarından çıkarma (7 fonksiyon/görünüm), A8 iptal görev koruması (`progress_daily` trigger'ı, yeniden açma yalnızca admin/PM, `save_daily_report` eski satırı korur) | `taslak-sql/f1_aid_activity_id.sql`, tasarım `faz1-adim3-tasarim.md` | Faz 1 Adım 3; ROLLBACK testleri sürüyor (`faz1-adim3-sonuclar.md`): 1a, 1c (R1-R16), 1d (B4 + 4 projede uygulama sonrası etki yok), 2a (11/11) geçti; 2b'de 13 test geçti (T20c dahil), T15/T18/T20d test betiği hatasıyla KALDI (düzeltildi, 2b yeniden koşum onay bekliyor); B4'ten sonra ayrı migration (Karar 42) |
+| F1-AID | Activity ID: `task_disciplines` + FK, `activity_id_counters`, `assign_activity_ids`/`assign_activity_id` (önizleme varsayılan), kimlik korumasının son hali (Ç16: yalnızca atama fonksiyonu ve B4 yazar; ID'li görevde disiplin/alan kilidi; ID'li görev silinmez), genişletilmiş B4 (5 parametre), iptal görevleri ilerleme/S-eğrisi/ağırlık hesaplarından çıkarma (7 fonksiyon/görünüm), A8 iptal görev koruması (`progress_daily` trigger'ı, yeniden açma yalnızca admin/PM, `save_daily_report` eski satırı korur) | `taslak-sql/f1_aid_activity_id.sql`, tasarım `faz1-adim3-tasarim.md` | Faz 1 **Adım 3 kapandı (12.10.2026)** (`faz1-adim3-sonuclar.md`):
+- 1a, 1c (R1-R16), 1d (B4 + dört projede uygulama sonrası etki yok), 2a (11/11) ve 2b (12/12) canlıda ROLLBACK ile geçti.
+- Oturum 5 = Oturum 0.
+- Uygulanmadı; Adım 6'da B4'ten sonra ayrı migration (Karar 42). |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -2161,6 +2179,15 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**12.10.2026 (11. tur) — Faz 1 Adım 3 kapandı.**
+- **Test betiği:** üç hata türüne karşı gözden geçirildi; aynı ifadede sıra bağımlı yazmalar bölündü. Bu kontrol kural 10 olarak eklendi.
+- **ROLLBACK:** 2b 12/12 geçti; Oturum 5 = Oturum 0.
+- **Ç16 madde 5:** yayınlanabilir anahtarla tek salt okunur GET (`Accept-Profile: pg_catalog`), yanıt `PGRST106`. Exposed schemas yalnızca `public, graphql_public`.
+- **Durum tablosu** (`register-gap-analizi.md`):
+  - Faz 1, 28 Ekim'e kaydı.
+  - MVP canlıya alma dilimi eklendi.
+  - İki senaryolu MVP tarihi eklendi: (a) 22 Aralık 2026, (b) 11 Aralık 2026.
 
 **12.10.2026 (10. tur) — Faz 1 Adım 3: Karar 44 (A8); 2a geçti, 2b'de üç test betiği hatası, durduruldu.**
 - Canlıda yalnızca ROLLBACK:

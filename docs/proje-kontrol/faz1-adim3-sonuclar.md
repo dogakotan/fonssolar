@@ -5,7 +5,24 @@ Tarih: 09.10.2026. Tasarım: `faz1-adim3-tasarim.md`. Yöntem Adım 2 ile aynıd
 - `lock_timeout = 3s`, `statement_timeout = 60s`;
 - her oturum tek bir DO bloğu; blok her zaman hatayla biter, `COMMIT` yok.
 
-**Durum (12.10.2026, ikinci koşu): 2a 11/11 geçti; 2b'de 3 test KALDI, üçü de test betiği hatası. Durduruldu.**
+**ADIM 3 KAPANDI (12.10.2026, üçüncü koşu).** Bütün oturumlar geçti: 1a, 1c (R1-R16), 1d (B4 + etki), 2a (11/11),
+2b (12/12). Oturum 5 parmak izi Oturum 0 ile birebir aynı; canlıda hiçbir şey kalmadı. Taslak uygulanmadı (Adım 6,
+B4'ten sonra ayrı migration, Karar 42).
+
+Üçüncü koşudan önce test betiği üç hata türüne karşı gözden geçirildi (CLAUDE.md kural 10):
+- **Ad çakışması:** bulgu yok.
+- **Kolon tipi:** `%5.00` düzeltmesi korundu.
+- **Aynı ifadede sıra bağımlı yazma:** T14, T15, T16, T18 ve T20d tek çağrılı ifadelere bölündü.
+
+Ç16 madde 5 doğrulandı: exposed schemas yalnızca `public, graphql_public`.
+
+| Oturum | Sonuç |
+|---|---|
+| 0 | Bağlantı / uzun işlem 0 / 0; parmak izi tabanla aynı |
+| 2b | 2b hazırlık, T15 (`…OK(1) \| TIZ-MEC-B2-0700/mechanical/B2 \| audit=3`), T16, T17, T18 (`%5.00`), T18b, T19, T20, T20c, T20d (`1×5 iptal %5.00`), T20b: **12/12 GEÇTİ** |
+| 5 | Birebir aynı |
+
+**Önceki durum (12.10.2026, ikinci koşu): 2a 11/11 geçti; 2b'de 3 test KALDI, üçü de test betiği hatası. Durduruldu.**
 - T15: B4 çağrıları beklenen sonuçları döndürdü (`forbidden, validation, validation, OK, OK, OK`), ama okuma aynı SQL ifadesindeydi ve çağrılardan önceki anlık görüntüyü gördü. Aynı fonksiyonun davranışı 1c R16'da ayrı ifadelerle geçmişti.
 - T18 ve T20d: `progress_pct` 2 ondalıklı (`%5.00`); beklenen metin `%5.0` yazılmıştı.
 - Betik düzeltildi. Kural gereği yeniden koşulmadı; 2b onay bekliyor.

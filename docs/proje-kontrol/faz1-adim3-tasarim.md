@@ -82,9 +82,12 @@ Adım 3'tedir (Karar 42) ve şu kuralları uygular:
 3. **Bayrak RPC üzerinden açılamaz.** `public` şemasında `set_config` çağıran fonksiyonlar yalnızca bu iki atama/düzeltme fonksiyonudur. Ayar adını değişkenden alan fonksiyon yok (R12, T19).
 4. **`postgres` sahipli diğer DEFINER fonksiyonlar** (`set_task_milestone_status`, `sync_task_progress_from_daily`) bayrak açmaz. Gövdelerinde `activity_id` de geçmez (canlıda kontrol edildi).
 5. **`set_config`'in doğrudan RPC olarak çağrılamaması:** fonksiyon `pg_catalog`'da. PostgREST yalnızca "exposed schemas" listesindeki şemaları RPC olarak açar. İstek başlıkları yalnızca `request.*` ayarlarını doldurur.
-   - **Doğrulanamadı:** exposed schemas listesi Supabase panelinde; SQL'den okunamıyor. Varsayılan `public, graphql_public`.
-   - **Kullanıcı panelden kontrol edip bildirecek.** Liste `pg_catalog` içermiyorsa madde 5 kapanır. İçeriyorsa bile madde 1 ve 2 tek başına yeterlidir, çünkü bayrak `current_user` kontrolü olmadan işe yaramaz.
-   - 12.10.2026: kullanıcının iki mesajında da liste alanı doldurulmamış (yer tutucu kaldı: "[PANELDE GÖRDÜĞÜN LİSTE]"). Madde 5 hâlâ **doğrulanamadı**.
+   - **Doğrulandı (12.10.2026):** PostgREST'in açtığı şemalar yalnızca `public, graphql_public`. `pg_catalog` açık değil, yani `set_config` RPC olarak çağrılamaz. Madde 5 kapandı.
+   - Yöntem (kullanıcının tarif ettiği, yalnızca okuma): yayınlanabilir (anon) anahtarla `Accept-Profile: pg_catalog` başlıklı GET.
+     - Önce `/rest/v1/` kökü denendi: `401 Secret API key required` döndü, şema bilgisi gelmedi.
+     - Ardından `/rest/v1/pg_class?limit=0` denendi: `406 PGRST106 — "Only the following schemas are exposed: public, graphql_public"`, `"Invalid schema: pg_catalog"`.
+     - PostgREST şemayı tabloya bakmadan reddettiği için hiçbir satıra erişilmedi; hiçbir şey değişmedi.
+   - Panelde `pg_catalog` (veya başka bir şema) exposed listesine eklenirse bu madde yeniden açılır. Madde 1 ve 2 yine tek başına yeterlidir.
 6. **Bilinen istisna:** trigger'ı kapatabilen veritabanı yöneticisi (migration). Kapsam dışı.
 
 **Ekranlar ve Excel import Activity ID gönderiyor mu?**
@@ -206,5 +209,5 @@ Adım 6 yalnızca kullanıcı "uygula" dediğinde başlar. Aşağıdakiler tamam
      - Toplam %100.
      - Hangi kategoriye ne ağırlık verileceği iş kararıdır; kullanıcı bildirir.
    - b) Excel import ve sihirbaz, ağırlık tablosunda olmayan bir kategoriyle görev yazarken uyarı verir veya reddeder. Hangisinin olacağı Adım 5 tasarımında önerilir.
-4. **Ç16 madde 5 (exposed schemas).** Doğrulanmadan da Ç16 korunur: madde 1 ve 2 tek başına yeterli. Yine de güvenlik notu tamamlanır.
+4. **Ç16 madde 5 (exposed schemas).** 12.10.2026'da doğrulandı: yalnızca `public, graphql_public`. Adım 6 öncesi aynı GET ile yeniden kontrol edilir; liste değiştiyse dur.
 - Disiplin açılır listesi `task_disciplines`'ten okunsun.

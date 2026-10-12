@@ -259,24 +259,21 @@
 
     -- ── T14 · doğrudan yazma (Ç16) ──
     w1u := pg_temp.mk('T14-1', 'general', aA1, w, d - 3);
-    a := concat_ws(',',
-      pg_temp.k(pg_temp.tryas(u_admin, format($q$insert into public.project_tasks (project_id, task_code, task_name, category, planned_start, planned_end, activity_id) values (%L, 'T14-I', 'x', 'mekanik', current_date, current_date, 'TIZ-GEN-A1-0500')$q$, p))),
-      pg_temp.k(pg_temp.tryas(u_admin, format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0500', w1u))),
-      pg_temp.k(pg_temp.tryas(u_admin, format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0600', a1))),
-      pg_temp.k(pg_temp.tryas(u_admin, format('update public.project_tasks set activity_id = null where id = %L', a1))),
-      pg_temp.k(pg_temp.tryas(u_admin, format($q$select set_config('fons.activity_id_assign', 'on', true), set_config('fons.activity_id_fix', 'on', true); update public.project_tasks set activity_id = %L where id = %L$q$, 'TIZ-GEN-A1-0500', w1u))),
-      pg_temp.k(pg_temp.tryas(u_admin, format($q$select set_config('fons.activity_id_assign', 'on', true), set_config('fons.activity_id_fix', 'on', true); update public.project_tasks set activity_id = %L where id = %L$q$, 'TIZ-GEN-A1-0600', a1))));
+    a := pg_temp.k(pg_temp.tryas(u_admin, format($q$insert into public.project_tasks (project_id, task_code, task_name, category, planned_start, planned_end, activity_id) values (%L, 'T14-I', 'x', 'mekanik', current_date, current_date, 'TIZ-GEN-A1-0500')$q$, p)));
+    a := a || ',' || pg_temp.k(pg_temp.tryas(u_admin, format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0500', w1u)));
+    a := a || ',' || pg_temp.k(pg_temp.tryas(u_admin, format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0600', a1)));
+    a := a || ',' || pg_temp.k(pg_temp.tryas(u_admin, format('update public.project_tasks set activity_id = null where id = %L', a1)));
+    a := a || ',' || pg_temp.k(pg_temp.tryas(u_admin, format($q$select set_config('fons.activity_id_assign', 'on', true), set_config('fons.activity_id_fix', 'on', true); update public.project_tasks set activity_id = %L where id = %L$q$, 'TIZ-GEN-A1-0500', w1u)));
+    a := a || ',' || pg_temp.k(pg_temp.tryas(u_admin, format($q$select set_config('fons.activity_id_assign', 'on', true), set_config('fons.activity_id_fix', 'on', true); update public.project_tasks set activity_id = %L where id = %L$q$, 'TIZ-GEN-A1-0600', a1)));
     perform set_config('fons.activity_id_assign', '', true);
     perform set_config('fons.activity_id_fix', '', true);
     b := pg_temp.k(pg_temp.tryas(u_pm, format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0500', w1u)));
-    c := concat_ws(',',
-      pg_temp.k(pg_temp.tryas(u_ss, format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0500', w1u))),
-      pg_temp.k(pg_temp.tryas(u_ss, format('update public.project_tasks set discipline = %L where id = %L', 'mechanical', a1))),
-      pg_temp.k(pg_temp.tryas(u_ss, format('update public.project_tasks set area_id = %L where id = %L', aB2, a1))),
-      pg_temp.k(pg_temp.tryas(u_ss, format('update public.project_tasks set task_name = %L where id = %L', 'T9-A1a yeni ad', a1))));
-    e := concat_ws(',',
-      pg_temp.k(pg_temp.tryrole('service_role', format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0500', w1u))),
-      pg_temp.k(pg_temp.tryas(null, format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0500', w1u))));
+    c := pg_temp.k(pg_temp.tryas(u_ss, format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0500', w1u)));
+    c := c || ',' || pg_temp.k(pg_temp.tryas(u_ss, format('update public.project_tasks set discipline = %L where id = %L', 'mechanical', a1)));
+    c := c || ',' || pg_temp.k(pg_temp.tryas(u_ss, format('update public.project_tasks set area_id = %L where id = %L', aB2, a1)));
+    c := c || ',' || pg_temp.k(pg_temp.tryas(u_ss, format('update public.project_tasks set task_name = %L where id = %L', 'T9-A1a yeni ad', a1)));
+    e := pg_temp.k(pg_temp.tryrole('service_role', format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0500', w1u)));
+    e := e || ',' || pg_temp.k(pg_temp.tryas(null, format('update public.project_tasks set activity_id = %L where id = %L', 'TIZ-GEN-A1-0500', w1u)));
     act := 'admin ' || a || ' | pm ' || b || ' | şş ' || c || ' | service_role,postgres ' || e;
     exp := 'admin D,D,C,C,D,C | pm D | şş D,K,K,OK(1) | service_role,postgres D,D';
     out := out || pg_temp.res('T14 doğrudan INSERT/UPDATE, taklit bayrak, kilit (D=doğrudan yazılamaz C=değiştirilemez K=disiplin/alan kilidi)', exp, act, act = exp);
@@ -303,13 +300,13 @@
     -- ── T15 · genişletilmiş B4 ──
     -- Çağrılar ve okuma ayrı ifadelerde: aynı ifadedeki alt sorgu, ifade başındaki anlık görüntüyü görür
     -- (Oturum 2b, 12.10.2026: okuma çağrılardan önceki değeri gösterdi).
-    a := concat_ws(',',
-      pg_temp.tryas(u_pm, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-GEN-A1-0025', 'neden')),
-      pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-GEN-A1-0025', '')),
-      pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-MEC-A1-0025', 'yanlış')),
-      pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-GEN-A1-0025', 'T15 numara')),
-      pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L, %L)', a2, 'TIZ-MEC-A1-0700', 'T15 disiplin', 'mechanical')),
-      pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L, null, %L)', a2, 'TIZ-MEC-B2-0700', 'T15 alan', aB2)));
+    -- Her çağrı ayrı ifade: sıra bağımlı (numara → disiplin → alan); tek ifadede değerlendirme sırası garanti değil.
+    a := pg_temp.tryas(u_pm, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-GEN-A1-0025', 'neden'));
+    a := a || ',' || pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-GEN-A1-0025', ''));
+    a := a || ',' || pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-MEC-A1-0025', 'yanlış'));
+    a := a || ',' || pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-GEN-A1-0025', 'T15 numara'));
+    a := a || ',' || pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L, %L)', a2, 'TIZ-MEC-A1-0700', 'T15 disiplin', 'mechanical'));
+    a := a || ',' || pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L, null, %L)', a2, 'TIZ-MEC-B2-0700', 'T15 alan', aB2));
     act := a || ' | ' || (select activity_id || '/' || discipline || '/' || (select area_code from public.project_areas where id = t.area_id)
                    from public.project_tasks t where t.id = a2)
       || ' | audit=' || (select count(*) from public.register_audit where record_id = a2 and reason in ('T15 numara', 'T15 disiplin', 'T15 alan'));
@@ -317,10 +314,12 @@
     out := out || pg_temp.res('T15 B4: PM / gerekçesiz / uyumsuz biçim / numara / disiplin / alan', exp, act, act = exp);
 
     -- ── T16 · yetki ──
-    act := concat_ws(',',
-      pg_temp.asg_err(u_ss, array[w1u], true), pg_temp.asg_err(u_ss, array[w1u], false),
-      pg_temp.asg_err(u_muh, array[w1u], true), pg_temp.asg_err(u_muh, array[w1u], false),
-      pg_temp.asg_err(u_pm, array[w1u], false)) || ' ' || pg_temp.aid(w1u);
+    a := pg_temp.asg_err(u_ss, array[w1u], true);
+    a := a || ',' || pg_temp.asg_err(u_ss, array[w1u], false);
+    a := a || ',' || pg_temp.asg_err(u_muh, array[w1u], true);
+    a := a || ',' || pg_temp.asg_err(u_muh, array[w1u], false);
+    a := a || ',' || pg_temp.asg_err(u_pm, array[w1u], false);
+    act := a || ' ' || pg_temp.aid(w1u);
     exp := 'ERR:forbidden,ERR:forbidden,ERR:forbidden,ERR:forbidden,OK TIZ-GEN-A1-0050';
     out := out || pg_temp.res('T16 şantiye şefi / muhasebe (önizleme, gerçek) / proje yöneticisi', exp, act, act = exp);
 
@@ -337,10 +336,9 @@
     ms := pg_temp.mk('T18-M', 'general', aA1, w, d - 30);
     qt := pg_temp.mk('T18-Q', 'general', aA1, w, d - 30, 100);
     j := pg_temp.asg(u_admin, array[ms, qt], false);
-    a := concat_ws(',',
-      pg_temp.tryas(u_pm, format('select public.set_task_milestone_status(%L, %L)', ms, 'devam_ediyor')),
-      pg_temp.tryas(u_pm, format('select public.add_task_progress(%L, 5, null, current_date)', qt)),
-      pg_temp.tryas(u_pm, format('update public.project_tasks set task_name = %L, notes = %L, planned_end = planned_end + 1 where id = %L', 'T18-Q excel', 'x', qt)));
+    a := pg_temp.tryas(u_pm, format('select public.set_task_milestone_status(%L, %L)', ms, 'devam_ediyor'));
+    a := a || ',' || pg_temp.tryas(u_pm, format('select public.add_task_progress(%L, 5, null, current_date)', qt));
+    a := a || ',' || pg_temp.tryas(u_pm, format('update public.project_tasks set task_name = %L, notes = %L, planned_end = planned_end + 1 where id = %L', 'T18-Q excel', 'x', qt));
     act := a || ' | ' || pg_temp.aid(ms) || ' ' || (select status::text from public.project_tasks where id = ms)
            || ', ' || pg_temp.aid(qt) || ' %' || (select progress_pct::text from public.project_tasks where id = qt);
     exp := 'OK(1),OK(1),OK(1) | TIZ-GEN-A1-0060 devam_ediyor, TIZ-GEN-A1-0070 %5.00';  -- progress_pct 2 ondalıklı
@@ -416,20 +414,19 @@
     values (p, 'T20-Y', 'T20 ilerlemeli görev', 'panel_montaji', d + 1, d + 30, 'adet', 100)
     returning id into x;
     j := jsonb_build_array(jsonb_build_object('task_id', x, 'qty_added', 5));
-    a := concat_ws(',',
-      pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
-        p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', j::text)),
-      pg_temp.tryas(u_pm, format('update public.project_tasks set status = %L where id = %L', 'iptal', x)));
+    -- Sıra bağımlı çağrılar ayrı ifadelerde (önce rapor, sonra iptal; ardından aynı / artırılmış / boş kayıt)
+    a := pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+           p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', j::text));
+    a := a || ',' || pg_temp.tryas(u_pm, format('update public.project_tasks set status = %L where id = %L', 'iptal', x));
     perform pg_temp.as_user(u_admin);
     mm := pg_temp.metrics(p);
     perform pg_temp.as_user(null);
-    b := concat_ws(',',
-      pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
-        p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', j::text)),
-      pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
-        p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', jsonb_build_array(jsonb_build_object('task_id', x, 'qty_added', 8))::text)),
-      pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
-        p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', '[]')));
+    b := pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+           p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', j::text));
+    b := b || ',' || pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+           p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', jsonb_build_array(jsonb_build_object('task_id', x, 'qty_added', 8))::text));
+    b := b || ',' || pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+           p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', '[]'));
     c := (select count(*) || '×' || coalesce(sum(qty_added), 0) from public.progress_daily where task_id = x)
          || ' ' || (select status::text || ' %' || progress_pct from public.project_tasks where id = x);
     e := pg_temp.tryas(u_pm, format('update public.project_tasks set status = %L where id = %L', 'devam_ediyor', x));
