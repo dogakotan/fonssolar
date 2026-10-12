@@ -84,6 +84,7 @@ Adım 3'tedir (Karar 42) ve şu kuralları uygular:
 5. **`set_config`'in doğrudan RPC olarak çağrılamaması:** fonksiyon `pg_catalog`'da. PostgREST yalnızca "exposed schemas" listesindeki şemaları RPC olarak açar. İstek başlıkları yalnızca `request.*` ayarlarını doldurur.
    - **Doğrulanamadı:** exposed schemas listesi Supabase panelinde; SQL'den okunamıyor. Varsayılan `public, graphql_public`.
    - **Kullanıcı panelden kontrol edip bildirecek.** Liste `pg_catalog` içermiyorsa madde 5 kapanır. İçeriyorsa bile madde 1 ve 2 tek başına yeterlidir, çünkü bayrak `current_user` kontrolü olmadan işe yaramaz.
+   - 12.10.2026: kullanıcının mesajında liste alanı doldurulmamış (yer tutucu kaldı). Madde 5 hâlâ **doğrulanamadı**.
 6. **Bilinen istisna:** trigger'ı kapatabilen veritabanı yöneticisi (migration). Kapsam dışı.
 
 **Ekranlar ve Excel import Activity ID gönderiyor mu?**
@@ -110,6 +111,8 @@ Adım 3'tedir (Karar 42) ve şu kuralları uygular:
 | `vw_project_progress_summary.total_tasks` | Hayır | İptal hariç (`delayed_tasks` zaten hariç tutuyordu) |
 | `sync_task_progress_from_daily` | Hayır: iptal göreve ilerleme girilince durum `devam_ediyor`a dönüyor | Durum `iptal` kalır |
 | `add_task_progress` | Hayır | İptal göreve ilerleme reddedilir |
+| `save_daily_report` ve `progress_daily`'ye doğrudan yazma (rapor sahibi) | Hayır | A8: tablo trigger'ı reddeder; eski raporun aynen yeniden kaydı korunur |
+| `project_tasks` durum güncellemesi (şantiye şefi kendi projesinde yazabiliyor) | İptal görevi herkes yeniden açabiliyor | A8: yalnızca admin ve proje yöneticisi |
 | `fn_recompute_auto_risks` (gecikme riski) | **Evet** | Değişmedi |
 | `vw_delayed_tasks` | **Evet** | Değişmedi |
 | `set_task_milestone_status` | `iptal`i kabul ediyor, %0 yapıyor | Değişmedi |
@@ -124,7 +127,26 @@ Adım 3'tedir (Karar 42) ve şu kuralları uygular:
 - `ProjectOverviewDashboard.jsx`'teki S-eğrisi RPC'nin `tasks` listesinden beslendiği için taslaktaki RPC düzeltmesiyle düzelir. Dosyaya dokunulmadı.
 
 Bugünkü durum Oturum 1b'de ölçüldü: iptal görev eklenince ve göreve ilerleme girilince metrikler değişiyor. Taslaktan
-sonraki ölçüm Oturum 2b'de (T20) yapılacak.
+sonraki ölçüm Oturum 2b'de (T20-T20d) yapılacak.
+
+### 4.1 A8 — iptal göreve ilerleme ve yeniden açma (12.10.2026'da eklendi)
+
+İlk taslak iptal göreve ilerlemeyi yalnızca `add_task_progress`'te reddediyordu. Günlük rapor yolu bilinçli olarak
+açık bırakılmıştı, eski raporların yeniden kaydı kırılmasın diye. Kullanıcı kararıyla kapatıldı:
+
+- **A8a** `trg_progress_daily_cancelled_guard` (BEFORE INSERT/UPDATE, `progress_daily`):
+  - iptal göreve yeni satır, başka göreve taşıma veya miktar artışı reddedilir: `İptal edilmiş göreve ilerleme girilemez`;
+  - azaltma ve silme serbest, böylece rapor ve proje silme zinciri çalışır;
+  - tablo seviyesinde olduğu için `save_daily_report`, `add_task_progress` ve rapor sahibinin doğrudan yazmasını aynı kural kapsar.
+- **A8b** `trg_project_tasks_reopen_guard` (BEFORE UPDATE OF status): `iptal`den çıkışı yalnızca admin ve proje yöneticisi yapabilir. Şantiye şefi bugün `project_tasks_update` ile kendi projesinde durum yazabiliyor. Oturumsuz bağlam (postgres, service_role) da reddedilir. İptal etmeye dokunulmadı.
+- **A8c** `save_daily_report`: rapor her kayıtta `progress_daily` satırlarını silip yeniden yazıyor. Yalnızca A8a olsaydı iptal görev satırı olan eski bir raporun aynen yeniden kaydı da reddedilirdi. Bu yüzden:
+  - iptal görevin mevcut satırı silinmez, dondurulur;
+  - aynı miktarla gelirse yeniden yazılmaz;
+  - farklı miktar veya yeni satır A8a'ya takılır.
+- Bunun bedeli: iptal görevin eski ilerlemesi rapordan da düşürülemez. Görev yeniden açılırsa düzeltilebilir.
+- Testler:
+  - T20c: şantiye şefi rapor, doğrudan satır ve yeniden açmayı dener; üçü de reddedilir, görev iptal kalır, metrik farkı yok;
+  - T20d: ilerlemesi olan görev iptal edilir; eski rapor aynen yeniden kaydedilir, miktar artışı reddedilir, PM görevi yeniden açar.
 
 ## 5. Kontrol (b): `activity_id` biçim kontrolü
 
@@ -166,5 +188,7 @@ Adım 6 deploy'unun ön koşulu.
 
 - Sihirbazın görev kaydı: sil-yeniden-yaz yerine görev koduna göre güncelleme (Karar 40, Ç-B).
 - Görevi silme yerine "İptal et" eylemi. ID'li görevde sil düğmesi yok.
-- İş Planı KPI'sı ve günlük rapor ilerleme listesi iptal görevleri hariç tutsun.
+- İş Planı KPI'sı ve günlük rapor ilerleme listesi iptal görevleri hariç tutsun. Eski raporu düzenlerken iptal görevin
+  satırı salt okunur gösterilsin (A8: miktar değişirse kayıt reddedilir).
+- "Yeniden aç" eylemi yalnızca admin ve proje yöneticisine görünsün (A8b).
 - Disiplin açılır listesi `task_disciplines`'ten okunsun.

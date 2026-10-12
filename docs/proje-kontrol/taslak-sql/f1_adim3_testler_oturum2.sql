@@ -213,7 +213,8 @@
     s0 := pg_temp.snap();
     jd := pg_temp.asg(u_admin, array[k1, k3, k5], true);
     s1s := pg_temp.snap();
-    a := (select string_agg(v ->> 'activity_id', ',' order by v ->> 'task_code') from jsonb_array_elements(jd -> 'items') as v);
+    -- takma ad "ti": oturumun dış bloğunda "v" adlı değişken var (Oturum 2a, 12.10.2026: column reference "v" is ambiguous)
+    a := (select string_agg(ti ->> 'activity_id', ',' order by ti ->> 'task_code') from jsonb_array_elements(jd -> 'items') as ti);
     j := pg_temp.asg(u_admin, array[k1, k3, k5], false);
     b := concat_ws(',', pg_temp.aid(k1), pg_temp.aid(k3), pg_temp.aid(k5));
     act := case when s0 = s1s then 'yazma yok' else 'YAZDI' end || ' | önizleme ' || coalesce(a, '∅') || ' | gerçek ' || b;
@@ -379,16 +380,62 @@
     perform pg_temp.as_user(null);
     a := pg_temp.diff(m0, mm);
     b := pg_temp.tryas(u_pm, format('select public.add_task_progress(%L, 5, null, current_date)', x));
-    select id into rep from public.daily_reports where project_id = p order by report_date desc limit 1;
-    insert into public.progress_daily (report_id, task_id, qty_added, source) values (rep, x, 5, 'daily_report');
+    act := 'ekle: ' || a || ' | add_task_progress (PM): ' || b;
+    exp := 'ekle: fark yok | add_task_progress (PM): ERR:İptal edilmiş göreve ilerleme girilemez';
+    out := out || pg_temp.res('T20 iptal görev eklenir / add_task_progress', exp, act, act = exp);
+    out := out || E'\nT20 metrikler: ' || m0;
+
+    -- T20c · şantiye şefi iptal göreve günlük rapordan ilerleme girer → reddedilir, görev iptal kalır, ilerleme değişmez
+    a := pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+           p, d + 1, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', jsonb_build_array(jsonb_build_object('task_id', x, 'qty_added', 5))::text));
+    b := pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+           p, d + 2, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', '[]'));
+    select id into rep from public.daily_reports where project_id = p and report_date = d + 2;
+    c := pg_temp.tryas(u_ss, format('insert into public.progress_daily (report_id, task_id, qty_added, source, entered_by) values (%L, %L, 5, %L, %L)',
+           rep, x, 'daily_report', u_ss));
+    e := pg_temp.tryas(u_ss, format('update public.project_tasks set status = %L where id = %L', 'devam_ediyor', x));
     perform pg_temp.as_user(u_admin);
     mm := pg_temp.metrics(p);
     perform pg_temp.as_user(null);
-    act := 'ekle: ' || a || ' | add_task_progress: ' || b || ' | rapor ilerlemesi sonrası: ' || pg_temp.diff(m0, mm)
-           || ', durum ' || (select status::text from public.project_tasks where id = x);
-    exp := 'ekle: fark yok | add_task_progress: ERR:İptal edilmiş iş kalemine ilerleme girilemez. | rapor ilerlemesi sonrası: fark yok, durum iptal';
-    out := out || pg_temp.res('T20 iptal görev eklenir / iptal göreve ilerleme', exp, act, act = exp);
-    out := out || E'\nT20 metrikler: ' || m0;
+    act := 'rapor: ' || a || ' | boş rapor: ' || b || ' | doğrudan satır: ' || c || ' | yeniden aç (şş): ' || e
+           || ' | durum ' || (select status::text from public.project_tasks where id = x)
+           || ', ilerleme satırı ' || (select count(*) from public.progress_daily where task_id = x)
+           || ' | metrik: ' || pg_temp.diff(m0, mm);
+    exp := 'rapor: ERR:İptal edilmiş göreve ilerleme girilemez | boş rapor: OK(1) | doğrudan satır: ERR:İptal edilmiş göreve ilerleme girilemez'
+           || ' | yeniden aç (şş): ERR:İptal edilmiş görevi yalnızca admin veya proje yöneticisi yeniden açabilir | durum iptal, ilerleme satırı 0 | metrik: fark yok';
+    out := out || pg_temp.res('T20c şantiye şefi iptal göreve rapor/doğrudan ilerleme, yeniden açma', exp, act, act = exp);
+
+    -- T20d · ilerlemesi olan görev iptal edilir: eski rapor aynen yeniden kaydedilir (satır korunur), miktar artırılamaz;
+    --        iptal görevi PM yeniden açar. Plan tarihleri ileride (gecikme riski oluşmasın).
+    perform pg_temp.as_user(u_admin);
+    m0 := pg_temp.metrics(p);
+    perform pg_temp.as_user(null);
+    insert into public.project_tasks (project_id, task_code, task_name, category, planned_start, planned_end, unit, target_qty)
+    values (p, 'T20-Y', 'T20 ilerlemeli görev', 'panel_montaji', d + 1, d + 30, 'adet', 100)
+    returning id into x;
+    j := jsonb_build_array(jsonb_build_object('task_id', x, 'qty_added', 5));
+    a := concat_ws(',',
+      pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+        p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', j::text)),
+      pg_temp.tryas(u_pm, format('update public.project_tasks set status = %L where id = %L', 'iptal', x)));
+    perform pg_temp.as_user(u_admin);
+    mm := pg_temp.metrics(p);
+    perform pg_temp.as_user(null);
+    b := concat_ws(',',
+      pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+        p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', j::text)),
+      pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+        p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', jsonb_build_array(jsonb_build_object('task_id', x, 'qty_added', 8))::text)),
+      pg_temp.tryas(u_ss, format('select public.save_daily_report(%L, %L, %L, %L, 0, %L, null, null, %L, %L, %L, %L, %L, %L)',
+        p, d + 3, u_ss, 'normal', 'açık', '[]', '[]', '[]', '[]', '[]', '[]')));
+    c := (select count(*) || '×' || coalesce(sum(qty_added), 0) from public.progress_daily where task_id = x)
+         || ' ' || (select status::text || ' %' || progress_pct from public.project_tasks where id = x);
+    e := pg_temp.tryas(u_pm, format('update public.project_tasks set status = %L where id = %L', 'devam_ediyor', x));
+    act := 'ilerle+iptal: ' || a || ' | iptal sonrası metrik: ' || pg_temp.diff(m0, mm) || ' | aynı/arttır/boş: ' || b
+           || ' | ' || c || ' | yeniden aç (PM): ' || e;
+    exp := 'ilerle+iptal: OK(1),OK(1) | iptal sonrası metrik: fark yok | aynı/arttır/boş: OK(1),ERR:İptal edilmiş göreve ilerleme girilemez,OK(1)'
+           || ' | 1×5 iptal %5.0 | yeniden aç (PM): OK(1)';
+    out := out || pg_temp.res('T20d ilerlemeli görev iptal: eski rapor yeniden kaydı, miktar artışı, PM yeniden açar', exp, act, act = exp);
     -- T20b · ID'li görev silinmez, iptal edilir; iptal yalnızca o görevi hesaptan çıkarır
     a := pg_temp.k(pg_temp.tryas(u_pm, format('delete from public.project_tasks where id = %L', a1)));
     b := pg_temp.tryas(u_pm, format('update public.project_tasks set status = %L where id = %L', 'iptal', a1));

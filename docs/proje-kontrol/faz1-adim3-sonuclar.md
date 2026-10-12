@@ -5,8 +5,15 @@ Tarih: 09.10.2026. Tasarım: `faz1-adim3-tasarim.md`. Yöntem Adım 2 ile aynıd
 - `lock_timeout = 3s`, `statement_timeout = 60s`;
 - her oturum tek bir DO bloğu; blok her zaman hatayla biter, `COMMIT` yok.
 
-**Durum: Oturum 1c'de beklenmeyen bir sonuç çıktı, durduruldu.** Sebep test betiğiydi; taslağın davranışında hata
-görülmedi. Betik düzeltildi. Kural gereği yeniden koşulmadı; Oturum 1c, 1d, 2a, 2b onay bekliyor.
+**Durum (12.10.2026): Oturum 2a'da beklenmeyen bir hata çıktı, durduruldu.**
+- 1c (tekrar) ve 1d geçti; kontrol 3 dahil.
+- 2a, T11 satırında test betiğinin kendi hatasıyla düştü. Oturumun dış bloğundaki `v` değişkeni, sorgudaki `v` takma adıyla çakıştı: `column reference "v" is ambiguous`.
+- Hata sorgu çalışırken çıktığı için hiçbir test sonucu dönmedi; T9-T10b de görülmedi.
+- Betik düzeltildi. Kural gereği yeniden koşulmadı; 2a ve 2b onay bekliyor.
+- Oturum 5 parmak izi Oturum 0 ile birebir aynı.
+- Adım 3 kapanmadı.
+
+09.10.2026'daki ilk koşu (Oturum 0, 1b, 1a, 1c'de R15 betik hatası, 5) aşağıda.
 
 ## Oturum planı
 
@@ -38,6 +45,27 @@ atılarak üretilir.
 | 1c | F1 doğrulama R1-R14, R16 | OK | R15'e kadar hata yok | — |
 | 1c | **R15** iptal: silme reddi, iptal sonrası proje ilerlemesi, proje silme | `silinemez`, ilerleme 50, proje silindi | `silinemez`, **ilerleme 0**, proje silindi | **KALDI (betik hatası)** |
 | 5 | Parmak izi | Oturum 0 ile aynı | Birebir aynı (aşağıda) | GEÇTİ |
+
+### 12.10.2026 koşusu (taslağa A8 eklendikten sonra)
+
+| Oturum | Test | Beklenen | Gerçekleşen | Durum |
+|---|---|---|---|---|
+| 0 | Bağlantı / uzun işlem; parmak izi | 0 / 0; 09.10 ile aynı | 0 / 0; şema ve TIZ verisi aynı, yalnızca bildirim 1229→1231 (canlı kullanım) | GEÇTİ (yeni taban) |
+| 1c | 5 taslak kurulumu (A8 dahil); F1 doğrulama | `OK`, R1-R16 | `OK \| F1 \| 7 kontrol grubu \| A4 var, R1-R5 geçti \| AID var, R6-R16 geçti` (R15 `progress=10`, A8 trigger/yetki katalog kontrolü) | GEÇTİ |
+| 1d | B4 doğrulama (Adım 3'ten önce) | OK | `OK \| B4 \| 3 kontrol grubu` | GEÇTİ |
+| 1d | **Kontrol 3 — uygulama sonrası etki**: 4 projede ilerleme, overall_pct, kategori ağırlık özeti, S-eğrisi/ilerleme kalemi/şantiye/özet görev sayıları; Adım 3'ten önce ve sonra, ikisinde de yeniden hesaplatılarak | değişmez | ADN1 0→0, 0,0→0,0 · ADN2 0→0, 0,0→0,0 · TIZ 13→13, 23,7→23,7 · TKY 27→27, 27,2→27,2; ağırlık özetleri ve görev sayıları aynı; kayıtlı = yeniden hesaplanan | GEÇTİ |
+| 1d | B4 doğrulama (Adım 3'ten sonra) | genişletilmiş B4'e yönlendirme | aynen | GEÇTİ |
+| 2a | T9-T14b | — | **Test betiği hatası** (T11, `v` takma adı); sonuç dönmedi | **DURDU** |
+| 5 | Parmak izi | 12.10 Oturum 0 ile aynı | birebir aynı; Adım 3 nesnesi 0, test projesi 0 | GEÇTİ |
+
+Kontrol 3 ayrıntısı (`f1_adim3_etki.sql`):
+
+| Proje | İlerleme (kayıtlı / önce → sonra) | overall_pct | Kategori ağırlık özeti | Görev: S-eğrisi / ilerleme kalemi / şantiye / özet |
+|---|---|---|---|---|
+| ADN1 | 0 / 0 → 0 | 0,0 → 0,0 | 7a5c9143 = | 120 / 120 / 6 / 120 |
+| ADN2 | 0 / 0 → 0 | 0,0 → 0,0 | e5081ed3 = | 59 / 59 / 5 / 59 |
+| TIZ | 13 / 13 → 13 | 23,7 → 23,7 | ecf44961 = | 35 / 35 / 16 / 35 |
+| TKY | 27 / 27 → 27 | 27,2 → 27,2 | ed593b8e = | 14 / 14 / 11 / 14 |
 
 **R15'in sebebi:**
 - `projects`'e eklenen her yeni projeye `trg_seed_default_category_weights` 10 kategorilik varsayılan ağırlık yazar. Bu listede `mekanik` yok.

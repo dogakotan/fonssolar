@@ -172,9 +172,14 @@ begin
         raise exception '% DEFINER/search_path değil', f;
       end if;
     end loop;
-    foreach f in array array['public.fn_project_tasks_delete_guard()', 'public.fn_project_tasks_wbs_audit()'] loop
+    foreach f in array array['public.fn_project_tasks_delete_guard()', 'public.fn_project_tasks_wbs_audit()',
+                             'public.fn_progress_daily_cancelled_guard()', 'public.fn_project_tasks_reopen_guard()'] loop
       if has_function_privilege('authenticated', f, 'EXECUTE') then raise exception '% dışarıya açık', f; end if;
     end loop;
+    -- A8 · iptal görev koruması trigger'ları
+    if (select count(*) from pg_trigger where not tgisinternal and tgname in ('trg_progress_daily_cancelled_guard', 'trg_project_tasks_reopen_guard')) <> 2 then
+      raise exception 'R15b iptal görev koruması trigger''ları eksik';
+    end if;
     if has_table_privilege('authenticated', 'public.activity_id_counters', 'SELECT')
        or has_table_privilege('authenticated', 'public.activity_id_counters', 'UPDATE')
        or has_table_privilege('authenticated', 'public.task_disciplines', 'INSERT') then

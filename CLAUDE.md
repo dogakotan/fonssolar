@@ -1734,7 +1734,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 37 | Disiplin listesi | `task_disciplines` tablosu (anahtar → ID kısaltması: mechanical=MEC, dc=DC, ac=AC, mv=MV, hv=HV, enh=EIH, civil=CIV, scada=SCA, general=GEN); `project_tasks.discipline` ona FK ile bağlı, boş değer serbest. Canlıda daha önce DB listesi yoktu (yalnızca ekran sözlüğü) | **ONAYLANDI (09.10.2026)**, taslak `f1_aid_activity_id.sql` |
 | 38 | Alan-WBS kuralı (Activity ID) | Görevin WBS'inde (veya üst WBS'lerinde) alan bağı tanımlıysa ve görevin alanı aralarında yoksa atama engellenir; hiç bağ yoksa uyarı verilip atanır | **ONAYLANDI (09.10.2026)** |
 | 39 | ID sonrası kilit | Activity ID atanmış görevde disiplin ve alan kilitli; düzeltme yalnızca genişletilmiş B4 (`admin_correct_task_activity_id`, admin, gerekçe zorunlu, ID + alan/disiplin birlikte, yeni ID görevin proje/disiplin/alanıyla uyumlu olmalı). WBS değişikliği serbest ama `register_audit`'e yazılır | **ONAYLANDI (09.10.2026)** |
-| 40 | ID'li görev silinmez | Activity ID atanmış görev silinemez, durumu `iptal` yapılır; proje silme zinciri çalışır. Sihirbazın sil-yeniden-yaz akışının görev koduna göre güncellemeye çevrilmesi Adım 5'e eklendi ve Adım 6 deploy'unun ön koşulu. İptal görevler ilerleme/ağırlık/S-eğrisi hesaplarından çıkarılır | **ONAYLANDI (09.10.2026)** |
+| 40 | ID'li görev silinmez | Activity ID atanmış görev silinemez, durumu `iptal` yapılır; proje silme zinciri çalışır. Sihirbazın sil-yeniden-yaz akışının görev koduna göre güncellemeye çevrilmesi Adım 5'e eklendi ve Adım 6 deploy'unun ön koşulu. İptal görevler ilerleme/ağırlık/S-eğrisi hesaplarından çıkarılır. **Ek (12.10):** iptal göreve ilerleme DB'de her yoldan (günlük rapor dahil) "İptal edilmiş göreve ilerleme girilemez" ile reddedilir; iptal görevi yalnızca admin ve proje_yoneticisi yeniden açar (taslak A8) | **ONAYLANDI (09.10.2026)** |
 | 41 | Atama çağrısı | Önizleme (`p_dry_run`) varsayılan açık; çağrı başına en fazla 500 görev, tek proje; gerçek atamada hepsi ya da hiçbiri | **ONAYLANDI (09.10.2026)** |
 | 42 | Adım 3 migration sırası | Ayrı migration, B4'ten sonra; `fn_project_tasks_identity_guard`'ın son hali Adım 3'te (B4'ün kuralını içerir) | **ONAYLANDI (09.10.2026)** |
 | 43 | Önizleme yetkisi | Önizleme de yalnızca admin ve proje_yoneticisi | **ONAYLANDI (09.10.2026)** |
@@ -1799,7 +1799,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10), yeniden test bekliyor** |
 | B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
 | F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; **Adım 2 kapandı** (`faz1-adim2-sonuclar.md`): B1, B2, B4, F1 canlıda ROLLBACK ile tüm oturumlarda geçti, rollback parmak izi birebir; uygulanmadı (Adım 6) |
-| F1-AID | Activity ID: `task_disciplines` + FK, `activity_id_counters`, `assign_activity_ids`/`assign_activity_id` (önizleme varsayılan), kimlik korumasının son hali (Ç16: yalnızca atama fonksiyonu ve B4 yazar; ID'li görevde disiplin/alan kilidi; ID'li görev silinmez), genişletilmiş B4 (5 parametre), iptal görevleri ilerleme/S-eğrisi/ağırlık hesaplarından çıkarma (7 fonksiyon/görünüm) | `taslak-sql/f1_aid_activity_id.sql`, tasarım `faz1-adim3-tasarim.md` | Faz 1 Adım 3; ROLLBACK testleri sürüyor (`faz1-adim3-sonuclar.md`): Oturum 1a geçti, 1c'de R15 test betiği hatası (düzeltildi, yeniden koşum onay bekliyor); B4'ten sonra ayrı migration (Karar 42) |
+| F1-AID | Activity ID: `task_disciplines` + FK, `activity_id_counters`, `assign_activity_ids`/`assign_activity_id` (önizleme varsayılan), kimlik korumasının son hali (Ç16: yalnızca atama fonksiyonu ve B4 yazar; ID'li görevde disiplin/alan kilidi; ID'li görev silinmez), genişletilmiş B4 (5 parametre), iptal görevleri ilerleme/S-eğrisi/ağırlık hesaplarından çıkarma (7 fonksiyon/görünüm), A8 iptal görev koruması (`progress_daily` trigger'ı, yeniden açma yalnızca admin/PM, `save_daily_report` eski satırı korur) | `taslak-sql/f1_aid_activity_id.sql`, tasarım `faz1-adim3-tasarim.md` | Faz 1 Adım 3; ROLLBACK testleri sürüyor (`faz1-adim3-sonuclar.md`): 1a, 1c (R1-R16), 1d (B4 + 4 projede uygulama sonrası etki yok) geçti; 2a'da T11 test betiği hatası (düzeltildi, 2a/2b yeniden koşum onay bekliyor); B4'ten sonra ayrı migration (Karar 42) |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -1887,6 +1887,32 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   vermediğinden, günlük rapor ilerlemesi girilmiş bir projede (ör. TIZ: 35 görevin 16'sı) kayıt
   `progress_daily_task_id_fkey` hatasıyla düşer. İlerleme yoksa kayıt geçer ama görev ID'leri değişir. Düzeltme Faz 1
   Adım 5'te: görev koduna göre güncelleme (Karar 40), Adım 6 deploy'unun ön koşulu. Ayrıntı: `docs/proje-kontrol/faz1-adim3-tasarim.md` §7.
+
+- **Kategori ağırlık tablosunda olmayan kategorilerdeki görevler proje ilerlemesine hiç katılmıyor (12.10.2026'da salt
+  okunur sorguyla bulundu, Faz 1'den bağımsız, bugün canlıda).**
+  - Nasıl hesaplanıyor: proje ağırlık tablosu varsa `projects.progress` (`fn_sync_project_progress`) ve `overall_pct` (`get_project_by_date`) yalnızca `project_category_weights`'teki kategorilerin ortalamasını tartar.
+  - Ağırlığı olmayan kategorideki görevlerin ilerlemesi hiç sayılmaz.
+  - Görevi olmayan ağırlıklı kategori de 0 olarak sayılır; bu yüzden proje %100'e ulaşamaz.
+  - Dört projenin dördünde de var (proje, kategori, görev sayısı, ilerleme kaydı olan görev):
+
+    | Proje | Kategori | Görev | İlerleme kaydı olan |
+    |---|---|---|---|
+    | TIZ | `enh` | 1 | 1 |
+    | TIZ | `mobilizasyon` | 6 | 6 |
+    | TKY | `enh` | 1 | 0 |
+    | TKY | `mobilizasyon` | 3 | 3 |
+    | ADN1 | `enh` | 2 | 0 |
+    | ADN1 | `mobilizasyon` | 9 | 0 |
+    | ADN2 | `enh` | 3 | 0 |
+    | ADN2 | `evrak_sureci` | 9 | 0 (2'si durumla %>0) |
+    | ADN2 | `mekanik` | 6 | 0 |
+    | ADN2 | `mobilizasyon` | 5 | 0 (1'i durumla %>0) |
+    | ADN2 | `satin_alma` | 13 | 0 |
+
+  - TIZ ve TKY'de ilerleme kaydı olan 10 görevin ilerlemesi bugün proje yüzdesine yansımıyor.
+  - TKY'de görevi olmayan `kosk_trafo` %5 ağırlıkta; proje en fazla %95 olabilir.
+  - Kaynak: yeni projeye `trg_seed_default_category_weights` 10 kategorilik sabit varsayılan yazıyor. `enh`, `mobilizasyon`, `mekanik`, `evrak_sureci`, `satin_alma` bu listede yok.
+  - Düzeltme kararı kullanıcıda; önerilmedi.
 
 - ~~`xlsx` (SheetJS) bağımlılığı — HIGH severity güvenlik açığı~~ — **çözüldü
   (10.09.2026, 2. tur).** Önceki "kabul et/izle" kararı, gerçek saldırı
@@ -2128,6 +2154,18 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**12.10.2026 (9. tur) — Faz 1 Adım 3: A8 eklendi; ROLLBACK testleri 1c ve 1d'de geçti, 2a'da test betiği hatasıyla durdu.**
+
+Taslağa A8 eklendi: iptal göreve ilerleme her yoldan reddediliyor, iptal görevi yalnızca admin ve proje yöneticisi yeniden açıyor. Testler T20c ve T20d olarak eklendi.
+
+Canlıda yalnızca ROLLBACK ile koşuldu:
+- 1c: R1-R16 geçti.
+- 1d: B4 geçti. Uygulama sonrası etki ölçüldü: dört projenin ilerleme yüzdesi ve özet metrikleri değişmedi.
+- 2a: T11 satırında test betiğinin değişken adı çakışmasıyla düştü. Betik düzeltildi, yeniden koşulmadı.
+- Oturum 5 parmak izi Oturum 0 ile birebir aynı.
+
+Yeni bulgu: kategori ağırlık tablosunda olmayan kategorilerdeki görevler proje ilerlemesine katılmıyor ("Bilinen açık noktalar"). Ç16 madde 5 (exposed schemas) hâlâ doğrulanamadı: kullanıcının mesajında liste boş kaldı. Adım 3 kapanmadı; durum tablosu güncellenmedi.
 
 **09.10.2026 (8. tur) — Faz 1 Adım 3 taslağı yazıldı; canlıda ROLLBACK testleri başladı, Oturum 1c'de durdu.**
 Karar 37-43 eklendi. Taslak `f1_aid_activity_id.sql`:
