@@ -1738,6 +1738,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 41 | Atama çağrısı | Önizleme (`p_dry_run`) varsayılan açık; çağrı başına en fazla 500 görev, tek proje; gerçek atamada hepsi ya da hiçbiri | **ONAYLANDI (09.10.2026)** |
 | 42 | Adım 3 migration sırası | Ayrı migration, B4'ten sonra; `fn_project_tasks_identity_guard`'ın son hali Adım 3'te (B4'ün kuralını içerir) | **ONAYLANDI (09.10.2026)** |
 | 43 | Önizleme yetkisi | Önizleme de yalnızca admin ve proje_yoneticisi | **ONAYLANDI (09.10.2026)** |
+| 44 | İptal görev koruması (A8) | İptal göreve ilerleme her yoldan reddedilir (`add_task_progress`, günlük rapor, `progress_daily`'ye doğrudan yazma): "İptal edilmiş göreve ilerleme girilemez". İptal görevi yalnızca admin ve proje_yoneticisi yeniden açar. Eski raporun aynen yeniden kaydı korunur; iptal görevin eski ilerlemesinin düşürülmesi yeniden açma ile yapılır | **ONAYLANDI (12.10.2026)**, taslak `f1_aid_activity_id.sql` A8 |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1799,7 +1800,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 | B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10), yeniden test bekliyor** |
 | B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
 | F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; **Adım 2 kapandı** (`faz1-adim2-sonuclar.md`): B1, B2, B4, F1 canlıda ROLLBACK ile tüm oturumlarda geçti, rollback parmak izi birebir; uygulanmadı (Adım 6) |
-| F1-AID | Activity ID: `task_disciplines` + FK, `activity_id_counters`, `assign_activity_ids`/`assign_activity_id` (önizleme varsayılan), kimlik korumasının son hali (Ç16: yalnızca atama fonksiyonu ve B4 yazar; ID'li görevde disiplin/alan kilidi; ID'li görev silinmez), genişletilmiş B4 (5 parametre), iptal görevleri ilerleme/S-eğrisi/ağırlık hesaplarından çıkarma (7 fonksiyon/görünüm), A8 iptal görev koruması (`progress_daily` trigger'ı, yeniden açma yalnızca admin/PM, `save_daily_report` eski satırı korur) | `taslak-sql/f1_aid_activity_id.sql`, tasarım `faz1-adim3-tasarim.md` | Faz 1 Adım 3; ROLLBACK testleri sürüyor (`faz1-adim3-sonuclar.md`): 1a, 1c (R1-R16), 1d (B4 + 4 projede uygulama sonrası etki yok) geçti; 2a'da T11 test betiği hatası (düzeltildi, 2a/2b yeniden koşum onay bekliyor); B4'ten sonra ayrı migration (Karar 42) |
+| F1-AID | Activity ID: `task_disciplines` + FK, `activity_id_counters`, `assign_activity_ids`/`assign_activity_id` (önizleme varsayılan), kimlik korumasının son hali (Ç16: yalnızca atama fonksiyonu ve B4 yazar; ID'li görevde disiplin/alan kilidi; ID'li görev silinmez), genişletilmiş B4 (5 parametre), iptal görevleri ilerleme/S-eğrisi/ağırlık hesaplarından çıkarma (7 fonksiyon/görünüm), A8 iptal görev koruması (`progress_daily` trigger'ı, yeniden açma yalnızca admin/PM, `save_daily_report` eski satırı korur) | `taslak-sql/f1_aid_activity_id.sql`, tasarım `faz1-adim3-tasarim.md` | Faz 1 Adım 3; ROLLBACK testleri sürüyor (`faz1-adim3-sonuclar.md`): 1a, 1c (R1-R16), 1d (B4 + 4 projede uygulama sonrası etki yok), 2a (11/11) geçti; 2b'de 13 test geçti (T20c dahil), T15/T18/T20d test betiği hatasıyla KALDI (düzeltildi, 2b yeniden koşum onay bekliyor); B4'ten sonra ayrı migration (Karar 42) |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -1913,6 +1914,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   - TKY'de görevi olmayan `kosk_trafo` %5 ağırlıkta; proje en fazla %95 olabilir.
   - Kaynak: yeni projeye `trg_seed_default_category_weights` 10 kategorilik sabit varsayılan yazıyor. `enh`, `mobilizasyon`, `mekanik`, `evrak_sureci`, `satin_alma` bu listede yok.
   - Düzeltme kararı kullanıcıda; önerilmedi.
+  - Bugün yalnızca test projeleri (TIZ, TKY) etkileniyor.
+  - ADN1/ADN2'de ilerleme başladığında ADN2'de 36 görev yüzdeye yansımayacak (ADN1'de 11).
+  - Adım 6 ön koşullarına iki madde eklendi (`docs/proje-kontrol/faz1-adim3-tasarim.md` §9):
+    - Diyarbakır importundan önce ağırlık tablosu tüm kategorileri kapsayacak; fiziksel olmayanlar açıkça %0, toplam %100.
+    - Excel import ve sihirbazda ağırlıksız kategoriye uyarı veya red; hangisi olacağı Adım 5 tasarımında önerilecek.
+  - Hangi kategoriye ne ağırlık verileceği iş kararı; kullanıcı bildirecek.
 
 - ~~`xlsx` (SheetJS) bağımlılığı — HIGH severity güvenlik açığı~~ — **çözüldü
   (10.09.2026, 2. tur).** Önceki "kabul et/izle" kararı, gerçek saldırı
@@ -2154,6 +2161,16 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**12.10.2026 (10. tur) — Faz 1 Adım 3: Karar 44 (A8); 2a geçti, 2b'de üç test betiği hatası, durduruldu.**
+- Canlıda yalnızca ROLLBACK:
+  - 2a 11/11 geçti.
+  - 2b: 13 test geçti; şantiye şefinin iptal göreve ilerleme girişini ve yeniden açmasını test eden T20c de geçti.
+  - 2b'de T15, T18 ve T20d test betiği hatasıyla kaldı: okuma ile çağrı aynı ifadedeydi ve ondalık biçim yanlış yazılmıştı. Betik düzeltildi, yeniden koşulmadı.
+  - Oturum 5 parmak izi Oturum 0 ile birebir aynı.
+- Kategori ağırlığı kaydına eklendi: bugün yalnızca TIZ/TKY etkileniyor; ADN2'de 36, ADN1'de 11 görev etkilenecek. Adım 6 ön koşulları `faz1-adim3-tasarim.md` §9'da.
+- Exposed schemas listesi bu mesajda da gelmedi (yer tutucu kaldı).
+- Adım 3 kapanmadı; durum tablosu güncellenmedi.
 
 **12.10.2026 (9. tur) — Faz 1 Adım 3: A8 eklendi; ROLLBACK testleri 1c ve 1d'de geçti, 2a'da test betiği hatasıyla durdu.**
 

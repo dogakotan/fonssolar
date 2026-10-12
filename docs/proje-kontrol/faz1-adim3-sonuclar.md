@@ -5,7 +5,15 @@ Tarih: 09.10.2026. Tasarım: `faz1-adim3-tasarim.md`. Yöntem Adım 2 ile aynıd
 - `lock_timeout = 3s`, `statement_timeout = 60s`;
 - her oturum tek bir DO bloğu; blok her zaman hatayla biter, `COMMIT` yok.
 
-**Durum (12.10.2026): Oturum 2a'da beklenmeyen bir hata çıktı, durduruldu.**
+**Durum (12.10.2026, ikinci koşu): 2a 11/11 geçti; 2b'de 3 test KALDI, üçü de test betiği hatası. Durduruldu.**
+- T15: B4 çağrıları beklenen sonuçları döndürdü (`forbidden, validation, validation, OK, OK, OK`), ama okuma aynı SQL ifadesindeydi ve çağrılardan önceki anlık görüntüyü gördü. Aynı fonksiyonun davranışı 1c R16'da ayrı ifadelerle geçmişti.
+- T18 ve T20d: `progress_pct` 2 ondalıklı (`%5.00`); beklenen metin `%5.0` yazılmıştı.
+- Betik düzeltildi. Kural gereği yeniden koşulmadı; 2b onay bekliyor.
+- İstenen T20c geçti: şantiye şefinin iptal göreve rapor ve doğrudan ilerleme girişi reddedildi, yeniden açması da reddedildi. Görev iptal kaldı, metrik farkı yok.
+- Oturum 5 parmak izi Oturum 0 ile birebir aynı.
+- Adım 3 kapanmadı.
+
+**Önceki durum (12.10.2026, ilk koşu): Oturum 2a'da beklenmeyen bir hata çıktı, durduruldu.**
 - 1c (tekrar) ve 1d geçti; kontrol 3 dahil.
 - 2a, T11 satırında test betiğinin kendi hatasıyla düştü. Oturumun dış bloğundaki `v` değişkeni, sorgudaki `v` takma adıyla çakıştı: `column reference "v" is ambiguous`.
 - Hata sorgu çalışırken çıktığı için hiçbir test sonucu dönmedi; T9-T10b de görülmedi.
@@ -57,6 +65,17 @@ atılarak üretilir.
 | 1d | B4 doğrulama (Adım 3'ten sonra) | genişletilmiş B4'e yönlendirme | aynen | GEÇTİ |
 | 2a | T9-T14b | — | **Test betiği hatası** (T11, `v` takma adı); sonuç dönmedi | **DURDU** |
 | 5 | Parmak izi | 12.10 Oturum 0 ile aynı | birebir aynı; Adım 3 nesnesi 0, test projesi 0 | GEÇTİ |
+
+### 12.10.2026 ikinci koşu (2a/2b)
+
+| Oturum | Test | Sonuç |
+|---|---|---|
+| 0 | Bağlantı / parmak izi | 0 / 0; 12.10 tabanıyla aynı · GEÇTİ |
+| 2a | T9, T9b (9990→10000), T9c (40 karakter), T10, T10 gerçek atama + bilinmeyen disiplin, T10b, T11, T12, T13, T14 (Ç16: admin `D,D,C,C,D,C`, PM `D`, şş `D,K,K,OK`, service_role/postgres `D,D`), T14b | **11/11 GEÇTİ** |
+| 2b | 2b hazırlık, T16, T17, T18b, T19, T20, **T20c**, T20b (bilgi) | GEÇTİ |
+| 2b | T15 | **KALDI (betik)**: dönüş kodları beklenen gibi; okuma aynı ifadede eski anlık görüntüyü gördü (`TIZ-GEN-A1-0020/general/A1`, audit=0) |
+| 2b | T18, T20d | **KALDI (betik)**: yalnızca `%5.00` ↔ `%5.0`; T20d'nin geri kalanı beklendiği gibi (eski rapor yeniden kaydı OK, artış reddedildi, `1×5 iptal`, PM yeniden açtı) |
+| 5 | Parmak izi | Oturum 0 ile birebir · GEÇTİ |
 
 Kontrol 3 ayrıntısı (`f1_adim3_etki.sql`):
 

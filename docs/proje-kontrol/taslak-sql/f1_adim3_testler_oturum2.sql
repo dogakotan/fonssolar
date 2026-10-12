@@ -301,14 +301,16 @@
 
   -- [2b]
     -- ── T15 · genişletilmiş B4 ──
-    act := concat_ws(',',
+    -- Çağrılar ve okuma ayrı ifadelerde: aynı ifadedeki alt sorgu, ifade başındaki anlık görüntüyü görür
+    -- (Oturum 2b, 12.10.2026: okuma çağrılardan önceki değeri gösterdi).
+    a := concat_ws(',',
       pg_temp.tryas(u_pm, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-GEN-A1-0025', 'neden')),
       pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-GEN-A1-0025', '')),
       pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-MEC-A1-0025', 'yanlış')),
       pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L)', a2, 'TIZ-GEN-A1-0025', 'T15 numara')),
       pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L, %L)', a2, 'TIZ-MEC-A1-0700', 'T15 disiplin', 'mechanical')),
-      pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L, null, %L)', a2, 'TIZ-MEC-B2-0700', 'T15 alan', aB2)))
-      || ' | ' || (select activity_id || '/' || discipline || '/' || (select area_code from public.project_areas where id = t.area_id)
+      pg_temp.tryas(u_admin, format('select public.admin_correct_task_activity_id(%L, %L, %L, null, %L)', a2, 'TIZ-MEC-B2-0700', 'T15 alan', aB2)));
+    act := a || ' | ' || (select activity_id || '/' || discipline || '/' || (select area_code from public.project_areas where id = t.area_id)
                    from public.project_tasks t where t.id = a2)
       || ' | audit=' || (select count(*) from public.register_audit where record_id = a2 and reason in ('T15 numara', 'T15 disiplin', 'T15 alan'));
     exp := 'ERR:forbidden,ERR:validation,ERR:validation,OK(1),OK(1),OK(1) | TIZ-MEC-B2-0700/mechanical/B2 | audit=3';
@@ -341,7 +343,7 @@
       pg_temp.tryas(u_pm, format('update public.project_tasks set task_name = %L, notes = %L, planned_end = planned_end + 1 where id = %L', 'T18-Q excel', 'x', qt)));
     act := a || ' | ' || pg_temp.aid(ms) || ' ' || (select status::text from public.project_tasks where id = ms)
            || ', ' || pg_temp.aid(qt) || ' %' || (select progress_pct::text from public.project_tasks where id = qt);
-    exp := 'OK(1),OK(1),OK(1) | TIZ-GEN-A1-0060 devam_ediyor, TIZ-GEN-A1-0070 %5.0';
+    exp := 'OK(1),OK(1),OK(1) | TIZ-GEN-A1-0060 devam_ediyor, TIZ-GEN-A1-0070 %5.00';  -- progress_pct 2 ondalıklı
     out := out || pg_temp.res('T18 kilometre taşı durumu / ilerleme girişi / Excel tarzı güncelleme', exp, act, act = exp);
     -- T18b · kodlu proje ID'li göreviyle silinir (CASCADE)
     a := pg_temp.tryas(u_admin, $q$select public.create_project_with_code('{"id":"ztst-aid-pd","name":"AID silme"}'::jsonb, 'ZAPD')$q$);
@@ -434,7 +436,7 @@
     act := 'ilerle+iptal: ' || a || ' | iptal sonrası metrik: ' || pg_temp.diff(m0, mm) || ' | aynı/arttır/boş: ' || b
            || ' | ' || c || ' | yeniden aç (PM): ' || e;
     exp := 'ilerle+iptal: OK(1),OK(1) | iptal sonrası metrik: fark yok | aynı/arttır/boş: OK(1),ERR:İptal edilmiş göreve ilerleme girilemez,OK(1)'
-           || ' | 1×5 iptal %5.0 | yeniden aç (PM): OK(1)';
+           || ' | 1×5 iptal %5.00 | yeniden aç (PM): OK(1)';
     out := out || pg_temp.res('T20d ilerlemeli görev iptal: eski rapor yeniden kaydı, miktar artışı, PM yeniden açar', exp, act, act = exp);
     -- T20b · ID'li görev silinmez, iptal edilir; iptal yalnızca o görevi hesaptan çıkarır
     a := pg_temp.k(pg_temp.tryas(u_pm, format('delete from public.project_tasks where id = %L', a1)));

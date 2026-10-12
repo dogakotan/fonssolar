@@ -84,7 +84,7 @@ Adım 3'tedir (Karar 42) ve şu kuralları uygular:
 5. **`set_config`'in doğrudan RPC olarak çağrılamaması:** fonksiyon `pg_catalog`'da. PostgREST yalnızca "exposed schemas" listesindeki şemaları RPC olarak açar. İstek başlıkları yalnızca `request.*` ayarlarını doldurur.
    - **Doğrulanamadı:** exposed schemas listesi Supabase panelinde; SQL'den okunamıyor. Varsayılan `public, graphql_public`.
    - **Kullanıcı panelden kontrol edip bildirecek.** Liste `pg_catalog` içermiyorsa madde 5 kapanır. İçeriyorsa bile madde 1 ve 2 tek başına yeterlidir, çünkü bayrak `current_user` kontrolü olmadan işe yaramaz.
-   - 12.10.2026: kullanıcının mesajında liste alanı doldurulmamış (yer tutucu kaldı). Madde 5 hâlâ **doğrulanamadı**.
+   - 12.10.2026: kullanıcının iki mesajında da liste alanı doldurulmamış (yer tutucu kaldı: "[PANELDE GÖRDÜĞÜN LİSTE]"). Madde 5 hâlâ **doğrulanamadı**.
 6. **Bilinen istisna:** trigger'ı kapatabilen veritabanı yöneticisi (migration). Kapsam dışı.
 
 **Ekranlar ve Excel import Activity ID gönderiyor mu?**
@@ -191,4 +191,20 @@ Adım 6 deploy'unun ön koşulu.
 - İş Planı KPI'sı ve günlük rapor ilerleme listesi iptal görevleri hariç tutsun. Eski raporu düzenlerken iptal görevin
   satırı salt okunur gösterilsin (A8: miktar değişirse kayıt reddedilir).
 - "Yeniden aç" eylemi yalnızca admin ve proje yöneticisine görünsün (A8b).
+- Ağırlık tablosunda olmayan kategoriyle görev yazılırken (Excel import ve sihirbaz) uyarı mı red mi olacağı için
+  öneri (§9, madde 3).
+
+## 9. Adım 6 ön koşulları
+
+Adım 6 yalnızca kullanıcı "uygula" dediğinde başlar. Aşağıdakiler tamamlanmadan başlamaz:
+
+1. **Yedek.** `npm run db:backup` ve `npm run db:backup:data` (`.env.local` gerekli, `scripts/db-backup/README.md`).
+2. **Sihirbaz görev kaydı (Ç-B, Karar 40).** Sil-yeniden-yaz yerine görev koduna göre güncelleme (Adım 5).
+3. **Kategori ağırlıkları (12.10.2026'da eklendi, "Bilinen açık noktalar" kaydı).**
+   - a) Diyarbakır importundan önce projenin ağırlık tablosu, projede kullanılan tüm kategorileri kapsar.
+     - Fiziksel ilerlemesi olmayan kategoriler (ör. `evrak_sureci`, `satin_alma`) tabloda açıkça %0 olarak yer alır.
+     - Toplam %100.
+     - Hangi kategoriye ne ağırlık verileceği iş kararıdır; kullanıcı bildirir.
+   - b) Excel import ve sihirbaz, ağırlık tablosunda olmayan bir kategoriyle görev yazarken uyarı verir veya reddeder. Hangisinin olacağı Adım 5 tasarımında önerilir.
+4. **Ç16 madde 5 (exposed schemas).** Doğrulanmadan da Ç16 korunur: madde 1 ve 2 tek başına yeterli. Yine de güvenlik notu tamamlanır.
 - Disiplin açılır listesi `task_disciplines`'ten okunsun.
