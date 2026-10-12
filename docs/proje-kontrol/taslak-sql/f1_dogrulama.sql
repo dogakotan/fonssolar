@@ -347,7 +347,196 @@ begin
     checks := checks + 1;
   end if;
 
-  raise exception 'DOGRULAMA SONUCU: OK | F1 | % kontrol grubu | % | %', checks,
+  -- [ADIM4-BASLA]
+  -- 6 · Adım 4 (f1_wbs_alan_import.sql): R17-R26. Geçici proje zzf1-w4 tek alt işlemde kurulur, 'GERI_AL:' ile geri alınır.
+  if to_regprocedure('public.import_wbs_areas(text,jsonb,boolean)') is not null then
+    declare
+      u4a uuid; u4s uuid; pl4 jsonb; j4 jsonb; s4 text; x4 text; t4a uuid; t4b uuid;
+    begin
+      -- R17 · katalog
+      if not exists (select 1 from pg_proc where oid = 'public.import_wbs_areas(text,jsonb,boolean)'::regprocedure
+                     and prosecdef and coalesce(proconfig::text, '') like '%search_path=public%') then
+        raise exception 'R17 import_wbs_areas DEFINER/search_path değil';
+      end if;
+      if has_function_privilege('anon', 'public.import_wbs_areas(text,jsonb,boolean)', 'EXECUTE')
+         or not has_function_privilege('authenticated', 'public.import_wbs_areas(text,jsonb,boolean)', 'EXECUTE')
+         or has_function_privilege('authenticated', 'public.fn_aid_area_wbs_violations(uuid,uuid)', 'EXECUTE')
+         or has_function_privilege('authenticated', 'public.fn_wbs_subtree_activity_ids(uuid)', 'EXECUTE') then
+        raise exception 'R17 import/yardımcı fonksiyon yetkileri beklenen değil';
+      end if;
+      select count(*) into n from pg_trigger where not tgisinternal and tgname in ('trg_project_wbs_audit', 'trg_project_areas_audit',
+        'trg_area_wbs_audit', 'trg_area_wbs_aid_guard', 'trg_project_wbs_level_cascade', 'trg_project_wbs_delete_guard',
+        'trg_project_areas_delete_guard');
+      if n <> 7 then raise exception 'R17 Adım 4 trigger''ları eksik: %/7', n; end if;
+      if not exists (select 1 from pg_constraint where conname = 'project_wbs_discipline_fk') then
+        raise exception 'R17 project_wbs_discipline_fk yok';
+      end if;
+      if exists (select 1 from pg_proc where proname in ('fn_project_wbs_guard', 'fn_project_areas_guard') and not prosecdef) then
+        raise exception 'R17 WBS/alan guard''ları DEFINER değil';
+      end if;
+
+      select id into u4a from public.profiles where role_key = 'admin' order by id limit 1;
+      select id into u4s from public.profiles where role_key = 'santiye_sefi' order by id limit 1;
+      create or replace function pg_temp.as_user(p_uid uuid) returns void language plpgsql as $f$
+      begin
+        reset role;
+        perform set_config('request.jwt.claims',
+          case when p_uid is null then '' else json_build_object('sub', p_uid, 'role', 'authenticated')::text end, true);
+        if p_uid is not null then set local role authenticated; end if;
+      end $f$;
+      create or replace function pg_temp.f4_try(p_uid uuid, p_sql text) returns text language plpgsql as $f$
+      declare res text; k bigint;
+      begin
+        perform pg_temp.as_user(p_uid);
+        begin execute p_sql; get diagnostics k = row_count; res := 'OK(' || k || ')';
+        exception when others then res := sqlerrm; end;
+        perform pg_temp.as_user(null);
+        return case
+          when res like 'Kullanımdaki%' then 'KOD'
+          when res like 'Activity ID''li görevin%pasifleştirilemez%' then 'PAS'
+          when res like 'Activity ID''li görevin%taşınamaz%' then 'TAS'
+          when res like 'Activity ID''li görevin%silinemez%' then 'SIL'
+          when res like 'Alan-WBS bağı eklenemez%' then 'EKL'
+          when res like 'Alan-WBS bağı kaldırılamaz%' then 'CIK'
+          when res like 'Aktif alt%' then 'ALT'
+          else res end;
+      end $f$;
+      create or replace function pg_temp.f4_imp(p_uid uuid, p_proj text, p_pl jsonb, p_dry boolean) returns jsonb language plpgsql as $f$
+      declare res jsonb; m text; dt text;
+      begin
+        perform pg_temp.as_user(p_uid);
+        begin res := public.import_wbs_areas(p_proj, p_pl, p_dry);
+        exception when others then
+          get stacked diagnostics m = message_text, dt = pg_exception_detail;
+          res := jsonb_build_object('err', m, 'detail', case when dt ~ '^\s*\{' then dt::jsonb end);
+        end;
+        perform pg_temp.as_user(null);
+        return res;
+      end $f$;
+      create or replace function pg_temp.f4_sm(rp jsonb) returns text language sql as $f$
+        select case when rp ? 'err' then 'ERR:' || (rp ->> 'err') else
+          'w=' || (rp #>> '{summary,wbs,insert}') || '/' || (rp #>> '{summary,wbs,update}') || '/' || (rp #>> '{summary,wbs,unchanged}')
+          || '/' || (rp #>> '{summary,wbs,error}') || ' a=' || (rp #>> '{summary,areas,insert}') || '/' || (rp #>> '{summary,areas,update}')
+          || '/' || (rp #>> '{summary,areas,unchanged}') || '/' || (rp #>> '{summary,areas,error}') || ' l=' || (rp #>> '{summary,links,insert}')
+          || '/' || (rp #>> '{summary,links,unchanged}') || '/' || (rp #>> '{summary,links,error}')
+          || ' err=' || (rp #>> '{summary,error_count}') || ' aid=' || (rp #>> '{summary,aid_impact_count}') end $f$;
+      create or replace function pg_temp.f4_list(rp jsonb, p_key text) returns text language sql as $f$
+        select coalesce(string_agg((x.v ->> 'sheet') || ':' || coalesce(x.v ->> 'row', '-') || ':' || coalesce(x.v ->> 'code', x.v ->> 'activity_id'),
+                                   ',' order by x.o), '-')
+          from jsonb_array_elements(coalesce(rp -> p_key, rp #> array['detail', p_key], '[]')) with ordinality as x(v, o) $f$;
+
+      begin
+        insert into public.projects (id, name) values ('zzf1-w4', 'F1 doğrulama Adım 4');
+        insert into public.project_register_settings (project_id, prefix) values ('zzf1-w4', 'ZZW');
+        pl4 := '{"file_name":"r.xlsx","wbs":[{"row":4,"code":"W1","name":"W1"},{"row":5,"code":"W11","name":"W11","parent_code":"W1"},
+          {"row":6,"code":"W2","name":"W2"},{"row":7,"code":"W3","name":"W3"},{"row":8,"code":"W4","name":"W4"},
+          {"row":9,"code":"W41","name":"W41","parent_code":"W4"},{"row":10,"code":"W411","name":"W411","parent_code":"W41"}],
+          "areas":[{"row":4,"code":"A1","name":"A1"},{"row":5,"code":"A11","name":"A11","parent_code":"A1"},{"row":6,"code":"A2","name":"A2"}],
+          "links":[{"row":4,"area_code":"A1","wbs_code":"W11"}]}';
+        -- R18 önizleme yazmaz
+        j4 := pg_temp.f4_imp(u4a, 'zzf1-w4', pl4, true);
+        s4 := 'R18=' || pg_temp.f4_sm(j4) || '/' || (select count(*) from public.project_wbs where project_wbs.project_id = 'zzf1-w4');
+        -- R19 gerçek import + tekrar = değişmeyecek
+        j4 := pg_temp.f4_imp(u4a, 'zzf1-w4', pl4, false);
+        x4 := pg_temp.f4_sm(j4);
+        j4 := pg_temp.f4_imp(u4a, 'zzf1-w4', pl4, false);
+        s4 := s4 || ';R19=' || x4 || '|' || pg_temp.f4_sm(j4) || '|'
+          || (select count(*) from public.project_wbs where project_wbs.project_id = 'zzf1-w4') || '/'
+          || (select count(*) from public.project_areas where project_areas.project_id = 'zzf1-w4') || '/'
+          || (select count(*) from public.area_wbs where area_wbs.project_id = 'zzf1-w4') || '|'
+          || (select count(*) from public.register_audit where register_audit.project_id = 'zzf1-w4');
+        -- İki ID'li görev: (A1, W11) ve (A2, W2)
+        insert into public.project_tasks (project_id, task_code, task_name, category, planned_start, planned_end, discipline, area_id, wbs_id)
+        select 'zzf1-w4', 'R4-1', 'R4 görev 1', 'panel_montaji', current_date, current_date + 20, 'general', pa.id, pw.id
+          from public.project_areas pa, public.project_wbs pw
+         where pa.project_id = 'zzf1-w4' and pa.area_code = 'A1' and pw.project_id = 'zzf1-w4' and pw.wbs_code = 'W11'
+        returning id into t4a;
+        insert into public.project_tasks (project_id, task_code, task_name, category, planned_start, planned_end, discipline, area_id, wbs_id)
+        select 'zzf1-w4', 'R4-2', 'R4 görev 2', 'panel_montaji', current_date, current_date + 20, 'general', pa.id, pw.id
+          from public.project_areas pa, public.project_wbs pw
+         where pa.project_id = 'zzf1-w4' and pa.area_code = 'A2' and pw.project_id = 'zzf1-w4' and pw.wbs_code = 'W2'
+        returning id into t4b;
+        perform pg_temp.as_user(u4a);
+        j4 := public.assign_activity_ids(array[t4a, t4b], false);
+        perform pg_temp.as_user(null);
+        s4 := s4 || ';ID=' || (select string_agg(activity_id, ',' order by activity_id) from public.project_tasks where project_tasks.id in (t4a, t4b));
+        -- R20 dosyada olmayan kayıt silinmez
+        j4 := pg_temp.f4_imp(u4a, 'zzf1-w4', jsonb_set(pl4, '{wbs}', (pl4 -> 'wbs') - 3), false);
+        s4 := s4 || ';R20=' || pg_temp.f4_sm(j4) || '|' || (j4 #>> '{not_in_file,wbs}') || '|'
+          || (select count(*) from public.project_wbs where project_wbs.project_id = 'zzf1-w4' and wbs_code = 'W3');
+        -- R21 ID'li görevin alanını pasifleştirme: import'ta aid_impact, doğrudan yazmada trigger
+        j4 := pg_temp.f4_imp(u4a, 'zzf1-w4', jsonb_set(jsonb_set(pl4, '{areas,0,active}', 'false'), '{areas,1,active}', 'false'), true);
+        x4 := pg_temp.f4_try(u4a, 'update public.project_areas set is_active = false where project_id = ''zzf1-w4'' and area_code = ''A1''');
+        s4 := s4 || ';R21=' || pg_temp.f4_sm(j4) || '|' || pg_temp.f4_list(j4, 'aid_impact') || '|' || x4;
+        -- R22 şantiye şefi import edemez
+        j4 := pg_temp.f4_imp(u4s, 'zzf1-w4', pl4, true);
+        s4 := s4 || ';R22=' || pg_temp.f4_sm(j4);
+        -- R23 döngü ve olmayan üst kod, sayfa + satırla (projesiz mod)
+        j4 := pg_temp.f4_imp(u4a, null, '{"wbs":[{"row":4,"code":"X1","name":"x","parent_code":"X2"},{"row":5,"code":"X2","name":"x","parent_code":"X1"},
+          {"row":6,"code":"X3","name":"x","parent_code":"X9"}]}', true);
+        s4 := s4 || ';R23=' || pg_temp.f4_list(j4, 'errors');
+        -- R24 doğrudan yazma: ID'li görevi etkileyen değişiklikler reddedilir (admin)
+        x4 := pg_temp.f4_try(u4a, 'update public.project_areas set area_code = ''A1X'' where project_id = ''zzf1-w4'' and area_code = ''A1''');
+        s4 := s4 || ';R24=' || x4;
+        x4 := pg_temp.f4_try(u4a, 'update public.project_wbs set parent_id = (select w.id from public.project_wbs w where w.project_id = ''zzf1-w4'' and w.wbs_code = ''W2'') where project_id = ''zzf1-w4'' and wbs_code = ''W11''');
+        s4 := s4 || '|' || x4;
+        x4 := pg_temp.f4_try(u4a, 'insert into public.area_wbs (project_id, area_id, wbs_id) select ''zzf1-w4'', a.id, w.id from public.project_areas a, public.project_wbs w where a.project_id = ''zzf1-w4'' and a.area_code = ''A1'' and w.project_id = ''zzf1-w4'' and w.wbs_code = ''W2''');
+        s4 := s4 || '|' || x4;
+        x4 := pg_temp.f4_try(u4a, 'delete from public.area_wbs where project_id = ''zzf1-w4''');
+        s4 := s4 || '|' || x4;
+        x4 := pg_temp.f4_try(u4a, 'delete from public.project_areas where project_id = ''zzf1-w4'' and area_code = ''A2''');
+        s4 := s4 || '|' || x4;
+        x4 := pg_temp.f4_try(u4a, 'delete from public.project_wbs where project_id = ''zzf1-w4'' and wbs_code = ''W11''');
+        s4 := s4 || '|' || x4;
+        -- R25 aynı işlemler ID'siz kayıtlarda geçer (admin)
+        x4 := pg_temp.f4_try(u4a, 'update public.project_areas set area_code = ''A12'' where project_id = ''zzf1-w4'' and area_code = ''A11''');
+        s4 := s4 || ';R25=' || x4;
+        x4 := pg_temp.f4_try(u4a, 'update public.project_wbs set wbs_code = ''W30'' where project_id = ''zzf1-w4'' and wbs_code = ''W3''');
+        s4 := s4 || '|' || x4;
+        x4 := pg_temp.f4_try(u4a, 'update public.project_wbs set is_active = false where project_id = ''zzf1-w4'' and wbs_code = ''W30''');
+        s4 := s4 || '|' || x4;
+        x4 := pg_temp.f4_try(u4a, 'insert into public.area_wbs (project_id, area_id, wbs_id) select ''zzf1-w4'', a.id, w.id from public.project_areas a, public.project_wbs w where a.project_id = ''zzf1-w4'' and a.area_code = ''A2'' and w.project_id = ''zzf1-w4'' and w.wbs_code = ''W30''');
+        s4 := s4 || '|' || x4;
+        x4 := pg_temp.f4_try(u4a, 'delete from public.area_wbs where project_id = ''zzf1-w4'' and wbs_id = (select w.id from public.project_wbs w where w.project_id = ''zzf1-w4'' and w.wbs_code = ''W30'')');
+        s4 := s4 || '|' || x4;
+        x4 := pg_temp.f4_try(u4a, 'update public.project_wbs set parent_id = (select w.id from public.project_wbs w where w.project_id = ''zzf1-w4'' and w.wbs_code = ''W1'') where project_id = ''zzf1-w4'' and wbs_code = ''W30''');
+        s4 := s4 || '|' || x4;
+        x4 := pg_temp.f4_try(u4a, 'delete from public.project_areas where project_id = ''zzf1-w4'' and area_code = ''A12''');
+        s4 := s4 || '|' || x4;
+        -- R26 Ç-7: aktif alt kaydı olan üst pasifleştirilemez; taşınan WBS'in altlarının level'ı; proje silme zinciri
+        x4 := pg_temp.f4_try(u4a, 'update public.project_wbs set is_active = false where project_id = ''zzf1-w4'' and wbs_code = ''W4''');
+        s4 := s4 || ';R26=' || x4 || '|' || (select string_agg(level::text, '' order by wbs_code) from public.project_wbs
+                                               where project_wbs.project_id = 'zzf1-w4' and wbs_code in ('W41', 'W411'));
+        x4 := pg_temp.f4_try(u4a, 'update public.project_wbs set parent_id = null where project_id = ''zzf1-w4'' and wbs_code = ''W41''');
+        s4 := s4 || '|' || x4 || '|' || (select string_agg(level::text, '' order by wbs_code) from public.project_wbs
+                                           where project_wbs.project_id = 'zzf1-w4' and wbs_code in ('W41', 'W411'));
+        delete from public.projects where id = 'zzf1-w4';
+        s4 := s4 || '|del=' || (select count(*) from public.projects where id = 'zzf1-w4')
+          || '/' || (select count(*) from public.project_wbs where project_wbs.project_id = 'zzf1-w4');
+        raise exception 'GERI_AL:%', s4;
+      exception when others then s4 := sqlerrm; end;
+      perform pg_temp.as_user(null);
+      if s4 <> 'GERI_AL:R18=w=7/0/0/0 a=3/0/0/0 l=1/0/0 err=0 aid=0/0'
+              || ';R19=w=7/0/0/0 a=3/0/0/0 l=1/0/0 err=0 aid=0|w=0/0/7/0 a=0/0/3/0 l=0/1/0 err=0 aid=0|7/3/1|11'
+              || ';ID=ZZW-GEN-A1-0010,ZZW-GEN-A2-0010'
+              || ';R20=w=0/0/6/0 a=0/0/3/0 l=0/1/0 err=0 aid=0|["W3"]|1'
+              || ';R21=w=0/0/7/0 a=0/2/1/0 l=0/1/0 err=0 aid=1|Alanlar:4:ZZW-GEN-A1-0010|PAS'
+              || ';R22=ERR:forbidden'
+              || ';R23=WBS:4:cycle,WBS:5:cycle,WBS:6:parent_missing'
+              || ';R24=KOD|TAS|EKL|CIK|SIL|SIL'
+              || ';R25=OK(1)|OK(1)|OK(1)|OK(1)|OK(1)|OK(1)|OK(1)'
+              || ';R26=ALT|23|OK(1)|12|del=0/0' then
+        raise exception 'R18-R26 Adım 4: %', s4;
+      end if;
+      if exists (select 1 from public.projects where id like 'zzf1-w%') then raise exception 'Adım 4 test projesi kaldı'; end if;
+      checks := checks + 1;
+    end;
+  end if;
+  -- [ADIM4-BITIR]
+
+  raise exception 'DOGRULAMA SONUCU: OK | F1 | % kontrol grubu | % | % | %', checks,
     case when a4 then 'A4 var, R1-R5 regresyon geçti' else 'A4 yok (ayrı migration, Karar 34) — R1-R5 atlandı' end,
-    case when aid then 'AID var, R6-R16 geçti' else 'AID yok (Adım 3 ayrı migration, Karar 42) — R6-R16 atlandı' end;
+    case when aid then 'AID var, R6-R16 geçti' else 'AID yok (Adım 3 ayrı migration, Karar 42) — R6-R16 atlandı' end,
+    case when to_regprocedure('public.import_wbs_areas(text,jsonb,boolean)') is not null then 'Adım 4 var, R17-R26 geçti'
+         else 'Adım 4 yok — R17-R26 atlandı' end;
 end $$;

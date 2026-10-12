@@ -59,7 +59,8 @@ arası ilişkileri içeren bir bilgi grafiği var.
       - takma adlar değişken adlarından ayrışacak şekilde seçilir.
     - **Beklenen metin kolon tipinden türetilir:**
       - numeric ölçeği: `numeric(5,2)` → `5.00`, `5.0` değil;
-      - boolean metne `true`/`false` değil `t`/`f` olarak, `::text` ile çevrilir;
+      - boolean: `x::text` → `true`/`false`; `concat_ws`/`format('%s')`/kayıt çıktısındaki ham boolean → `t`/`f`
+        (12.10.2026'da canlıda SELECT ile doğrulandı; beklenende hangi biçimin üretildiği yazılır);
       - tarih ve zaman damgası biçimi;
       - enum metni.
       - Gerekirse önce `information_schema.columns` okunur.
@@ -1735,7 +1736,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 23 | AI (Ç3) | RFI pilotu AI'sız. AI akışları (`register_drafts`, `process-document`, agent'lar) Faz 7 sonrası ayrı faz | **ONAYLANDI (09.10.2026)** |
 | 24 | MVP takvimi (Ç4) | 1 Ocak 2027 MVP = Faz 1-4, hedef 15 Aralık 2026 | **ONAYLANDI (09.10.2026)** |
 | 25 | Tip kodları (Ç12) | `ncr`, `inspection` B1'e şimdi eklenir (yetkisiz seed) | **ONAYLANDI ve taslağa işlendi (09.10.2026)** |
-| 26 | Ertelenen çakışmalar | Ç6 Faz 3 başında; Ç8, Ç10, Ç11 Faz 6 başında çözülür | **ONAYLANDI (09.10.2026)** |
+| 26 | Ertelenen çakışmalar | Ç6 Faz 3 başında (**Karar 45 ile kapandı**); Ç8, Ç10, Ç11 Faz 6 başında çözülür | **ONAYLANDI (09.10.2026)** |
 | 27 | Pilot projesi (Ç13) | Mekanizma pilotu TIZ'de. Diyarbakır, Faz 1 Adım 6'da güncellenmiş `import-project-excel` ile oluşturulur, gerçek pilot orada. ADN1/ADN2'ye Faz 1'de dokunulmaz. Diyarbakır kodu (DYB / DYB1 / DYB2) Adım 6'ya kadar bekliyor | **ONAYLANDI (09.10.2026)** |
 | 28 | Proje kodu biçimi (Ç14) | `^[A-Z][A-Z0-9]{1,4}$`; mevcut 4 kod (ADN1, ADN2, TIZ, TKY) geçerli | **ONAYLANDI (09.10.2026)**, taslak `f1_proje_kodu_ve_olusturma.sql` |
 | 29 | Proje oluşturma (Ç15) | Tek DB fonksiyonu (`create_project_with_code`): proje + kod aynı işlemde; kodsuz projeyi reddeden ertelenmiş kural. Sihirbaz ve `import-project-excel` bu fonksiyonu kullanır; deploy Adım 6'da | **ONAYLANDI (09.10.2026)**, taslak F1 + `f1-import-project-excel-diff.md` |
@@ -1754,6 +1755,12 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 42 | Adım 3 migration sırası | Ayrı migration, B4'ten sonra; `fn_project_tasks_identity_guard`'ın son hali Adım 3'te (B4'ün kuralını içerir) | **ONAYLANDI (09.10.2026)** |
 | 43 | Önizleme yetkisi | Önizleme de yalnızca admin ve proje_yoneticisi | **ONAYLANDI (09.10.2026)** |
 | 44 | İptal görev koruması (A8) | İptal göreve ilerleme her yoldan reddedilir (`add_task_progress`, günlük rapor, `progress_daily`'ye doğrudan yazma): "İptal edilmiş göreve ilerleme girilemez". İptal görevi yalnızca admin ve proje_yoneticisi yeniden açar. Eski raporun aynen yeniden kaydı korunur; iptal görevin eski ilerlemesinin düşürülmesi yeniden açma ile yapılır | **ONAYLANDI (12.10.2026)**, taslak `f1_aid_activity_id.sql` A8 |
+| 45 | MVP senaryosu (b) | Technical Submittal ve Material Approval ekranları Ocak 2027'ye. Document ekranı external link ile başlar; Storage yüklemesi B5 onayından sonra. Ç6 kapandı: Faz 3 kapsamı Document, Drawing, RFI, Action, Risk, Decision. MVP canlı 11 Aralık 2026 (durum tablosu) | **ONAYLANDI (12.10.2026)** |
+| 46 | WBS/alan şablonu | WBS'te sıra kolonu yok, liste koda göre; şablonda "kodları sabit haneli yazın (DYB-020, DYB-100)" notu. Örnek satırlar kurgu (TIZ tarzı). Not kolonları şablonda. Kolonlar canlı tablolardan | **ONAYLANDI (12.10.2026)**, `docs/proje-kontrol/sablon/` |
+| 47 | WBS disiplini | `project_wbs_discipline_fk` → `task_disciplines` | **ONAYLANDI (12.10.2026)**, taslak `f1_wbs_alan_import.sql` A1 |
+| 48 | Activity ID bütünlüğü DB'de | Trigger düzeyinde: görevi olan alan/WBS kodu değişmez (canlı kural); ID'li görevin alanı, WBS'i veya üst WBS'i pasifleştirilemez / taşınamaz; Karar 38'i bozan `area_wbs` INSERT'i ve ID'li görevin alanını kümeden çıkaran DELETE reddedilir; ID'li görevin alanı/WBS'i silinemez. Import yalnızca rapor (`aid_impact`). B4 muafiyeti önerilmedi (B4 `project_tasks`'ı yazar, bu trigger'lar alan/WBS/bağ tablolarında) | **ONAYLANDI (12.10.2026)**, taslak A2-A5 |
+| 49 | Ç-7 guard düzeltmesi | Aktif alt kaydı olan alan/WBS pasifleştirilemez; taşınan WBS'in alt WBS'lerinin `level`'ı güncellenir | **ONAYLANDI (12.10.2026)**, taslak A3 |
+| 50 | WBS/alan importu | Excel ön yüzde (`src/utils/wbsAreaExcel.js`) okunur → `import_wbs_areas(p_project_id, p_payload, p_dry_run default true)` (DEFINER). Yalnızca admin/PM; hepsi ya da hiçbiri; koda göre eşleşme; silme yok, bağ yalnızca eklenir; `not_in_file` raporu; her yazma audit'e (`project_wbs`/`project_areas` B2 trigger'ı, `area_wbs` ayrı trigger). Projesiz kontrol: `p_project_id = null` önizleme ve `scripts/proje-kontrol/wbs-alan/kontrol.mjs` | **ONAYLANDI (12.10.2026)**, taslak A6-A7 |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1819,6 +1826,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 - 1a, 1c (R1-R16), 1d (B4 + dört projede uygulama sonrası etki yok), 2a (11/11) ve 2b (12/12) canlıda ROLLBACK ile geçti.
 - Oturum 5 = Oturum 0.
 - Uygulanmadı; Adım 6'da B4'ten sonra ayrı migration (Karar 42). |
+| F1-WA | WBS/alan bütünlüğü ve importu: `project_wbs_discipline_fk`, Activity ID'li göreve etki eden alan/WBS/bağ değişikliklerini reddeden trigger'lar (Karar 48), Ç-7 guard düzeltmesi (Karar 49), audit trigger'ları, `import_wbs_areas` (Karar 50); şablon, ayrıştırıcı, projesiz kontrol betiği | `taslak-sql/f1_wbs_alan_import.sql`, tasarım `faz1-adim4-tasarim.md` | Faz 1 **Adım 4 kapandı (12.10.2026)** (`faz1-adim4-sonuclar.md`): 4a 10/10, 4b 20/20, 4c 10/10, 4d 12/12, 4e (R17-R26) canlıda ROLLBACK ile geçti; Oturum 5 = Oturum 0. Uygulanmadı; Adım 6'da F1-AID'den sonra ayrı migration |
 | — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
 
 **Dosyalar:**
@@ -1906,6 +1914,16 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   vermediğinden, günlük rapor ilerlemesi girilmiş bir projede (ör. TIZ: 35 görevin 16'sı) kayıt
   `progress_daily_task_id_fkey` hatasıyla düşer. İlerleme yoksa kayıt geçer ama görev ID'leri değişir. Düzeltme Faz 1
   Adım 5'te: görev koduna göre güncelleme (Karar 40), Adım 6 deploy'unun ön koşulu. Ayrıntı: `docs/proje-kontrol/faz1-adim3-tasarim.md` §7.
+
+- **Ç-6 · Şantiye şefinin alan ve alan-WBS yazma yetkisi (açık, Adım 5'te ekranla birlikte karar).** Canlı RLS
+  şantiye şefine kendi projesinde `project_areas` insert/update ve `area_wbs` insert/delete izni veriyor. Import admin/PM ile
+  sınırlı ama bu doğrudan yolu kapatmıyor. Activity ID kuralları trigger'da olduğu için şantiye şefi ID'li görevi bozamaz
+  (Adım 4 T32).
+
+- **Görev tarafında Karar 38 açığı (12.10.2026 bulgusu, karar bekliyor).** Karar 39 gereği ID'li görevin WBS'i serbest
+  değişiyor ve `fn_project_tasks_identity_guard` yeni WBS zincirinin bağ kümesinin görevin alanını içerip içermediğine
+  bakmıyor; B4'ün alan düzeltmesi de bakmıyor. Alan/WBS/bağ tarafı Adım 4 trigger'larıyla korunuyor, görev tarafı korunmuyor.
+  Öneri ve ayrıntı: `docs/proje-kontrol/faz1-adim4-tasarim.md` §8.
 
 - **Kategori ağırlık tablosunda olmayan kategorilerdeki görevler proje ilerlemesine hiç katılmıyor (12.10.2026'da salt
   okunur sorguyla bulundu, Faz 1'den bağımsız, bugün canlıda).**
@@ -2179,6 +2197,31 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**12.10.2026 (12. tur) — Faz 1 Adım 4 kapandı (WBS/alan bütünlüğü ve Excel importu; yalnızca taslak, uygulama yok).**
+- **Kararlar:** 45-50 eklendi.
+  - Senaryo (b) seçildi; Ç6 kapandı.
+  - Durum tablosu (b)'ye göre güncellendi: MVP canlı 11 Aralık 2026.
+- **Canlı kontrol (salt okunur):**
+  - kod değişikliği bugün görevi olan kayıtta engelli;
+  - pasifleştirme, taşıma ve `area_wbs` yazımı kontrolsüz;
+  - silme FK RESTRICT ile engelli.
+- **Taslak `f1_wbs_alan_import.sql`:**
+  - Activity ID'li göreve etki eden değişiklikler trigger'da reddediliyor (Karar 48);
+  - Ç-7 guard düzeltmesi;
+  - üç tabloda audit;
+  - `import_wbs_areas` (önizleme varsayılan).
+- **JS tarafı:**
+  - şablon `docs/proje-kontrol/sablon/`;
+  - `src/utils/wbsAreaExcel.js`;
+  - projesiz kontrol betiği `scripts/proje-kontrol/wbs-alan/kontrol.mjs`.
+- **Testler:**
+  - Canlıda yalnızca ROLLBACK: 4a-4e geçti (T21-T34, R17-R26); Oturum 5 = Oturum 0.
+  - Kurulumda MCP boyut sınırı nedeniyle B2 A3, F1 ve AID A7-A8 kurulmadı (`faz1-adim4-sonuclar.md`).
+  - JS spec 23/23 geçti.
+- **Kural 10:** boolean metni düzeltildi.
+- **Açık noktalar:** Ç-6 ve görev tarafında Karar 38 açığı eklendi.
+- **Bekleyen:** gerçek Diyarbakır Excel'i.
 
 **12.10.2026 (11. tur) — Faz 1 Adım 3 kapandı.**
 - **Test betiği:** üç hata türüne karşı gözden geçirildi; aynı ifadede sıra bağımlı yazmalar bölündü. Bu kontrol kural 10 olarak eklendi.

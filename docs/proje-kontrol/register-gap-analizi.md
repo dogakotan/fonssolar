@@ -4,8 +4,9 @@
 
 > Bu tablo her adım ve faz kapanışında güncellenir (CLAUDE.md kural 9).
 
-**Son güncelleme:** 12.10.2026, Faz 1 Adım 3 kapandı (Activity ID: ROLLBACK oturumları 1a-1d, 2a, 2b geçti; uygulanmadı).
-Önceki: 09.10.2026, Faz 1 Adım 2 kapandı.
+**Son güncelleme:** 12.10.2026, Faz 1 Adım 4 kapandı (WBS/alan bütünlüğü ve Excel importu: ROLLBACK oturumları 4a-4e
+geçti, uygulanmadı; gerçek Diyarbakır Excel'i projesiz kontrol için bekleniyor). MVP senaryosu (b) seçildi (Karar 45).
+Önceki: 12.10.2026, Faz 1 Adım 3 kapandı.
 
 **Faz 1 parçaları:**
 - **B1** yetki matrisi;
@@ -13,18 +14,18 @@
 - **B4** Activity ID düzeltme;
 - **F1** proje kodu kuralı + `create_project_with_code` + alan kodu;
 - **AID** Activity ID üretimi (Adım 3);
-- **WA** WBS/alan importu ve ekranı (Adım 4-5).
+- **WA** WBS/alan bütünlüğü ve Excel importu (Adım 4), WBS/alan ekranı (Adım 5).
 
-B1, B2, B4, F1 (Adım 2) ve AID (Adım 3, iptal görev koruması A8 dahil) canlıda ROLLBACK ile doğrulandı, uygulanmadı
-(Adım 6). WA yok (Adım 4-5).
+B1, B2, B4, F1 (Adım 2), AID (Adım 3, iptal görev koruması A8 dahil) ve WA'nın veritabanı kısmı (Adım 4) canlıda
+ROLLBACK ile doğrulandı, uygulanmadı (Adım 6). WA ekranı Adım 5'te.
 
 | # | Register | Faz | Güncel durum | Bağımlı olduğu Faz 1 parçası |
 |---|---|---|---|---|
-| 1 | Document | 3 (dosya: 2) | Canlıda (`documents`, `document_revisions`); yazma/okuma taslakta (B3, B6); dosya deposu taslakta (B5, patron onayı) | B1, B2, F1 (DOC numarası koda bağlı) |
+| 1 | Document | 3 (ekran external link ile; dosya yükleme B5 onayından sonra, Karar 45) | Canlıda (`documents`, `document_revisions`); yazma/okuma taslakta (B3, B6); dosya deposu taslakta (B5, patron onayı) | B1, B2, F1 (DOC numarası koda bağlı) |
 | 2 | Drawing | 3 | Canlıda (`drawings`); yazma/okuma taslakta (B3, B6) | B1, B2, F1 (DRW numarası) |
 | 3 | RFI (pilot) | 3 | Canlıda (`rfis`); yazma/okuma taslakta (B3, B6) | B1, B2, F1; aktivite bağı için AID |
-| 4 | Technical Submittal | 3 | Canlıda; yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
-| 5 | Material Approval | 3 | Canlıda; yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
+| 4 | Technical Submittal | Ocak 2027 (MVP dışı, Karar 45) | Canlıda; yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
+| 5 | Material Approval | Ocak 2027 (MVP dışı, Karar 45) | Canlıda; yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
 | 6 | Procurement | 4 | Kaynak tablolar canlıda; köprü görünümü, "sahada gerekli tarih", `purchase_documents` yok | B1 (görme yetkisi); WBS/aktivite bağı için WA, AID |
 | 7 | Subcontractor | 6 | Yok (`party_type`, `subcontracts`) | B1; WA (sözleşmenin WBS/alan bağı) |
 | 8 | Action | 3 | Canlıda (`project_actions`); yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
@@ -37,47 +38,40 @@ B1, B2, B4, F1 (Adım 2) ve AID (Adım 3, iptal görev koruması A8 dahil) canl�
 | 15 | Interface | 5 | Yok | B1, B2, F1, WA |
 | 16 | Payment | 4 (tedarikçi görünümü) + 6 (`progress_payments`) | Kaynak tablolar canlıda; görünüm ve `progress_payments` yok | B1; Faz 6'daki fatura WBS/aktivite bağı için WA, AID |
 
-**Fazların tahmini bitişi (15 Aralık 2026 MVP hedefine göre; MVP = Faz 1-4, Karar 24):**
+**Fazların tahmini bitişi (15 Aralık 2026 MVP hedefine göre; MVP = Faz 1-4, Karar 24; senaryo (b), Karar 45):**
 
 Tahmin varsayımları:
 - Kararlar ve girdiler en geç 2 iş gününde gelir (Excel, proje kodu, patron onayı, kategori ağırlıkları).
 - Hafta sonu çalışılmaz.
 - Kayma olursa tablo güncellenir.
 
-**12.10 değişikliği:**
-- Adım 3, 09.10 planına göre 1 iş günü geç kapandı.
-- Adım 5'e yeni işler eklendi: sihirbazın görev koduna göre güncellemesi (Ç-B), İptal et / Yeniden aç, ağırlıksız kategori uyarısı, disiplin listesi.
-- Faz 1 bu yüzden 4 takvim günü kaydı (24 → 28 Ekim). Faz 2-4 aynı süreyle kaydırıldı.
+**12.10 değişikliği (Adım 4 kapanışı):**
+- Senaryo (b) seçildi: Technical Submittal ve Material Approval Ocak 2027'ye; Document ekranı external link ile başlar,
+  Storage yüklemesi B5 onayından sonra. Ç6 kapandı: Faz 3 kapsamı Document, Drawing, RFI, Action, Risk, Decision.
+- Adım 4 planlanan 2 iş gününden önce kapandı. Faz 1 tarihi değiştirilmedi (Adım 5 kapsamı Adım 4'te büyüdü:
+  Ç-6 kararı ve görev tarafındaki Karar 38 açığı, `faz1-adim4-tasarim.md` §8).
 
 Kalan Faz 1 (13 Ekim'den):
-- Adım 4 (şablon + import dry-run): 2 iş günü;
 - Adım 5 (frontend): 6 iş günü;
 - Adım 6 (uygulama + Diyarbakır importu + pilot): 2 iş günü;
 - Diyarbakır girdileri için bekleme: 2 iş günü.
 
 | Faz | İçerik | Tahmini bitiş | MVP'ye (15 Aralık) göre | Ana risk |
 |---|---|---|---|---|
-| 1 | WBS, Area, Activity ID | 28 Ekim 2026 (09.10'da 24 Ekim) | 48 gün önce | Diyarbakır Excel'i, proje kodu (DYB) ve kategori ağırlıkları gelmeden Adım 6 tamamlanamaz |
-| 2 | Ortak altyapı (B3, B5, B6, links, history) | 11 Kasım 2026 | 34 gün önce | B5 patron onayına bağlı (Karar 5); lokal Docker testi zorunlu (Karar 31) |
-| 3 | 8 register standardı + UI, RFI pilot | 2 Aralık 2026 | 13 gün önce | Ç6 (8 register listesi) Faz 3 başında; Document ekranı B5'e bağlı |
-| 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 16 Aralık 2026 | 1 gün geç | Satın alma ve finans regresyonu |
-| 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü), kullanıcı hesapları ve rol/proje atamaları (0,5), kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5): hazırlık 3 iş günü (17, 18, 21 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **22 Aralık 2026**; destek 22-28 Aralık | 7 gün geç; 1 Ocak 2027 sınırından 10 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
-
-**MVP tahmini, iki senaryo** (yalnızca tarih; seçim kullanıcıda):
-
-| Senaryo | Kapsam farkı | Faz 2 | Faz 3 | Faz 4 | MVP canlı | İlk hafta destek |
-|---|---|---|---|---|---|---|
-| (a) Mevcut kapsam | — | 11 Kasım | 2 Aralık | 16 Aralık | **22 Aralık 2026** | 22-28 Aralık |
-| (b) Daraltılmış | Technical Submittal ve Material Approval Ocak'a; Document ekranı B5'ten bağımsız (external link ile başlar) | 6 Kasım (B5 MVP kritik yolundan çıkar, ~3 iş günü) | 23 Kasım (iki register ekranı çıkar, ~4 iş günü) | 7 Aralık | **11 Aralık 2026** | 11-17 Aralık |
-
-Her iki senaryoda canlıya alma hazırlığı, Faz 4 bitişinden sonra 3 iş günüdür. Senaryo (b) tasarrufları kaba
-tahmindir; B5 yine Faz 2'de yapılır, ama MVP'yi bekletmez.
-| 5 | Change, Claim, Interface | Ocak 2027 (MVP sonrası) | — | — |
+| 1 | WBS, Area, Activity ID | 28 Ekim 2026 | 48 gün önce | Diyarbakır Excel'i, proje kodu (DYB) ve kategori ağırlıkları gelmeden Adım 6 tamamlanamaz |
+| 2 | Ortak altyapı (B3, B6, links, history; B5 MVP kritik yolunda değil) | 6 Kasım 2026 | 39 gün önce | Lokal Docker testi zorunlu (Karar 31); B5 patron onayı paralel |
+| 3 | 6 register standardı + UI (Document, Drawing, RFI, Action, Risk, Decision), RFI pilot | 23 Kasım 2026 | 22 gün önce | Document ekranı dosyasız (external link) başlar |
+| 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 7 Aralık 2026 | 8 gün önce | Satın alma ve finans regresyonu |
+| 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü), kullanıcı hesapları ve rol/proje atamaları (0,5), kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5): hazırlık 3 iş günü (8, 9, 10 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **11 Aralık 2026**; destek 11-17 Aralık | 4 gün önce; 1 Ocak 2027 sınırından 21 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
+| 5 | Change, Claim, Interface; Technical Submittal ve Material Approval ekranları (Karar 45) | Ocak 2027 (MVP sonrası) | — | — |
 | 6 | `subcontracts`, `progress_payments`, fatura WBS/aktivite bağı | Şubat 2027 | — | Ç8, Ç10, Ç11 Faz 6 başında |
 | 7 | Aktivite 360, KPI | Mart 2027 | — | — |
 | 8 | Alarmlar | Mart 2027 | — | — |
 | 9 | Import, test, go-live | Nisan 2027 | — | — |
 | Ayrı faz | AI akışları (Karar 23) | Faz 7 sonrası | — | Karar 7 (İsdemir OYAK izni) |
+
+Karşılaştırma için senaryo (a) (mevcut kapsam, seçilmedi): Faz 2 11 Kasım, Faz 3 2 Aralık, Faz 4 16 Aralık, canlı 22 Aralık 2026.
+Senaryo (b) tasarrufları kaba tahmindir; B5 yine Faz 2'de yapılır, ama MVP'yi bekletmez.
 
 Faz 5-9 tarihleri kaba tahmindir; MVP'den sonra kapasiteye göre yeniden yazılır.
 
@@ -259,7 +253,7 @@ eksikleri tamamlar.
 | Ç3 | **Çözüldü (Karar 23):** RFI pilotu AI'sız; AI Faz 7 sonrası ayrı faz |
 | Ç4 | **Çözüldü (Karar 24):** MVP = Faz 1-4, hedef 15.12.2026 |
 | Ç5 | **Çözüldü (Karar 17):** B5 Faz 2'de tek başına, patron onayı paralel |
-| Ç6 | Ertelendi: Faz 3 başında (Karar 26) |
+| Ç6 | **Kapandı (12.10.2026, Karar 45):** Faz 3 kapsamı Document, Drawing, RFI, Action, Risk, Decision; Technical Submittal ve Material Approval Ocak 2027 |
 | Ç7 | **Çözüldü (Karar 21)**, ancak uygulaması Ç14 ve Ç15'e bağlı |
 | Ç8, Ç10, Ç11 | Ertelendi: Faz 6 başında (Karar 26) |
 | Ç9 | Açık (Faz 6 varsayımı sürüyor) |
@@ -325,7 +319,7 @@ eksikleri tamamlar.
   - Yeni sırada go-live Faz 9'da, Faz 4-8'den sonra.
   - 1 Ocak'a hangi fazın yetişmesi gerektiği tanımlı değil.
 - **Ç5 · Faz 2 patron onayına bağlı.** Faz 2'nin "files" kalemi B5'tir ve patron onayı (Karar 5) bekliyor. Faz 3 Document ekranı da buna bağlı. Faz 2'nin B5'siz kapanıp kapanamayacağı tanımlı değil.
-- **Ç6 · "Mevcut 8 register".** Bu dosyada Document, Drawing, RFI, Submittal, MA, Action, Decision, Risk olarak alındı. Doğrulaman gerekiyor.
+- **Ç6 · "Mevcut 8 register".** Bu dosyada Document, Drawing, RFI, Submittal, MA, Action, Decision, Risk olarak alındı. Doğrulaman gerekiyor. **Kapandı (12.10.2026, Karar 45):** Faz 3 = Document, Drawing, RFI, Action, Risk, Decision; Submittal ve MA Ocak 2027.
   - Risk'in standarda getirilmesi (RSK, `record_state`) canlı otomatik risk motorunu değiştirir. Diğer 7 tablo boş, `project_risks` dolu (55 otomatik risk).
 - **Ç7 · RSK numarası ve proje kodu zorunluluğu.**
   - `next_register_no`, proje kodu tanımsızsa hata verir.
