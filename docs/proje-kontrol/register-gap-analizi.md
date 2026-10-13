@@ -7,6 +7,7 @@
 **Son güncelleme:** 12.10.2026, Faz 1 Adım 4 kapandı (WBS/alan bütünlüğü ve Excel importu: ROLLBACK oturumları 4a-4e
 geçti, uygulanmadı; gerçek Diyarbakır Excel'i projesiz kontrol için bekleniyor). MVP senaryosu (b) seçildi (Karar 45).
 Önceki: 12.10.2026, Faz 1 Adım 3 kapandı.
+Ek (13.10.2026, kapanış değil): "Kullanıcıdan beklenen girdiler" ve Faz 5 başlangıç kontrol listesi eklendi (Karar 63).
 
 **Faz 1 parçaları:**
 - **B1** yetki matrisi;
@@ -74,6 +75,31 @@ Karşılaştırma için senaryo (a) (mevcut kapsam, seçilmedi): Faz 2 11 Kasım
 Senaryo (b) tasarrufları kaba tahmindir; B5 yine Faz 2'de yapılır, ama MVP'yi bekletmez.
 
 Faz 5-9 tarihleri kaba tahmindir; MVP'den sonra kapasiteye göre yeniden yazılır.
+
+**Kullanıcıdan beklenen girdiler (MVP'yi bekletenler; 13.10.2026):**
+
+| Girdi | Gerektiği yer | En geç |
+|---|---|---|
+| Docker kurulumu + `npm run db:backup` | Adım 5 testleri (yerel ortam) | Hemen |
+| `ProjeDetay.jsx`, `DailyReportList.jsx`, `projectExcelBridge.js` commit'i ve haber (Karar 53) | Adım 5 Ek A | Adım 5 kapanışı |
+| Kategori ağırlık değerleri (tüm kategoriler, fiziksel olmayanlar %0) | Adım 6, Diyarbakır importu | Adım 6 |
+| Diyarbakır Excel'i ve proje kodu (DYB / DYB1 / DYB2) | Adım 6 | Adım 6 |
+| **Karar 6** — rol × register yetki matrisi onayı (`register_permissions` seed'i, tasarım 4.3) | B1 Faz 1'de (Karar 17), Adım 6'da uygulanır; onaysız seed uygulanmaz | Adım 6 (28 Ekim) |
+| **Karar 10** — dört göz kuralı (risk, change, claim, decision; proje bazında kapatılabilir, varsayılan açık) | B3 (Faz 2) `four_eyes_enabled`; Faz 3 Risk/Decision onay akışı | Faz 2 başı (B3 uygulaması) |
+| Karar 5 — dosya deposu patron onayı | B5; MVP kritik yolunda değil (Document ekranı external link ile başlar, Karar 45) | Bekletmez; paralel |
+
+Açık kararlar 6-10'un MVP etkisi:
+- **6** Roller / register yetki matrisi — **bekletir** (B1 Faz 1 Adım 6'da uygulanır).
+- **7** AI sağlayıcı ve gizlilik (İsdemir OYAK izni) — bekletmez (AI Faz 7 sonrası, Karar 23).
+- **8** NCR ve Inspection — bekletmez (pilotta yok; tip kodları B1'de ayrıldı, Karar 16, 25).
+- **9** Agent kimliği ve ilk agent'lar — bekletmez (AI/agent Faz 7 sonrası, Karar 23).
+- **10** Dört göz kuralı — **bekletir** (B3 Faz 2; Faz 3 Risk ve Decision onayı).
+
+**Faz başlangıç kontrol listeleri:**
+- **Faz 5 (Change, Claim, Interface) başlamadan önce:**
+  - Karar 63'ü yeniden aç: PM'in tüm projelere erişimi (`roles.proje_yoneticisi.cross_project = true`) Claim/Change yetkisi için hâlâ uygun mu? Projeye özel PM ya da dış kullanıcı (müşavir, işveren, taşeron) girecekse proje kapsamlı erişim modeli tasarlanır.
+  - R32'nin (c) bölümü (kısıtlı PM ile erişim kontrolü) yeni Claim/Change RPC'lerine de uygulanır.
+  - Karar 10 (dört göz) Change ve Claim için netleşmiş olmalı.
 
 ---
 

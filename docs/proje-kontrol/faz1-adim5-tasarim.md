@@ -4,7 +4,7 @@ Tarih: 12.10.2026; güncelleme 13.10.2026. Durum:
 - Tasarım onaylandı (Karar 52-59). 13.10.2026: Karar 58 güncellendi, Karar 60-62 eklendi; Ek B'deki ara kararlar onaylandı.
 - Kod yazıldı ama test edilmedi; yerel ortam bekleniyor (Ek B).
 - Canlıya ve edge function'lara hiçbir şey uygulanmadı.
-- §9'daki sorular ve Ç5-6 kararlarla kapandı. Yeni açık: Ç5-7 (Ek B).
+- §9'daki sorular, Ç5-6 ve Ç5-7 (Karar 63) kararlarla kapandı.
 
 Kararlar: CLAUDE.md Karar 18-59. Önceki adımlar: `faz1-adim3-tasarim.md`, `faz1-adim4-tasarim.md`.
 Kaynak tarama (12.10.2026):
@@ -469,7 +469,9 @@ Onayın koşulu: aşağıdaki DEFINER RPC'ler için yerel yetki matrisi testi zo
 - WBS ve Alanlar ekranı yalnızca ProjeDetay › Proje Ayarları'nda, admin ve PM için. `ProjeAyarlari.jsx` başka rolde hiçbir şey göstermez; sekme butonu Ek A'da rol koşullu.
 - DB tarafı değişmedi: Ç-6 RLS (A7) şantiye şefinin yazmasını yine kapatır, okuma (`*_select`) açık kalır (İş Planı'ndaki kod/ad gösterimi için gerekli).
 
-### Yeni çakışma (kural 8) — Ç5-7: "A projesinin PM'i B projesine yazamaz"
+### Ç5-7 — KAPANDI (Karar 63, 13.10.2026): seçenek (a)
+
+PM'in tüm projelere erişimi kalır; R32 (c) kod yolunu kısıtlı PM ile doğrular. Projeye özel PM veya dış kullanıcı girmeden ve Faz 5 Claim/Change öncesinde yeniden açılır (`register-gap-analizi.md` Faz 5 kontrol listesi). Karar öncesi analiz:
 
 - **Çakışma:** Ek B onayının koşulu olan bu test, bugünkü yetki modeliyle geçemez. Canlıda `roles.proje_yoneticisi.cross_project = true` (13.10.2026, salt okunur SELECT); `has_project_access` PM'e her projede true döner. CLAUDE.md "Roller": "proje_yoneticisi tüm projelere erişir"; `profiles.project_id` yalnızca kozmetik. Admin ve muhasebe de `is_manager=true` ile her projeye erişir.
 - **Sonuç:** RPC'lerdeki `has_project_access` kontrolü bugün yalnızca savunma katmanı; hiçbir yetkili rolde reddetmez. Tek proje kapsamlı rol olan şantiye şefi, rol kontrolünde zaten reddedilir.

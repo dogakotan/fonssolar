@@ -1777,7 +1777,8 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 59 | Sihirbaz Ç-B | Sil-yeniden-yaz yerine `save_project_tasks` (id, yoksa görev kodu ile eşleşme; çıkarılan görev Activity ID / ilerleme / bağlı kayıt varsa iptal, yoksa silinir; önizleme). `group_label` kaybı aynı pakette düzelir; ilerlemesi olan ve grup etiketli projede düzenleme testi zorunlu | **ONAYLANDI (12.10.2026)** |
 | 60 | Boş E13 | Güncellemede boş E13 reddedilir: "Bu dosya eski şablon (v7). Projeyi dışa aktarıp yeni dosya üzerinde çalışın." (`import-project-excel`, `legacy_template: true`; deploy Adım 6'da) | **ONAYLANDI (13.10.2026)** |
 | 61 | Baseline migration ertelendi | Faz 1 kapandıktan sonra, Faz 2'den önce ayrı paket. O pakette önce canlıya migration'ların hangi yolla uygulandığı ve `schema_migrations` geçmişinin baseline ile nasıl uzlaştırılacağı (migration repair vb.) gösterilir. Şimdi yerel ortam yalnızca şema dökümüyle kurulur | **ONAYLANDI (13.10.2026)** |
-| 62 | Ek B ara kararları | `set_tasks_classification`/`save_project_tasks` DEFINER, ertelenebilir ağırlık trigger'ları + `p_weights`, bağlı kayıtlı görevin iptali, Excel import'un iptal durumunu değiştirememesi onaylandı. Koşul: toplu atama, görev kaydı, alan-WBS bağ kaydı, Kod ata, WBS/alan import için yerel yetki matrisi testi zorunlu: A projesinin PM'i B'ye yazamaz, şantiye şefi ve muhasebe çağıramaz, anon EXECUTE yok (`f1_dogrulama.sql` R32, `proje-kontrol-adim5.spec.js`). **Açık çakışma Ç5-7:** PM canlıda `cross_project=true`, `has_project_access` PM'e her projede true; R32 erişim kontrolünü alt işlemde `cross_project=false` ile ölçer (`faz1-adim5-tasarim.md` Ek B) | **ONAYLANDI (13.10.2026)**; Ç5-7 kullanıcıda |
+| 62 | Ek B ara kararları | `set_tasks_classification`/`save_project_tasks` DEFINER, ertelenebilir ağırlık trigger'ları + `p_weights`, bağlı kayıtlı görevin iptali, Excel import'un iptal durumunu değiştirememesi onaylandı. Koşul: toplu atama, görev kaydı, alan-WBS bağ kaydı, Kod ata, WBS/alan import için yerel yetki matrisi testi zorunlu: A projesinin PM'i B'ye yazamaz, şantiye şefi ve muhasebe çağıramaz, anon EXECUTE yok (`f1_dogrulama.sql` R32, `proje-kontrol-adim5.spec.js`). **Açık çakışma Ç5-7:** PM canlıda `cross_project=true`, `has_project_access` PM'e her projede true; R32 erişim kontrolünü alt işlemde `cross_project=false` ile ölçer (`faz1-adim5-tasarim.md` Ek B) | **ONAYLANDI (13.10.2026)**; Ç5-7 Karar 63 ile kapandı |
+| 63 | PM'in proje erişimi (Ç5-7) | (a): PM'in tüm projelere erişimi (`cross_project=true`) bu haliyle kalır; R32 kod yolunu kısıtlı PM ile (alt işlemde `cross_project=false`) doğrulamaya devam eder. **Yeniden değerlendirme koşulu:** projeye özel PM veya dış kullanıcı (müşavir, işveren, taşeron) sisteme girmeden önce bu karar yeniden açılır; özellikle Faz 5 Claim/Change öncesinde kontrol edilir (`register-gap-analizi.md` Faz 5 başlangıç kontrol listesi) | **ONAYLANDI (13.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1940,10 +1941,10 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `f1_adim5_ekran_rpc.sql` A7'de (uygulanmadı). Canlıda bugün hâlâ şantiye şefi `project_areas` insert/update ve `area_wbs`
   insert/delete yapabiliyor; Adım 6'ya kadar böyle kalır.
 
-- **Ç5-7 — proje yöneticisi her projeye yazar (13.10.2026, salt okunur SELECT ile doğrulandı).** `roles.proje_yoneticisi.cross_project = true`;
-  `has_project_access` PM'e (ve `is_manager` olan admin/muhasebeye) her projede true döner. Yeni RPC'lerdeki proje erişim kontrolü bu
-  yüzden bugün yalnızca savunma katmanı. Karar 62'nin "A'nın PM'i B'ye yazamaz" testi R32'de alt işlemde `cross_project=false`
-  yapılarak ölçülüyor. Modelin değişip değişmeyeceği kullanıcıda (öneri: değişmesin; `faz1-adim5-tasarim.md` Ek B).
+- **Ç5-7 — KAPANDI (Karar 63, 13.10.2026): proje yöneticisi her projeye yazar.** `roles.proje_yoneticisi.cross_project = true`;
+  `has_project_access` PM'e (ve `is_manager` olan admin/muhasebeye) her projede true döner. Yeni RPC'lerdeki proje erişim kontrolü
+  bugün yalnızca savunma katmanı; R32 bunu alt işlemde `cross_project=false` ile ölçer. Projeye özel PM veya dış kullanıcı
+  (müşavir, işveren, taşeron) girmeden ve Faz 5 Claim/Change'den önce yeniden açılır.
 
 - **Adım 6 ön koşulu — tam zincir provası (12.10.2026).** MCP ~95 KB sınırı yüzünden B1 + B2 + B4 + F1 + AID + Adım 4
   hiçbir oturumda birlikte kurulmadı. Adım 6'dan önce `.env.local` bağlantısıyla psql üzerinden hepsi tek transaction'da
@@ -2222,6 +2223,10 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**13.10.2026 (16. tur) — Karar 63 (Ç5-7: PM tüm projelere erişir, yeniden değerlendirme koşullu); yalnızca doküman.**
+- Faz 5 başlangıç kontrol listesi ve "Kullanıcıdan beklenen girdiler" tablosu `register-gap-analizi.md` durum bölümüne eklendi.
+- Açık kararlardan 6 (yetki matrisi; B1 Adım 6'da) ve 10 (dört göz; B3 Faz 2) MVP'yi bekletiyor; 7, 8, 9 bekletmiyor.
 
 **13.10.2026 (15. tur) — Karar 58 güncellendi, Karar 60-62 (yalnızca doküman, test planı ve küçük kod; canlı/deploy yok).**
 - **Karar 58:** WBS ve Alanlar yalnızca admin/PM; şantiye şefine ayrı görünüm yok, Ç5-6 kapandı. `ProjeAyarlari.jsx` başka rolde boş döner; Ek A'daki ProjeDetay diff'i rol koşullu.
