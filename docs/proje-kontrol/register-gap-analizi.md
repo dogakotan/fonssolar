@@ -64,7 +64,7 @@ Kalan Faz 1 (13 Ekim'den):
 | 2 | Ortak altyapı (B3, B6, links, history; B5 MVP kritik yolunda değil) | 6 Kasım 2026 | 39 gün önce | Lokal Docker testi zorunlu (Karar 31); B5 patron onayı paralel |
 | 3 | 6 register standardı + UI (Document, Drawing, RFI, Action, Risk, Decision), RFI pilot; Risk'te RSK numarası/onay alanları (Karar 14) + **kritik risk kapanış onayı** (Karar 10, 13.10: +1 iş günü; `project_risks.created_by` eklenir) | 24 Kasım 2026 | 21 gün önce | Document ekranı dosyasız (external link) başlar |
 | 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 8 Aralık 2026 | 7 gün önce | Satın alma ve finans regresyonu |
-| 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü); kullanıcı hesapları ve rol/proje atamaları (0,5): canlıdaki test hesaplarının gözden geçirilmesi (test e-postasına benzeyen PM hesabı dahil) ve genel "Admin" hesabı kararı (Karar 10 ön koşulu); kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5). Hazırlık 3 iş günü (9, 10, 11 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **14 Aralık 2026** (12.10 tahmini 11 Aralık); destek 14-18 Aralık | 1 gün önce; 1 Ocak 2027 sınırından 18 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
+| 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü); kullanıcı hesapları ve rol/proje atamaları (0,5): canlıdaki test hesaplarının gözden geçirilmesi (test e-postasına benzeyen PM hesabı dahil); genel "Admin" hesabını kullananlara kişisel hesap açılması ve ardından genel hesabın kapatılması (Karar 64; o zamana kadar hesap B3'teki istisnayla register onayı yapamaz); kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5). Hazırlık 3 iş günü (9, 10, 11 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **14 Aralık 2026** (12.10 tahmini 11 Aralık); destek 14-18 Aralık | 1 gün önce; 1 Ocak 2027 sınırından 18 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
 | 5 | Change, Claim, Interface; Technical Submittal ve Material Approval ekranları (Karar 45) | Ocak 2027 (MVP sonrası) | — | — |
 | 6 | `subcontracts`, `progress_payments`, fatura WBS/aktivite bağı | Şubat 2027 | — | Ç8, Ç10, Ç11 Faz 6 başında |
 | 7 | Aktivite 360, KPI | Mart 2027 | — | — |
@@ -87,7 +87,7 @@ Faz 5-9 tarihleri kaba tahmindir; MVP'den sonra kapasiteye göre yeniden yazıl�
 | Diyarbakır Excel'i ve proje kodu (DYB / DYB1 / DYB2) | Adım 6 | Adım 6 |
 | ~~Karar 6 — yetki matrisi~~ | **Onaylandı 13.10.2026** (`karar-6-10-yetki-ve-dort-goz.md`); B1 seed'i güncellendi | — |
 | ~~Karar 10 — dört göz~~ | **Onaylandı 13.10.2026** | — |
-| Genel "Admin" hesabı: kapatma veya salt okunur/acil durum hesabı; mekanizma M1 (hesap bazlı istisna) veya M2 (rol değişikliği) | Karar 10'un "admin kaydını başka admin onaylar" kuralının ön koşulu; B3 (Faz 2) | Faz 2 başı (B3 uygulaması) |
+| Genel "Admin" hesabını kimlerin kullandığı (Karar 64: şimdi M1, canlıya almada kişisel hesaplar açılıp genel hesap kapatılır) | Kişisel hesapların açılması; B3'teki istisna listesinin ilk satırı | B3 uygulaması (Faz 2 başı) için hesap kimliği; kullanıcı listesi 9 Aralık |
 | Canlı test hesaplarının gözden geçirilmesi | MVP canlıya alma › kullanıcı hesapları | 9 Aralık |
 | Karar 5 — dosya deposu patron onayı | B5; MVP kritik yolunda değil (Document ekranı external link ile başlar, Karar 45) | Bekletmez; paralel |
 

@@ -52,11 +52,18 @@ Diğer kararlar:
 | Change, Claim | Admin onayı ilkesi; ayrıntı Faz 5 başında | Faz 5 kontrol listesi |
 
 Kritik risk kapanışı için Faz 3'te çözülecek ayrıntılar:
-- **Oluşturan bilgisi:** `project_risks`'te `created_by` kolonu yok (13.10.2026 salt okunur kontrol). Eklenmeli. Eski kayıtlarda oluşturan boş kalır; bu kayıtlarda "oluşturan dışında" kontrolü yapılamaz. Önerim: PM ve admin onaylayabilir; karar Faz 3 tasarımında.
+- **Oluşturan bilgisi:** `project_risks`'te `created_by` kolonu yok (13.10.2026 salt okunur kontrol). Eklenir. **Karar (13.10.2026):** `created_by`'ı boş olan eski risklerde kritik kapanışı herhangi bir PM veya admin onaylayabilir. "Oluşturan onaylayamaz" kuralı yalnızca `created_by` dolu kayıtlarda uygulanır.
 - **Bekleyen kapanışın durumu:** canlı status listesi `açık`, `azaltıldı`, `kabul_edildi`, `kapatıldı`. Bekleyen kapanış için ya yeni bir durum değeri ya da `record_state` (Karar 14) kullanılır.
 - **`closed_at`:** yalnızca gerçek kapanışta yazılır; `fn_set_risk_closed_at` değişmez.
 
-## 3. Genel "Admin" hesabı — onay yapamaması için mekanizma (öneri, uygulanmadı)
+## 3. Genel "Admin" hesabı — onay yapamaması için mekanizma
+
+**Karar (13.10.2026):**
+- Şimdi M1 (hesap bazlı istisna) uygulanacak. Hesap yalnızca register onaylarından çıkarılır, uygulamanın geri kalanında admin kalır. B3 tasarımına eklendi (`faz-b-migration-plani.md` S4b); henüz SQL'i yazılmadı.
+- Hedef: MVP canlıya alma "kullanıcı hesapları" diliminde, bu hesabı kullananlara kişisel hesap açıldıktan sonra genel hesap kapatılır.
+- Hesabı kimin kullandığını kullanıcı netleştirecek.
+
+Karar öncesi analiz:
 
 Canlıda 3 admin hesabı var (13.10.2026, salt okunur sayım). Biri kişiye bağlı değil. Kişi bazlı dört göz kuralı bu hesapla aşılabilir: kişi kendi hesabıyla açar, genel hesapla onaylar.
 
@@ -95,5 +102,5 @@ Not: genel hesap register dışındaki onay akışlarında da (fatura, BOM deği
 ## 5. B3'e eklenecekler (Faz 2; bu turda yapılmadı)
 
 1. `four_eyes_enabled` değişikliği: yalnızca admin, gerekçeli, audit'li bir fonksiyon (ör. `set_project_four_eyes`). Bugün `project_register_settings`'te yalnızca SELECT policy var; B3 yalnızca kolonu ekliyor.
-2. §3 mekanizması (M1 veya M2) onaylanırsa B1/B3'e eklenir.
+2. M1 hesap bazlı onay istisnası (§3; `faz-b-migration-plani.md` S4b).
 3. `b3_dogrulama.sql` ikinci admin seçimi, istisna listesindeki hesabı dışlamalı.
