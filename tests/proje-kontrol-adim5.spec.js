@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { createClient } from '@supabase/supabase-js'
 import { loginUi, signIn } from './helpers.js'
 
 // Faz 1 Adım 5 (faz1-adim5-tasarim.md §6): 4 rol × yeni ekranlar ve RPC'ler.
@@ -56,6 +57,32 @@ test.describe.serial('Adım 5 · RPC ve kurallar (4 rol)', () => {
     const real = await pm.rpc('set_tasks_classification', { p_task_ids: created, p_discipline: 'mechanical', p_area_id: aB1, p_wbs_id: w210, p_dry_run: false })
     expect(real.error).toBeNull()
     expect(real.data.summary.written).toBe(2)
+  })
+
+  // Ek B onayı (Karar 62): her DEFINER yazma RPC'si için şantiye şefi + muhasebe reddi ve anon EXECUTE yok.
+  // Proje erişimi (A'nın PM'i B'ye yazamaz) PM cross_project olduğundan API'den ölçülemez; f1_dogrulama.sql R32 (Ç5-7).
+  test('yetki matrisi: şantiye şefi ve muhasebe forbidden, anon çağıramaz (5 RPC, 6 imza)', async () => {
+    const w = await idOf(pm, 'project_wbs', 'wbs_code', 'TIZ-100')
+    const calls = [
+      ['set_tasks_classification', { p_task_ids: created, p_discipline: 'mechanical', p_dry_run: true }],
+      ['save_project_tasks', { p_project_id: P, p_tasks: [], p_dry_run: true }],
+      ['save_area_wbs_links', { p_wbs_id: w, p_area_ids: [aB1] }],
+      ['assign_activity_ids', { p_task_ids: created, p_dry_run: true }],
+      ['assign_activity_id', { p_task_id: created[0], p_dry_run: true }],
+      ['import_wbs_areas', { p_project_id: P, p_payload: { wbs: [], areas: [], links: [] }, p_dry_run: true }],
+    ]
+    const anon = createClient(process.env.VITE_SUPABASE_URL, process.env.VITE_SUPABASE_ANON_KEY, { auth: { persistSession: false } })
+    for (const [fn, args] of calls) {
+      for (const c of [ss, muh]) {
+        const { error } = await c.rpc(fn, args)
+        expect(error?.message, `${fn}`).toBe('forbidden')
+      }
+      const { error } = await anon.rpc(fn, args)
+      expect(error, `anon ${fn}`).not.toBeNull()
+      // EXECUTE yoksa gövde hiç çalışmaz: 'forbidden' değil, izin hatası. PostgREST kodu yerelde ilk koşuda kesinleşir
+      // (doğrulanamadı: 42501 "permission denied for function" beklenir; PGRST202 da gövdenin çalışmadığını gösterir).
+      expect(['42501', 'PGRST202'], `anon ${fn}: ${error.code} ${error.message}`).toContain(error.code)
+    }
   })
 
   test('kod ata: şantiye şefi forbidden; PM önizleme = gerçek', async () => {
@@ -181,11 +208,13 @@ test.describe('Adım 5 · Ekranlar', () => {
     await expect(page.getByText(/Önizleme: \d+ görev kod alacak/)).toBeVisible()
   })
 
-  test('İş Planı (şantiye şefi): seçim ve sınıflandırma yok, iptal görev listede gizli', async ({ page }) => {
+  // Karar 58 (13.10.2026): şantiye şefi WBS/alanı yalnızca İş Planı kolon ve filtrelerinden görür.
+  test('İş Planı (şantiye şefi): Activity ID/Disiplin/Alan/WBS kolonları var; seçim ve sınıflandırma yok', async ({ page }) => {
     await loginUi(page, process.env.TEST_IZMIR_EMAIL, process.env.TEST_IZMIR_PASSWORD)
     await page.goto('/dashboard/is-plani') // şantiye şefinin projeler sekmesi yok; İş Planı kendi sekmesinde
     const detay = page.getByRole('button', { name: 'Detaylı İş Planı' })
     if (await detay.count()) await detay.click()
+    for (const h of ['Activity ID', 'Disiplin', 'Alan', 'WBS']) await expect(page.getByRole('columnheader', { name: h, exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Sınıflandır' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'İptal et' })).toHaveCount(0)
   })
@@ -211,6 +240,5 @@ test.describe('Adım 5 · Ekranlar', () => {
     await page.getByTestId('wbs-listesi').locator('[data-code="TIZ-210"]').click()
     await expect(page.getByTestId('alan-wbs-panel')).toContainText('Etkin küme')
   })
-  // Şantiye şefinin salt okunur görünümü: şantiye şefi ProjeDetay'a ulaşamıyor (projeler sekmesi yok);
-  // ekranın yeri kullanıcı kararı bekliyor (faz1-adim5-tasarim.md Ek A, Ç5-6). Karar verilince test eklenecek.
+  // Şantiye şefi için ayrı WBS/alan görünümü yok (Karar 58 güncellemesi, Ç5-6 kapandı); yukarıdaki İş Planı testi yeterli.
 })

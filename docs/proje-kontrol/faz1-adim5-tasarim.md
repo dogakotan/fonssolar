@@ -1,10 +1,10 @@
 # Faz 1 · Adım 5 — Ekranlar, sihirbaz düzeltmesi ve test ortamı (tasarım)
 
-Tarih: 12.10.2026. Durum:
-- Tasarım onaylandı (Karar 52-59).
+Tarih: 12.10.2026; güncelleme 13.10.2026. Durum:
+- Tasarım onaylandı (Karar 52-59). 13.10.2026: Karar 58 güncellendi, Karar 60-62 eklendi; Ek B'deki ara kararlar onaylandı.
 - Kod yazıldı ama test edilmedi; yerel ortam bekleniyor (Ek B).
 - Canlıya ve edge function'lara hiçbir şey uygulanmadı.
-- §9'daki sorular kararlarla kapandı. Yeni açık: Ç5-6 (Ek B).
+- §9'daki sorular ve Ç5-6 kararlarla kapandı. Yeni açık: Ç5-7 (Ek B).
 
 Kararlar: CLAUDE.md Karar 18-59. Önceki adımlar: `faz1-adim3-tasarim.md`, `faz1-adim4-tasarim.md`.
 Kaynak tarama (12.10.2026):
@@ -300,7 +300,7 @@ Ayrıntı ve diff: `f1-import-project-excel-diff.md` (Adım 1).
     - `export-project-excel` (E13'e kodu yazar);
     - `src/utils/projectExcelImport.js` (kod alanı yok, yalnızca not).
   - **Yeni projede** E13 zorunlu.
-  - **Güncellemede** E13 projenin kodundan farklıysa red: "Proje kodu değiştirilemez (mevcut: TIZ)". Boşsa yok sayılır.
+  - **Güncellemede** E13 projenin kodundan farklıysa red: "Proje kodu değiştirilemez (mevcut: TIZ)". **Boşsa da red (Karar 60):** "Bu dosya eski şablon (v7). Projeyi dışa aktarıp yeni dosya üzerinde çalışın."
 - **"Yeni bir kopya olarak yükle":**
   - Çakışma modalında yeni kod alanı açılır. Kopya, aslının kodunu kullanamaz (prefix UNIQUE).
   - İstemci köprüsü sizin dosyanız (Ç5-2).
@@ -387,7 +387,7 @@ Hepsi ayrı taslak dosyasında (`f1_adim5_ekran_rpc.sql`), BÖLÜM A/B. Önce ye
 
 ## Ek A — Sizin commit'lenmemiş dosyalarınızda hazır bekleyen değişiklikler (Karar 53)
 
-Bu dosyalara dokunulmadı. Siz kendi değişikliklerinizi commit edip haber verince aşağıdakiler uygulanacak.
+Bu dosyalara dokunulmadı (13.10.2026'da yeniden teyit edildi: `ProjeDetay.jsx`, `DailyReportList.jsx`, `projectExcelBridge.js`). Siz kendi değişikliklerinizi commit edip haber verince aşağıdakiler uygulanacak.
 
 1. **`src/pages/DailyReportList.jsx`** (Excel export görev sorgusu, ~265. satır): iptal görev rapor dışına.
    ```diff
@@ -405,19 +405,23 @@ Bu dosyalara dokunulmadı. Siz kendi değişikliklerinizi commit edip haber veri
        formData.append('mode', mode)
    +   if (code) formData.append('code', code)
    ```
-3. **`src/pages/dashboard/components/ProjeDetay.jsx`**: Proje Ayarları sekmesi (Karar 58).
-   - Bileşen `proje-ayarlari/ProjeAyarlari.jsx`'te hazır.
+3. **`src/pages/dashboard/components/ProjeDetay.jsx`**: Proje Ayarları sekmesi, yalnızca admin ve proje yöneticisi (Karar 58, 13.10.2026 güncellemesi).
+   - Bileşen `proje-ayarlari/ProjeAyarlari.jsx`'te hazır; başka rolde kendisi de hiçbir şey göstermez.
    - `index.jsx`'te sekme anahtarı kısıtı yok (kontrol edildi).
+   - Kalıcı sekme (`proje-detay-active-tab-*`) başka rolde `ayarlar` kalmışsa varsayılana düşülür.
    ```diff
    + import ProjeAyarlari from './proje-ayarlari/ProjeAyarlari'
      export default function ProjeDetay({ projectId, … }) {
    +   const { role } = useAuth()
+   +   const canSeeSettings = role === 'admin' || role === 'proje_yoneticisi'
      …
            <button onClick={() => setTab('ekip')} style={tab === 'ekip' ? tabBtnActive : tabBtn}>Ekip</button>
-   +       <button onClick={() => setTab('ayarlar')} style={tab === 'ayarlar' ? tabBtnActive : tabBtn}>Proje Ayarları</button>
+   +       {canSeeSettings && (
+   +         <button onClick={() => setTab('ayarlar')} style={tab === 'ayarlar' ? tabBtnActive : tabBtn}>Proje Ayarları</button>
+   +       )}
      …
    -   {tab === 'ekip' ? (
-   +   {tab === 'ayarlar' ? (
+   +   {tab === 'ayarlar' && canSeeSettings ? (
    +     <ProjeAyarlari projectId={projectId} role={role} />
    +   ) : tab === 'ekip' ? (
    ```
@@ -441,7 +445,9 @@ Bu dosyalara dokunulmadı. Siz kendi değişikliklerinizi commit edip haber veri
 
 Doğrulama: `npm run build` başarılı; değişen dosyalarda ESLint hatası yok.
 
-### Uygulamada verilen ara kararlar (onayınıza sunulur)
+### Uygulamada verilen ara kararlar — **ONAYLANDI (13.10.2026, Karar 62)**
+
+Onayın koşulu: aşağıdaki DEFINER RPC'ler için yerel yetki matrisi testi zorunlu (`f1_dogrulama.sql` R32, `faz1-adim5-yerel-ortam.md` §2.1).
 
 - **`set_tasks_classification` ve `save_project_tasks` SECURITY DEFINER** (tasarım INVOKER diyordu).
   - Gerekçe: iç yardımcılar `authenticated`'a kapalı.
@@ -454,13 +460,20 @@ Doğrulama: `npm run build` başarılı; değişen dosyalarda ESLint hatası yok
 - **Sihirbaz görevlerde disiplin/alan/WBS göndermiyor.** Bunlar İş Planı'ndan yönetiliyor; `save_project_tasks` yükte olmayan kolonu korur.
 - **Görev kodu sihirbazda zorunlu ve tekil.** Canlıda kolon zaten NOT NULL ve proje içinde UNIQUE.
 - **Karar 44 sonucu:** service role ile çalışan Excel import, görev durumunu iptale çekemez veya iptalden çıkaramaz (oturumsuz bağlam). İptal ekrandan yapılır.
-- **Karar 57'nin yorumu:** güncellemede boş E13 de uyuşmazlık sayıldı. Eski v7 dosyalarıyla güncelleme reddedilir; kullanıcı v8 ile indirilen dosyayı kullanmalı. Boş E13'ün yok sayılmasını isterseniz tek satırlık değişiklik.
+- **Karar 57'nin yorumu (Karar 60):** güncellemede boş E13 de red. Mesaj: "Bu dosya eski şablon (v7). Projeyi dışa aktarıp yeni dosya üzerinde çalışın." (`import-project-excel`, `code_mismatch: true`, `legacy_template: true`).
 - **Geriye uyum:** `create_project_with_code`, `save_project_tasks` ve `task_disciplines` veritabanında yoksa (Faz 1 migration'ı öncesi) ekranlar eski yola düşer ya da yeni özellikleri gizler.
 
-### Yeni çakışma (kural 8) — Ç5-6
+### Ç5-6 — KAPANDI (Karar 58 güncellemesi, 13.10.2026)
 
-- **Çakışma:** Karar 58 "şantiye şefi WBS ve Alanlar'ı görür, düzenleyemez" diyor. Ama şantiye şefinin `projeler` sekmesi yok, ProjeDetay'a hiç ulaşamıyor (`frontend-giris-karari.md`). Proje Ayarları yalnızca admin ve PM'e görünür olur.
-- **Seçenekler:**
-  - (a) Şantiye şefinin kendi "İş Planı" sekmesine salt okunur bir "WBS ve Alanlar" bölümü (aynı bileşen, `role=santiye_sefi`). En küçük değişiklik; önerim bu.
-  - (b) Şantiye şefine ProjeDetay erişimi açmak. Daha geniş bir navigasyon kararı.
-- Karar bekliyor; testte şantiye şefi görünümü bu yüzden yok.
+- Şantiye şefi için ayrı WBS/alan görünümü yapılmayacak. İş Planı'ndaki Activity ID/WBS/alan/disiplin kolonları ve filtreleri yeterli.
+- WBS ve Alanlar ekranı yalnızca ProjeDetay › Proje Ayarları'nda, admin ve PM için. `ProjeAyarlari.jsx` başka rolde hiçbir şey göstermez; sekme butonu Ek A'da rol koşullu.
+- DB tarafı değişmedi: Ç-6 RLS (A7) şantiye şefinin yazmasını yine kapatır, okuma (`*_select`) açık kalır (İş Planı'ndaki kod/ad gösterimi için gerekli).
+
+### Yeni çakışma (kural 8) — Ç5-7: "A projesinin PM'i B projesine yazamaz"
+
+- **Çakışma:** Ek B onayının koşulu olan bu test, bugünkü yetki modeliyle geçemez. Canlıda `roles.proje_yoneticisi.cross_project = true` (13.10.2026, salt okunur SELECT); `has_project_access` PM'e her projede true döner. CLAUDE.md "Roller": "proje_yoneticisi tüm projelere erişir"; `profiles.project_id` yalnızca kozmetik. Admin ve muhasebe de `is_manager=true` ile her projeye erişir.
+- **Sonuç:** RPC'lerdeki `has_project_access` kontrolü bugün yalnızca savunma katmanı; hiçbir yetkili rolde reddetmez. Tek proje kapsamlı rol olan şantiye şefi, rol kontrolünde zaten reddedilir.
+- **Testte ne yaptım:** R32 (c) erişim kontrolünü yalnızca kendi alt işleminde `cross_project=false` yapıp ölçer (A'ya `user_project_access` verilir; B'de ERISIM, A'da geçer). Bu, kodun doğru çalıştığını gösterir; canlı modeli değiştirmez ve kural olarak PM'i kısıtlamaz.
+- **Karar sizde:**
+  - (a) Model böyle kalsın: PM tüm projelerde yazar; R32 (c) yalnızca kod yolu testi. Önerim bu, çünkü PM'in her projeye erişimi bilinçli bir karar (16.07, 21.07.2026) ve satın alma/finans ekranları buna dayanıyor.
+  - (b) PM proje kapsamlı olsun (`cross_project=false` + `user_project_access` ataması). Bu Faz 1 dışı, uygulama genelinde bir yetki modeli değişikliği; ayrı tasarım ister.

@@ -676,6 +676,106 @@ begin
     perform pg_temp.as_user(null);
     if e <> 'GERI_AL:red|iptal' then raise exception 'R31 iptal yetkisi: %', e; end if;
 
+    -- R32 · Yetki matrisi (Ek B onayı, 13.10.2026): toplu atama, görev kaydı, alan-WBS bağ kaydı, Kod ata (iki imza),
+    --       WBS/alan import. (a) anon EXECUTE yok, authenticated var; (b) şantiye şefi ve muhasebe reddedilir (ROL);
+    --       (c) proje erişimi: PM canlıda cross_project=true olduğundan has_project_access PM'e her projede true döner
+    --       (Ç5-7). Erişim kontrolü yalnızca bu alt işlemde cross_project=false yapılıp ölçülür: B'de ERISIM / YOK,
+    --       user_project_access ile verilen A'da IZIN (yetki geçildi; validation sonucu da IZIN sayılır).
+    --       Sonuç kodları: ROL = forbidden + "yalnızca admin ve proje yöneticisi"; ERISIM = forbidden + "Bu projeye erişim
+    --       yetkiniz yok"; YOK = not_found (INVOKER save_area_wbs_links: RLS B'nin WBS'ini gizler); diğerleri ham mesaj.
+    declare
+      u32s uuid; u32m uuid; ta32 uuid[]; tb32 uuid[]; wa32 uuid; aa32 uuid; wb32 uuid; ab32 uuid;
+      imp32 boolean := to_regprocedure('public.import_wbs_areas(text,jsonb,boolean)') is not null;
+      c32 text[]; q32 text; x32 text; s32 text := ''; exp32 text;
+    begin
+      foreach f in array array['public.set_tasks_classification(uuid[],text,uuid,uuid,boolean)', 'public.save_project_tasks(text,jsonb,boolean,jsonb)',
+                               'public.save_area_wbs_links(uuid,uuid[])', 'public.assign_activity_ids(uuid[],boolean)',
+                               'public.assign_activity_id(uuid,boolean)', 'public.import_wbs_areas(text,jsonb,boolean)'] loop
+        if to_regprocedure(f) is null then
+          if f like 'public.import_wbs_areas%' then continue; end if;
+          raise exception 'R32 % yok', f;
+        end if;
+        if has_function_privilege('anon', f, 'EXECUTE') or not has_function_privilege('authenticated', f, 'EXECUTE') then
+          raise exception 'R32 % yetkileri yanlış (anon açık ya da authenticated kapalı)', f;
+        end if;
+      end loop;
+      select id into u32s from public.profiles where role_key = 'santiye_sefi' order by id limit 1;
+      select id into u32m from public.profiles where role_key = 'muhasebe' order by id limit 1;
+      if u32s is null or u32m is null then raise exception 'R32 santiye_sefi/muhasebe profili bulunamadı'; end if;
+
+      create or replace function pg_temp.r32(p_uid uuid, p_sql text) returns text language plpgsql as $f$
+      declare m32 text; h32 text;
+      begin
+        perform pg_temp.as_user(p_uid);
+        begin
+          execute p_sql; m32 := 'IZIN';
+        exception when others then
+          get stacked diagnostics m32 = message_text, h32 = pg_exception_hint;
+          m32 := case
+            when m32 = 'forbidden' and coalesce(h32, '') like '%yalnızca admin ve proje yöneticisi%' then 'ROL'
+            when m32 = 'forbidden' and h32 = 'Bu projeye erişim yetkiniz yok' then 'ERISIM'
+            when m32 = 'not_found' then 'YOK'
+            when m32 in ('validation', 'invalid_state') then 'IZIN'
+            else m32 end;
+        end;
+        perform pg_temp.as_user(null);
+        return m32;
+      end $f$;
+      -- Çağrı listesi (proje kimliği, görevler, WBS, alan) → SQL metinleri; hepsi önizleme, alan-WBS bağ kaydı hariç (önizlemesi yok)
+      create or replace function pg_temp.r32_calls(p_proj text, p_t uuid[], p_w uuid, p_a uuid, p_imp boolean) returns text[] language sql as $f$
+        select array[
+          format('select public.set_tasks_classification(%L::uuid[], %L, null, null, true)', p_t, 'general'),
+          format('select public.save_project_tasks(%L, %L::jsonb, true)', p_proj,
+                 jsonb_build_array(jsonb_build_object('id', p_t[1], 'task_code', 'R-1', 'task_name', 'R görev 1'),
+                                   jsonb_build_object('id', p_t[2], 'task_code', 'R-2', 'task_name', 'R görev 2'))),
+          format('select public.save_area_wbs_links(%L::uuid, %L::uuid[])', p_w, array[p_a]),
+          format('select public.assign_activity_ids(%L::uuid[], true)', p_t),
+          format('select public.assign_activity_id(%L::uuid, true)', p_t[1])]
+          || case when p_imp then array[format('select public.import_wbs_areas(%L, %L::jsonb, true)', p_proj,
+                                                '{"wbs":[],"areas":[],"links":[]}')] else '{}'::text[] end
+      $f$;
+
+      begin
+        ta32 := pg_temp.f1_aid_fx('zzf1-a32a', 'ZZFL');
+        tb32 := pg_temp.f1_aid_fx('zzf1-a32b', 'ZZFM');
+        select pw.id into wa32 from public.project_wbs pw where pw.project_id = 'zzf1-a32a';
+        select pa.id into aa32 from public.project_areas pa where pa.project_id = 'zzf1-a32a';
+        select pw.id into wb32 from public.project_wbs pw where pw.project_id = 'zzf1-a32b';
+        select pa.id into ab32 from public.project_areas pa where pa.project_id = 'zzf1-a32b';
+
+        -- (b) şantiye şefi ve muhasebe, A projesinde
+        c32 := pg_temp.r32_calls('zzf1-a32a', ta32, wa32, aa32, imp32);
+        s32 := 'SS=';
+        foreach q32 in array c32 loop x32 := pg_temp.r32(u32s, q32); s32 := s32 || x32 || ','; end loop;
+        s32 := s32 || '|MU=';
+        foreach q32 in array c32 loop x32 := pg_temp.r32(u32m, q32); s32 := s32 || x32 || ','; end loop;
+
+        -- (c) PM proje kapsamlı: cross_project kapalı, yalnızca A'ya user_project_access
+        update public.roles set cross_project = false where roles.key = 'proje_yoneticisi';
+        insert into public.user_project_access (user_id, project_id) values (u_pm, 'zzf1-a32a');
+        c32 := pg_temp.r32_calls('zzf1-a32b', tb32, wb32, ab32, imp32);
+        s32 := s32 || '|PM_B=';
+        foreach q32 in array c32 loop x32 := pg_temp.r32(u_pm, q32); s32 := s32 || x32 || ','; end loop;
+        c32 := pg_temp.r32_calls('zzf1-a32a', ta32, wa32, aa32, imp32);
+        s32 := s32 || '|PM_A=';
+        foreach q32 in array c32 loop x32 := pg_temp.r32(u_pm, q32); s32 := s32 || x32 || ','; end loop;
+        -- B'de hiçbir şey değişmedi (bağ sayısı ayrı ifadede okunur)
+        x32 := (select count(*) from public.area_wbs aw where aw.project_id = 'zzf1-a32b')::text;
+        s32 := s32 || '|B_bag=' || x32;
+        raise exception 'GERI_AL:%', s32;
+      exception when others then s32 := sqlerrm; end;
+      perform pg_temp.as_user(null);
+      exp32 := 'GERI_AL:SS=ROL,ROL,ROL,ROL,ROL,' || case when imp32 then 'ROL,' else '' end
+            || '|MU=ROL,ROL,ROL,ROL,ROL,' || case when imp32 then 'ROL,' else '' end
+            || '|PM_B=ERISIM,ERISIM,YOK,ERISIM,ERISIM,' || case when imp32 then 'ERISIM,' else '' end
+            || '|PM_A=IZIN,IZIN,IZIN,IZIN,IZIN,' || case when imp32 then 'IZIN,' else '' end
+            || '|B_bag=1';
+      if s32 <> exp32 then raise exception 'R32 yetki matrisi: % (beklenen %)', s32, exp32; end if;
+      if (select roles.cross_project from public.roles where roles.key = 'proje_yoneticisi') is distinct from true then
+        raise exception 'R32 roles.cross_project geri alınmadı';
+      end if;
+    end;
+
     if exists (select 1 from public.projects where projects.id like 'zzf1-a2%' or projects.id like 'zzf1-a3%') then
       raise exception 'Adım 5 test projesi kaldı';
     end if;

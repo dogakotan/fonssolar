@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import WbsAlanlar from './WbsAlanlar'
 
-// ProjeDetay › Proje Ayarları (Karar 58). İlk alt sekme "WBS ve Alanlar"; ileride proje kodu ve kategori ağırlıkları.
-// Bağlantı noktası: ProjeDetay.jsx sekme listesine { key: 'ayarlar', label: 'Proje Ayarları' } ve render dalına
-// <ProjeAyarlari projectId={project.id} role={role} />. ProjeDetay.jsx kullanıcının commit'lenmemiş dosyası olduğu için
-// bu iki satır kullanıcı haber verene kadar eklenmedi (faz1-adim5-tasarim.md Ek A).
+// ProjeDetay › Proje Ayarları (Karar 58, 13.10.2026 güncellemesi): yalnızca admin ve proje yöneticisi. Şantiye şefi
+// WBS/alanı İş Planı kolon ve filtrelerinden görür; ayrı görünüm yok. İlk alt sekme "WBS ve Alanlar"; ileride proje
+// kodu ve kategori ağırlıkları. Bağlantı noktası ProjeDetay.jsx (kullanıcının commit'lenmemiş dosyası; rol koşullu
+// sekme butonu faz1-adim5-tasarim.md Ek A'da hazır, kullanıcı haber verene kadar eklenmedi).
 const SUBTABS = [{ key: 'wbs-alan', label: 'WBS ve Alanlar' }]
 
 export default function ProjeAyarlari({ projectId, role }) {
   const [sub, setSub] = useState('wbs-alan')
+  if (role !== 'admin' && role !== 'proje_yoneticisi') return null
   return (
     <div>
       <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--color-border-md)' }}>

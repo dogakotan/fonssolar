@@ -157,14 +157,18 @@ Deno.serve(async (req) => {
       const { data: allowed, error: accErr } = await userClient.rpc("user_has_project_access", { p_project_id: projectId });
       if (accErr) throw new Error(`erisim kontrolu: ${accErr.message}`);
       if (!allowed) return json({ error: `Bu projeye erisim yetkiniz yok: ${projectId}` }, 403);
-      // Karar 57: E13 projenin koduyla uyusmazsa (bos dahil) hicbir sey yazilmaz.
+      // Karar 57: E13 projenin koduyla uyusmazsa hicbir sey yazilmaz. Karar 60: bos E13 eski sablon (v7) sayilir, red.
       const { data: settings } = await sb.from("project_register_settings").select("prefix").eq("project_id", projectId).maybeSingle();
       const currentCode = settings?.prefix ?? null;
+      if (currentCode && !projectCode) {
+        return json({
+          error: "Bu dosya eski şablon (v7). Projeyi dışa aktarıp yeni dosya üzerinde çalışın.",
+          code_mismatch: true, legacy_template: true, current_code: currentCode,
+        }, 400);
+      }
       if (currentCode && projectCode !== currentCode) {
         return json({
-          error: projectCode
-            ? `Proje kodu degistirilemez: Excel'de ${projectCode}, projede ${currentCode} (Proje Bilgileri, E13).`
-            : `Proje kodu (Proje Bilgileri, E13) bos. Bu projenin kodu ${currentCode}; sablon v8 ile indirilen dosyayi kullanin.`,
+          error: `Proje kodu degistirilemez: Excel'de ${projectCode}, projede ${currentCode} (Proje Bilgileri, E13).`,
           code_mismatch: true, current_code: currentCode,
         }, 400);
       }

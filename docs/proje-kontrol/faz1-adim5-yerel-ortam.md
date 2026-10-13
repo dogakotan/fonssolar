@@ -1,13 +1,14 @@
 # Faz 1 · Adım 5 — Yerel test ortamı ve baseline migration önerisi
 
-Tarih: 12.10.2026.
+Tarih: 12.10.2026; güncelleme 13.10.2026.
 Kararlar:
 - Karar 52: yerel Docker; Playwright varsayılan hedefi yerel.
-- Karar 53: kullanıcının iki dosyası beklemede.
+- Karar 53: kullanıcının üç dosyası (`ProjeDetay.jsx`, `DailyReportList.jsx`, `projectExcelBridge.js`) beklemede.
+- Karar 61: baseline migration **ertelendi** (Faz 1 kapandıktan sonra, Faz 2'den önce ayrı paket). Yerel ortam şimdilik yalnızca şema dökümüyle kurulur.
+- Karar 62: DEFINER RPC'ler için yetki matrisi testi zorunlu (§2.1).
 
 Durum:
 - Kurulum betikleri yazıldı ama **çalıştırılmadı**. Bu makinede Docker yok; kullanıcı kuracak.
-- **Baseline migration bir öneridir; onay bekliyor.**
 
 ## 1. Kullanıcı adımları (sırayla)
 
@@ -25,8 +26,33 @@ Durum:
 node scripts/local-db/setup.mjs --no-drafts   # kalibrasyon: taban + referans + tohum, taslaksız
 npm run test:e2e                              # mevcut suite yerelde (varsayılan hedef artık yerel)
 node scripts/local-db/setup.mjs               # taslaklar Adım 6 sırasıyla + Adım 5
-npm run test:e2e                              # mevcut suite + Adım 5 testleri
+psql … -f docs/proje-kontrol/taslak-sql/f1_dogrulama.sql   # R1-R32; 'DOGRULAMA SONUCU: OK' ile biter, geri alınır
+npm run test:e2e                              # mevcut suite + Adım 5 testleri (yetki matrisi dahil)
 ```
+
+Herhangi bir adımda fark çıkarsa raporlanır ve durulur.
+
+### 2.1 Yetki matrisi (zorunlu, Karar 62)
+
+Kapsam: Ek B'de DEFINER olarak onaylanan ve aynı yolu kullanan yazma RPC'leri:
+
+| İş | RPC | Güvenlik |
+|---|---|---|
+| Toplu atama | `set_tasks_classification` | DEFINER |
+| Görev kaydı (sihirbaz) | `save_project_tasks` | DEFINER |
+| Alan-WBS bağ kaydı | `save_area_wbs_links` | INVOKER (RLS); aynı üç kontrol uygulanır |
+| Kod ata | `assign_activity_ids`, `assign_activity_id` (sarmalayıcı) | DEFINER |
+| WBS/alan import | `import_wbs_areas` | DEFINER |
+
+Her biri için üç kontrol:
+
+1. **anon EXECUTE yok** (authenticated var): katalogda `has_function_privilege` (`f1_dogrulama.sql` R32 a) ve API'den anon anahtarla çağrı reddi (`proje-kontrol-adim5.spec.js` "yetki matrisi").
+2. **Şantiye şefi ve muhasebe çağıramaz:** `forbidden` (R32 b; spec aynı test).
+3. **A projesinin PM'i B projesine yazamaz:** R32 c.
+   - **Çakışma Ç5-7:** PM canlıda `cross_project=true`; `has_project_access` PM'e her projede true döner. Bu yüzden test, kendi alt işleminde `cross_project=false` yapıp PM'e yalnızca A için `user_project_access` verir. Beklenen: B'de 4 RPC `forbidden` + "Bu projeye erişim yetkiniz yok", `save_area_wbs_links` `not_found` (INVOKER; RLS B'nin WBS'ini gizler), B'deki bağ sayısı değişmez; A'da yetki geçilir. Alt işlem geri alınır, `roles` satırı değişmez (R32 bunu da kontrol eder).
+   - API düzeyinde (Playwright) bu ölçülemez: PM'in erişimi model gereği tüm projeler.
+
+**Doğrulanamayanlar** (ilk koşuda görülecek): anon çağrısındaki PostgREST hata kodu (42501 bekleniyor); `import_wbs_areas`'ın boş yükle önizlemesinin sonucu (R32 yetki geçildiyse `validation` da kabul edilir).
 
 - **Supabase CLI:** `node_modules`'ta varsa onu kullanır, yoksa `npx supabase@latest`. Kalıcı olması için `npm i -D supabase` öneriyorum (`package.json` değişir).
 - **Yığın:** `supabase/local/stack` çalışma dizininden başlar: proje kimliği `fons-local`, portlar 55321-55324 (kökteki config'ten ayrı).
@@ -58,7 +84,15 @@ npm run test:e2e                              # mevcut suite + Adım 5 testleri
 
 Sorun çıkarsa duracağım ve raporlayacağım.
 
-## 3. Baseline migration önerisi (onay bekliyor)
+## 3. Baseline migration önerisi — **ERTELENDİ (Karar 61, 13.10.2026)**
+
+**Zamanlama:** Faz 1 kapandıktan sonra, Faz 2'den önce ayrı paket. Şimdi uygulanmaz; yerel ortam yalnızca şema dökümüyle kurulur (§2).
+
+**O paketin ilk adımı (dosya oluşturmadan önce gösterilir):**
+- canlıya migration'ların bugüne kadar hangi yollarla uygulandığı (MCP `apply_migration`, SQL editörü, CLI; tracking boşluğu bulgularıyla);
+- canlının `supabase_migrations.schema_migrations` geçmişinin baseline ile nasıl uzlaştırılacağı (ör. `supabase migration repair`; canlıya yazma olduğu için ayrı onay ve yedek hatırlatmasıyla). Aşağıdaki 5. maddedeki "repair çalıştırılmaz" varsayımı o pakette yeniden değerlendirilir.
+
+Aşağıdaki metin 12.10.2026 önerisidir; paket başladığında güncellenir.
 
 **Sorun:** `supabase/migrations` (425 dosya) veritabanını sıfırdan kuramıyor.
 - İlk dosya `projects` ve `profiles` tablolarına dayanıyor; bu tabloları kuran migration yok, temel şema migration geçmişinden önce.
