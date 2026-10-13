@@ -8,6 +8,7 @@
 geçti, uygulanmadı; gerçek Diyarbakır Excel'i projesiz kontrol için bekleniyor). MVP senaryosu (b) seçildi (Karar 45).
 Önceki: 12.10.2026, Faz 1 Adım 3 kapandı.
 Ek (13.10.2026, kapanış değil): "Kullanıcıdan beklenen girdiler" ve Faz 5 başlangıç kontrol listesi eklendi (Karar 63).
+Ek (13.10.2026, kapanış değil): Karar 6 ve 10 onaylandı; Faz 3'e kritik risk kapanış onayı eklendi (+1 iş günü), Faz 3-4 ve MVP canlı tahmini kaydı (11 → 14 Aralık).
 
 **Faz 1 parçaları:**
 - **B1** yetki matrisi;
@@ -61,9 +62,9 @@ Kalan Faz 1 (13 Ekim'den):
 |---|---|---|---|---|
 | 1 | WBS, Area, Activity ID | 28 Ekim 2026 | 48 gün önce | Diyarbakır Excel'i, proje kodu (DYB) ve kategori ağırlıkları gelmeden Adım 6 tamamlanamaz |
 | 2 | Ortak altyapı (B3, B6, links, history; B5 MVP kritik yolunda değil) | 6 Kasım 2026 | 39 gün önce | Lokal Docker testi zorunlu (Karar 31); B5 patron onayı paralel |
-| 3 | 6 register standardı + UI (Document, Drawing, RFI, Action, Risk, Decision), RFI pilot | 23 Kasım 2026 | 22 gün önce | Document ekranı dosyasız (external link) başlar |
-| 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 7 Aralık 2026 | 8 gün önce | Satın alma ve finans regresyonu |
-| 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü), kullanıcı hesapları ve rol/proje atamaları (0,5), kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5): hazırlık 3 iş günü (8, 9, 10 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **11 Aralık 2026**; destek 11-17 Aralık | 4 gün önce; 1 Ocak 2027 sınırından 21 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
+| 3 | 6 register standardı + UI (Document, Drawing, RFI, Action, Risk, Decision), RFI pilot; Risk'te RSK numarası/onay alanları (Karar 14) + **kritik risk kapanış onayı** (Karar 10, 13.10: +1 iş günü; `project_risks.created_by` eklenir) | 24 Kasım 2026 | 21 gün önce | Document ekranı dosyasız (external link) başlar |
+| 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 8 Aralık 2026 | 7 gün önce | Satın alma ve finans regresyonu |
+| 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü); kullanıcı hesapları ve rol/proje atamaları (0,5): canlıdaki test hesaplarının gözden geçirilmesi (test e-postasına benzeyen PM hesabı dahil) ve genel "Admin" hesabı kararı (Karar 10 ön koşulu); kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5). Hazırlık 3 iş günü (9, 10, 11 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **14 Aralık 2026** (12.10 tahmini 11 Aralık); destek 14-18 Aralık | 1 gün önce; 1 Ocak 2027 sınırından 18 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
 | 5 | Change, Claim, Interface; Technical Submittal ve Material Approval ekranları (Karar 45) | Ocak 2027 (MVP sonrası) | — | — |
 | 6 | `subcontracts`, `progress_payments`, fatura WBS/aktivite bağı | Şubat 2027 | — | Ç8, Ç10, Ç11 Faz 6 başında |
 | 7 | Aktivite 360, KPI | Mart 2027 | — | — |
@@ -84,22 +85,25 @@ Faz 5-9 tarihleri kaba tahmindir; MVP'den sonra kapasiteye göre yeniden yazıl�
 | `ProjeDetay.jsx`, `DailyReportList.jsx`, `projectExcelBridge.js` commit'i ve haber (Karar 53) | Adım 5 Ek A | Adım 5 kapanışı |
 | Kategori ağırlık değerleri (tüm kategoriler, fiziksel olmayanlar %0) | Adım 6, Diyarbakır importu | Adım 6 |
 | Diyarbakır Excel'i ve proje kodu (DYB / DYB1 / DYB2) | Adım 6 | Adım 6 |
-| **Karar 6** — rol × register yetki matrisi onayı (`register_permissions` seed'i, tasarım 4.3) | B1 Faz 1'de (Karar 17), Adım 6'da uygulanır; onaysız seed uygulanmaz | Adım 6 (28 Ekim) |
-| **Karar 10** — dört göz kuralı (risk, change, claim, decision; proje bazında kapatılabilir, varsayılan açık) | B3 (Faz 2) `four_eyes_enabled`; Faz 3 Risk/Decision onay akışı | Faz 2 başı (B3 uygulaması) |
+| ~~Karar 6 — yetki matrisi~~ | **Onaylandı 13.10.2026** (`karar-6-10-yetki-ve-dort-goz.md`); B1 seed'i güncellendi | — |
+| ~~Karar 10 — dört göz~~ | **Onaylandı 13.10.2026** | — |
+| Genel "Admin" hesabı: kapatma veya salt okunur/acil durum hesabı; mekanizma M1 (hesap bazlı istisna) veya M2 (rol değişikliği) | Karar 10'un "admin kaydını başka admin onaylar" kuralının ön koşulu; B3 (Faz 2) | Faz 2 başı (B3 uygulaması) |
+| Canlı test hesaplarının gözden geçirilmesi | MVP canlıya alma › kullanıcı hesapları | 9 Aralık |
 | Karar 5 — dosya deposu patron onayı | B5; MVP kritik yolunda değil (Document ekranı external link ile başlar, Karar 45) | Bekletmez; paralel |
 
-Açık kararlar 6-10'un MVP etkisi:
-- **6** Roller / register yetki matrisi — **bekletir** (B1 Faz 1 Adım 6'da uygulanır).
+Açık kararlar 6-10'un MVP etkisi (13.10.2026; 6 ve 10 aynı gün onaylandı):
+- **6** Roller / register yetki matrisi — onaylandı (B1 Faz 1 Adım 6'da uygulanır).
 - **7** AI sağlayıcı ve gizlilik (İsdemir OYAK izni) — bekletmez (AI Faz 7 sonrası, Karar 23).
 - **8** NCR ve Inspection — bekletmez (pilotta yok; tip kodları B1'de ayrıldı, Karar 16, 25).
 - **9** Agent kimliği ve ilk agent'lar — bekletmez (AI/agent Faz 7 sonrası, Karar 23).
-- **10** Dört göz kuralı — **bekletir** (B3 Faz 2; Faz 3 Risk ve Decision onayı).
+- **10** Dört göz kuralı — onaylandı; ön koşulu genel Admin hesabı kararı (yukarıdaki tablo).
 
 **Faz başlangıç kontrol listeleri:**
 - **Faz 5 (Change, Claim, Interface) başlamadan önce:**
   - Karar 63'ü yeniden aç: PM'in tüm projelere erişimi (`roles.proje_yoneticisi.cross_project = true`) Claim/Change yetkisi için hâlâ uygun mu? Projeye özel PM ya da dış kullanıcı (müşavir, işveren, taşeron) girecekse proje kapsamlı erişim modeli tasarlanır.
   - R32'nin (c) bölümü (kısıtlı PM ile erişim kontrolü) yeni Claim/Change RPC'lerine de uygulanır.
-  - Karar 10 (dört göz) Change ve Claim için netleşmiş olmalı.
+  - Karar 10: Change ve Claim'de admin onayı ilkesinin ayrıntısı (onay adımları, tutar eşiği vb.) netleşir.
+  - Karar 6: PM'in Change ve Claim onay yetkisi (bugün H) yeniden değerlendirilir.
 
 ---
 

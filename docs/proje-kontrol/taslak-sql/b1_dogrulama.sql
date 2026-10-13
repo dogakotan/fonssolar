@@ -12,6 +12,7 @@ declare
   j jsonb;
   n int;
   r record;
+  e_k6 text;
   checks int := 0;
 begin
   -- ── Yardımcılar (geçici şema; transaction ile birlikte geri alınır) ──
@@ -76,6 +77,42 @@ begin
   end if;
   checks := checks + 1;
 
+  -- Karar 6 matrisi hücre hücre (13.10.2026). Bayraklar boolean'dan değil case ile metne çevrilir (kural 10);
+  -- '-' = yetki yok, '*' = edit_scope own. Farklı hücreler hata mesajında listelenir.
+  select string_agg(format('%s.%s beklenen=%s gerçek=%s', ex.rol, ex.tip, ex.bayrak, coalesce(ac.bayrak, 'YOK')), '; '
+                    order by ex.rol, ex.tip) into e_k6
+  from (values
+    ('admin','action','VCEAD'), ('admin','change','VCEAD'), ('admin','claim','VCEAD'), ('admin','decision','VCEAD'),
+    ('admin','document','VCEAD'), ('admin','drawing','VCEAD'), ('admin','inspection','-'), ('admin','interface','VCEAD'),
+    ('admin','material_approval','VCEAD'), ('admin','ncr','-'), ('admin','payment','V'), ('admin','procurement','V'),
+    ('admin','rfi','VCEAD'), ('admin','risk','VCEAD'), ('admin','subcontractor','V'), ('admin','submittal','VCEAD'),
+    ('proje_yoneticisi','action','VCEA'), ('proje_yoneticisi','change','VCE'), ('proje_yoneticisi','claim','VCE'),
+    ('proje_yoneticisi','decision','VCE'), ('proje_yoneticisi','document','VCEA'), ('proje_yoneticisi','drawing','VCEA'),
+    ('proje_yoneticisi','inspection','-'), ('proje_yoneticisi','interface','VCEA'), ('proje_yoneticisi','material_approval','VCEA'),
+    ('proje_yoneticisi','ncr','-'), ('proje_yoneticisi','payment','V'), ('proje_yoneticisi','procurement','V'),
+    ('proje_yoneticisi','rfi','VCEA'), ('proje_yoneticisi','risk','VCEA'), ('proje_yoneticisi','subcontractor','V'),
+    ('proje_yoneticisi','submittal','VCEA'),
+    ('santiye_sefi','action','VCE*'), ('santiye_sefi','change','-'), ('santiye_sefi','claim','-'), ('santiye_sefi','decision','V'),
+    ('santiye_sefi','document','VCE*'), ('santiye_sefi','drawing','V'), ('santiye_sefi','inspection','-'), ('santiye_sefi','interface','V'),
+    ('santiye_sefi','material_approval','V'), ('santiye_sefi','ncr','-'), ('santiye_sefi','payment','-'), ('santiye_sefi','procurement','V'),
+    ('santiye_sefi','rfi','VCE*'), ('santiye_sefi','risk','VCE*'), ('santiye_sefi','subcontractor','V'), ('santiye_sefi','submittal','V'),
+    ('muhasebe','action','-'), ('muhasebe','change','V'), ('muhasebe','claim','V'), ('muhasebe','decision','-'),
+    ('muhasebe','document','-'), ('muhasebe','drawing','-'), ('muhasebe','inspection','-'), ('muhasebe','interface','-'),
+    ('muhasebe','material_approval','-'), ('muhasebe','ncr','-'), ('muhasebe','payment','V'), ('muhasebe','procurement','V'),
+    ('muhasebe','rfi','-'), ('muhasebe','risk','-'), ('muhasebe','subcontractor','V'), ('muhasebe','submittal','-')
+  ) as ex(rol, tip, bayrak)
+  left join (
+    select rpm.role_key as rol, rpm.register_type as tip,
+           coalesce(nullif(concat(case when rpm.can_view then 'V' end, case when rpm.can_create then 'C' end,
+                                  case when rpm.can_edit then 'E' end, case when rpm.can_approve then 'A' end,
+                                  case when rpm.can_delete then 'D' end), ''), '-')
+           || case when rpm.edit_scope = 'own' then '*' else '' end as bayrak
+    from public.register_permissions rpm
+  ) ac on ac.rol = ex.rol and ac.tip = ex.tip
+  where ac.bayrak is distinct from ex.bayrak;
+  if e_k6 is not null then raise exception 'Karar 6 matrisi farklı: %', e_k6; end if;
+  checks := checks + 1;
+
   -- Geçiş tablosundaki her durum, ilgili tablonun canlı CHECK listesinde olmalı
   for r in select t.register_type, s.st,
                   case t.register_type when 'document' then 'documents' when 'rfi' then 'rfis' when 'action' then 'project_actions'
@@ -92,6 +129,9 @@ begin
   -- ── 2. Davranış ──
   perform pg_temp.as_user(u_ss);
   if not public.register_can('rfi', 'create') or public.register_can('rfi', 'approve') then raise exception 'santiye rfi yetkisi yanlış'; end if;
+  if public.register_can('change', 'view') or not public.register_can('risk', 'edit') or public.register_can('interface', 'create') then
+    raise exception 'santiye Karar 6 yetkisi yanlış (change görmemeli, risk düzenlemeli, interface açmamalı)';
+  end if;
   j := public.get_my_register_permissions(p);
   if j -> 'registers' -> 'rfi' ->> 'edit_scope' <> 'own' or (j ->> 'project_access')::boolean is not true then
     raise exception 'santiye izin haritası yanlış: %', j;
@@ -109,6 +149,10 @@ begin
   if public.register_can('rfi', 'view') or not public.register_can('change', 'view') then raise exception 'muhasebe yetkisi yanlış'; end if;
   perform pg_temp.as_user(u_pm);
   if not public.register_can('rfi', 'approve') or public.register_can('rfi', 'delete') then raise exception 'pm yetkisi yanlış'; end if;
+  if public.register_can('decision', 'approve') or public.register_can('change', 'approve') or public.register_can('claim', 'approve')
+     or public.register_can('subcontractor', 'create') then
+    raise exception 'pm Karar 6/10 yetkisi yanlış (decision/change/claim onayı ve subcontractor yazma yok)';
+  end if;
   perform pg_temp.expect_err($q$select public.set_register_permission('santiye_sefi','rfi',true,true,true,true,true,'all')$q$, 'forbidden');
   checks := checks + 1;
 
@@ -126,5 +170,5 @@ begin
   reset role;
   checks := checks + 1;
 
-  raise exception 'DOGRULAMA SONUCU: OK | B1 | % kontrol grubu | seed 64 | geçiş durumları canlı CHECK ile uyumlu', checks;
+  raise exception 'DOGRULAMA SONUCU: OK | B1 | % kontrol grubu | seed 64, Karar 6 matrisi birebir | geçiş durumları canlı CHECK ile uyumlu', checks;
 end $$;

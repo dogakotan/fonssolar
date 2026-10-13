@@ -13,7 +13,7 @@
 --   * register_can()     — RLS ve RPC'lerin ortak yetki kontrolü
 --   * get_my_register_permissions(p_project_id) — arayüz için yetki haritası
 --   * set_register_permission(...) — yalnızca admin
---   * Seed: tasarım 4.3 matrisi (Karar 6 AÇIK: değerler öneri; tablo değişince kod değişmez)
+--   * Seed: Karar 6 matrisi (ONAYLANDI 13.10.2026; tasarım 4.3 önerisinden farklar A2'de; tablo değişince kod değişmez)
 --
 -- Yetki modeli: pg_default_acl yeni tablolarda authenticated'a tüm yetkileri, yeni fonksiyonlarda
 -- anon + authenticated'a EXECUTE verir → aşağıda hepsi açıkça geri çekilir.
@@ -75,7 +75,10 @@ create policy register_status_transitions_select on public.register_status_trans
 revoke all on public.register_permissions, public.register_status_transitions from anon, authenticated;
 grant select on public.register_permissions, public.register_status_transitions to authenticated;
 
--- ── A2 · Seed: tasarım 4.3 (V görüntüle, C oluştur, E düzenle, A onayla, D sil) ──
+-- ── A2 · Seed: Karar 6 (13.10.2026; tasarım 4.3 önerisinden farkları yanda) ──
+--    V görüntüle, C oluştur, E düzenle, A onayla, D sil. Şantiye şefinin E'si her yerde yalnızca kendi kaydı (own).
+--    Silme yalnızca admin; onaylı kayıt silinmez, iptal edilir. procurement/subcontractor/payment köprü görünümü:
+--    en fazla V, yazma mevcut satın alma ve finans akışlarından.
 insert into public.register_permissions
   (role_key, register_type, can_view, can_create, can_edit, can_approve, can_delete, edit_scope)
 select m.role_key, m.register_type,
@@ -83,19 +86,19 @@ select m.role_key, m.register_type,
        position('A' in m.f) > 0, position('D' in m.f) > 0,
        case when m.role_key = 'santiye_sefi' and position('E' in m.f) > 0 then 'own' else 'all' end
 from (values
-  ('admin','document','VCEAD'), ('proje_yoneticisi','document','VCEA'), ('santiye_sefi','document','VC'), ('muhasebe','document',''),
+  ('admin','document','VCEAD'), ('proje_yoneticisi','document','VCEA'), ('santiye_sefi','document','VCE'), ('muhasebe','document',''),  -- ş.şefi E (own) eklendi
   ('admin','drawing','VCEAD'), ('proje_yoneticisi','drawing','VCEA'), ('santiye_sefi','drawing','V'), ('muhasebe','drawing',''),
   ('admin','rfi','VCEAD'), ('proje_yoneticisi','rfi','VCEA'), ('santiye_sefi','rfi','VCE'), ('muhasebe','rfi',''),
   ('admin','submittal','VCEAD'), ('proje_yoneticisi','submittal','VCEA'), ('santiye_sefi','submittal','V'), ('muhasebe','submittal',''),
   ('admin','material_approval','VCEAD'), ('proje_yoneticisi','material_approval','VCEA'), ('santiye_sefi','material_approval','V'), ('muhasebe','material_approval',''),
-  ('admin','interface','VCEAD'), ('proje_yoneticisi','interface','VCEA'), ('santiye_sefi','interface','VC'), ('muhasebe','interface',''),
-  ('admin','decision','VCEAD'), ('proje_yoneticisi','decision','VCEA'), ('santiye_sefi','decision','V'), ('muhasebe','decision',''),
+  ('admin','interface','VCEAD'), ('proje_yoneticisi','interface','VCEA'), ('santiye_sefi','interface','V'), ('muhasebe','interface',''),  -- ş.şefi C kaldırıldı
+  ('admin','decision','VCEAD'), ('proje_yoneticisi','decision','VCE'), ('santiye_sefi','decision','V'), ('muhasebe','decision',''),  -- PM A kaldırıldı (Karar 10: yalnızca admin)
   ('admin','action','VCEAD'), ('proje_yoneticisi','action','VCEA'), ('santiye_sefi','action','VCE'), ('muhasebe','action',''),
-  ('admin','risk','VCEAD'), ('proje_yoneticisi','risk','VCEA'), ('santiye_sefi','risk','VC'), ('muhasebe','risk',''),
-  ('admin','change','VCEAD'), ('proje_yoneticisi','change','VCEA'), ('santiye_sefi','change','VC'), ('muhasebe','change','V'),
-  ('admin','claim','VCEAD'), ('proje_yoneticisi','claim','VCEA'), ('santiye_sefi','claim',''), ('muhasebe','claim','V'),
+  ('admin','risk','VCEAD'), ('proje_yoneticisi','risk','VCEA'), ('santiye_sefi','risk','VCE'), ('muhasebe','risk',''),  -- ş.şefi E (own) eklendi
+  ('admin','change','VCEAD'), ('proje_yoneticisi','change','VCE'), ('santiye_sefi','change',''), ('muhasebe','change','V'),  -- PM A ve ş.şefi VC kaldırıldı
+  ('admin','claim','VCEAD'), ('proje_yoneticisi','claim','VCE'), ('santiye_sefi','claim',''), ('muhasebe','claim','V'),  -- PM A kaldırıldı (Faz 5 başında yeniden)
   ('admin','procurement','V'), ('proje_yoneticisi','procurement','V'), ('santiye_sefi','procurement','V'), ('muhasebe','procurement','V'),
-  ('admin','subcontractor','VCED'), ('proje_yoneticisi','subcontractor','VCE'), ('santiye_sefi','subcontractor','V'), ('muhasebe','subcontractor','V'),
+  ('admin','subcontractor','V'), ('proje_yoneticisi','subcontractor','V'), ('santiye_sefi','subcontractor','V'), ('muhasebe','subcontractor','V'),  -- admin CED, PM CE kaldırıldı
   ('admin','payment','V'), ('proje_yoneticisi','payment','V'), ('santiye_sefi','payment',''), ('muhasebe','payment','V'),
   -- Ayrılmış tipler (Karar 16): tablo olmadığı için hiçbir role yetki yok
   ('admin','ncr',''), ('proje_yoneticisi','ncr',''), ('santiye_sefi','ncr',''), ('muhasebe','ncr',''),

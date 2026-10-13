@@ -21,7 +21,7 @@ test.describe('Proje Kontrol B1 — register yetki matrisi', () => {
   })
   test.beforeEach(() => test.skip(!applied, 'B1 henüz uygulanmadı (get_my_register_permissions yok)'))
 
-  test('her rol tasarım 4.3 matrisini görür', async () => {
+  test('her rol Karar 6 matrisini görür', async () => {
     const perms = async c => (await c.rpc('get_my_register_permissions', { p_project_id: izmir })).data
     const a = await perms(admin), p = await perms(pm), s = await perms(santiye), m = await perms(muhasebe)
     expect(a.registers.rfi).toMatchObject({ view: true, create: true, edit: true, approve: true, delete: true })
@@ -30,6 +30,17 @@ test.describe('Proje Kontrol B1 — register yetki matrisi', () => {
     expect(s.registers.decision).toMatchObject({ view: true, create: false })
     expect(m.registers.rfi.view).toBe(false)
     expect(m.registers.change.view).toBe(true)
+    // Karar 6/10 (13.10.2026)
+    expect(s.registers.risk).toMatchObject({ create: true, edit: true, delete: false, approve: false, edit_scope: 'own' })
+    expect(s.registers.document).toMatchObject({ create: true, edit: true, edit_scope: 'own' })
+    expect(s.registers.change.view).toBe(false)
+    expect(s.registers.interface).toMatchObject({ view: true, create: false })
+    for (const t of ['decision', 'change', 'claim']) expect(p.registers[t].approve).toBe(false)
+    expect(a.registers.decision.approve).toBe(true)
+    for (const t of ['procurement', 'subcontractor', 'payment']) {
+      for (const c of [a, p, m]) expect(c.registers[t]).toMatchObject({ view: true, create: false, edit: false, approve: false, delete: false })
+    }
+    expect(s.registers.payment.view).toBe(false)
   })
 
   test('erişimi olmayan projede hiçbir eylem açık değil', async () => {

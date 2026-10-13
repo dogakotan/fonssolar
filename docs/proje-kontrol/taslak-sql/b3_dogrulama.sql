@@ -177,6 +177,9 @@ begin
   dec1 := (public.save_register_record('decision', p, null, '{"title":"B3 karar","decision_text":"metin"}') ->> 'id')::uuid;
   perform public.submit_register_record('decision', dec1);
   perform pg_temp.expect_err(format('select public.approve_register_record(%L, %L)', 'decision', dec1), 'forbidden');
+  -- Karar 6/10 (13.10.2026): decision onayı yalnızca admin; PM oluşturan olmasa da onaylayamaz
+  perform pg_temp.as_user(u_pm);
+  perform pg_temp.expect_err(format('select public.approve_register_record(%L, %L)', 'decision', dec1), 'forbidden');
   perform pg_temp.as_user(u_admin2);
   perform public.approve_register_record('decision', dec1);
   reset role;
