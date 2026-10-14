@@ -56,20 +56,17 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
     let projectId
 
     if (!isEdit) {
-      const { data, error } = await supabase
-        .from('projects')
-        .insert([{ ...projectPayload, id: step1.id }])
-        .select()
-        .single()
+      // Proje + kod tek işlemde (Karar 29, 35; F1 A1-A3 14.10.2026). Hata mesajı fonksiyonun hint alanında.
+      const { data: created, error } = await supabase.rpc('create_project_with_code', {
+        p_project: { ...projectPayload, id: step1.id }, p_code: step1.code,
+      })
       if (error) {
         savingRef.current = false
         setStatus('error')
-        setErrorMsg(error.code === '23505'
-          ? `"${step1.id}" ID'siyle bir proje zaten mevcut. Geri dönüp farklı bir ID girin.`
-          : error.message)
+        setErrorMsg(error.hint || error.message)
         return
       }
-      projectId = data.id
+      projectId = created.id
     } else {
       projectId = project.id
       const { error } = await supabase
@@ -89,6 +86,8 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
       if (!res || res.skipped) continue
 
       if (rpc) {
+        // Tedarik onayı isteğe bağlı (Karar 88): yalnızca PM gerçekten onayladıysa çağrılır.
+        if (rpc === 'set_project_procurement_completed' && res.completed !== true) continue
         const params = rpc === 'set_project_procurement_completed'
           ? { p_project_id: projectId, p_completed: res.completed === true }
           : { p_project_id: projectId, p_weights: res.rows }
