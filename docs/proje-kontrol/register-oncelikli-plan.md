@@ -13,6 +13,7 @@ Tarih: 14.10.2026. Onay: kullanıcı, 14.10.2026. Hiçbir adım uygulanmadı.
      - `f1_dogrulama.sql` R1-R27, ardından ROLLBACK;
      - parmak izi; `lock_timeout` 3s, `statement_timeout` 180s, mesai dışı.
    - **Prova yönetimi:** prova SQL'i ve çalıştırma planı önce gösterilir; kullanıcı "başla" demeden koşulmaz.
+   - **F1 A1-A3 öne alındı (Karar 85):** uygulanınca 6a'nın F1 parçası yalnızca A4 olur; `prova-6a.mjs`'deki "F1 A1-A3" kurulum segmenti çıkarılır, `f1_dogrulama.sql` §1-3 zaten canlıdaki duruma bakar.
    - **14.10.2026: prova askıda (Karar 83).** Betik `scripts/proje-kontrol/prova-6a.mjs` hazır (`--build` SQL üretir, `--run` psql ile koşar). `psql` kurulumu ve yedek kullanıcıdan bekleniyor.
    - **Kalıcı uygulama:** paket paket `apply_migration` ile:
      - her paketin SQL'i önce gösterilir, kullanıcı "uygula" deyince uygulanır, her seferinde yedek hatırlatılır;

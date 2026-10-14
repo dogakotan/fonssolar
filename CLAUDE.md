@@ -1800,6 +1800,10 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 82 | Paylaşım (R6) | Faz 3'e kadar register listeleri panelden CSV ile paylaşılır (rehber §4.10) | **ONAYLANDI (14.10.2026)** |
 | 83 | 6a provası | Askıda; `psql` (PostgreSQL 17 Command Line Tools) kurulumu ve yedek kullanıcıdan beklenen girdi. Prova betiği `scripts/proje-kontrol/prova-6a.mjs` | **ONAYLANDI (14.10.2026)** |
 | 84 | F5 yedeksiz uygulama | Change, Claim, Interface tabloları (`taslak-sql/f5_changes_claims_interfaces.sql`) `npm run db:backup` yedeği olmadan uygulanabilir. Gerekçe (kullanıcı): yalnızca yeni tablolar, mevcut tablolar etkilenmiyor, geri alma SQL'i hazır ve ROLLBACK ile test edilmiş (BÖLÜM B). Koşul: aktif bağlantı kontrolü, `apply_migration`, ardından `f5_dogrulama.sql` ve parmak izi. **Ek (14.10.2026): mesai dışı kuralından da feragat** — gerekçe (kullanıcı): yalnızca yeni tablolar; mevcut tablolarda yalnızca FK eklenirken milisaniyelik kilit; `lock_timeout` 3s ile kimse beklemez. İki istisna (yedek, mesai dışı) yalnızca F5 içindir; diğer paketlerde Karar 67 ve mesai dışı kuralı geçerli | **ONAYLANDI (14.10.2026)** |
+| 85 | F1 A1-A3 öne alındı | Proje ekleme kırık olduğu için (PM sihirbazda RLS'e takılıyor, yeni projeye kod verilmiyor) F1 A1-A3 6a'dan ayrılıp şimdi uygulanır (`taslak-sql/f1_a1_a3_proje_olusturma.sql`). Yedeksiz ve mesai dışı kuralı olmadan (yalnızca bu paket; gerekçe: iki küçük tabloda CHECK değişimi, kısa kilit, `lock_timeout` 3s, geri alma SQL'i test edildi). A4 sonraya kalır (Karar 34). Uygulandıktan sonra 6a'nın F1 parçası yalnızca A4 | **ONAYLANDI (14.10.2026)**; ROLLBACK testleri geçti, "uygula" bekliyor |
+| 86 | Proje ekleme hotfix dalı | `hotfix/proje-ekleme` `main`'den, ayrı klasör `GES_Dashboard-hotfix`. Değişiklik en az; `faz-a`'daki aynı amaçlı parçalar birebir taşınır, hotfix'e özgü ekler `faz-a`'ya da işlenir (6b çakışmasını azaltmak için). `projectExcelBridge.js`'e dokunulmaz (Karar 53). Plan `docs/proje-kontrol/proje-ekleme-hotfix-plani.md` | **ONAYLANDI (14.10.2026)** |
+| 87 | Excel v8 şimdi | Şablon v8 (E13 proje kodu) hotfix'le yayına çıkar; Karar 57/60 geçerli (eski dosyayla güncelleme reddedilir). Ekip duyurusu planda §5 | **ONAYLANDI (14.10.2026)** |
+| 88 | Tedarik onayı yeni projede isteğe bağlı | Sihirbazın Tedarik adımı yeni projede onaysız geçilebilir; `set_project_procurement_completed` yalnızca PM gerçekten onaylarsa çağrılır | **ONAYLANDI (14.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -2255,6 +2259,19 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**14.10.2026 (25. tur) — Proje ekleme incelemesi ve hotfix planı (Karar 85-88); canlıya kalıcı değişiklik yok.**
+- **Canlıda ROLLBACK testi (gerçek admin/PM oturumu):**
+  - PM sihirbazda `projects` INSERT RLS'ine takılıyor.
+  - Admin projeyi açıyor ama proje kodu yok, register numarası alınamıyor.
+  - Admin'de tedarik RPC'si yalnızca PM'e açık; adım listesinden atlanırsa kayıt yarıda kalıyor.
+- **Excel (kod okuması, v22 = `main`):** risk varsayılanları CHECK'e uymuyor (`acik`/`yuksek`/`dusuk`); güncelleme yolunda rol kontrolü yok; yükleme tek işlem değil.
+- **F1 A1-A3 ayrı pakette** (`f1_a1_a3_proje_olusturma.sql`, A1-A3 kaynakla birebir) ve davranış testi (`f1_a1_a3_dogrulama.sql`, kural 10 ön kontrollü). Canlıda ROLLBACK:
+  - geri alma (uygula → proje aç → geri al → parmak izi 16 alan birebir; geri alma yeni kodlu projeyi bozmuyor);
+  - doğrulama 7/7.
+  - "uygula" bekliyor.
+- **Rehber §4.14:** kodsuz projeye kod ekleme şablonu; ROLLBACK ile 5/5 senaryo.
+- **Hotfix:** dal `hotfix/proje-ekleme` (`GES_Dashboard-hotfix` klasörü) açıldı, kod yazılmadı. Plan, çakışma tablosu, deploy adımları, ekip duyurusu ve kategori ağırlığı önerisi `docs/proje-kontrol/proje-ekleme-hotfix-plani.md`'de.
 
 **14.10.2026 (24. tur) — F5 (Change, Claim, Interface) canlıya uygulandı: `20261014082055_f5_changes_claims_interfaces`.**
 - **Karar 84:** mesai dışı kuralından da feragat (yalnızca F5).

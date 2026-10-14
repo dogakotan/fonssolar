@@ -467,6 +467,36 @@ update public.interfaces
 returning interface_no, status;
 ```
 
+### 4.14 Yeni projeye proje kodu ekleme (ara çözüm, yalnızca admin)
+
+Proje ekleme hotfix'i yayına çıkana kadar sihirbazla açılan projeye proje kodu verilmez; kodsuz projede register kaydı
+açılamaz ("Proje kodu tanımlı değil"). Kod bir kez verilir, sonra değiştirilmez (Activity ID ve register numaralarının
+önekidir). Yalnızca iki değeri değiştirin; şablon başka hiçbir şeye dokunmaz, eklenemezse nedenini yazar.
+
+```sql
+with g as (select 'yeni-proje-id'::text as proje_id,                   -- projenin ID'si (Proje Yönetimi listesindeki)
+                  upper(btrim('DYB')) as kod),                           -- proje kodu: harfle başlar, 2-5 büyük harf/rakam
+k as (select g.*,
+        exists (select 1 from public.projects where id = g.proje_id) as proje_var,
+        exists (select 1 from public.project_register_settings where project_id = g.proje_id) as kodu_var,
+        exists (select 1 from public.project_register_settings where prefix = g.kod) as kod_kullanimda,
+        g.kod ~ '^[A-Z][A-Z0-9]{1,4}$' as bicim_uygun
+      from g),
+ins as (insert into public.project_register_settings (project_id, prefix)
+        select proje_id, kod from k where proje_var and not kodu_var and not kod_kullanimda and bicim_uygun
+        returning project_id, prefix)
+select k.proje_id, k.kod,
+       case when exists (select 1 from ins) then 'EKLENDİ'
+            when not k.proje_var then 'HATA: bu ID ile proje yok'
+            when k.kodu_var then 'HATA: projenin zaten kodu var'
+            when k.kod_kullanimda then 'HATA: bu kod başka projede kullanılıyor'
+            else 'HATA: kod harfle başlamalı, 2-5 büyük harf/rakam (ör. DYB, ADN1)' end as sonuc
+from k;
+```
+
+14.10.2026'da canlıda ROLLBACK ile 5 senaryoda denendi: ekleme (`EKLENDİ`, ardından numara `RFI-…-0001`), aynı
+projeye ikinci kez, başka projenin kodu, biçime uymayan kod, olmayan proje; hepsi beklenen sonucu verdi.
+
 ## 5. Riskler ve 6a / Faz 2 sonrası durum
 
 ### 5.1 Panelden girişin riskleri
