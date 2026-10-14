@@ -92,6 +92,8 @@ export function buildWorkbook(ExcelJS, categoryWeights = CANONICAL_CATEGORY_WEIG
     ws.getCell("E12").value = { formula: 'IFERROR(E11-E10,"")' };
     // Şablon v8 (Karar 21, 57): proje kodu. Yeni projede zorunlu; güncellemede projenin koduyla aynı olmalı.
     label(13, "Proje Kodu *", "2-5 karakter, harfle başlar, büyük harf/rakam (ör. DYB). Değiştirilemez");
+    ws.dataValidations.add("E13", { type: "custom", allowBlank: false,
+      formulae: ["AND(LEN(E13)>=2,LEN(E13)<=5,EXACT(E13,UPPER(E13)),ISERROR(VALUE(LEFT(E13,1))))"] });
     ws.getCell("E10").numFmt = "dd.mm.yyyy"; ws.getCell("E11").numFmt = "dd.mm.yyyy";
     dv(ws, "E8", "Arazi GES,Endüstriyel Çatı GES,Evsel GES");
     dv(ws, "E9", "aktif,beklemede,tamamlandı,iptal edildi");

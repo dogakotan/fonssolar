@@ -50,6 +50,11 @@ aynen işlenir. Böylece 6b'de iki dalda aynı satırlar olur ve Git çakışma 
 yola dönüş, hotfix'te satır içi hata). 6b'de `faz-a` sürümü alınır; iki davranış (`create_project_with_code`, tedarik
 koşulu) onda zaten var. Diğer bütün dosyalar otomatik birleşiyor.
 
+**14.10.2026 yayın sonrası güncelleme:** `faz-a` ile güncel `main` (01763a9) birleşmesinde çakışan dosyalar
+**`Adim8Tamamlandi.jsx` ve `export-project-excel/template_builder.ts`**. `template_builder.ts`'te iki dalda farklı
+Proje Kodu etiketi ve kılavuz metni var; `faz-a` sürümünde 6b'ye ait ek not ("ağırlıksız kategoriye görev yazılamaz") da
+duruyor. 6b'de iki dosyada da `faz-a` sürümü alınır; E13 doğrulama satırı `faz-a`'ya da eklendi.
+
 **Kopya ("yeni kopya olarak yükle") yolu:** faz-a sürümü yeni kodu ayrı form alanından (`code`) bekliyor. Bu alan
 `projectExcelBridge.js`'te gönderilmediği için (Karar 53, dosyaya dokunulmuyor) hotfix sunucusu şunu kabul eder:
 - form alanı varsa onu, yoksa **E13'te yazan kod asıl projenin kodundan farklıysa** onu kullanır;
@@ -81,6 +86,17 @@ Sizin adımlarınız (P1 uygulandıktan, P2 kodunu onayladıktan sonra):
 > dosya üzerinde çalışın. Yeni projede proje kodu zorunludur (harfle başlar, 2-5 karakter, ör. DYB).
 
 ## 7. P3 — edge function deploy ve uçtan uca test (14.10.2026 planı; "P3 deploy" ile uygulanır)
+
+**Durum (14.10.2026):**
+- **Ön yüz yayında:**
+  - PR #36 (`916a421`) ve #37 (`01763a9`) `main`'e birleşti, Vercel production "success".
+  - fonssolar.vercel.app'teki şablonun md5'i repo v8 ile aynı.
+  - Canlı JS paketinde `create_project_with_code` var.
+- **#37 ne düzeltti:** export çalışma kitabını `template_builder.ts` ile ürettiği için E13'ün etiketi yoktu. #37 etiketi, doğrulamayı ve v8 notunu ekledi; yerelde üretilip yeniden okunarak doğrulandı.
+- **Edge function'lar deploy edildi:** `export-project-excel` v21 → **v22**, `import-project-excel` v22 → **v23** (ikisi de ACTIVE, `verify_jwt` true).
+- **Doğrulananlar:** Oturum 0 ve sonrası veritabanı parmak izi aynı.
+- **Henüz yapılmadı:** uçtan uca test T1-T12. Fonksiyonlar `verify_jwt` ile korunuyor; site yeni biçim anahtar (`sb_publishable_…`) kullanıyor. Girişsiz smoke test mümkün değil; test bir kullanıcı oturumu gerektiriyor (`.env.test` hesaplarının durumu bekleniyor).
+- **Geri dönüş:** eski import v22 ve export v21 içerikleri `get_edge_function` çıktısında (bu oturum) ve `main`'in 468b224 sürümünde.
 
 **Ön koşul:** hotfix `main`'e birleşti ve Vercel'de "Ready" (sitedeki şablon v8, sihirbazda Proje Kodu alanı var).
 Durum (14.10): P1 ve Karar 89 canlıda; ADN1/ADN2 ağırlıkları PM onayı bekliyor (P3'ü etkilemez).

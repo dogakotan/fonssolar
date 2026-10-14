@@ -2261,6 +2261,15 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**14.10.2026 (28. tur) — Proje ekleme hotfix'i yayında (PR #36, #37); edge function'lar deploy edildi; uçtan uca test bekliyor.**
+- **Yerel `main` bayatmış (468b224, uzak 81 commit ileride).** Hotfix'in dosyaları o commit'lerde değişmemişti; dal `origin/main`'e rebase edildi. lint 0 hata, build başarılı. Yerel `main` başvurusu güncellendi.
+- **PR #36** (sihirbaz, v8 şablon, import/export, migration dosyaları) ve **#37** birleşti; Vercel production "success". Canlı sitede şablon md5'i v8 ile aynı, JS paketinde `create_project_with_code` var.
+  - #37'nin gerekçesi: export çalışma kitabını `template_builder.ts` ile ürettiği için E13'ün etiketi yoktu; #37 etiketi, doğrulamayı ve v8 notunu ekledi.
+- **Edge function'lar:** export v22, import v23 deploy edildi (ACTIVE, `verify_jwt` true). Veritabanı parmak izi deploy öncesi ve sonrası aynı.
+- **Uçtan uca test (T1-T12) yapılmadı:** fonksiyonlar kullanıcı oturumu istiyor, girişsiz smoke test mümkün değil; `.env.test` hesaplarının durumu (gerçek kişi mi test mi) bekleniyor.
+- **ADN1/ADN2 ağırlıkları:** PM onayı yok, uygulanmadı.
+- **6b çakışmaları (`faz-a` ↔ güncel `main`):** yalnızca `Adim8Tamamlandi.jsx` ve `export-project-excel/template_builder.ts`; ikisinde de `faz-a` sürümü alınır. `faz-a`'ya E13 doğrulama satırı eklendi.
+
 **14.10.2026 (27. tur) — Varsayılan kategori ağırlıkları canlıya uygulandı (Karar 89); hotfix'e özgü değişiklikler faz-a'ya işlendi; P3 deploy planı.**
 - **Ağırlıklar:** `apply_migration` (`20261014103635_kategori_agirlik_varsayilan`). Doğrulamada yeni projede 15 kategori / toplam 100; mevcut 40 satır, diğer fonksiyonlar, trigger'lar ve projeler değişmedi. Migration dosyası üç dalda.
 - **ADN1/ADN2:** `taslak-sql/adn_kategori_agirlik.sql` ROLLBACK ile test edildi:
