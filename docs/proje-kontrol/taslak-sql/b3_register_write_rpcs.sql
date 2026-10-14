@@ -6,7 +6,8 @@
 -- Bağımlılık: B1 (register_permissions, register_can, register_raise), B2 (register_audit — reason için).
 --
 -- İçerik:
---   A1 Ortak kolonlar (tablolar boş; yalnızca ekleme): record_state, source, approved_by, approved_at,
+--   A1b (14.10.2026, Karar 81) panelden girilmiş mevcut kayıtların geri doldurulması; DEĞİŞTİ, YENİDEN TEST BEKLİYOR.
+--   A1 Ortak kolonlar (yalnızca ekleme): record_state, source, approved_by, approved_at,
 --      rejected_reason (documents, rfis, project_actions, decisions, technical_submittals, material_approvals);
 --      eksik created_by (rfis, technical_submittals, material_approvals);
 --      project_register_settings.four_eyes_enabled (Karar 10 AÇIK; varsayılan true).
@@ -33,8 +34,9 @@
 -- ############################################################################
 begin;
 
--- ── A0 · Ön koşul: register tabloları boş (NOT NULL varsayılanlı kolon eklemesi için şart değil ama
---        record_state'in geriye dönük anlamı olmadığından boş olması beklenir) ──
+-- ── A0 · Mevcut kayıtlar (Karar 78/81, 14.10.2026): register'lara panelden giriş geçici istisna; B3 öncesinde
+--        tablolardaki her satır panelden girilmiştir (G-01: uygulama yazamaz). Eskiden burada satır varsa
+--        durduruluyordu; artık A1b geri doldurur. Sayı yalnızca bilgi olarak yazılır. ──
 do $$
 declare n bigint;
 begin
@@ -42,9 +44,7 @@ begin
        + (select count(*) from public.project_actions) + (select count(*) from public.decisions)
        + (select count(*) from public.technical_submittals) + (select count(*) from public.material_approvals)
     into n;
-  if n > 0 then
-    raise exception 'B3 durduruldu: register tablolarında % satır var; record_state geri doldurma planı gerekir', n;
-  end if;
+  raise notice 'B3: register tablolarında % mevcut satır; A1b ile geri doldurulacak', n;
 end $$;
 
 -- ── A1 · Ortak kolonlar ──
@@ -115,6 +115,29 @@ create index idx_project_actions_pending on public.project_actions (project_id) 
 create index idx_decisions_pending on public.decisions (project_id) where record_state = 'pending_approval';
 create index idx_technical_submittals_pending on public.technical_submittals (project_id) where record_state = 'pending_approval';
 create index idx_material_approvals_pending on public.material_approvals (project_id) where record_state = 'pending_approval';
+
+-- ── A1b · Mevcut (panelden girilmiş) kayıtların geri doldurulması (Karar 81; register-veri-giris-rehberi.md §5.3) ──
+--   * source = 'import': panel kayıtları uygulamadan girilenlerden ayırt edilir.
+--   * record_state iş durumundan türetilir. Doküman B3 kuralıyla zaten approved açılır. Henüz başlangıç durumundaki
+--     karar (proposed) ve teknik onay/malzeme onayı (draft) draft kalır; diğer her kayıt approved.
+--   * approved_by bilinmiyor (null); approved_at = created_at. Dört göz (Karar 10/65) bu kayıtlarda geriye dönük
+--     uygulanmaz; onaylayan admin rehberin giriş defterinde.
+--   * rfis.created_by = raised_by. technical_submittals / material_approvals'ta created_by bilinmiyor (null).
+--   * B2 audit trigger'ları bu güncellemeleri gerekçeyle yazar.
+select set_config('fons.audit_reason', 'B3 geri doldurma: panel kayıtları (Karar 81)', true);
+update public.documents set source = 'import', record_state = 'approved', approved_at = created_at;
+update public.rfis set source = 'import', record_state = 'approved', approved_at = created_at, created_by = raised_by;
+update public.project_actions set source = 'import', record_state = 'approved', approved_at = created_at;
+update public.decisions set source = 'import',
+  record_state = case when status = 'proposed' then 'draft' else 'approved' end,
+  approved_at  = case when status = 'proposed' then null else created_at end;
+update public.technical_submittals set source = 'import',
+  record_state = case when status = 'draft' then 'draft' else 'approved' end,
+  approved_at  = case when status = 'draft' then null else created_at end;
+update public.material_approvals set source = 'import',
+  record_state = case when status = 'draft' then 'draft' else 'approved' end,
+  approved_at  = case when status = 'draft' then null else created_at end;
+select set_config('fons.audit_reason', '', true);
 
 alter table public.project_register_settings
   add column four_eyes_enabled boolean not null default true;

@@ -1,20 +1,34 @@
-# Register veri giriş rehberi (Supabase panelinden doğrudan giriş)
+# Register veri giriş rehberi (Supabase SQL Editor ile)
 
-Tarih: 14.10.2026. Kaynak: canlı katalog, yalnızca salt okunur SELECT. Canlıda hiçbir şey değiştirilmedi.
+Tarih: 14.10.2026. Kaynak: canlı katalog, yalnızca salt okunur SELECT. Şablonlar canlıda BEGIN…ROLLBACK ile denendi (§4).
 
-Bu rehber, register ekranları (Faz 3) hazır olana kadar kayıtları **Supabase panelinden** (Table Editor ya da SQL
-Editor) girecek kişi içindir. Kullanmadan önce §0'daki "Onay bekleyen noktalar" kapanmalı.
+> **UYARI — önce okuyun**
+> - Supabase panel hesabı (Table Editor, SQL Editor) **veritabanının tamamına** yazabilir: satın alma, fatura,
+>   kullanıcılar dahil. Rol ve proje kısıtları (RLS) panelde **çalışmaz**.
+> - **Otomatik yedek yok** (ücretsiz plan). Yanlış bir UPDATE veya DELETE geri alınamaz.
+> - **Yalnızca §4'teki şablonları kullanın.** Table Editor'da hücre düzenleme, satır silme veya serbest SQL yazmayın.
+> - **Register dışı hiçbir tabloda değişiklik yapmayın.** Şablonların yazdığı tablolar: `documents`,
+>   `document_revisions`, `drawings`, `rfis`, `project_actions`, `decisions`, `technical_submittals`,
+>   `material_approvals`, `project_risks`.
+> - UPDATE şablonlarında `where` satırını silmeyin ve değiştirmeden bırakmayın; her zaman tek kaydın numarasını yazın.
+> - Toplu giriş günlerinde önce `npm run db:backup:data` (Karar 67).
 
-## 0. Onay bekleyen noktalar (kural 8: talimat ile kararlar/canlı şema çelişiyor)
+Bu yol **geçicidir** (Karar 78): Faz 3 register ekranları gelince sona erer. Panel ve SQL Editor erişimi yalnızca
+admin'lerdedir.
 
-| # | Çelişki | Öneri |
-|---|---|---|
-| R1 | Kayıtlar yalnızca RPC ile yazılacaktı (CLAUDE.md "Ücretsiz plan sınırları", G-01, CONVENTIONS §4). Panel `postgres` rolüyle çalışır (`rolbypassrls = true`), RLS'i ve rol yetkilerini atlar | Panel girişi **geçici istisna** olarak açıkça kabul edilsin; panele kimin erişeceği sınırlı tutulsun (§2) |
-| R2 | Talimat "numara elle yazılır (RFI-TIZ-0001)" diyor. Canlıda numarayı trigger üretiyor (`fn_assign_register_no` → `next_register_no`, sayaç `project_register_counters`). Bu sayaç **zaten canlıda**, B1 ile gelmiyor. Elle yazılan numara sayacı ilerletmez; sonraki otomatik numara onunla çakışır | Numara kolonu **boş bırakılsın**, trigger doldursun. Elle numara yalnızca kağıt arşivinden taşınan kayıtta ve §4'teki eşitleme ile |
-| R3 | Talimat SharePoint linkini `storage_provider = 'sharepoint'` + `url` ile yazmayı öneriyor. Canlıda `url` kolonu yok. CONVENTIONS §5: `sharepoint` SharePoint/Graph öğe kimliği (`driveId:itemId`) için ayrıldı; tarayıcıdaki `https://` adresi `external` ile ve `storage_file_id`'ye yazılır | Paylaşım linki için `external`. SharePoint öğe kimliği kullanılacaksa ayrı karar (biçim "geçiş anında kesinleşir") |
-| R4 | B3 taslağı (Faz 2) register tablolarında satır varsa **duruyor** (A0: "record_state geri doldurma planı gerekir"). B5'in yeni kısıtı (`current_is_ready`) mevcut `is_current` revizyonlarda başarısız olur | Panel girişi başlarsa B3 ve B5 taslaklarına geri doldurma adımı eklenir (§5) |
-| R5 | Change, Claim, Interface Faz 5'te (Karar 13, 66). Karar 63: PM erişimi Faz 5 Claim/Change'den önce yeniden açılır. Karar 10: change/claim'de dört göz. Panelde dört göz uygulanamaz | Tablo taslağı yalnızca gösterildi (`taslak-sql/f5_changes_claims_interfaces.sql`); uygulama kararı ve önekler (CHG/CLM/ITF önerisi) kullanıcıda |
-| R6 | Register kayıtları uygulamada hiçbir ekranda görünmüyor (Faz 3). Yalnızca panele erişen görür | Bilgi; Faz 3'e kadar paylaşım için panelden CSV dışa aktarma |
+## 0. Kararlar (14.10.2026)
+
+| Karar | İçerik |
+|---|---|
+| 78 | Panelden giriş G-01'e geçici istisna; panel/SQL Editor erişimi yalnızca admin'lerde; Faz 3 ekranları gelince sona erer |
+| 79 | Numara kolonu boş bırakılır, trigger üretir |
+| 80 | SharePoint linki: `storage_provider = 'external'`, link `storage_file_id`'de |
+| 81 | B3 ve B5 taslaklarına mevcut kayıtları dolduran adımlar eklendi (§5.3) |
+| 82 | Paylaşım için panelden CSV (§4.10) |
+| 83 | 6a provası askıda; `psql` kurulumu kullanıcıdan beklenen girdi |
+
+Change, Claim, Interface (Faz 5) tabloları canlıda yok. Taslak `taslak-sql/f5_changes_claims_interfaces.sql`
+14.10'da ROLLBACK ile test edildi, uygulanmadı.
 
 ## 1. Canlıdaki register tabloları (14.10.2026)
 
@@ -27,303 +41,365 @@ Editor) girecek kişi içindir. Kullanmadan önce §0'daki "Onay bekleyen noktal
 | Decision | `decisions` | 0 | `decision_no` / `DEC` | Yok |
 | Technical Submittal | `technical_submittals` | 0 | `submittal_no` / `TS` | Yok |
 | Material Approval | `material_approvals` | 0 | `approval_no` / `MA` | Yok |
-| Risk | `project_risks` | 55 | Yok (RSK Faz 3'te, Karar 14) | **Var**: proje düzenleme sihirbazı › Riskler, Satın Alma › Riskler |
+| Risk | `project_risks` | 55 (hepsi otomatik) | Yok (RSK Faz 3'te, Karar 14) | Liste: Satın Alma › Riskler. Giriş için sihirbaz **kullanılmaz** (§3.8) |
 | (yardımcı) | `project_register_settings` | 4 | Proje kodu | — |
 | (yardımcı) | `project_register_counters` | 0 | Sayaç | — |
 | (yardımcı) | `register_status_history` | 0 | Durum geçmişi (trigger yazar) | — |
 | (ana veri) | `project_wbs`, `project_areas`, `area_wbs` | 0 / 0 / 0 | — | Yok (Adım 5) |
 
-Canlıda tablosu **olmayan** register'lar: Change, Claim, Interface (Faz 5), NCR, Inspection (ertelendi, Karar 8),
-Procurement, Subcontractor, Payment (mevcut satın alma ve finans tablolarının köprü görünümü, Faz 4/6). Son üçü
-için panelden giriş yapılmaz; veri zaten Satın Alma ve Finans ekranlarından giriliyor.
+Canlıda tablosu olmayan register'lar: Change, Claim, Interface (Faz 5); NCR, Inspection (ertelendi, Karar 8);
+Procurement, Subcontractor, Payment (satın alma ve finans ekranlarından zaten giriliyor; köprü görünümü Faz 4/6).
 
-## 2. Genel kurallar (her register için)
+## 2. Genel kurallar
 
-**Panelden doğrudan giriş yapılabilir mi?** Evet.
-- Panel `postgres` rolüyle yazar ve RLS'e takılmaz.
-- Uygulama kullanıcısı (`authenticated`) ise bu tablolara yazamaz; G-01 gereği yalnızca SELECT yetkisi var.
-- Trigger'lar, CHECK'ler, NOT NULL ve FK'ler panelde de çalışır.
+**Proje:** şablonlar projeyi kodla bulur (`where prefix = 'TIZ'`).
 
-**Proje (`project_id`):** metin anahtarlar.
-
-| Proje | `project_id` | Kod |
+| Proje | Kod | `project_id` |
 |---|---|---|
-| Kaptan Demir Çelik (Adana GES-1) | `kaptan-demir-adana-arazi-faz1` | ADN1 |
-| Kaptan Demir Çelik (Adana GES-2) | `kaptan-demir-adana-arazi-faz2` | ADN2 |
-| Ege Enerji İzmir GES TEST | `test-izmir-ges-2026` | TIZ |
-| Kayseri Develi GES | `test-kayseri-develi-ges` | TKY |
+| Kaptan Demir Çelik (Adana GES-1) | ADN1 | `kaptan-demir-adana-arazi-faz1` |
+| Kaptan Demir Çelik (Adana GES-2) | ADN2 | `kaptan-demir-adana-arazi-faz2` |
+| Ege Enerji İzmir GES TEST | TIZ | `test-izmir-ges-2026` |
+| Kayseri Develi GES | TKY | `test-kayseri-develi-ges` |
 
-Kodu olmayan projeye kayıt açılamaz: "Proje kodu tanımlı değil (project_register_settings)". Diyarbakır henüz yok;
-6b'de oluşturulur (Karar 74).
+**Numara (Karar 79):** şablonlarda numara kolonu yok; kayıt eklenince `{ÖNEK}-{KOD}-{SIRA}` biçiminde dolar
+(`RFI-TIZ-0001`) ve şablon sonucu olarak ekranda görünür. Sıra proje ve register bazında artar. Silinen kaydın
+numarası geri gelmez.
 
-**Numara:**
-- Numara kolonunu **boş bırakın**. Kayıt eklenince `{ÖNEK}-{PROJE_KODU}-{SIRA}` biçiminde dolar (ör. `RFI-TIZ-0001`).
-- Sıra proje ve register bazında artar, 4 haneye kadar sıfırla doldurulur, kırpılmaz (`RFI-TIZ-10000`).
-- Kayıttan sonra numarayı **değiştirmeyin**; panelde engel yok, ama numara başka belgelerde geçiyorsa bağ kopar.
-- Table Editor'ın NOT NULL numara kolonunu boş kabul edip etmediği **doğrulanamadı**. Kabul etmezse SQL Editor'de
-  numara kolonunu hiç yazmadan `insert` kullanın (§3'te örnekler).
-- Silinen kaydın numarası geri gelmez; boşluk kabul.
+**Kim girdi:** panelde oturum kullanıcısı yok. Şablonlar kişiyi tam adıyla bulur
+(`where full_name = 'Ad Soyad'`; 14.10'da 10 profilin adı tekil). Ad yanlış yazılırsa alan sessizce boş kalır; önce
+§4.0'daki listeyle doğrulayın. `technical_submittals` ve `material_approvals`'ta bu alan yok; giren kişiyi giriş
+defterine yazın.
 
-**Kim girdi (`created_by`):** panelde oturum kullanıcısı yok (`auth.uid()` boş).
-- `created_by` kolonu olan tablolarda (documents, document_revisions, drawings, decisions, project_actions) kaydı
-  açan kişinin `profiles.id`'sini yazın: SQL Editor'de `select id, full_name, role_key from profiles order by full_name`.
-- `rfis`'te karşılığı `raised_by`. `technical_submittals` ve `material_approvals`'ta bu kolon yok (B3 ekler), kim
-  girdiyse `description`/not alanına yazın.
-- `register_status_history.changed_by` panel girişinde hep boş kalır.
+**Görev bağı (`task_id`): yok (Karar 69).** Şablonlarda görev alanı bulunmaz; 6b'ye kadar eklemeyin.
+**WBS/alan (`wbs_id`, `area_id`):** canlıda WBS/alan kaydı yok, şablonlarda yer almaz.
 
-**Görev bağı (`task_id`): BOŞ bırakın (Karar 69).** Sihirbaz düzeltmesi (Ç-B) 6b'de yayına çıkana kadar register
-kaydı göreve bağlanmaz; ADN1/ADN2'de sihirbaz kaydı kırılabilir.
+**Dosya linki (Karar 80):** `storage_provider = 'external'`, tam `https://` adres `storage_file_id`'ye.
+**Link yalnızca SharePoint'te o dosyaya erişimi olanlarda açılır;** Fons'taki register yetkisi SharePoint iznini vermez.
 
-**WBS ve alan (`wbs_id`, `area_id`):** bugün canlıda WBS ve alan kaydı yok (0 satır), bu yüzden şimdilik boş.
-WBS/alan da panelden girilecekse §3.9'daki biçim kurallarına uyun; yoksa 6a'da migration durur.
+**Bildirim:** register tablolarında bildirim trigger'ı yok; giriş kimseye bildirim göndermez.
 
-**Bağlantılı kayıtlar (`rfi_id`, `decision_id`, `risk_id`, `document_id` …):** kompozit FK; bağlanan kayıt **aynı
-projede** olmalı, yoksa "violates foreign key constraint" hatası.
+**Silme:** şablon yok. Kaydı iş durumuyla kapatın (`cancelled`, `void`, `superseded`).
 
-**Bildirim:** register tablolarında bildirim trigger'ı yok; panel girişi kimseye bildirim göndermez.
+## 3. Register bazında alanlar ve geçerli değerler
 
-**Silme:** panelde silme yapmayın. Kaydı iş durumuyla kapatın (`cancelled`, `void`, `superseded`). Doküman silinirse
-revizyonları da silinir (`ON DELETE CASCADE`).
+Z = zorunlu. Tarihler `YYYY-MM-DD`.
 
-**Panele erişim:** Supabase panel hesabı veritabanının tamamına yazar (finans dahil). Panel erişimi yalnızca kayıt
-girecek kişiyle sınırlı tutulmalı.
+### 3.1 Document
+- `documents`: `title` (Z); `document_type` serbest (`spec`, `report`, `procedure` …; **`drawing` yazmayın**);
+  `discipline`: `mechanical`, `dc`, `ac`, `mv`, `hv`, `enh`, `civil`, `scada`, `general`; `status`: `active`, `void`.
+- `document_revisions`: `revision_no` (Z; büyük harf/rakamla başlar, en fazla 10 karakter, `[A-Z0-9.-]`: `00`, `01`,
+  `A`); `revision_status` (Z): `ifr` görüş için, `ifa` onay için, `ifc` uygulama için, `as_built`;
+  `is_current`: doküman başına tek `true`; aynı dokümanda aynı revizyon no iki kez olmaz.
 
-## 3. Register bazında
+### 3.2 Drawing
+Doküman satırı `document_type = 'drawing'` ile (`DRW` numarası) + `drawings` satırı (`drawing_type` serbest:
+`layout`, `single_line`, `detail` …). Revizyon ve link dokümanınki gibi.
 
-Kısaltmalar: **Z** = zorunlu (NOT NULL, varsayılanı yok), **V** = varsayılanı var, boş bırakılabilir.
+### 3.3 RFI
+`subject`, `question` (Z); `status`: `open`, `under_review`, `answered`, `closed`, `rejected`; `priority`: `low`,
+`medium`, `high`, `critical`; `responsible_discipline` §3.1 listesi; `raised_date` (varsayılan bugün), `due_date`,
+`answered_date`, `response`.
 
-### 3.1 Document — `documents` + `document_revisions`
+### 3.4 Action
+`title` (Z); `status`: `open`, `in_progress`, `done`, `cancelled`; `priority` RFI ile aynı; `source_type`: `manual`,
+`risk`, `rfi`, `decision`, `meeting`, `other`; sistem dışı sorumlu `responsible`'a; `completed_at` `done`'da şablon yazar.
 
-`documents` doküman kimliğidir; dosya ve revizyon `document_revisions`'ta.
+### 3.5 Decision
+`title`, `decision_text` (Z); `status`: `proposed`, `approved`, `superseded`, `cancelled`; `decision_maker` serbest.
+**Karar 10:** `approved` yalnızca kaydı oluşturandan farklı bir admin onayladıysa yazılır; onaylayanın adı
+`decision_maker`'a.
 
-| Kolon | | Değer |
-|---|---|---|
-| `project_id` | Z | §2 tablosu |
-| `title` | Z | Doküman adı |
-| `document_no` | — | Boş bırakın → `DOC-TIZ-0001` |
-| `document_type` | | Serbest metin (ör. `spec`, `report`, `procedure`). **`drawing` yazmayın**: çizim için §3.2 |
-| `discipline` | | Serbest metin; ileride uyum için şu listeden: `mechanical`, `dc`, `ac`, `mv`, `hv`, `enh`, `civil`, `scada`, `general` |
-| `status` | V | `active` (varsayılan) veya `void` |
-| `created_by` | | Açan kişinin `profiles.id`'si |
-| `task_id` | | **Boş** (Karar 69) |
+### 3.6 Technical Submittal
+`title` (Z); `status`: `draft`, `submitted`, `under_review`, `approved`, `approved_with_comments`, `rejected`,
+`resubmit_required`; `revision` (varsayılan `00`); `discipline` §3.1 listesi.
 
-Revizyon ve dosya linki — `document_revisions`:
+### 3.7 Material Approval
+`material_name` (Z); `status`: `draft`, `submitted`, `approved`, `approved_with_comments`, `rejected`, `expired`;
+`revision` (varsayılan `00`); `manufacturer`, `model`.
 
-| Kolon | | Değer |
-|---|---|---|
-| `project_id` | Z | Dokümanınkiyle aynı |
-| `document_id` | Z | `documents.id` |
-| `revision_no` | Z | Büyük harf/rakamla başlar, en fazla 10 karakter, `[A-Z0-9.-]`: `00`, `01`, `A`, `B.1` |
-| `revision_status` | Z | `ifr` (görüş için), `ifa` (onay için), `ifc` (uygulama için), `as_built` |
-| `is_current` | V | `false` varsayılan. Doküman başına **tek** `true` |
-| `storage_provider` | | SharePoint/OneDrive paylaşım linki için **`external`** (bkz. §0 R3) |
-| `storage_file_id` | | Tam `https://…` adresi |
-| `file_name` | | Dosya adı (ör. `TIZ-Elektrik-Sartname-Rev01.pdf`) |
-| `issue_date` | | `YYYY-MM-DD` |
-| `mime_type`, `size_bytes`, `sha256` | | Boş bırakılabilir; `sha256` doluysa 64 küçük hex karakter |
-| `created_by` | | Açan kişi |
+### 3.8 Risk — sihirbaz kullanılmaz, SQL Editor şablonu (§4.9)
 
-- Aynı dokümanda aynı `revision_no` iki kez girilemez.
-- Yeni revizyonu güncel yapmak için önce eskisini `is_current = false`, sonra yenisini `true` yapın. Tersi sırada
-  "document_revisions_one_current" hatası alınır.
+14.10.2026 kod incelemesi (yayındaki `main`; ROLLBACK ile denenmedi):
+- **Sihirbazın Riskler adımındaki "Kaydet"** yalnızca riskleri yazar, görevlere dokunmaz (Ç-B'ye takılmaz). Ama
+  projenin **bütün** risklerini silip formdaki satırları yeniden ekler ve şu alanları göndermez: `source`, `rule_code`,
+  `subject_ref`, `closed_at`. Sonuçları:
+  - Canlıdaki 55 riskin hepsi otomatik. Kaydetme bunları `manuel` olarak yeniden yazar, kuralla bağları kopar.
+  - Risk motoru aynı gecikme/aşım için yeni otomatik risk açar, yani **kopyalar** oluşur.
+  - Risk kimlikleri değişir. Kapalı risklerin kapanış tarihi kaydetme anına kayar.
+  - Bir register kaydı riske bağlıysa (`risk_id`) silme FK hatasıyla reddedilir ve kayıt düşer.
+- **Sihirbazın son adımındaki "Kaydet"** İş Kalemleri adımı açıldıysa görevleri de silip yeniden yazar (Ç-B):
+  ilerlemesi olan projede hata, olmayan projede görev kimlikleri değişir ve `group_label` kaybolur.
 
-### 3.2 Drawing — `documents` + `drawings`
+Alanlar: `title` (Z); `severity`: `kritik`, `yüksek`, `orta`, `düşük`; `status`: `açık`, `azaltıldı`,
+`kabul_edildi`, `kapatıldı` (kapanış tarihi trigger'la dolar); `probability`, `impact`: 1-5; `category`:
+`is_kalemi`, `satin_alma`, `diger`; **`source` her zaman `manuel`**, `rule_code`/`subject_ref` boş (otomatik
+risklere dokunulmaz). Numara ve `created_by` yok (Faz 3, Karar 14/65).
 
-İki adım:
-1. `documents`'a satır: `document_type = 'drawing'` (numara `DRW-TIZ-0001` olur), `title`, `project_id`.
-2. `drawings`'e satır: `project_id`, `document_id` (1. adımdaki `id`), `drawing_type` (serbest: `layout`, `single_line`,
-   `detail` …). `document_type` kolonu `drawing` varsayılanıyla gelir, değiştirmeyin.
+### 3.9 WBS ve alan
+Panelden girilmez; ilk yükleme 6a ile gelen Excel import'uyla (Karar 19, 50).
 
-Çizimin numarası ve revizyonu dokümandan gelir; revizyon ve link §3.1'deki gibi `document_revisions`'a.
-Bir doküman yalnızca bir çizime bağlanır; `document_type`'ı `drawing` olmayan dokümana çizim bağlanamaz.
+## 4. SQL Editor şablonları
 
-SQL Editor örneği (kurgu değerler):
+Kullanım: Supabase › SQL Editor › yeni sorgu › şablonu yapıştırın › yalnızca `--` ile işaretli değerleri değiştirin
+› Run. Sonuç satırında yeni numara görünür; giriş defterine yazın.
+
+### 4.0 Proje kodları ve kişiler (salt okunur)
+
+```sql
+select prefix as proje_kodu, project_id from public.project_register_settings order by prefix;
+select full_name, role_key from public.profiles order by full_name;
+```
+
+### 4.1 Doküman + ilk revizyon (SharePoint linki)
 
 ```sql
 with d as (
   insert into public.documents (project_id, title, document_type, discipline, created_by)
-  values ('test-izmir-ges-2026', 'Genel Yerleşim Planı', 'drawing', 'civil', '<profiles.id>')
-  returning project_id, id)
-insert into public.drawings (project_id, document_id, drawing_type)
-select project_id, id, 'layout' from d
-returning document_id;
+  values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+          'Elektrik Teknik Şartnamesi',                                                      -- başlık
+          'spec',                                                                            -- tür (drawing değil)
+          'ac',                                                                              -- disiplin
+          (select id from public.profiles where full_name = 'Ad Soyad'))                    -- giren kişi
+  returning project_id, id, document_no, created_by),
+r as (
+  insert into public.document_revisions (project_id, document_id, revision_no, revision_status, is_current,
+                                         issue_date, storage_provider, storage_file_id, file_name, created_by)
+  select project_id, id,
+         '00',                                                          -- revizyon no
+         'ifa',                                                         -- ifr / ifa / ifc / as_built
+         true, date '2026-10-14',                                       -- yayın tarihi
+         'external',
+         'https://ornek.sharepoint.com/sites/proje/Sartname.pdf',       -- SharePoint linki
+         'Sartname.pdf',                                                -- dosya adı
+         created_by
+  from d
+  returning revision_no)
+select d.document_no, r.revision_no from d, r;
 ```
 
-### 3.3 RFI — `rfis`
+### 4.2 Dokümana yeni revizyon (güncel revizyonu değiştirir)
 
-| Kolon | | Değer |
-|---|---|---|
-| `project_id` | Z | |
-| `subject` | Z | Konu |
-| `question` | Z | Soru metni |
-| `rfi_no` | — | Boş → `RFI-TIZ-0001` |
-| `status` | V | `open` (varsayılan), `under_review`, `answered`, `closed`, `rejected` |
-| `priority` | V | `low`, `medium` (varsayılan), `high`, `critical` |
-| `raised_date` | V | Bugün; geçmiş tarihli RFI'da elle `YYYY-MM-DD` |
-| `raised_by` | | Soran kişinin `profiles.id`'si (sistem dışı kişi ise boş, adını `description`'a) |
-| `assigned_to` | | Yanıtlayacak kullanıcı |
-| `responsible_discipline` | | §3.1 disiplin listesi |
-| `due_date`, `answered_date` | | `YYYY-MM-DD` |
-| `response` | | Yanıt metni |
-| `drawing_id`, `document_id`, `decision_id` | | Aynı projedeki kayıt |
-| `task_id` | | **Boş** |
+İki ifade sırayla çalışır; önce eski güncel revizyon kapanır, sonra yenisi eklenir.
 
-İlk eklemede ve her durum değişikliğinde `register_status_history`'ye satır düşer.
+```sql
+update public.document_revisions set is_current = false
+ where document_id = (select id from public.documents where document_no = 'DOC-TIZ-0001')   -- doküman no
+   and is_current;
+insert into public.document_revisions (project_id, document_id, revision_no, revision_status, is_current,
+                                       issue_date, storage_provider, storage_file_id, file_name, created_by)
+select d.project_id, d.id,
+       '01',                                                            -- yeni revizyon no
+       'ifc',                                                           -- durum
+       true, date '2026-10-20',                                         -- yayın tarihi
+       'external',
+       'https://ornek.sharepoint.com/sites/proje/Sartname-Rev01.pdf',   -- link
+       'Sartname-Rev01.pdf',                                            -- dosya adı
+       (select id from public.profiles where full_name = 'Ad Soyad')   -- giren kişi
+from public.documents d
+where d.document_no = 'DOC-TIZ-0001'                                    -- doküman no (yukarıdakiyle aynı)
+returning revision_no;
+```
 
-### 3.4 Action — `project_actions`
+### 4.3 Çizim + ilk revizyon
 
-| Kolon | | Değer |
-|---|---|---|
-| `project_id`, `title` | Z | |
-| `action_no` | — | Boş → `ACT-TIZ-0001` |
-| `status` | V | `open`, `in_progress`, `done`, `cancelled` |
-| `priority` | V | `low`, `medium`, `high`, `critical` |
-| `source_type` | V | `manual` (varsayılan), `risk`, `rfi`, `decision`, `meeting`, `other` |
-| `assigned_to` | | Sistem kullanıcısı; dış taraf ise boş, adı `responsible`'a |
-| `due_date` | | `YYYY-MM-DD` |
-| `completed_at` | | `done` yapıldığında elle (trigger doldurmuyor) |
-| `risk_id`, `rfi_id`, `decision_id` | | Kaynağa göre, aynı proje |
-| `created_by` | | Açan kişi |
-| `task_id` | | **Boş** |
+```sql
+with d as (
+  insert into public.documents (project_id, title, document_type, discipline, created_by)
+  values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+          'Genel Yerleşim Planı',                                                            -- başlık
+          'drawing',
+          'civil',                                                                           -- disiplin
+          (select id from public.profiles where full_name = 'Ad Soyad'))                    -- giren kişi
+  returning project_id, id, document_no, created_by),
+w as (
+  insert into public.drawings (project_id, document_id, drawing_type, created_by)
+  select project_id, id, 'layout', created_by from d                   -- çizim türü
+  returning document_id),
+r as (
+  insert into public.document_revisions (project_id, document_id, revision_no, revision_status, is_current,
+                                         issue_date, storage_provider, storage_file_id, file_name, created_by)
+  select project_id, id, 'A', 'ifc', true, date '2026-10-14',          -- revizyon, durum, tarih
+         'external',
+         'https://ornek.sharepoint.com/sites/proje/Yerlesim.pdf',       -- link
+         'Yerlesim.pdf', created_by                                     -- dosya adı
+  from d
+  returning revision_no)
+select d.document_no, r.revision_no from d, w, r;
+```
 
-### 3.5 Decision — `decisions`
+### 4.4 RFI aç / yanıtla
 
-| Kolon | | Değer |
-|---|---|---|
-| `project_id`, `title` | Z | |
-| `decision_text` | Z | Kararın metni |
-| `decision_no` | — | Boş → `DEC-TIZ-0001` |
-| `status` | V | `proposed` (varsayılan), `approved`, `superseded`, `cancelled` |
-| `decision_date` | | `YYYY-MM-DD` |
-| `decision_maker` | | Serbest metin (kişi/kurum) |
-| `rfi_id`, `risk_id` | | Aynı proje |
-| `created_by` | | Açan kişi |
-| `task_id` | | **Boş** |
+```sql
+insert into public.rfis (project_id, subject, question, priority, responsible_discipline,
+                         raised_by, raised_date, due_date)
+values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+        'Kablo kanalı geçişi',                                                             -- konu
+        'Trafo binası girişinde kablo kanalı kotu ne olmalı?',                             -- soru
+        'medium',                                                                          -- öncelik
+        'civil',                                                                           -- disiplin
+        (select id from public.profiles where full_name = 'Ad Soyad'),                    -- soran kişi
+        date '2026-10-14', date '2026-10-21')                                              -- açılış, termin
+returning rfi_no;
+```
 
-**Karar 10:** decision'ı yalnızca admin onaylar ve oluşturan kendi kaydını onaylayamaz. Panelde bu kontrol yok:
-`approved` yalnızca, oluşturandan farklı bir admin onay verdiyse yazılsın; onaylayanın adı `decision_maker`'a.
+```sql
+update public.rfis
+   set status = 'answered',                                             -- answered / closed / rejected / under_review
+       response = 'Kot +0.30 alınacak.',                                -- yanıt
+       answered_date = date '2026-10-16'
+ where rfi_no = 'RFI-TIZ-0001'                                          -- RFI no
+returning rfi_no, status;
+```
 
-### 3.6 Technical Submittal — `technical_submittals`
+### 4.5 Aksiyon aç / tamamla
 
-Karar 45: ekranı Ocak 2027'de; tablo bugün kullanılabilir.
+```sql
+insert into public.project_actions (project_id, title, description, priority, source_type, responsible,
+                                    due_date, created_by)
+values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+        'Kablo kanalı detayını revize et',                                                 -- başlık
+        'RFI yanıtına göre',                                                               -- açıklama
+        'high', 'rfi',                                                                     -- öncelik, kaynak
+        'Proje ofisi',                                                                     -- sorumlu (metin)
+        date '2026-10-25',                                                                 -- termin
+        (select id from public.profiles where full_name = 'Ad Soyad'))                    -- giren kişi
+returning action_no;
+```
 
-| Kolon | | Değer |
-|---|---|---|
-| `project_id`, `title` | Z | |
-| `submittal_no` | — | Boş → `TS-TIZ-0001` |
-| `status` | V | `draft`, `submitted`, `under_review`, `approved`, `approved_with_comments`, `rejected`, `resubmit_required` |
-| `revision` | V | `00` |
-| `discipline` | | §3.1 listesi |
-| `supplier_id` | | `suppliers.id` |
-| `submitted_date`, `due_date`, `reviewed_date` | | `YYYY-MM-DD` |
-| `reviewer_id` | | Sistem kullanıcısı |
-| `document_id` | | Ekli doküman (§3.1) |
-| `task_id` | | **Boş** |
+```sql
+update public.project_actions
+   set status = 'done', completed_at = now()                            -- done / in_progress / cancelled
+ where action_no = 'ACT-TIZ-0001'                                       -- aksiyon no
+returning action_no, status;
+```
 
-`created_by` kolonu yok (B3 ekler); girenin adını `description`'a yazın.
+### 4.6 Karar aç / onayla
 
-### 3.7 Material Approval — `material_approvals`
+```sql
+insert into public.decisions (project_id, title, decision_text, decision_date, created_by)
+values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+        'Kablo kanalı kotu',                                                               -- başlık
+        'Trafo binası girişinde kanal kotu +0.30 olarak uygulanacak.',                     -- karar metni
+        date '2026-10-16',                                                                 -- tarih
+        (select id from public.profiles where full_name = 'Ad Soyad'))                    -- giren kişi
+returning decision_no;
+```
 
-| Kolon | | Değer |
-|---|---|---|
-| `project_id` | Z | |
-| `material_name` | Z | |
-| `approval_no` | — | Boş → `MA-TIZ-0001` |
-| `status` | V | `draft`, `submitted`, `approved`, `approved_with_comments`, `rejected`, `expired` |
-| `revision` | V | `00` |
-| `manufacturer`, `model` | | |
-| `supplier_id` | | `suppliers.id` |
-| `submitted_date`, `approved_date` | | `YYYY-MM-DD` |
-| `technical_submittal_id`, `document_id` | | Aynı proje |
-| `task_id` | | **Boş** |
+Onay yalnızca kaydı girenden farklı bir admin onay verdiyse (Karar 10):
 
-`created_by` ve `description` kolonu yok. Girenin adı için yer yok; ayrı bir not tutun.
+```sql
+update public.decisions
+   set status = 'approved',                                             -- approved / superseded / cancelled
+       decision_maker = 'Onaylayan admin adı'                           -- onaylayan
+ where decision_no = 'DEC-TIZ-0001'                                     -- karar no
+returning decision_no, status;
+```
 
-### 3.8 Risk — `project_risks`
+### 4.7 Teknik onay (submittal)
 
-**Panelden değil uygulamadan girin:** Proje Yönetimi › projeyi düzenle › Riskler adımı. Liste Satın Alma › Riskler'de.
-Panelden girilecekse:
+```sql
+insert into public.technical_submittals (project_id, title, description, discipline, status, submitted_date, due_date)
+values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+        'İnverter teknik dokümanı',                                                        -- başlık
+        'Giren: Ad Soyad',                                                                 -- açıklama + giren kişi
+        'ac', 'submitted',                                                                 -- disiplin, durum
+        date '2026-10-14', date '2026-10-28')                                              -- gönderim, termin
+returning submittal_no;
+```
 
-| Kolon | | Değer |
-|---|---|---|
-| `project_id`, `title` | Z | |
-| `severity` | V | `kritik`, `yüksek`, `orta` (varsayılan), `düşük` |
-| `status` | V | `açık` (varsayılan), `azaltıldı`, `kabul_edildi`, `kapatıldı` (kapanış tarihi trigger'la dolar) |
-| `probability`, `impact` | | 1-5 |
-| `category` | V | `is_kalemi`, `satin_alma`, `diger` (varsayılan) |
-| `source` | V | **`manuel`** bırakın. `otomatik` ve `rule_code` risk motoruna ait |
-| `mitigation` | | |
-| `task_id` | | **Boş** |
+### 4.8 Malzeme onayı
 
-- Numara yok (RSK Faz 3'te, Karar 14).
-- `created_by` yok; kritik kapanış onayı Faz 3'te. Eski riskler için Karar 65 geçerli.
+```sql
+insert into public.material_approvals (project_id, material_name, manufacturer, model, status, submitted_date)
+values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+        'DC solar kablo 6 mm²',                                                            -- malzeme
+        'Üretici', 'Model',                                                                -- üretici, model
+        'submitted', date '2026-10-14')                                                    -- durum, tarih
+returning approval_no;
+```
 
-### 3.9 Ana veri — WBS ve alan (yalnızca gerekirse)
+### 4.9 Risk (manuel) aç / durum değiştir
 
-Karar 19: ilk yükleme Excel import'u ile yapılacak; import (`import_wbs_areas`) 6a ile gelir. Mümkünse 6a'yı bekleyin.
-Panelden girilirse:
-- **Alan kodu (`project_areas.area_code`): yalnızca büyük harf ve rakam, tire yok** (`PB01`, `INV03`). Canlı kural
-  tireye izin veriyor ama 6a'daki F1 kuralı (`^[A-Z0-9]+$`) mevcut satırları da denetler; tireli kod 6a'yı durdurur.
-- `area_type`: `genel`, `ges`, `pv_blok`, `inverter_station`, `mv_feeder`, `tm`, `eih_section`, `depo`, `laydown`,
-  `kamp`, `yol`, `diger`.
-- **WBS kodu:** `^[A-Z0-9][A-Z0-9-]*$`, sabit haneli (`DYB-020`), proje içinde tekil.
-- **WBS disiplini: yalnızca** `mechanical`, `dc`, `ac`, `mv`, `hv`, `enh`, `civil`, `scada`, `general` ya da boş.
-  Adım 4'te gelen FK başka değeri reddeder ve 6a durur.
-- `level` trigger'la hesaplanır; `parent_id` aynı projede olmalı.
+```sql
+insert into public.project_risks (project_id, title, description, severity, probability, impact, mitigation,
+                                  status, category, source)
+values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+        'Trafo teslimatı gecikebilir',                                                     -- başlık
+        'Tedarikçi üretim takvimi belirsiz',                                               -- açıklama
+        'yüksek', 4, 4,                                                                    -- şiddet, olasılık, etki
+        'Alternatif tedarikçiden teklif al',                                               -- azaltma
+        'açık', 'satin_alma', 'manuel')                                                    -- durum, kategori, manuel
+returning id, title;
+```
 
-## 4. Elle numara yazılırsa (kağıt arşivinden taşıma)
+Riskin kimliğini bulmak (salt okunur):
 
-Elle numara yazmanın tek gerekçesi, sahada zaten kullanılmış bir numaranın korunması. Biçim
-`{ÖNEK}-{PROJE_KODU}-{4 hane}`, örnek `RFI-TIZ-0012`. Elle girişten sonra, bir sonraki otomatik numaradan önce sayaç
-eşitlenmeli, yoksa trigger aynı numarayı üretip "duplicate key … rfis_project_id_rfi_no_key" hatası verir.
-Kontrol ve eşitleme 6a planında (`register-oncelikli-plan.md` › "Panelden girilen register kayıtları").
-Eşitleme bir veri yazımıdır: SQL'i gösterilir, "uygula" ile ve yedek hatırlatılarak yapılır.
+```sql
+select id, title, status, severity from public.project_risks
+ where project_id = (select project_id from public.project_register_settings where prefix = 'TIZ')   -- proje kodu
+   and source = 'manuel'
+ order by created_at desc;
+```
 
-## 5. Panelden girişin riskleri ve 6a / Faz 2 sonrası durum
+```sql
+update public.project_risks
+   set status = 'kapatıldı'                                             -- açık / azaltıldı / kabul_edildi / kapatıldı
+ where id = '00000000-0000-0000-0000-000000000000'                      -- risk kimliği (yukarıdaki sorgudan)
+   and source = 'manuel'                                                -- otomatik risklere dokunmaz
+returning title, status, closed_at;
+```
 
-### 5.1 Riskler
+### 4.10 Liste ve CSV (Karar 82)
+
+SQL Editor'de çalıştırıp sonuç tablosundan CSV indirin. Ya da Table Editor'da tabloyu açıp dışa aktarın; bu durumda
+**hücre düzenlemeyin**. İki düğmenin yeri bu oturumda panelde doğrulanamadı.
+
+```sql
+select r.rfi_no, r.subject, r.status, r.priority, r.raised_date, r.due_date, r.answered_date, p.full_name as soran
+  from public.rfis r left join public.profiles p on p.id = r.raised_by
+ where r.project_id = (select project_id from public.project_register_settings where prefix = 'TIZ')   -- proje kodu
+ order by r.rfi_no;
+```
+
+Diğer register'lar için tablo ve numara kolonu değişir: `documents`/`document_no`, `project_actions`/`action_no`,
+`decisions`/`decision_no`, `technical_submittals`/`submittal_no`, `material_approvals`/`approval_no`.
+
+## 5. Riskler ve 6a / Faz 2 sonrası durum
+
+### 5.1 Panelden girişin riskleri
 
 | Risk | Açıklama | Azaltma |
 |---|---|---|
-| Doğrulama atlanır | Karar 6 yetki matrisi, şantiye şefinin "yalnızca kendi kaydı", durum geçiş kuralları (B1 `register_status_transitions`), dört göz (Karar 10) panelde uygulanmaz. CHECK dışında her durumdan her duruma geçilebilir | Girişi tek kişi/küçük grup yapsın; `approved` durumunu yalnızca onaylayan admin yazdırsın |
-| Kim yaptı belirsiz | `auth.uid()` boş: `created_by` elle yazılmazsa boş; `register_status_history.changed_by` her zaman boş | `created_by`/`raised_by`'ı elle doldurun; bir giriş defteri tutun |
-| Audit yok | B2 (6a) öncesi `register_audit` yok; yalnızca 3 tabloda (rfis, decisions, project_actions) durum geçmişi var. B2 sonrası her değişiklik izlenir ama kişi boş görünür | 6a'yı geciktirmeyin; 6a sonrası panel düzeltmesi yapılırsa nedeni nota yazın |
-| Numara çakışması | Elle numara sayacı ilerletmez (§4). Numara sonradan değiştirilirse dış belgelerdeki referans kopar | Numarayı boş bırakın; değiştirmeyin |
-| Geniş yetki | Panel hesabı tüm veritabanına yazar; yanlış tabloda silme/güncelleme geri alınamaz (otomatik yedek yok) | Panel erişimini daraltın; giriş günlerinde `npm run db:backup:data` |
-| Görünmezlik | Kayıtlar uygulamada görünmez (Faz 3) | Paylaşım için CSV dışa aktarma |
-| Görev bağı | Karar 69 | `task_id` boş |
-| Biçim uyumsuzluğu | Tireli alan kodu, listede olmayan WBS disiplini 6a'yı durdurur | §3.9 |
+| Doğrulama atlanır | Karar 6 yetki matrisi, şantiye şefinin "yalnızca kendi kaydı", durum geçiş kuralları, dört göz (Karar 10) uygulanmaz; CHECK dışında her durumdan her duruma geçilir | Yalnızca admin'ler, yalnızca şablonlar; `approved` yalnızca onaylayan admin bilgisiyle |
+| Kim yaptı belirsiz | `register_status_history.changed_by` hep boş; ad yanlış yazılırsa `created_by` boş | Giriş defteri (tarih, kişi, numara) |
+| Audit yok | B2 (6a) öncesi `register_audit` yok; yalnızca rfis/decisions/project_actions'ta durum geçmişi var | 6a'dan sonra izlenir (kişi boş görünür) |
+| Numara çakışması | Elle numara sayacı ilerletmez (Karar 79 ile kapandı); numara sonradan değiştirilirse dış referans kopar | Şablonlarda numara yok; numara değiştirme şablonu yok |
+| Geniş yetki | Panel tüm veritabanına yazar, yedek yok | Uyarı kutusu; giriş günlerinde veri yedeği |
+| Görünmezlik | Kayıtlar uygulamada görünmez (Faz 3) | CSV (§4.10) |
+| Sihirbaz | Riskler adımı otomatik riskleri bozar (§3.8) | Risk yalnızca §4.9 ile |
 
 ### 5.2 6a uygulandığında
 
-- **B1:** yalnızca yetki tabloları; mevcut kayıtlar etkilenmez. Panel girişi B1'den sonra da çalışır.
-- **B2:** audit trigger'ları kurulur; **önceki kayıtların izi yoktur** (geriye doldurulmaz). İsteğe bağlı temizlik:
-  her mevcut kayıt için `reason = 'panel girişi, B2 öncesi'` olan bir `insert` audit satırı (ayrı onaylı SQL).
-- **B4, AID:** register kayıtlarına dokunmaz (`task_id` boşsa).
-- **F1 A1-A3:** `project_areas` için tiresiz kod kuralı mevcut satırları da denetler; tireli kod varsa migration durur.
-- **Adım 4:** `project_wbs.discipline` FK'si listede olmayan değeri reddeder; varsa migration durur.
-- **A7:** yalnızca WBS/alan tablolarında şantiye şefi RLS'i; panel etkilenmez.
-- **Prova:** prova ROLLBACK'li, register satırlarına dokunmaz; ama prova sırasında panel girişi yapılmamalı
-  (Oturum 0 ile 5 arası; açık panel bağlantısı provanın aktif bağlantı kontrolüne takılıp onu durdurabilir).
+- **B1:** yalnızca yetki tabloları; mevcut kayıtlar etkilenmez.
+- **B2:** audit 6a'dan itibaren; önceki kayıtların izi geriye doldurulmaz.
+- **B4, AID:** register kayıtlarına dokunmaz (görev bağı yok).
+- **F1 A1-A3 ve Adım 4:** alan kodu ve WBS disiplini kuralları; panelden WBS/alan girilmediği için etkisiz.
+  Oturum 0'da ön kontrol sorgusu (`register-oncelikli-plan.md`).
+- **A7:** yalnızca WBS/alan RLS'i.
+- **Prova sırasında** panelden giriş yapılmaz (açık panel bağlantısı provanın bağlantı kontrolüne takılabilir).
 
-### 5.3 Faz 2 uygulandığında (ek iş gerekir)
+### 5.3 Faz 2 uygulandığında (Karar 81, taslaklara işlendi; yeniden test bekliyor)
 
-- **B3 A0 durur** (register tablolarında satır varsa). Taslağa geri doldurma eklenmeli:
-  - `record_state`: iş durumundan türetme önerisi: `decisions.approved` → `approved`, `technical_submittals` /
-    `material_approvals` onaylı durumlar → `approved`, diğerleri `draft`. `approved_by`/`approved_at` kim onayladıysa
-    elle; bilinmiyorsa boş ve not.
-  - `source`: panel kayıtları `import` (CHECK `manual`, `ai`, `import`), ileride ayırt edilsin diye.
-  - `created_by` (B3'ün eklediği `rfis` (= `raised_by`), `technical_submittals`, `material_approvals`): bilinen kişiyle.
-- **B3 sonrası:** yazma policy'leri düşer, SELECT `register_can(..., 'view')` ile daralır. Uygulamadan yazma yalnızca
-  RPC. `created_by` boş kayıtları şantiye şefi düzenleyemez (edit_scope own); admin/PM düzenler. Dört göz `created_by`
-  boşsa Karar 65'teki gibi herhangi bir yetkili onaylar (Faz 2'de netleşmeli).
-- **Sayaç:** B3 RPC'leri de `next_register_no` kullanır; elle numara girildiyse B3'ten önce §4 eşitlemesi.
-- **B5 (patron onayı sonrası):** `upload_status` varsayılanı `uploading`, yeni kısıt `is_current` revizyonun `ready`
-  olmasını istiyor. Mevcut `external` revizyonlar kısıta takılır; B5'e
-  `update document_revisions set upload_status = 'ready', uploaded_at = created_at where storage_provider <> 'supabase_storage'`
-  adımı eklenmeli (kısıttan önce).
-- **B6:** görünümler mevcut kayıtları gösterir; ek iş yok.
-- **Faz 3:** risk numarası (Karar 14) mevcut 55 risk ve panel riskleri için aynı göç ile verilir.
-
-**Özet:** 6a'dan önce temizlik yalnızca biçim uyumu (alan kodu, WBS disiplini) ve gerekirse sayaç eşitlemesi.
-Faz 2'de B3 ve B5 taslaklarına geri doldurma adımı yazılmalı; bu adımlar ayrıca gösterilip onaylanır.
+- **B3 A0** artık durmuyor, satır sayısını bildiriyor. **A1b** mevcut kayıtları dolduruyor:
+  - `source = 'import'` (panel kayıtları ayırt edilir);
+  - `record_state`: doküman, RFI, aksiyon `approved`; karar `proposed` ise `draft`, değilse `approved`; teknik onay ve
+    malzeme onayı `draft` ise `draft`, değilse `approved`;
+  - `approved_at = created_at`, `approved_by` boş (bilinmiyor); dört göz geriye dönük uygulanmaz;
+  - `rfis.created_by = raised_by`; teknik onay ve malzeme onayında `created_by` boş;
+  - B2 audit'e gerekçeyle yazılır.
+- **B3 sonrası:** uygulamadan yazma yalnızca RPC; `created_by` boş kayıtları şantiye şefi düzenleyemez, admin/PM düzenler.
+- **B5 A1** kısıttan önce Supabase Storage dışı revizyonları `upload_status = 'ready'` yapıyor; panelden girilen
+  SharePoint linkleri yükleme temizliğinden etkilenmez.
+- **Sayaç:** numara elle girilmediği sürece eşitleme gerekmez; kontrol sorgusu 6a planında.
+- **Faz 3:** risk numarası (Karar 14) mevcut ve panel riskleri için aynı göçle verilir. Faz 3 ekranları gelince bu
+  rehber geçersiz olur (Karar 78).

@@ -4,6 +4,7 @@
 -- ★ DEĞİŞTİRİLDİ (09.10.2026), YENİDEN TEST BEKLİYOR ★ fn_cleanup_stale_document_uploads yalnızca
 --   storage_provider = 'supabase_storage' satırlarına daraltıldı (CONVENTIONS.md §5). 07.10'daki BEGIN…ROLLBACK
 --   denemesi önceki sürüme aittir; bu sürüm canlıda denenmedi.
+-- ★ 14.10.2026: A1'e mevcut revizyonları 'ready' yapan geri doldurma eklendi (Karar 81); yeniden test bekliyor. ★
 -- Tarih: 07.10.2026 · Plan: docs/proje-kontrol/faz-b-migration-plani.md · Tasarım: tasarim.md §4.4 (Doküman yükleme), §4.5
 -- Doğrulama: taslak-sql/b5_dogrulama.sql · Anlık görüntü: yedek-faz-b-07-10.sql §B5 (storage.objects policy'leri, bucket'lar, cron işleri)
 -- Test: tests/proje-kontrol-b5-dosya.spec.js
@@ -40,7 +41,16 @@ alter table public.document_revisions
   add column upload_status text not null default 'uploading',
   add column upload_started_at timestamptz not null default now(),
   add column uploaded_at timestamptz,
-  add constraint document_revisions_upload_status_check check (upload_status in ('uploading','ready','aborted')),
+  add constraint document_revisions_upload_status_check check (upload_status in ('uploading','ready','aborted'));
+-- A1b (14.10.2026, Karar 81): mevcut revizyonlar (panelden girilmiş 'external' linkler; Supabase Storage'a
+-- yükleme B5'ten önce yok) hazır sayılır. Kısıt bundan sonra eklenir, yoksa is_current satırlar onu bozar.
+-- Saatlik temizlik zaten yalnızca storage_provider = 'supabase_storage' satırlarına bakar.
+select set_config('fons.audit_reason', 'B5 geri doldurma: mevcut revizyonlar hazır (Karar 81)', true);
+update public.document_revisions
+   set upload_status = 'ready', upload_started_at = created_at, uploaded_at = created_at
+ where storage_provider is distinct from 'supabase_storage';
+select set_config('fons.audit_reason', '', true);
+alter table public.document_revisions
   add constraint document_revisions_current_is_ready check (not is_current or upload_status = 'ready');
 create unique index document_revisions_storage_path_key on public.document_revisions (storage_file_id)
   where storage_provider = 'supabase_storage';

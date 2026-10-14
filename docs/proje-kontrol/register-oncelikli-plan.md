@@ -13,6 +13,7 @@ Tarih: 14.10.2026. Onay: kullanıcı, 14.10.2026. Hiçbir adım uygulanmadı.
      - `f1_dogrulama.sql` R1-R27, ardından ROLLBACK;
      - parmak izi; `lock_timeout` 3s, `statement_timeout` 180s, mesai dışı.
    - **Prova yönetimi:** prova SQL'i ve çalıştırma planı önce gösterilir; kullanıcı "başla" demeden koşulmaz.
+   - **14.10.2026: prova askıda (Karar 83).** Betik `scripts/proje-kontrol/prova-6a.mjs` hazır (`--build` SQL üretir, `--run` psql ile koşar). `psql` kurulumu ve yedek kullanıcıdan bekleniyor.
    - **Kalıcı uygulama:** paket paket `apply_migration` ile:
      - her paketin SQL'i önce gösterilir, kullanıcı "uygula" deyince uygulanır, her seferinde yedek hatırlatılır;
      - her paketten sonra kendi doğrulaması koşulur;
@@ -41,8 +42,7 @@ Tarih: 14.10.2026. Onay: kullanıcı, 14.10.2026. Hiçbir adım uygulanmadı.
 
 ## Panelden girilen register kayıtları (14.10.2026 eki)
 
-Kullanıcı Faz 3'ten önce register'ları panelden doldurmaya başlarsa (`register-veri-giris-rehberi.md`; §0'daki
-R1-R6 onay bekliyor):
+Kullanıcı Faz 3'ten önce register'ları panelden dolduruyor (Karar 78-82; `register-veri-giris-rehberi.md`):
 
 - **Numara sayacı canlıda zaten var** (`project_register_counters` + `next_register_no`, uyum migration'ı). B1 numara
   sayacı getirmiyor. Numara boş bırakılırsa ek iş yok.
@@ -84,8 +84,9 @@ R1-R6 onay bekliyor):
   ```
 
 - **Prova sırasında** (Oturum 0-5) panelden giriş yapılmaz.
-- **Faz 2 etkisi:** B3 A0 satır varsa durur → geri doldurma adımı (`record_state`, `source = 'import'`, `created_by`);
-  B5 kısıtından önce `external`/`sharepoint` revizyonlarda `upload_status = 'ready'`. Ayrıntı rehber §5.3.
+- **Faz 2 etkisi (Karar 81, taslaklara işlendi 14.10):** B3 A0 artık durmuyor; A1b mevcut kayıtları geri dolduruyor
+  (`record_state`, `source = 'import'`, `rfis.created_by`). B5 A1 kısıttan önce Supabase Storage dışı revizyonları
+  `upload_status = 'ready'` yapıyor. İkisi de yeniden test bekliyor. Ayrıntı rehber §5.3.
 
 ## 6a mevcut ekran kontrolü (Karar 77)
 

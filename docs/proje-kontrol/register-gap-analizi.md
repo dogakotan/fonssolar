@@ -82,7 +82,7 @@ Faz 5-9 tarihleri kaba tahmindir; MVP'den sonra kapasiteye göre yeniden yazıl�
 
 | Girdi | Gerektiği yer | En geç |
 |---|---|---|
-| PostgreSQL 17 Command Line Tools + `C:\fons-yedek\.env.local` (Session pooler; OneDrive dışı) + `npm run db:backup` ve `db:backup:data` (Karar 67) | 6a | 15 Ekim |
+| PostgreSQL 17 Command Line Tools (`psql`, `pg_dump`) kurulumu + `C:\fons-yedek\.env.local` (Session pooler; OneDrive dışı) + `npm run db:backup` ve `db:backup:data` (Karar 67). 14.10: bu makinede `psql` bulunamadı; yedek dosyası görülmedi. **6a provası bu girdi gelene kadar askıda (Karar 83)** | 6a | 15 Ekim (askıda; tarih kullanıcıda) |
 | Docker kurulumu | 6b (yerel ortam, Adım 5 testleri) | 18 Kasım (Faz 3 sırasında kurulursa 2 gün kazanılır) |
 | Test hesapları için e-posta adresleri ve şifrelerin `.env.test`'e yazılması (Karar 75; süzgeç planı onaylandı) | Faz 2 sonu, Faz 3 UI testlerinden önce | 30 Ekim |
 | Reponun OneDrive dışına taşınma tarihi (Karar 76) | MVP öncesi | MVP canlıya alma hazırlığından önce (en geç 11 Aralık) |

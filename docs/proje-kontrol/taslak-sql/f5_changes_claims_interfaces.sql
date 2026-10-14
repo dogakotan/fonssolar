@@ -1,6 +1,9 @@
 -- ============================================================================
 -- TASLAK — UYGULANMADI. Change, Claim, Interface register tabloları (minimal).
--- Tarih: 14.10.2026. Durum: yalnızca gösterildi; uygulama kararı kullanıcıda.
+-- Tarih: 14.10.2026. Durum: uygulama kararı kullanıcıda ("uygula").
+-- Test (14.10.2026, canlıda ROLLBACK, MCP, Adım 2 yöntemi): BÖLÜM A + f5_dogrulama.sql tek işlemde →
+--   "DOGRULAMA SONUCU: OK | F5 | 6 kontrol grubu". Oturum 0 aktif bağlantı 0; Oturum 5 parmak izi Oturum 0 ile
+--   birebir (katalog md5'leri, sayaçlar boş, durum geçmişi 0, yeni tablo yok).
 --
 -- Çelişkiler (register-veri-giris-rehberi.md §0 R5):
 --   * Karar 13/66: bu üç register Faz 5'te. Karar 63: PM'in tüm projelere erişimi Faz 5 Claim/Change öncesinde
