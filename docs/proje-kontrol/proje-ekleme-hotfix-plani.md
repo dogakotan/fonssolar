@@ -44,6 +44,12 @@ aynen işlenir. Böylece 6b'de iki dalda aynı satırlar olur ve Git çakışma 
 | `src/utils/projectExcelBridge.js` | **Dokunulmaz** (Karar 53). Sunucu hata metnini zaten kullanıcıya gösteriyor | — | — |
 | `components/TabProjeYonetimi.jsx` | Dokunulmaz | +18/-4 | — |
 
+**14.10.2026 durum:** hotfix'e özgü değişiklikler `faz-a`'ya işlendi: Adim5, `import-project-excel/index.ts` ve
+`mapping.ts` birebir; Adim8'e tedarik koşulu. `git merge-tree faz-a-proje-kontrol hotfix/proje-ekleme` denemesinde
+**kalan tek çakışma `Adim8Tamamlandi.jsx`**: yeni proje bloğu (`faz-a`'da `fail()` yardımcısı ve fonksiyon yoksa eski
+yola dönüş, hotfix'te satır içi hata). 6b'de `faz-a` sürümü alınır; iki davranış (`create_project_with_code`, tedarik
+koşulu) onda zaten var. Diğer bütün dosyalar otomatik birleşiyor.
+
 **Kopya ("yeni kopya olarak yükle") yolu:** faz-a sürümü yeni kodu ayrı form alanından (`code`) bekliyor. Bu alan
 `projectExcelBridge.js`'te gönderilmediği için (Karar 53, dosyaya dokunulmuyor) hotfix sunucusu şunu kabul eder:
 - form alanı varsa onu, yoksa **E13'te yazan kod asıl projenin kodundan farklıysa** onu kullanır;
@@ -73,6 +79,50 @@ Sizin adımlarınız (P1 uygulandıktan, P2 kodunu onayladıktan sonra):
 > Proje Excel şablonu yenilendi (v8): Proje Bilgileri sayfasına **Proje Kodu (E13)** alanı eklendi. Eski Excel
 > dosyalarıyla mevcut bir proje artık güncellenemez; önce projeyi Proje Yönetimi'nden **dışa aktarın** ve yeni indirilen
 > dosya üzerinde çalışın. Yeni projede proje kodu zorunludur (harfle başlar, 2-5 karakter, ör. DYB).
+
+## 7. P3 — edge function deploy ve uçtan uca test (14.10.2026 planı; "P3 deploy" ile uygulanır)
+
+**Ön koşul:** hotfix `main`'e birleşti ve Vercel'de "Ready" (sitedeki şablon v8, sihirbazda Proje Kodu alanı var).
+Durum (14.10): P1 ve Karar 89 canlıda; ADN1/ADN2 ağırlıkları PM onayı bekliyor (P3'ü etkilemez).
+
+### 7.1 Deploy sırası
+1. **Oturum 0 (salt okunur):** aktif bağlantı, parmak izi (projeler, kodlar, sayaçlar, ağırlıklar, bildirim sayısı), iki fonksiyonun canlı sürüm numarası (import 22).
+2. **`export-project-excel`** (`index.ts` + `mapping.ts` + `template_builder.ts`, `hotfix/proje-ekleme` dalından). Önce bu,
+   çünkü dışa aktarılan dosyalar E13'ü taşımazsa yeni import onları "eski şablon" diye reddeder. Eski import E13'ü yok
+   saydığı için bu sıra bir şey kırmaz.
+3. **`import-project-excel`** (`index.ts` + `mapping.ts`), birkaç dakika içinde.
+4. Her deploy'dan sonra `get_edge_function` ile kodun dal dosyasıyla aynı olduğu kontrol edilir (`verify_jwt` aynı kalır: true).
+5. **Geri dönüş:** sorun çıkarsa iki fonksiyon `main`'in eski sürümüyle (import v22 içeriği) yeniden deploy edilir. DB değişikliği gerekmez; `create_project_with_code` eski import'u etkilemez.
+
+### 7.2 Uçtan uca test (canlı, yalnızca `zz-p3-*` test projeleri)
+Test kimlikleri `.env.test`'teki hesaplar; değerler okunmaz, chat'e yazılmaz. Bu hesapların gerçek kişi mi test hesabı
+mı olduğu hâlâ bilinmiyor: test sırasında kısa süre `zz-p3-*` projeleri bütün admin/PM'lerin proje listesinde görünür.
+Bildirim üretmez (aşağıda). Adımlar Playwright (`PW_TARGET=live`, `faz-a` klasöründen, `tests/proje-ekleme-hotfix.spec.js`, P3'ten önce yazılır) ve MCP ile salt okunur kontroller.
+
+| # | Adım | Beklenen |
+|---|---|---|
+| T1 | Admin: Proje Yönetimi › Manuel doldur; ID `zz-p3-admin`, kod `ZZPA`, 1 görev (kategori `kolon_montaji`), ağırlık adımı varsayılan, **Tedarik işaretlenmeden**, Bütçe atlanır, Kaydet | Proje + `project_register_settings` = ZZPA; `procurement_completed` false; ağırlıklar görev kategorisine göre; hata yok |
+| T2 | PM: aynı akış, `zz-p3-pm`, kod `ZZPP` | Proje açılır (eskiden RLS hatası); kod ZZPP |
+| T3 | Sihirbaz kod hatası: kod `1AB` ve kullanılan kod `TIZ` | Adım 1'de biçim hatası; `TIZ` için son adımda "Bu proje kodu başka bir projede kullanılıyor"; proje oluşmaz |
+| T4 | Excel v8 yeni proje: siteden şablon indir, E5 `zz-p3-excel`, E6 ad, E13 `ZZPE`, 1 görev → Yeni Proje | Proje + kod ZZPE; 15 varsayılan ağırlık (Karar 89); görev yazıldı |
+| T5 | Excel v8 eksik kod: E13 boş yeni proje | "Proje kodu zorunludur (Proje Bilgileri, E13)"; proje oluşmaz |
+| T6 | Eski v7 dosyası: `main`'in eski şablonuyla (E13 yok) `zz-p3-excel` → çakışma penceresi → "Mevcut projeyi güncelle" | "Bu dosya eski şablon (v7). Projeyi dışa aktarıp yeni dosya üzerinde çalışın."; hiçbir şey yazılmaz |
+| T7 | E13 uyuşmazlığı: `zz-p3-excel` dışa aktar, E13'ü `ZZPX` yap, güncelle | "Proje kodu degistirilemez: Excel'de ZZPX, projede ZZPE"; hiçbir şey yazılmaz |
+| T8 | Doğrulama: dışa aktarılan dosyada bir görevin durumunu `bitti` yap, güncelle | "Excel'de 1 hata var, hiçbir şey kaydedilmedi: İş Kalemleri satır …"; görevler değişmez |
+| T9 | Dışa aktarma: `zz-p3-excel` dışa aktar | E13 = ZZPE |
+| T10 | Rol: muhasebe oturumuyla import fonksiyonuna doğrudan güncelleme isteği (`zz-p3-excel`) | 403 "Proje güncelleme yetkiniz yok." |
+| T11 | RFI: rehber §4.4 şablonu, proje kodu `ZZPA` (MCP, gerçek ekleme) | Numara `RFI-ZZPA-0001` |
+| T12 | Temizlik: `delete from projects where id like 'zz-p3-%'` (MCP; kod, sayaç, ağırlık, görev, RFI, durum geçmişi CASCADE) | `zz-p3-*` ve bağlı satır 0; parmak izi Oturum 0 ile aynı (bildirim sayısı dahil) |
+
+**Bildirim:** senaryoda bildirim üreten adım yok.
+- Proje oluşturma, görev, ağırlık, RFI ve proje silme bildirim trigger'ı tetiklemez (14.10 katalog listesi: bildirimler
+  günlük rapor, fatura, satın alma, ticket ve ilerleme girişinden).
+- Tedarik onayı (`set_project_procurement_completed`) bildirim üretmese de istendiği gibi senaryoda yok (T1/T2'de işaretlenmez).
+- Satın alma, Malzeme Listesi ve Bütçe sayfaları Excel'de boş bırakılır.
+- Görevlerin plan tarihleri gelecekte seçilir, böylece otomatik risk motoru gecikme riski açmaz.
+
+**Durma kuralı:** beklenmeyen sonuçta durulur. Test projeleri yine T12 ile temizlenir; temizlik silme olduğu için önce
+sorulur. Fonksiyon geri dönüşü (7.1/5) de onayla yapılır.
 
 ## 6. Kategori ağırlıkları (P4) — öneri, değerler sizin onayınızda
 
