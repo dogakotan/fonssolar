@@ -225,6 +225,22 @@ Hepsinde ortak olanlar:
 - **created_by:** yok.
 - **Gelen FK (ters yön):** `procurement_items.material_approval_id`, `purchase_requests.material_approval_id`.
 
+### changes, claims, interfaces (14.10.2026, `20261014082055_f5_changes_claims_interfaces`)
+
+Kolon düzeyi tanım: `taslak-sql/f5_changes_claims_interfaces.sql` (BÖLÜM A ile canlı birebir) ve
+`docx-guncelleme-14-10.md` §B. Özet:
+- **Numara:** `change_no` (CHG), `claim_no` (CLM), `interface_no` (ITF); `fn_assign_register_no` trigger'ı,
+  `UNIQUE (project_id, <no>)`.
+- **Ortak kolonlar baştan var:** `record_state`, `source`, `created_by` (varsayılan `auth.uid()`), `approved_by`,
+  `approved_at`, `rejected_reason`. B3 bu tablolara ADD COLUMN yapmaz.
+- **Bağlar:** `wbs_id`/`area_id`/`task_id` kFK (NO ACTION); `claims.change_id` kFK → `changes`.
+- **Durum CHECK'leri:**
+  - changes: identified, submitted, approved, rejected, implemented;
+  - claims: notice_due, notice_sent, submitted, negotiating, settled, rejected;
+  - interfaces: open, agreed, closed.
+- **RLS:** yalnızca SELECT (`has_project_access` + rol listesi, Karar 6); `authenticated` yalnızca SELECT, `anon` yok.
+- **Trigger'lar:** numara, `fn_log_register_status` (change/claim/interface), `update_updated_at_column`.
+
 ## 3. Geçmiş ve numaralama tabloları
 
 ### register_status_history

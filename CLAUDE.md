@@ -1576,7 +1576,7 @@ Risk girişi yalnızca proje **düzenleme** akışında var, **oluşturmada yok*
 | Kullanıcı yönetimi / navigasyon | roles, role_allowed_tabs, role_sidebar_items, profiles, user_project_access, user_management_audit |
 | Bildirim | notifications |
 | Destek / diğer | tickets, ticket_comments, ticket_history, ticket_attachments, agent_reports, procurement_items, procurement_item_adjustments, procurement_item_change_requests |
-| Proje kontrol (register, 05-07.10.2026; canlıda toplam 55 tablo) | project_wbs, project_areas, area_wbs, project_actions, documents, document_revisions, drawings, rfis, decisions, technical_submittals, material_approvals, project_register_settings, project_register_counters, register_status_history — bkz. "Proje Kontrol (Faz A)" |
+| Proje kontrol (register, 05-07.10.2026 + 14.10.2026; canlıda toplam 58 tablo) | project_wbs, project_areas, area_wbs, project_actions, documents, document_revisions, drawings, rfis, decisions, technical_submittals, material_approvals, project_register_settings, project_register_counters, register_status_history, changes, claims, interfaces — bkz. "Proje Kontrol (Faz A)" |
 
 View'lar (hepsi `security_invoker=on`): `project_cost_summary`, `personnel_logs`,
 `v_invoice_payment_overview`, `vw_delayed_tasks`, `vw_monthly_progress`,
@@ -1799,7 +1799,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 81 | Mevcut kayıtların geri doldurulması (R4) | B3 A0 durmaz; A1b panel kayıtlarını doldurur (`source = 'import'`, `record_state` iş durumundan, `approved_at = created_at`, `rfis.created_by = raised_by`). B5 A1 kısıttan önce Storage dışı revizyonları `ready` yapar. İkisi de yeniden test bekliyor | **ONAYLANDI (14.10.2026)**, taslaklara işlendi |
 | 82 | Paylaşım (R6) | Faz 3'e kadar register listeleri panelden CSV ile paylaşılır (rehber §4.10) | **ONAYLANDI (14.10.2026)** |
 | 83 | 6a provası | Askıda; `psql` (PostgreSQL 17 Command Line Tools) kurulumu ve yedek kullanıcıdan beklenen girdi. Prova betiği `scripts/proje-kontrol/prova-6a.mjs` | **ONAYLANDI (14.10.2026)** |
-| 84 | F5 yedeksiz uygulama | Change, Claim, Interface tabloları (`taslak-sql/f5_changes_claims_interfaces.sql`) `npm run db:backup` yedeği olmadan uygulanabilir. Gerekçe (kullanıcı): yalnızca yeni tablolar, mevcut tablolar etkilenmiyor, geri alma SQL'i hazır ve ROLLBACK ile test edilmiş (BÖLÜM B). Koşul: mesai dışı, aktif bağlantı kontrolü, `apply_migration`, ardından `f5_dogrulama.sql` ve parmak izi. Bu istisna yalnızca F5 içindir; diğer paketlerde yedek kuralı (Karar 67) geçerli | **ONAYLANDI (14.10.2026)** |
+| 84 | F5 yedeksiz uygulama | Change, Claim, Interface tabloları (`taslak-sql/f5_changes_claims_interfaces.sql`) `npm run db:backup` yedeği olmadan uygulanabilir. Gerekçe (kullanıcı): yalnızca yeni tablolar, mevcut tablolar etkilenmiyor, geri alma SQL'i hazır ve ROLLBACK ile test edilmiş (BÖLÜM B). Koşul: aktif bağlantı kontrolü, `apply_migration`, ardından `f5_dogrulama.sql` ve parmak izi. **Ek (14.10.2026): mesai dışı kuralından da feragat** — gerekçe (kullanıcı): yalnızca yeni tablolar; mevcut tablolarda yalnızca FK eklenirken milisaniyelik kilit; `lock_timeout` 3s ile kimse beklemez. İki istisna (yedek, mesai dışı) yalnızca F5 içindir; diğer paketlerde Karar 67 ve mesai dışı kuralı geçerli | **ONAYLANDI (14.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1878,7 +1878,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 - `docs/proje-kontrol/taslak-sql/` — uygulanmışlar (`g01_…`, `g02_g03_…`, `uyum_migration_*`) ve Faz B taslakları
   (`b1`…`b6`, her biri: BÖLÜM A uygula / BÖLÜM B geri al + `*_dogrulama.sql`); `yedek-faz-b-07-10.sql` (Faz B'nin
   değiştireceği canlı nesnelerin anlık görüntüsü).
-- `supabase/migrations/20261007063808_…`, `20261007063825_…`, `20261007072501_…` — canlıya uygulanan SQL'in birebir aynısı.
+- `supabase/migrations/20261007063808_…`, `20261007063825_…`, `20261007072501_…`, `20261014082055_f5_changes_claims_interfaces.sql` — canlıya uygulanan SQL'in birebir aynısı.
 - Testler: `proje-kontrol-guvenlik.spec.js` (8), `proje-kontrol-master-veri.spec.js` (9), `proje-kontrol-uyum.spec.js`
   (7 + 3 fixme, B3 gelince açılır), Faz B test taslakları `proje-kontrol-b{1..6}-*.spec.js` (ilgili paket canlıda
   yoksa kendini atlar).
@@ -2255,6 +2255,19 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**14.10.2026 (24. tur) — F5 (Change, Claim, Interface) canlıya uygulandı: `20261014082055_f5_changes_claims_interfaces`.**
+- **Karar 84:** mesai dışı kuralından da feragat (yalnızca F5).
+- **Sıra:**
+  - Oturum 0: aktif bağlantı ve uzun işlem 0, parmak izi alındı.
+  - `apply_migration` (BÖLÜM A birebir, `lock_timeout` 3s).
+  - `f5_dogrulama.sql` canlıda 6/6 OK; test satırları hata ile geri alındı.
+  - Uygulama sonrası mevcut tabloların parmak izi değişmedi: fonksiyon, kısıt, trigger, indeks, yetki, RLS, yayın, görünüm, sayaç, durum geçmişi, proje, görev, risk, register satırları, bildirim sayısı. Nesne sayısı 305 → 337 (3 tablo + 29 indeks); tablo 55 → 58.
+- **Repo:**
+  - Migration dosyası `supabase/migrations/20261014082055_f5_changes_claims_interfaces.sql`.
+  - Durum tablosu (`register-gap-analizi.md`), rehber, `canli-sema-ozeti.md`, docx metni güncellendi.
+  - Karar 69: rehberdeki Change/Claim/Interface şablonlarında görev bağı alanı yok (teyit edildi).
+- **Kural 7:** `fons_solar_sistem_dokumantasyonu.docx` ve `fons_solar_veritabani_dokumantasyonu.docx` güncellenmeli; metin `docs/proje-kontrol/docx-guncelleme-14-10.md` (kullanıcı işler).
 
 **14.10.2026 (23. tur) — F5 geri alma testi, Karar 84, Change/Claim/Interface şablonları, docx metni; sihirbaz Riskler bulgusu 6b'ye (canlıya kalıcı değişiklik yok).**
 - **Sihirbaz Riskler bulgusu:** "Bilinen açık noktalar"a eklendi. Düzeltme 6b sihirbaz paketinde: `save_project_risks` yalnızca manuel riskleri günceller. Tasarım `faz1-adim5-tasarim.md` §3.4, test §3.3 (7-11).

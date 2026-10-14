@@ -7,6 +7,9 @@
 **Son güncelleme:** 12.10.2026, Faz 1 Adım 4 kapandı (WBS/alan bütünlüğü ve Excel importu: ROLLBACK oturumları 4a-4e
 geçti, uygulanmadı; gerçek Diyarbakır Excel'i projesiz kontrol için bekleniyor). MVP senaryosu (b) seçildi (Karar 45).
 Önceki: 12.10.2026, Faz 1 Adım 3 kapandı.
+Ek (14.10.2026, kapanış değil): **F5 canlıya uygulandı** (`20261014082055_f5_changes_claims_interfaces`; Karar 84):
+Change, Claim, Interface tabloları açıldı, `f5_dogrulama.sql` canlıda 6/6 OK, mevcut tabloların parmak izi değişmedi.
+Register'lara SQL Editor şablonlarıyla geçici giriş (Karar 78-82). 6a provası askıda (Karar 83). Faz tarihleri değişmedi.
 Ek (13.10.2026, kapanış değil): "Kullanıcıdan beklenen girdiler" ve Faz 5 başlangıç kontrol listesi eklendi (Karar 63).
 Ek (14.10.2026, kapanış değil): Faz 2'ye test bildirim süzgeci (Karar 75, +1 iş günü); MVP canlı tahmini 17 Aralık (paralelde 15 Aralık).
 Ek (14.10.2026, kapanış değil): register öncelikli sıra (Karar 66-74); faz tarihleri yeniden yazıldı, MVP canlı tahmini 16 Aralık (paralelde 14 Aralık).
@@ -35,11 +38,11 @@ ROLLBACK ile doğrulandı, uygulanmadı (Adım 6). WA ekranı Adım 5'te.
 | 8 | Action | 3 | Canlıda (`project_actions`); yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
 | 9 | Decision | 3 | Canlıda; yazma/okuma taslakta (B3, B6) | B1, B2, F1 |
 | 10 | Risk | 3 | Canlıda (`project_risks`, otomatik motor çalışıyor); RSK numarası ve onay alanları yok | B1, F1 (RSK numarası proje koduna bağlı, Ç7), AID (görev bağı) |
-| 11 | Change / Variation | 5 | Yok | B1, B2, F1 |
-| 12 | Claim & Notice | 5 | Yok | B1, B2, F1 |
+| 11 | Change / Variation | 5 (tablo erken açıldı, 14.10) | **Canlıda** (`changes`, CHG; yalnızca SELECT RLS, Karar 6); giriş SQL Editor şablonuyla (Karar 78); onay akışı, dört göz, RPC ve ekran Faz 5'te | B1 (`register_can`'e geçiş), B2 (audit), F1 |
+| 12 | Claim & Notice | 5 (tablo erken açıldı, 14.10) | **Canlıda** (`claims`, CLM; ihbar son tarihi elle, `claim_notice_days` yok); giriş SQL Editor şablonuyla; onay akışı ve ekran Faz 5'te | B1, B2, F1 |
 | 13 | NCR | Ertelendi (Karar 8) | Ertelendi; tip kodu B1'de ayrıldı (taslakta) | B1 |
 | 14 | Inspection | Ertelendi (Karar 8) | Ertelendi; tip kodu B1'de ayrıldı (taslakta) | B1 |
-| 15 | Interface | 5 | Yok | B1, B2, F1, WA |
+| 15 | Interface | 5 (tablo erken açıldı, 14.10) | **Canlıda** (`interfaces`, ITF); giriş SQL Editor şablonuyla; ekran Faz 5'te | B1, B2, F1, WA |
 | 16 | Payment | 4 (tedarikçi görünümü) + 6 (`progress_payments`) | Kaynak tablolar canlıda; görünüm ve `progress_payments` yok | B1; Faz 6'daki fatura WBS/aktivite bağı için WA, AID |
 
 **Fazların tahmini bitişi (15 Aralık 2026 MVP hedefine göre; MVP = Faz 1-4, Karar 24; senaryo (b), Karar 45):**
@@ -66,7 +69,7 @@ Tahmin varsayımları:
 | 1 · 6b | Docker + yerel ortam; Adım 5 testleri; Adım 5 SQL + frontend (WBS/alan ekranı, Kod ata, sihirbaz düzeltmesi); Excel v8 import deploy; Diyarbakır (Karar 74); F1 A4. **Faz 1 burada kapanır** | 27 Kasım 2026 | 18 gün önce | Diyarbakır Excel'i, proje kodu ve kategori ağırlıkları; Adım 5 kodu ilk kez test ediliyor |
 | 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 11 Aralık 2026 | 4 gün önce | Satın alma ve finans regresyonu |
 | 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü); kullanıcı hesapları ve rol/proje atamaları (0,5): canlıdaki test hesaplarının gözden geçirilmesi (test e-postasına benzeyen PM hesabı dahil); genel "Admin" hesabını kullananlara kişisel hesap açılması ve ardından genel hesabın kapatılması (Karar 64; o zamana kadar hesap B3'teki istisnayla register onayı yapamaz); kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5). Hazırlık 3 iş günü (14, 15, 16 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **17 Aralık 2026** (Docker Faz 3 sırasında paralel kurulursa 15 Aralık); destek 17-23 Aralık | 2 gün sonra (paralelde aynı gün); 1 Ocak 2027 sınırından 15 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
-| 5 | Change, Claim, Interface; Technical Submittal ve Material Approval ekranları (Karar 45) | Ocak 2027 (MVP sonrası) | — | — |
+| 5 | Change, Claim, Interface (tablolar 14.10.2026'da canlıda; kalan: RPC, onay akışı, dört göz, ekranlar, `register_can`'e geçiş); Technical Submittal ve Material Approval ekranları (Karar 45) | Ocak 2027 (MVP sonrası) | — | — |
 | 6 | `subcontracts`, `progress_payments`, fatura WBS/aktivite bağı | Şubat 2027 | — | Ç8, Ç10, Ç11 Faz 6 başında |
 | 7 | Aktivite 360, KPI | Mart 2027 | — | — |
 | 8 | Alarmlar | Mart 2027 | — | — |

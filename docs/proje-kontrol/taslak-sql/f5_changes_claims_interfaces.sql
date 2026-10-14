@@ -1,6 +1,7 @@
 -- ============================================================================
--- TASLAK — UYGULANMADI. Change, Claim, Interface register tabloları (minimal).
--- Tarih: 14.10.2026. Durum: uygulama kararı kullanıcıda ("uygula").
+-- UYGULANDI (14.10.2026, apply_migration, sürüm 20261014082055; supabase/migrations/20261014082055_f5_changes_claims_interfaces.sql
+-- BÖLÜM A ile birebir). Change, Claim, Interface register tabloları (minimal).
+-- Uygulama sonrası: f5_dogrulama.sql canlıda 6/6 OK; mevcut tabloların parmak izi uygulama öncesiyle aynı.
 -- Test (14.10.2026, canlıda ROLLBACK, MCP, Adım 2 yöntemi): BÖLÜM A + f5_dogrulama.sql tek işlemde →
 --   "DOGRULAMA SONUCU: OK | F5 | 6 kontrol grubu". Oturum 0 aktif bağlantı 0; Oturum 5 parmak izi Oturum 0 ile
 --   birebir (katalog md5'leri, sayaçlar boş, durum geçmişi 0, yeni tablo yok).

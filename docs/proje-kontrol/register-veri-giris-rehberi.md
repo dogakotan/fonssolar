@@ -9,7 +9,7 @@ Tarih: 14.10.2026. Kaynak: canlı katalog, yalnızca salt okunur SELECT. Şablon
 > - **Yalnızca §4'teki şablonları kullanın.** Table Editor'da hücre düzenleme, satır silme veya serbest SQL yazmayın.
 > - **Register dışı hiçbir tabloda değişiklik yapmayın.** Şablonların yazdığı tablolar: `documents`,
 >   `document_revisions`, `drawings`, `rfis`, `project_actions`, `decisions`, `technical_submittals`,
->   `material_approvals`, `project_risks`; uygulandıktan sonra `changes`, `claims`, `interfaces`.
+>   `material_approvals`, `project_risks`, `changes`, `claims`, `interfaces`.
 > - UPDATE şablonlarında `where` satırını silmeyin ve değiştirmeden bırakmayın; her zaman tek kaydın numarasını yazın.
 > - Toplu giriş günlerinde önce `npm run db:backup:data` (Karar 67).
 
@@ -29,9 +29,9 @@ admin'lerdedir.
 
 | 84 | Change, Claim, Interface tabloları yedeksiz uygulanabilir (yalnızca yeni tablolar; geri alma SQL'i test edildi) |
 
-Change, Claim, Interface (`changes`, `claims`, `interfaces`): taslak `taslak-sql/f5_changes_claims_interfaces.sql`
-ROLLBACK ile test edildi; **kalıcı uygulama mesai dışında yapılacak**. §4.11-4.13 şablonları tablolar canlıya
-uygulandıktan sonra kullanılır.
+Change, Claim, Interface (`changes`, `claims`, `interfaces`): **14.10.2026'da canlıya uygulandı**
+(`20261014082055_f5_changes_claims_interfaces`); şablonlar §4.11-4.13. Geri alma SQL'i
+`taslak-sql/f5_changes_claims_interfaces.sql` BÖLÜM B'de.
 
 ## 1. Canlıdaki register tabloları (14.10.2026)
 

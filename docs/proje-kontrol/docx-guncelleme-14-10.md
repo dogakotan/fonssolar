@@ -2,8 +2,8 @@
 
 Bu metni `fons_solar_sistem_dokumantasyonu.docx` ve `fons_solar_veritabani_dokumantasyonu.docx`'e kullanıcı işler.
 
-**Ne zaman işlenir:** Change, Claim, Interface tabloları canlıya uygulandıktan sonra. Uygulama mesai dışında
-yapılacak (Karar 84). Uygulama yapılmazsa yalnızca A.4 ve A.5 işlenir.
+**Durum:** Change, Claim, Interface tabloları 14.10.2026'da canlıya uygulandı (sürüm `20261014082055`, Karar 84).
+Bütün bölümler şimdi işlenebilir. Canlıda 58 tablo doğrulandı.
 
 **Kaynak:** canlı katalog (14.10.2026, salt okunur) ve `taslak-sql/f5_changes_claims_interfaces.sql`.
 
@@ -34,7 +34,7 @@ Yeni:
 
 Notlar:
 - 116 fonksiyon 14.10'da canlıda sayıldı. 107 zaten eskimişti; F5 yeni fonksiyon eklemiyor.
-- 58 tablo F5 uygulandıktan sonraki sayı; bugün 55.
+- 58 tablo 14.10'da uygulama sonrası canlıda sayıldı.
 
 "3. Veritabanı" giriş paragrafındaki "~55 tablo + 7 view" → "58 tablo + 7 view".
 
@@ -90,7 +90,7 @@ Yeni:
 > 14.10.2026 — Change, Claim, Interface register tabloları (changes, claims, interfaces): yalnızca yeni tablolar,
 > mevcut tablolar değişmedi; yedeksiz uygulandı (Karar 84), geri alma SQL'i test edildi.
 
-(Migration'ın gerçek sürüm numarası uygulamadan sonra eklenir.)
+(Sürüm: `20261014082055_f5_changes_claims_interfaces`.)
 
 ---
 
