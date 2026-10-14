@@ -237,6 +237,9 @@ Deno.serve(async (req) => {
       responsible: toStr(r.responsible),
       responsible_role: toStr(r.responsible_role),
       team_size: toInt(r.team_size),
+      // Notlar (M) 14.10.2026'ya kadar okunup yazilmiyordu; export M'ye yazdigi icin gidis-donus tutarli.
+      // Oncul bilgisi ayri kolon yerine nota "Oncul: ..." olarak yazilir.
+      notes: toStr(r.notes),
       unit: toStr(r.unit),
       target_qty: toNumber(r.target_qty),
     })).filter((r) => r.task_code && r.task_name && r.planned_start && r.planned_end);
