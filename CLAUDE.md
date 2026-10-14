@@ -2282,7 +2282,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   - Kaynaklar ve üretilen `DYB1_v8_proje.xlsx` (58 görev, 25 risk), `DYB2_v8_proje.xlsx` (27 görev, 16 risk) `C:\fons-yedek\veri-kaynak\`'te (üretim `uret-v8.cjs`, doğrulama `dogrula-v8.cjs`).
   - Proje olmadan doğrulama: import'un kendi kontrolleri 0 hata; ID ve kodlar canlıda boş.
   - `taslak-sql/dyb_kategori_agirlik.sql` canlıda ROLLBACK ile geçti, parmak izi birebir; uygulanmadı.
-- **T1-T12:** test admin hesabı ve Notlar deploy'u bekleniyor.
+- **T1-T12:** test admin hesabı bekleniyor.
+- **Sonra (aynı gün):**
+  - Notlar düzeltmesi PR #38 ile `main`'e birleşti (`2e3ff8e`); `import-project-excel` deploy edildi (canlı sürüm **v25**; beklenen v24'tü, aradaki sürüm numarasının nedeni doğrulanamadı). Canlı içerik dal dosyasıyla aynı, `verify_jwt` true, DB parmak izi deploy öncesi/sonrası aynı.
+  - Diyarbakır proje ID'leri gerçek proje kuralına (`{müşteri}-{il}-{tür}-faz{N}`, ör. `kaptan-demir-adana-arazi-faz1`) uyduruldu: `isdemir-diyarbakir-arazi-faz1` / `-faz2` (canlıda boş).
+  - DYB2 R13-R15 açıklamalarına "Ortak altyapı (DYB1) bağımlılık riski — " eklendi; v8 dosyaları yeniden üretildi, doğrulama 0 hata.
+  - `dyb_kategori_agirlik.sql` hâlâ eski ID'leri taşıyor (PM onayına kadar dokunulmadı).
 
 **14.10.2026 (28. tur) — Proje ekleme hotfix'i yayında (PR #36, #37); edge function'lar deploy edildi; uçtan uca test bekliyor.**
 - **Yerel `main` bayatmış (468b224, uzak 81 commit ileride).** Hotfix'in dosyaları o commit'lerde değişmemişti; dal `origin/main`'e rebase edildi. lint 0 hata, build başarılı. Yerel `main` başvurusu güncellendi.
