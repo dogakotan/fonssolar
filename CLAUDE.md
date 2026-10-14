@@ -1800,10 +1800,11 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 82 | Paylaşım (R6) | Faz 3'e kadar register listeleri panelden CSV ile paylaşılır (rehber §4.10) | **ONAYLANDI (14.10.2026)** |
 | 83 | 6a provası | Askıda; `psql` (PostgreSQL 17 Command Line Tools) kurulumu ve yedek kullanıcıdan beklenen girdi. Prova betiği `scripts/proje-kontrol/prova-6a.mjs` | **ONAYLANDI (14.10.2026)** |
 | 84 | F5 yedeksiz uygulama | Change, Claim, Interface tabloları (`taslak-sql/f5_changes_claims_interfaces.sql`) `npm run db:backup` yedeği olmadan uygulanabilir. Gerekçe (kullanıcı): yalnızca yeni tablolar, mevcut tablolar etkilenmiyor, geri alma SQL'i hazır ve ROLLBACK ile test edilmiş (BÖLÜM B). Koşul: aktif bağlantı kontrolü, `apply_migration`, ardından `f5_dogrulama.sql` ve parmak izi. **Ek (14.10.2026): mesai dışı kuralından da feragat** — gerekçe (kullanıcı): yalnızca yeni tablolar; mevcut tablolarda yalnızca FK eklenirken milisaniyelik kilit; `lock_timeout` 3s ile kimse beklemez. İki istisna (yedek, mesai dışı) yalnızca F5 içindir; diğer paketlerde Karar 67 ve mesai dışı kuralı geçerli | **ONAYLANDI (14.10.2026)** |
-| 85 | F1 A1-A3 öne alındı | Proje ekleme kırık olduğu için (PM sihirbazda RLS'e takılıyor, yeni projeye kod verilmiyor) F1 A1-A3 6a'dan ayrılıp şimdi uygulanır (`taslak-sql/f1_a1_a3_proje_olusturma.sql`). Yedeksiz ve mesai dışı kuralı olmadan (yalnızca bu paket; gerekçe: iki küçük tabloda CHECK değişimi, kısa kilit, `lock_timeout` 3s, geri alma SQL'i test edildi). A4 sonraya kalır (Karar 34). Uygulandıktan sonra 6a'nın F1 parçası yalnızca A4 | **ONAYLANDI (14.10.2026)**; ROLLBACK testleri geçti, "uygula" bekliyor |
+| 85 | F1 A1-A3 öne alındı | Proje ekleme kırık olduğu için (PM sihirbazda RLS'e takılıyor, yeni projeye kod verilmiyor) F1 A1-A3 6a'dan ayrılıp şimdi uygulanır (`taslak-sql/f1_a1_a3_proje_olusturma.sql`). Yedeksiz ve mesai dışı kuralı olmadan (yalnızca bu paket; gerekçe: iki küçük tabloda CHECK değişimi, kısa kilit, `lock_timeout` 3s, geri alma SQL'i test edildi). A4 sonraya kalır (Karar 34). Uygulandıktan sonra 6a'nın F1 parçası yalnızca A4 | **ONAYLANDI ve UYGULANDI (14.10.2026, `20261014102306_f1_a1_a3_proje_olusturma`)**; doğrulama canlıda 7/7 |
 | 86 | Proje ekleme hotfix dalı | `hotfix/proje-ekleme` `main`'den, ayrı klasör `GES_Dashboard-hotfix`. Değişiklik en az; `faz-a`'daki aynı amaçlı parçalar birebir taşınır, hotfix'e özgü ekler `faz-a`'ya da işlenir (6b çakışmasını azaltmak için). `projectExcelBridge.js`'e dokunulmaz (Karar 53). Plan `docs/proje-kontrol/proje-ekleme-hotfix-plani.md` | **ONAYLANDI (14.10.2026)** |
 | 87 | Excel v8 şimdi | Şablon v8 (E13 proje kodu) hotfix'le yayına çıkar; Karar 57/60 geçerli (eski dosyayla güncelleme reddedilir). Ekip duyurusu planda §5 | **ONAYLANDI (14.10.2026)** |
 | 88 | Tedarik onayı yeni projede isteğe bağlı | Sihirbazın Tedarik adımı yeni projede onaysız geçilebilir; `set_project_procurement_completed` yalnızca PM gerçekten onaylarsa çağrılır | **ONAYLANDI (14.10.2026)** |
+| 89 | Varsayılan kategori ağırlıkları | Yeni projeler için 15 kategori, toplam 100: kolon 10, kiriş 8, aşık 7, panel 17, mekanik 5, DC 10, AC 10, OG 8, köşk 5, topraklama 5, ENH 7, devreye alma 8; mobilizasyon, evrak süreci, satın alma 0. Değişen nesne `fn_seed_default_category_weights()` (`taslak-sql/kategori_agirlik_varsayilan.sql`) + Excel import `mapping.ts`. Mevcut projeler değişmez; ADN1/ADN2 kararı ayrı. Değerler PM ile görüşülüp değişebilir | **ONAYLANDI (14.10.2026)**; ROLLBACK testi geçti, DB için "uygula" bekliyor |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1882,7 +1883,7 @@ BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca u
 - `docs/proje-kontrol/taslak-sql/` — uygulanmışlar (`g01_…`, `g02_g03_…`, `uyum_migration_*`) ve Faz B taslakları
   (`b1`…`b6`, her biri: BÖLÜM A uygula / BÖLÜM B geri al + `*_dogrulama.sql`); `yedek-faz-b-07-10.sql` (Faz B'nin
   değiştireceği canlı nesnelerin anlık görüntüsü).
-- `supabase/migrations/20261007063808_…`, `20261007063825_…`, `20261007072501_…`, `20261014082055_f5_changes_claims_interfaces.sql` — canlıya uygulanan SQL'in birebir aynısı.
+- `supabase/migrations/20261007063808_…`, `20261007063825_…`, `20261007072501_…`, `20261014082055_f5_changes_claims_interfaces.sql`, `20261014102306_f1_a1_a3_proje_olusturma.sql` — canlıya uygulanan SQL'in birebir aynısı.
 - Testler: `proje-kontrol-guvenlik.spec.js` (8), `proje-kontrol-master-veri.spec.js` (9), `proje-kontrol-uyum.spec.js`
   (7 + 3 fixme, B3 gelince açılır), Faz B test taslakları `proje-kontrol-b{1..6}-*.spec.js` (ilgili paket canlıda
   yoksa kendini atlar).
@@ -2259,6 +2260,17 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**14.10.2026 (26. tur) — F1 A1-A3 canlıya uygulandı; varsayılan ağırlık taslağı (Karar 89); hotfix kodu yazıldı (push yok).**
+- **F1 A1-A3:** Oturum 0 temiz; `apply_migration` (`20261014102306_f1_a1_a3_proje_olusturma`); `f1_a1_a3_dogrulama.sql` canlıda 7/7. Mevcut nesnelerde değişiklik yok; değişenler yalnızca `create_project_with_code` (fonksiyon 116 → 117) ve iki CHECK. Migration dosyası üç dalda.
+- **Karar 89:** `taslak-sql/kategori_agirlik_varsayilan.sql` (yalnızca `fn_seed_default_category_weights()` gövdesi). ROLLBACK testi geçti: sihirbaz ve doğrudan eklemede 15 kategori / toplam 100; ertelenmiş toplam kontrolü geçti; mevcut 40 satır değişmedi; geri alma md5 özgünle aynı. DB için "uygula" bekliyor.
+- **Hotfix `hotfix/proje-ekleme` (`678806a`, push yok):**
+  - `faz-a`'daki Adim1, export ve şablon v8 parçaları birebir taşındı.
+  - Adim8 `create_project_with_code` ile çalışıyor, tedarik koşulu eklendi; Adim5'te tedarik isteğe bağlı.
+  - `import-project-excel`: güncellemede rol kontrolü, Türkçe risk varsayılanları, yazmadan önce doğrulama, kopya kodu E13'ten.
+  - `mapping.ts`: 15 kategori ve geçerli değer listeleri.
+  - lint 0 hata, build başarılı, edge function'lar esbuild ile sözdizimi temiz.
+  - Değişen yollar için otomatik test yok; Playwright `main`'de canlıya yazar.
 
 **14.10.2026 (25. tur) — Proje ekleme incelemesi ve hotfix planı (Karar 85-88); canlıya kalıcı değişiklik yok.**
 - **Canlıda ROLLBACK testi (gerçek admin/PM oturumu):**

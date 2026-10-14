@@ -14,7 +14,9 @@ Durum: plan; kod yazılmadı. Her parça ayrı gösterilip onaylanır.
 
 | # | Parça | Nerede | Onay |
 |---|---|---|---|
-| P1 | **F1 A1-A3** (`create_project_with_code`, proje kodu ve alan kodu CHECK'leri) | Canlı DB, `apply_migration` | "uygula" (Karar 85); SQL `taslak-sql/f1_a1_a3_proje_olusturma.sql`; ROLLBACK testleri geçti |
+| P1 | **F1 A1-A3** (`create_project_with_code`, proje kodu ve alan kodu CHECK'leri) | Canlı DB, `apply_migration` | **UYGULANDI 14.10.2026** (`20261014102306`); doğrulama canlıda 7/7 |
+| P2 durum | Hotfix kodu `hotfix/proje-ekleme` `678806a` | Yerel dal | Push yok; fark gösterildi, onay bekliyor |
+| P4 durum | `taslak-sql/kategori_agirlik_varsayilan.sql` (DB), `mapping.ts` (hotfix'te) | — | Karar 89; DB için "uygula" bekliyor |
 | P2 | **Ön yüz**: sihirbaz proje kodu + `create_project_with_code`; tedarik isteğe bağlı; şablon v8 | `hotfix/proje-ekleme` dalı (`main`'den), klasör `GES_Dashboard-hotfix` | Kod gösterilir, siz push + merge |
 | P3 | **`import-project-excel` + `export-project-excel`** (v8, E13; risk varsayılanları; güncellemede rol kontrolü; yazmadan önce doğrulama) | Edge function deploy | "deploy" |
 | P4 | **Varsayılan kategori ağırlıkları** (yalnızca yeni projeler) | DB trigger + `mapping.ts` | Değerler sizde (§6) |

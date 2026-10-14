@@ -1,6 +1,7 @@
 -- ============================================================================
 -- F1 A1-A3 — proje kodu biçimi, tiresiz alan kodu, create_project_with_code — 6a'dan ÖNE ALINDI (Karar 85)
--- Tarih: 14.10.2026. Durum: TASLAK, uygulama "uygula" ile.
+-- Tarih: 14.10.2026. Durum: UYGULANDI (apply_migration, sürüm 20261014102306; supabase/migrations/20261014102306_f1_a1_a3_proje_olusturma.sql
+--   BÖLÜM A ile birebir). Uygulama sonrası f1_a1_a3_dogrulama.sql canlıda 7/7 OK; mevcut nesnelerin parmak izi değişmedi.
 -- Kaynak: f1_proje_kodu_ve_olusturma.sql BÖLÜM A'nın A1-A3'ü (birebir). A4 (kodsuz projeyi reddeden kural) burada YOK,
 --   sonraya kalır (Karar 34). Bu paket uygulandıktan sonra 6a'daki F1 parçası yalnızca A4'tür
 --   (prova-6a.mjs ve register-oncelikli-plan.md buna göre güncellenir).
