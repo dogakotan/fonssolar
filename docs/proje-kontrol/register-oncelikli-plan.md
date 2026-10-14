@@ -39,6 +39,54 @@ Tarih: 14.10.2026. Onay: kullanıcı, 14.10.2026. Hiçbir adım uygulanmadı.
   - Excel'de durumu "iptal" yapılan görev (oturumsuz import reddedilir, import yarım kalır).
 - Kullanıcı duyurusu: 6b'ye kadar görev iptal edilmez, Excel'de görev durumu "iptal" yapılmaz.
 
+## Panelden girilen register kayıtları (14.10.2026 eki)
+
+Kullanıcı Faz 3'ten önce register'ları panelden doldurmaya başlarsa (`register-veri-giris-rehberi.md`; §0'daki
+R1-R6 onay bekliyor):
+
+- **Numara sayacı canlıda zaten var** (`project_register_counters` + `next_register_no`, uyum migration'ı). B1 numara
+  sayacı getirmiyor. Numara boş bırakılırsa ek iş yok.
+- **Elle numara girildiyse:** 6a Oturum 0'da ve B3'ten önce aşağıdaki salt okunur kontrol koşulur. `fark > 0` olan
+  satır varsa sayaç, en büyük numaraya ayrı bir veri SQL'i ile eşitlenir (SQL gösterilir, "uygula" + yedek
+  hatırlatması). 6a'nın kendi paketleri numara üretmediği için eşitleme 6a'yı bekletmez; B3'ü bekletir.
+
+  ```sql
+  with n as (
+    select project_id, 'RFI' reg, rfi_no no from rfis
+    union all select project_id, 'ACT', action_no from project_actions
+    union all select project_id, 'DEC', decision_no from decisions
+    union all select project_id, 'TS', submittal_no from technical_submittals
+    union all select project_id, 'MA', approval_no from material_approvals
+    union all select project_id, case when document_type = 'drawing' then 'DRW' else 'DOC' end, document_no from documents)
+  select n.project_id, n.reg,
+         max(nullif(substring(n.no from '-(\d+)$'), '')::int) as en_buyuk,
+         coalesce(c.last_value, 0) as sayac,
+         max(nullif(substring(n.no from '-(\d+)$'), '')::int) - coalesce(c.last_value, 0) as fark,
+         count(*) filter (where n.no !~ ('^' || n.reg || '-[A-Z0-9]+-\d{4,}$')) as bicim_disi
+  from n left join project_register_counters c on c.project_id = n.project_id and c.register_code = n.reg
+  group by n.project_id, n.reg, c.last_value
+  order by 1, 2;
+  ```
+
+- **Biçim ön kontrolü (6a Oturum 0, salt okunur):** tireli alan kodu F1 A2'yi, listede olmayan WBS disiplini
+  Adım 4 A1'i durdurur. İkisi de 0 olmalı:
+
+  ```sql
+  select (select count(*) from project_areas where area_code !~ '^[A-Z0-9]+$') as tireli_alan,
+         (select count(*) from project_wbs where discipline is not null and discipline not in
+            ('mechanical','dc','ac','mv','hv','enh','civil','scada','general')) as gecersiz_disiplin,
+         (select count(*) from documents where task_id is not null)
+       + (select count(*) from rfis where task_id is not null)
+       + (select count(*) from project_actions where task_id is not null)
+       + (select count(*) from decisions where task_id is not null)
+       + (select count(*) from technical_submittals where task_id is not null)
+       + (select count(*) from material_approvals where task_id is not null) as gorev_bagli;  -- Karar 69: 0
+  ```
+
+- **Prova sırasında** (Oturum 0-5) panelden giriş yapılmaz.
+- **Faz 2 etkisi:** B3 A0 satır varsa durur → geri doldurma adımı (`record_state`, `source = 'import'`, `created_by`);
+  B5 kısıtından önce `external`/`sharepoint` revizyonlarda `upload_status = 'ready'`. Ayrıntı rehber §5.3.
+
 ## 6a mevcut ekran kontrolü (Karar 77)
 
 Canlıda yalnızca bildirim üretmeyen spec'ler koşar: `PW_TARGET=live`, ana klasörden (`faz-a-proje-kontrol`). Yeni dalda proje-kontrol testleri yok.

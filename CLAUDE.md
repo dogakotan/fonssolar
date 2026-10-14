@@ -2238,6 +2238,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**14.10.2026 (21. tur) — Register'lara panelden veri girişi: rehber, Change/Claim/Interface taslağı, 6a notu (canlıya değişiklik yok).**
+- Salt okunur: 7 register tablosu boş, `project_risks` 55 satır. Panel `postgres` rolüyle RLS'i atlıyor (`rolbypassrls`). Numara trigger'ı ve sayacı zaten canlıda.
+- `docs/proje-kontrol/register-veri-giris-rehberi.md`: register başına zorunlu kolonlar ve geçerli değerler, riskler, 6a/Faz 2 etkisi. Onay bekleyen 6 çelişki (R1-R6): RPC-dışı yazma istisnası, elle numara, SharePoint linki (`external`), B3 A0 ve B5 geri doldurma, Faz 5 tabloları, uygulamada görünmezlik.
+- `taslak-sql/f5_changes_claims_interfaces.sql`: yalnızca yeni tablo, SELECT RLS (Karar 6), CHG/CLM/ITF önek önerisi. Uygulanmadı, test edilmedi.
+- `register-oncelikli-plan.md`: sayaç/biçim ön kontrol sorguları (canlıda salt okunur koşuldu, sonuçlar 0).
+
 **14.10.2026 (20. tur) — Karar 75-77; yedek betiği OneDrive dışı yolları destekliyor; 6a kontrol listesi.**
 - `run-backup.mjs`: `.env.local` ve yedek klasörü sırasıyla `FONS_BACKUP_ENV`/`FONS_BACKUP_DIR` → `C:\fons-yedek\` → repo içi; seçilen yol OneDrive altındaysa uyarı. README "Dosyaların yeri" ve kullanıcı adımları.
 - `tests/proje-kontrol-master-veri.spec.js`: alan kodları tiresiz (F1 biçimi 6a ile gelir); şantiye şefi alan testi 6a öncesi/sonrası koşullu (A7, Karar 55).
