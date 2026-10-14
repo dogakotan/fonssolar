@@ -4,6 +4,7 @@ import ExcelJS from "npm:exceljs@4.4.0";
 import {
   toStr, toNumber, toInt, toDate,
   projectTypeToCode, taskCategoryToCode, CANONICAL_CATEGORY_WEIGHTS, riskCategoryToCode,
+  PROJECT_STATUSES, PROJECT_TYPES, TASK_CATEGORIES, TASK_STATUSES, RISK_SEVERITIES, RISK_STATUSES,
 } from "./mapping.ts";
 
 const CORS = {
@@ -143,17 +144,30 @@ Deno.serve(async (req) => {
       if (!ALLOWED_NEW_PROJECT_ROLES.includes(callerProfile?.role_key)) {
         return json({ error: "Yeni proje olusturma yetkiniz yok." }, 403);
       }
-      // Kopya aslinin kodunu kullanamaz (prefix UNIQUE); istemci yeni kodu form alaniyla gonderir.
+      // Kopya aslinin kodunu kullanamaz (prefix UNIQUE). Yeni kod form alanindan ("code") ya da, form alani yoksa,
+      // asil projenin kodundan FARKLI olmak kaydiyla Excel'in E13'unden alinir (hotfix 14.10.2026: istemci koprusu
+      // projectExcelBridge.js form alanini gondermiyor, Karar 53).
       const codeField = form?.get?.("code");
-      if (typeof codeField !== "string" || !codeField.trim()) {
-        return json({ error: "Kopya proje icin yeni bir proje kodu gerekli.", need_code: true }, 400);
+      if (typeof codeField === "string" && codeField.trim()) {
+        duplicateCode = codeField.trim().toUpperCase();
+      } else {
+        const { data: srcSettings } = await sb.from("project_register_settings").select("prefix").eq("project_id", projectId).maybeSingle();
+        if (projectCode && projectCode !== (srcSettings?.prefix ?? null)) duplicateCode = projectCode;
       }
-      duplicateCode = codeField.trim().toUpperCase();
+      if (!duplicateCode) {
+        return json({ error: "Kopya için Excel'de Proje Bilgileri E13 hücresine yeni bir proje kodu yazın (asıl projenin kodu kullanılamaz).", need_code: true }, 400);
+      }
       projectIdToUse = await nextDuplicateId(sb, projectId);
       isNewProject = true;
       duplicated = true;
     } else if (existsRow) {
       // mode === 'update'
+      // Hotfix 14.10.2026: guncelleme de yalnizca admin ve proje yoneticisi (servis anahtariyla yazildigi icin RLS
+      // devrede degil; erisim kontrolu tek basina muhasebe/santiye sefinin fonksiyonu dogrudan cagirmasini engellemiyordu).
+      const { data: updProfile } = await sb.from("profiles").select("role_key").eq("id", uinfo.user.id).single();
+      if (!ALLOWED_NEW_PROJECT_ROLES.includes(updProfile?.role_key)) {
+        return json({ error: "Proje güncelleme yetkiniz yok." }, 403);
+      }
       const { data: allowed, error: accErr } = await userClient.rpc("user_has_project_access", { p_project_id: projectId });
       if (accErr) throw new Error(`erisim kontrolu: ${accErr.message}`);
       if (!allowed) return json({ error: `Bu projeye erisim yetkiniz yok: ${projectId}` }, 403);
@@ -200,6 +214,81 @@ Deno.serve(async (req) => {
       battery_count: toInt(cell(p, "J23")),
     };
     Object.keys(projectRow).forEach((k) => projectRow[k] === null && delete projectRow[k]);
+
+    // ── Yazmadan once dogrulama (hotfix 14.10.2026) ──
+    // Yukleme tek islem degil (proje → gorevler → riskler → butce → malzeme ayri ayri yazilir). Canli CHECK/enum
+    // degerlerine uymayan bir satir yuklemeyi yarida birakiyordu; bu yuzden butun sayfalar once ayristirilip
+    // dogrulanir, hata varsa hicbir sey yazilmaz.
+    const taskRows = rows(ws("İş Kalemleri"), "A", {
+      task_code: "A", task_name: "B", category: "C", sub_category: "D", group_label: "E",
+      planned_start: "F", planned_end: "G", status: "I", responsible: "J", responsible_role: "K",
+      team_size: "L", notes: "M", unit: "N", target_qty: "O",
+    }).map((r) => ({
+      _row: r._row,
+      project_id: projectIdToUse,
+      task_code: toStr(r.task_code),
+      task_name: toStr(r.task_name),
+      category: taskCategoryToCode(r.category),
+      sub_category: toStr(r.sub_category),
+      group_label: toStr(r.group_label),
+      planned_start: toDate(r.planned_start),
+      planned_end: toDate(r.planned_end),
+      status: toStr(r.status) ?? "beklemede",
+      responsible: toStr(r.responsible),
+      responsible_role: toStr(r.responsible_role),
+      team_size: toInt(r.team_size),
+      unit: toStr(r.unit),
+      target_qty: toNumber(r.target_qty),
+    })).filter((r) => r.task_code && r.task_name && r.planned_start && r.planned_end);
+
+    // Riskler: sablondaki listeler ve sema Turkce ve kucuk harf ("açık", "yüksek"); bos hucrede eskiden
+    // "acik"/"yuksek"/"dusuk" yaziliyordu ve CHECK'e takiliyordu.
+    const readRisks = !isNewProject || duplicated;
+    const riskRows = !readRisks ? [] : rows(ws("Riskler"), "B", {
+      title: "B", description: "C", probability: "D", impact: "E", severity: "G", status: "H", mitigation: "I", category: "J",
+    }).map((r) => {
+      const prob = toInt(r.probability), imp = toInt(r.impact);
+      let sev = toStr(r.severity)?.toLocaleLowerCase("tr-TR") ?? null;
+      if (!sev && prob && imp) { const s = prob * imp; sev = s >= 15 ? "kritik" : s >= 9 ? "yüksek" : s >= 4 ? "orta" : "düşük"; }
+      return {
+        _row: r._row,
+        project_id: projectIdToUse,
+        title: toStr(r.title),
+        description: toStr(r.description),
+        probability: prob, impact: imp,
+        severity: sev ?? "orta",
+        status: toStr(r.status)?.toLocaleLowerCase("tr-TR") ?? "açık",
+        mitigation: toStr(r.mitigation),
+        category: riskCategoryToCode(r.category),
+      };
+    }).filter((r) => r.title);
+
+    const problems = [];
+    if (projectRow.status && !PROJECT_STATUSES.includes(projectRow.status)) {
+      problems.push(`Proje Bilgileri E9 durum geçersiz: "${projectRow.status}" (${PROJECT_STATUSES.join(", ")})`);
+    }
+    if (projectRow.project_type && !PROJECT_TYPES.includes(projectRow.project_type)) {
+      problems.push(`Proje Bilgileri E8 proje türü geçersiz: "${toStr(cell(p, "E8"))}"`);
+    }
+    for (const t of taskRows) {
+      if (!TASK_CATEGORIES.includes(t.category)) problems.push(`İş Kalemleri satır ${t._row}: kategori geçersiz ("${t.category}")`);
+      if (!TASK_STATUSES.includes(t.status)) problems.push(`İş Kalemleri satır ${t._row}: durum geçersiz ("${t.status}"; ${TASK_STATUSES.join(", ")})`);
+      if (t.planned_end < t.planned_start) problems.push(`İş Kalemleri satır ${t._row}: bitiş başlangıçtan önce`);
+      if (t.target_qty !== null && t.target_qty < 0) problems.push(`İş Kalemleri satır ${t._row}: hedef miktar negatif`);
+    }
+    for (const r of riskRows) {
+      if (!RISK_SEVERITIES.includes(r.severity)) problems.push(`Riskler satır ${r._row}: şiddet geçersiz ("${r.severity}"; ${RISK_SEVERITIES.join(", ")})`);
+      if (!RISK_STATUSES.includes(r.status)) problems.push(`Riskler satır ${r._row}: durum geçersiz ("${r.status}"; ${RISK_STATUSES.join(", ")})`);
+      for (const [k, v] of [["olasılık", r.probability], ["etki", r.impact]]) {
+        if (v !== null && (v < 1 || v > 5)) problems.push(`Riskler satır ${r._row}: ${k} 1-5 arasında olmalı`);
+      }
+    }
+    if (problems.length) {
+      return json({ error: `Excel'de ${problems.length} hata var, hiçbir şey kaydedilmedi:\n- ${problems.slice(0, 15).join("\n- ")}`, problems }, 400);
+    }
+    for (const t of taskRows) delete t._row;
+    for (const r of riskRows) delete r._row;
+
     if (isNewProject) {
       const code = duplicated ? duplicateCode : projectCode;
       if (!code) return json({ error: "Proje kodu zorunludur (Proje Bilgileri, E13)." }, 400);
@@ -223,26 +312,6 @@ Deno.serve(async (req) => {
       log["project_category_weights"] = { note: "mevcut proje - agirliklar degistirilmedi (Excel'den okunmaz)" };
     }
 
-    const taskRows = rows(ws("İş Kalemleri"), "A", {
-      task_code: "A", task_name: "B", category: "C", sub_category: "D", group_label: "E",
-      planned_start: "F", planned_end: "G", status: "I", responsible: "J", responsible_role: "K",
-      team_size: "L", notes: "M", unit: "N", target_qty: "O",
-    }).map((r) => ({
-      project_id: projectIdToUse,
-      task_code: toStr(r.task_code),
-      task_name: toStr(r.task_name),
-      category: taskCategoryToCode(r.category),
-      sub_category: toStr(r.sub_category),
-      group_label: toStr(r.group_label),
-      planned_start: toDate(r.planned_start),
-      planned_end: toDate(r.planned_end),
-      status: toStr(r.status) ?? "beklemede",
-      responsible: toStr(r.responsible),
-      responsible_role: toStr(r.responsible_role),
-      team_size: toInt(r.team_size),
-      unit: toStr(r.unit),
-      target_qty: toNumber(r.target_qty),
-    })).filter((r) => r.task_code && r.task_name && r.planned_start && r.planned_end);
     await upsertByKey(sb, "project_tasks", projectIdToUse, ["task_code"], taskRows, log);
 
     // Riskler sayfasi normalde SADECE mevcut proje guncellemesinde okunur —
@@ -250,24 +319,7 @@ Deno.serve(async (req) => {
     // icin risk anlamsizdir. Kopya modunda ise (duplicated) proje aslinda
     // BAŞKA bir projenin dolu Excel'i ile olusturuldugu icin Riskler sayfasi
     // da doludur — bu yuzden kopya modunda risklerin de tasinmasi tutarlidir.
-    if (!isNewProject || duplicated) {
-      const riskRows = rows(ws("Riskler"), "B", {
-        title: "B", description: "C", probability: "D", impact: "E", severity: "G", status: "H", mitigation: "I", category: "J",
-      }).map((r) => {
-        const prob = toInt(r.probability), imp = toInt(r.impact);
-        let sev = toStr(r.severity);
-        if (!sev && prob && imp) { const s = prob * imp; sev = s >= 15 ? "kritik" : s >= 9 ? "yuksek" : s >= 4 ? "orta" : "dusuk"; }
-        return {
-          project_id: projectIdToUse,
-          title: toStr(r.title),
-          description: toStr(r.description),
-          probability: prob, impact: imp,
-          severity: sev ?? "orta",
-          status: toStr(r.status) ?? "acik",
-          mitigation: toStr(r.mitigation),
-          category: riskCategoryToCode(r.category),
-        };
-      }).filter((r) => r.title);
+    if (readRisks) {
       await upsertByKey(sb, "project_risks", projectIdToUse, ["title"], riskRows, log);
     } else {
       log["project_risks"] = { note: "yeni proje - Riskler sayfasi Excel'den icoeri aktarilmadi (henuz gorev/satin alma verisi yok, risk olusturmak anlamsiz)" };

@@ -4,16 +4,18 @@ import { useAuth } from '../../../context/AuthContext'
 const btnP = { padding: '0.5rem 1.1rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }
 const btnS = { padding: '0.5rem 1.1rem', background: 'transparent', color: 'var(--color-muted)', border: '1px solid var(--color-border-md)', borderRadius: 'var(--radius-md)', fontSize: 13, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }
 
-export default function Adim5Tedarik({ result, onDone, onBack, onDraftChange }) {
+export default function Adim5Tedarik({ result, onDone, onBack, onDraftChange, mode = 'new' }) {
   const { role } = useAuth()
   const canComplete = role === 'proje_yoneticisi'
+  // Yeni projede onay isteğe bağlı (Karar 88): tedarik henüz başlamamış olabilir.
+  const optional = mode !== 'edit'
   const [confirmed, setConfirmed] = useState(result?.completed === true)
   const [error, setError] = useState(null)
 
   useEffect(() => { onDraftChange?.({ skipped: false, completed: confirmed, count: confirmed ? 1 : 0 }) }, [confirmed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSave() {
-    if (!canComplete) {
+    if (!canComplete || (optional && !confirmed)) {
       onDone({ skipped: true, completed: false, count: 0 })
       return
     }
@@ -55,6 +57,7 @@ export default function Adim5Tedarik({ result, onDone, onBack, onDraftChange }) 
               <strong style={{ display: 'block', color: '#166534', fontSize: 14 }}>Tamamladım</strong>
               <span style={{ display: 'block', color: '#64748b', fontSize: 12.5, marginTop: 3 }}>
                 Tedarik ve teslimat sürecinin tamamlandığını onaylıyorum.
+                {optional && ' Yeni projede isteğe bağlı; süreç tamamlanmadıysa işaretlemeden devam edin.'}
               </span>
             </span>
           </label>

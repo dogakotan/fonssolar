@@ -135,6 +135,8 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
       if (rpc === 'save_project_category_weights' && weightsDone) continue
 
       if (rpc) {
+        // Tedarik onayı isteğe bağlı (Karar 88): yalnızca PM gerçekten onayladıysa çağrılır.
+        if (rpc === 'set_project_procurement_completed' && res.completed !== true) continue
         const params = rpc === 'set_project_procurement_completed'
           ? { p_project_id: projectId, p_completed: res.completed === true }
           : { p_project_id: projectId, p_weights: res.rows }
