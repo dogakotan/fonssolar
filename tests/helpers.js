@@ -41,7 +41,3 @@ export function totalBudgetValue(page) {
 export function spentAmountValue(page) {
   return page.locator('span:text-is("Gerçekleşen") + strong')
 }
-
-export function scopeSelect(page) {
-  return page.locator('select[title="Görüntülenecek proje kapsamı"]')
-}

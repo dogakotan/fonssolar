@@ -1020,8 +1020,10 @@ export default function ProjeDetay({ projectId, projectName, onBack, initialTab,
     const a = document.createElement('a')
     a.href = url
     a.download = `gunluk-rapor-${projectId}-${selectedDay}.pdf`
+    document.body.appendChild(a)
     a.click()
-    URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   async function handleExport(type, period = 'gunluk') {
