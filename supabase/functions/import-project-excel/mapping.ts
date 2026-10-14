@@ -63,16 +63,32 @@ export const RISK_CAT_TO_LABEL={ is_kalemi:"İş Kalemi", satin_alma:"Satın Alm
 export const RISK_CAT_TO_CODE={ "İş Kalemi":"is_kalemi", "Satın Alma":"satin_alma", "Diğer":"diger" };
 export function riskCategoryToCode(label){ const s=toStr(label); if(s===null) return "diger"; return RISK_CAT_TO_CODE[s] ?? "diger"; }
 
-// DUZELTME (14.07.2026, ikinci tur): liste 90'a topluyordu, panel_montaji 10 -> 20 yapildi ki toplam 100 olsun.
+// Varsayilan liste 14.10.2026 (Karar 89): 15 kategori, toplam 100; fiziksel olmayanlar %0.
+// DB'deki fn_seed_default_category_weights() ile ayni olmali (yeni projede once trigger yazar; bu liste yalnizca
+// trigger yazmadiysa devreye girer).
 export const CANONICAL_CATEGORY_WEIGHTS=[
   { category:"kolon_montaji", weight_pct:10 },
-  { category:"kiris_montaji", weight_pct:10 },
-  { category:"asik_montaji",  weight_pct:10 },
-  { category:"panel_montaji", weight_pct:20 },
+  { category:"kiris_montaji", weight_pct:8  },
+  { category:"asik_montaji",  weight_pct:7  },
+  { category:"panel_montaji", weight_pct:17 },
+  { category:"mekanik",       weight_pct:5  },
   { category:"elektrik_dc",   weight_pct:10 },
   { category:"elektrik_ac",   weight_pct:10 },
-  { category:"elektrik_og",   weight_pct:10 },
+  { category:"elektrik_og",   weight_pct:8  },
   { category:"kosk_trafo",    weight_pct:5  },
   { category:"topraklama",    weight_pct:5  },
-  { category:"devreye_alma",  weight_pct:10 },
+  { category:"enh",           weight_pct:7  },
+  { category:"devreye_alma",  weight_pct:8  },
+  { category:"mobilizasyon",  weight_pct:0  },
+  { category:"evrak_sureci",  weight_pct:0  },
+  { category:"satin_alma",    weight_pct:0  },
 ];
+
+// Canli semanin gecerli degerleri (14.10.2026 katalogdan): yazmadan once dogrulama icin.
+export const PROJECT_STATUSES=["aktif","beklemede","tamamlandı","iptal edildi"];
+export const PROJECT_TYPES=["arazi_ges","endustriyel_cati_ges","evsel_ges"];
+export const TASK_CATEGORIES=["mobilizasyon","mekanik","elektrik_dc","elektrik_ac","elektrik_og","topraklama","enh",
+  "devreye_alma","evrak_sureci","satin_alma","kolon_montaji","kiris_montaji","asik_montaji","panel_montaji","kosk_trafo"];
+export const TASK_STATUSES=["beklemede","devam_ediyor","tamamlandi","askida","iptal"];
+export const RISK_SEVERITIES=["kritik","yüksek","orta","düşük"];
+export const RISK_STATUSES=["açık","azaltıldı","kabul_edildi","kapatıldı"];
