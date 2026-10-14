@@ -120,13 +120,13 @@ Bildirim üretmez (aşağıda). Adımlar Playwright (`PW_TARGET=live`, `faz-a` k
 | T1 | Admin: Proje Yönetimi › Manuel doldur; ID `zz-p3-admin`, kod `ZZPA`, 1 görev (kategori `kolon_montaji`), ağırlık adımı varsayılan, **Tedarik işaretlenmeden**, Bütçe atlanır, Kaydet | Proje + `project_register_settings` = ZZPA; `procurement_completed` false; ağırlıklar görev kategorisine göre; hata yok |
 | T2 | PM: aynı akış, `zz-p3-pm`, kod `ZZPP` | Proje açılır (eskiden RLS hatası); kod ZZPP |
 | T3 | Sihirbaz kod hatası: kod `1AB` ve kullanılan kod `TIZ` | Adım 1'de biçim hatası; `TIZ` için son adımda "Bu proje kodu başka bir projede kullanılıyor"; proje oluşmaz |
-| T4 | Excel v8 yeni proje: siteden şablon indir, E5 `zz-p3-excel`, E6 ad, E13 `ZZPE`, 1 görev → Yeni Proje | Proje + kod ZZPE; 15 varsayılan ağırlık (Karar 89); görev yazıldı |
+| T4 | Excel v8 yeni proje: siteden şablon indir, E5 `zz-p3-excel`, E6 ad, E13 `ZZPE`, 2 görev; ikinci görevin Notlar (M) hücresi iki satır: "Öncül: P1" ve "Test notu" → Yeni Proje | Proje + kod ZZPE; 15 varsayılan ağırlık (Karar 89); görevler yazıldı; **ikinci görevin `project_tasks.notes`'u hücreyle birebir (öncül ve not veritabanında, Karar 92)** |
 | T5 | Excel v8 eksik kod: E13 boş yeni proje | "Proje kodu zorunludur (Proje Bilgileri, E13)"; proje oluşmaz |
 | T6 | Eski v7 dosyası: `main`'in eski şablonuyla (E13 yok) `zz-p3-excel` → çakışma penceresi → "Mevcut projeyi güncelle" | "Bu dosya eski şablon (v7). Projeyi dışa aktarıp yeni dosya üzerinde çalışın."; hiçbir şey yazılmaz |
 | T7 | E13 uyuşmazlığı: `zz-p3-excel` dışa aktar, E13'ü `ZZPX` yap, güncelle | "Proje kodu degistirilemez: Excel'de ZZPX, projede ZZPE"; hiçbir şey yazılmaz |
 | T8 | Doğrulama: dışa aktarılan dosyada bir görevin durumunu `bitti` yap, güncelle | "Excel'de 1 hata var, hiçbir şey kaydedilmedi: İş Kalemleri satır …"; görevler değişmez |
 | T9 | Dışa aktarma: `zz-p3-excel` dışa aktar | E13 = ZZPE |
-| T10 | Rol: muhasebe oturumuyla import fonksiyonuna doğrudan güncelleme isteği (`zz-p3-excel`) | 403 "Proje güncelleme yetkiniz yok." |
+| T10 | Rol: test şantiye şefi oturumuyla import fonksiyonuna doğrudan güncelleme isteği (`zz-p3-excel`; Karar 90, muhasebe test hesabı yok) | 403 "Proje güncelleme yetkiniz yok." |
 | T11 | RFI: rehber §4.4 şablonu, proje kodu `ZZPA` (MCP, gerçek ekleme) | Numara `RFI-ZZPA-0001` |
 | T12 | Temizlik: `delete from projects where id like 'zz-p3-%'` (MCP; kod, sayaç, ağırlık, görev, RFI, durum geçmişi CASCADE) | `zz-p3-*` ve bağlı satır 0; parmak izi Oturum 0 ile aynı (bildirim sayısı dahil) |
 
@@ -147,8 +147,9 @@ canlı `auth.users` ile eşleştirildi.
 - **pm:** test hesabı ("TEST PROJE YÖNETİCİSİ").
 - **muhasebe:** gerçek kişi.
 
-Bu yüzden T1-T12 başlamadı. Önce admin ve muhasebe için ayırt edilebilir e-postalı test hesabı açılacak; plan
-kullanıcı onayında. Admin rolünde hesap yalnızca admin oturumuyla açılabiliyor (`create-user`).
+Bu yüzden T1-T12 başlamadı. **Karar 90:** test admin hesabını kullanıcı Kullanıcılar sayfasından açar ve `.env.test`'e
+kendisi yazar; muhasebe test hesabı açılmaz, T10 test şantiye şefiyle yapılır. T1-T12, kullanıcı haber verince ve
+Notlar düzeltmesi (Karar 92) deploy edildikten sonra koşulur. Test geçmeden Diyarbakır import'u yapılmaz.
 
 ### 7.4 Dal tabanı (14.10.2026, `git merge-tree`, diske yazılmadı)
 - **`faz-a-proje-kontrol`:** taban `938e0d3`; `origin/main` 10 commit ileride (PR #31-37). Çakışma yalnızca

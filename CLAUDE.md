@@ -1805,6 +1805,12 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 87 | Excel v8 şimdi | Şablon v8 (E13 proje kodu) hotfix'le yayına çıkar; Karar 57/60 geçerli (eski dosyayla güncelleme reddedilir). Ekip duyurusu planda §5 | **ONAYLANDI (14.10.2026)** |
 | 88 | Tedarik onayı yeni projede isteğe bağlı | Sihirbazın Tedarik adımı yeni projede onaysız geçilebilir; `set_project_procurement_completed` yalnızca PM gerçekten onaylarsa çağrılır | **ONAYLANDI (14.10.2026)** |
 | 89 | Varsayılan kategori ağırlıkları | Yeni projeler için 15 kategori, toplam 100: kolon 10, kiriş 8, aşık 7, panel 17, mekanik 5, DC 10, AC 10, OG 8, köşk 5, topraklama 5, ENH 7, devreye alma 8; mobilizasyon, evrak süreci, satın alma 0. Değişen nesne `fn_seed_default_category_weights()` (`taslak-sql/kategori_agirlik_varsayilan.sql`) + Excel import `mapping.ts`. Mevcut projeler değişmez; ADN1/ADN2 kararı ayrı. Değerler PM ile görüşülüp değişebilir | **ONAYLANDI ve UYGULANDI (14.10.2026, `20261014103635_kategori_agirlik_varsayilan`)**; ADN1/ADN2 için `taslak-sql/adn_kategori_agirlik.sql` ROLLBACK ile test edildi, PM onayı bekliyor |
+| 90 | P3 test hesapları | Test admin hesabını kullanıcı Kullanıcılar sayfasından açar ve `.env.test`'e kendisi yazar. Muhasebe test hesabı açılmaz; T10 test şantiye şefiyle yapılır. Test admin, Karar 75 süzgeci gelene kadar gerçek admin bildirimlerini de alır (kabul). `.env.test` kontrolü (14.10): admin genel hesap, PM test, muhasebe gerçek kişi | **ONAYLANDI (14.10.2026)** |
+| 91 | Dal tabanı | `faz-a-proje-kontrol`: `git merge origin/main` (çakışmalarda `faz-a` sürümü). `faz-2-3-register`: kendi klasöründe `git rebase origin/main` | **ONAYLANDI ve UYGULANDI (14.10.2026)**; lint 0 hata, build başarılı (iki klasör) |
+| 92 | Import Notlar | `import-project-excel` İş Kalemleri M kolonunu `project_tasks.notes`'a yazar; öncül ayrı kolon yerine nota "Öncül: …" olarak. Deploy T1-T12'den önce; T1-T12'ye not/öncül kontrolü (T13) | **ONAYLANDI (14.10.2026)**; kod `hotfix/import-notlar` dalında, PR onay bekliyor |
+| 93 | Diyarbakır şalt sahası ve ortak altyapı | Pilotta şalt görevleri `elektrik_og` + grup etiketi "Şalt Sahası"; ayrı `salt_sahasi` kategorisi 6b'ye (açık nokta). ENH ve şalt DYB1'de kalır, DYB2'den çıkarılır; DYB2 E19'un Ş5 öncülü nota döner ("Ortak şalt sahası enerjilendirmesi DYB1 ŞS7'ye bağlı"). İki dosyanın tarih tutarsızlığı planlamaya soruldu; şimdilik DYB1 tarihleri | **ONAYLANDI (14.10.2026)** |
+| 94 | Diyarbakır eşleme ve import yolu | Belirsiz görevler: DYB1 E10 → elektrik_dc, E20 → elektrik_og, K4 → elektrik_ac, N2 → evrak_sureci, ŞS7 → devreye_alma, ŞS8 → evrak_sureci, T3/İK2 → devreye_alma, İK4 → evrak_sureci; DYB2 E9 → elektrik_dc, S4 → devreye_alma. Riskler: proje açıldıktan sonra aynı v8 dosyasıyla "Mevcut projeyi güncelle"; şiddet = kaynaktaki Risk Seviyesi, durum açık, kategori Tedarik → Satın Alma, Teknik/Program/Hava → İş Kalemi, diğerleri Diğer. Sorumlu görev notunda ve risk açıklamasında "Sorumlu: <Rol> (AJAN-xx)"; ajan → rol eşlemesi planlamadan teyit bekliyor, AJAN-15 "tanımsız". EK1 kalır, notuna "Teyit bekleniyor". Kapasite kWp/kWe, panel ve inverter adedi alınır. Kaynak ve v8 dosyaları `C:\fons-yedek\veri-kaynak\`, repoya müşteri verisi girmez. **Karar 74 güncellemesi:** Diyarbakır 6b'yi beklemez; T1-T12 geçtikten sonra kullanıcı dashboard'dan import eder | **ONAYLANDI (14.10.2026)** |
+| 95 | Diyarbakır ağırlıkları | DYB1: kolon 10, kiriş 8, aşık 7, panel 17, mekanik 3, DC 12, AC 4, OG 18 (şalt dahil), köşk 5, ENH 8, devreye alma 8. DYB2: kolon 12, kiriş 10, aşık 9, panel 22, DC 18, OG 11, köşk 7, devreye alma 11. Diğerleri 0, toplam 100. Import'tan sonra SQL ile (`taslak-sql/dyb_kategori_agirlik.sql`) | **ONAYLANDI (14.10.2026), değerler PM onayında**; ROLLBACK testi geçti (15/100 iki projede, ilerleme formülü, geri alma), parmak izi birebir; uygulama onayla |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1952,6 +1958,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   statik dosyaya taşındı.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
+
+- **`salt_sahasi` görev kategorisi 6b'de (Karar 93, 14.10.2026).** Diyarbakır pilotunda şalt sahası görevleri
+  `elektrik_og` + grup etiketi "Şalt Sahası" ile giriliyor. Ayrı kategori için gerekenler:
+  - `task_category` enum'una değer (görev, ağırlık tabloları ve `vw_delayed_tasks` kullanıyor) ve `fn_seed_default_category_weights` (%0);
+  - import/export `mapping.ts`, `template_builder.ts` listesi, statik v8 şablon;
+  - sihirbaz İş Kalemleri ve Ağırlıklar adımları, `TabIsPlan.jsx`, `projectExcelImport.js`, `ProjectOverviewDashboard.jsx` (kullanıcı dosyası).
+  - Kategori açılınca DYB1'in şalt görevleri ve OG ağırlığının şalt payı taşınır.
 
 - **Proje sihirbazının Riskler adımı otomatik riskleri bozuyor (14.10.2026, yayındaki `main` kodu okunarak; ROLLBACK ile denenmedi; bugün canlıda).**
   - **Nasıl:** `ProjeEditWizard.jsx` adım "Kaydet"i ve `Adim8Tamamlandi.jsx` düzenleme kaydı projenin bütün `project_risks` satırlarını siliyor, formdakileri yeniden ekliyor. `Adim4Riskler.jsx` yükünde `source`, `rule_code`, `subject_ref`, `closed_at`, `id` yok.
@@ -2260,6 +2273,16 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**14.10.2026 (29. tur) — Karar 90-95; dallar güncel `main`'e alındı; import Notlar düzeltmesi (PR bekliyor); Diyarbakır v8 dosyaları ve ağırlık SQL'i.**
+- **`.env.test` (yalnızca karşılaştırma izniyle, e-postalar yazdırılmadan):** admin genel hesap, PM test, muhasebe gerçek kişi → Karar 90.
+- **Dallar (Karar 91):** `faz-a` ← `origin/main` merge (`e0f322a`, iki çakışmada `faz-a` sürümü); `faz-2-3-register` rebase (10 commit, çakışma yalnızca CLAUDE.md, dalın sürümü). İki klasörde lint 0 hata, build başarılı. Push yok.
+- **Import Notlar (Karar 92):** `hotfix/import-notlar` (`55cc7c8`) ve `faz-a`'da aynı satır; push/PR/deploy onay bekliyor.
+- **Diyarbakır (Karar 93-95):**
+  - Kaynaklar ve üretilen `DYB1_v8_proje.xlsx` (58 görev, 25 risk), `DYB2_v8_proje.xlsx` (27 görev, 16 risk) `C:\fons-yedek\veri-kaynak\`'te (üretim `uret-v8.cjs`, doğrulama `dogrula-v8.cjs`).
+  - Proje olmadan doğrulama: import'un kendi kontrolleri 0 hata; ID ve kodlar canlıda boş.
+  - `taslak-sql/dyb_kategori_agirlik.sql` canlıda ROLLBACK ile geçti, parmak izi birebir; uygulanmadı.
+- **T1-T12:** test admin hesabı ve Notlar deploy'u bekleniyor.
 
 **14.10.2026 (28. tur) — Proje ekleme hotfix'i yayında (PR #36, #37); edge function'lar deploy edildi; uçtan uca test bekliyor.**
 - **Yerel `main` bayatmış (468b224, uzak 81 commit ileride).** Hotfix'in dosyaları o commit'lerde değişmemişti; dal `origin/main`'e rebase edildi. lint 0 hata, build başarılı. Yerel `main` başvurusu güncellendi.
