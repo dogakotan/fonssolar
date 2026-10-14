@@ -12,23 +12,57 @@ const dataOnly = process.argv.includes('--data')
 const useCli = process.argv.includes('--cli')
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
-const envPath = path.join(scriptDir, '.env.local')
+
+// Yollar (README "Dosyaların yeri"): önce ortam değişkeni, sonra OneDrive dışındaki sabit klasör, en son repo içi.
+//   FONS_BACKUP_ENV  → .env.local dosyasının tam yolu
+//   FONS_BACKUP_DIR  → yedeklerin yazılacağı klasör (ortam değişkeni ya da .env.local içinde)
+const EXTERNAL_ROOT = process.platform === 'win32' ? 'C:\\fons-yedek' : path.join(process.env.HOME || '/', 'fons-yedek')
+
+function isUnderOneDrive(p) {
+  const full = path.resolve(p).toLowerCase()
+  const roots = [process.env.OneDrive, process.env.OneDriveCommercial, process.env.OneDriveConsumer]
+    .filter(Boolean).map(r => path.resolve(r).toLowerCase())
+  return roots.some(r => full.startsWith(r)) || /[\\/]onedrive[^\\/]*[\\/]/i.test(full + path.sep)
+}
+function warnOneDrive(label, p) {
+  if (!isUnderOneDrive(p)) return
+  console.warn(`UYARI: ${label} OneDrive altinda (${p}). Dosya buluta esitlenir.`)
+  console.warn(`        OneDrive disinda bir yol kullanin: ${EXTERNAL_ROOT} klasoru ya da FONS_BACKUP_ENV / FONS_BACKUP_DIR (README).`)
+}
+
+let envPath
+if (process.env.FONS_BACKUP_ENV) {
+  envPath = path.resolve(process.env.FONS_BACKUP_ENV)
+} else if (existsSync(path.join(EXTERNAL_ROOT, '.env.local'))) {
+  envPath = path.join(EXTERNAL_ROOT, '.env.local')
+} else {
+  envPath = path.join(scriptDir, '.env.local')
+}
 
 if (!existsSync(envPath)) {
   console.error(`HATA: ${envPath} bulunamadi.`)
-  console.error('Once .env.local.example dosyasini ayni klasorde .env.local olarak kopyalayip SUPABASE_DB_URL degiskenini doldurun.')
+  console.error(`Once .env.local.example dosyasini ${EXTERNAL_ROOT}\\.env.local olarak kopyalayip SUPABASE_DB_URL degiskenini doldurun (README).`)
   process.exit(1)
 }
+warnOneDrive('.env.local', envPath)
 
 dotenv.config({ path: envPath, quiet: true })
 
 const dbUrl = process.env.SUPABASE_DB_URL
 if (!dbUrl) {
-  console.error('HATA: SUPABASE_DB_URL bos. .env.local dosyasini kontrol edin.')
+  console.error(`HATA: SUPABASE_DB_URL bos. ${envPath} dosyasini kontrol edin.`)
   process.exit(1)
 }
 
-const backupDir = path.join(scriptDir, 'backups')
+let backupDir
+if (process.env.FONS_BACKUP_DIR) {
+  backupDir = path.resolve(process.env.FONS_BACKUP_DIR)
+} else if (existsSync(EXTERNAL_ROOT)) {
+  backupDir = path.join(EXTERNAL_ROOT, 'backups')
+} else {
+  backupDir = path.join(scriptDir, 'backups')
+}
+warnOneDrive('Yedek klasoru', backupDir)
 if (!existsSync(backupDir)) mkdirSync(backupDir, { recursive: true })
 
 const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)

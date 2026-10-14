@@ -1787,9 +1787,12 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 69 | Karar 40 güncellemesi | Sihirbaz düzeltmesi (Ç-B) yayına çıkana kadar (6b) canlıda Activity ID atanmaz ve register kayıtları göreve bağlanmaz; register formlarında görev bağı alanı 6b'ye kadar kapalı/gizli (ADN1/ADN2'de sihirbaz kırılmasın). Günlük rapor iptal filtresi ilk Faz 3 deploy'unda. Kullanıcı duyurusu: 6b'ye kadar görev iptal edilmez, Excel'de görev durumu "iptal" yapılmaz | **ONAYLANDI (14.10.2026)** |
 | 70 | Karar 31 güncellemesi | Faz 2 testleri canlıda ROLLBACK (Adım 2 yöntemi, psql). Yerel Docker testi 6b'den itibaren | **ONAYLANDI (14.10.2026)** |
 | 71 | Karar 61 güncellemesi | Baseline migration MVP sonrasına (Ocak 2027), Faz 5'ten önce | **ONAYLANDI (14.10.2026)** |
-| 72 | Faz 3 UI testleri | Canlıda yalnızca TIZ, `PW_TARGET=live`; test kayıtlarına önek; sonda taslaklar silinir, onaylılar iptal edilir; öncesi/sonrası parmak izi; yalnızca register spec'leri. **Ek (bildirim):** register akışı bugün bildirim üretmiyor, ama `notify_role`/`notify_managers` rol bazlı (proje bazlı değil), TIZ'deki diğer akışlar gerçek kişilere bildirim gönderiyor. Faz 3 UI testlerinden önce, onayla: 4 rol için test hesapları, `projects.is_test` + `profiles.is_test_account`, test projesinin bildirimlerini yalnızca test hesaplarına yönlendiren süzgeç (`register-oncelikli-plan.md`) | **ONAYLANDI (14.10.2026)**; bildirim süzgeci planı onay bekliyor |
+| 72 | Faz 3 UI testleri | Canlıda yalnızca TIZ, `PW_TARGET=live`; test kayıtlarına önek; sonda taslaklar silinir, onaylılar iptal edilir; öncesi/sonrası parmak izi; yalnızca register spec'leri. **Ek (bildirim):** register akışı bugün bildirim üretmiyor, ama `notify_role`/`notify_managers` rol bazlı (proje bazlı değil), TIZ'deki diğer akışlar gerçek kişilere bildirim gönderiyor. Faz 3 UI testlerinden önce, onayla: 4 rol için test hesapları, `projects.is_test` + `profiles.is_test_account`, test projesinin bildirimlerini yalnızca test hesaplarına yönlendiren süzgeç (`register-oncelikli-plan.md`) | **ONAYLANDI (14.10.2026)**; bildirim süzgeci Karar 75 ile onaylandı |
 | 73 | Dal stratejisi | Faz 2-3 `main`'den açılan `faz-2-3-register` dalında (ayrı çalışma klasörü `GES_Dashboard-faz23`, git worktree). Adım 5 frontend'i `faz-a-proje-kontrol`'de 6b'ye kadar bekler | **ONAYLANDI (14.10.2026)** |
 | 74 | Karar 27 güncellemesi | Diyarbakır 6b'de, v8 Excel import ile oluşturulur. Register pilotu TIZ'de | **ONAYLANDI (14.10.2026)** |
+| 75 | Test bildirim süzgeci | 3 adımlı plan Faz 2 kapsamında, Faz 3 UI testlerinden önce uygulanır: 4 rol için ayırt edilebilir test hesapları; `projects.is_test` + `profiles.is_test_account`; `notify_role`/`notify_managers`/`notify_user`'a süzgeç (test projesinin bildirimi yalnızca test hesaplarına, gerçek projelerinki test hesaplarına gitmez; imzalar değişmez). Her adımın SQL'i gösterilip onaylanır. Faz 2'ye +1 iş günü | **ONAYLANDI (14.10.2026)** |
+| 76 | Repo yeri | Repo OneDrive içinde ve iki çalışma klasörü var (`GES_Dashboard`, `GES_Dashboard-faz23`). MVP öncesi repo OneDrive dışına taşınacak; tarih kullanıcıda ("Kullanıcıdan beklenen girdiler"). Yedekler ve `.env.local` şimdiden OneDrive dışında (`C:\fons-yedek\`; `FONS_BACKUP_ENV`/`FONS_BACKUP_DIR`) | **ONAYLANDI (14.10.2026)**; taşıma planlanacak |
+| 77 | 6a mevcut ekran kontrolü | Canlıda yalnızca bildirim üretmeyen Playwright spec'leri koşar (`PW_TARGET=live`). Bildirim üretenler (satın alma, fatura, malzeme değişikliği, ilerleme girişi; 16 spec) hariç; kapsadıkları ekranlar elle, kaydetmeden kontrol edilir; yazma yolları psql provasında ROLLBACK içinde test edilir. Liste ve kontrol listesi `register-oncelikli-plan.md` | **ONAYLANDI (14.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -2234,6 +2237,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**14.10.2026 (20. tur) — Karar 75-77; yedek betiği OneDrive dışı yolları destekliyor; 6a kontrol listesi.**
+- `run-backup.mjs`: `.env.local` ve yedek klasörü sırasıyla `FONS_BACKUP_ENV`/`FONS_BACKUP_DIR` → `C:\fons-yedek\` → repo içi; seçilen yol OneDrive altındaysa uyarı. README "Dosyaların yeri" ve kullanıcı adımları.
+- `tests/proje-kontrol-master-veri.spec.js`: alan kodları tiresiz (F1 biçimi 6a ile gelir); şantiye şefi alan testi 6a öncesi/sonrası koşullu (A7, Karar 55).
+- Salt okunur: bildirim üreten trigger ve fonksiyonlar listelendi; 16 spec 6a kontrolünden hariç.
+- Takvim: Faz 2'ye süzgeç (+1 iş günü) → ilk register ekranda 6 Kasım, MVP canlı 17 Aralık (paralelde 15 Aralık).
 
 **14.10.2026 (19. tur) — Plan değişikliği: register öncelikli sıra (Karar 66-74); yedek betiği pg_dump'a geçti; yeni dal.**
 - Plan, 6a etkileri, bildirim bulguları ve takvim: `docs/proje-kontrol/register-oncelikli-plan.md`. İlk register ekranda tahmini 5 Kasım; MVP canlı tahmini 16 Aralık (Docker paralel kurulursa 14 Aralık).

@@ -11,6 +11,8 @@ import { makeClient, signIn } from './helpers.js'
 
 const stamp = Date.now()
 const code = suffix => `E2E-PK-${stamp}-${suffix}`
+// Alan kodu tiresiz olmalı (F1, Karar 32: ^[A-Z0-9]+$; 6a ile canlıya gelir)
+const areaCode = suffix => `E2EPK${stamp}${suffix.replace(/[^A-Z0-9]/g, '')}`
 
 const denied = ({ data, error }) => Boolean(error) || (Array.isArray(data) && data.length === 0)
 
@@ -36,7 +38,7 @@ test.describe('Proje Kontrol — WBS/Alan master veri yetkileri', () => {
     kayseri = process.env.TEST_PROJECT_KAYSERI
 
     kWbs = await adminInsert('project_wbs', { project_id: kayseri, wbs_code: code('KW'), name: 'E2E Kayseri WBS' })
-    kArea = await adminInsert('project_areas', { project_id: kayseri, area_code: code('KA'), name: 'E2E Kayseri Alan' })
+    kArea = await adminInsert('project_areas', { project_id: kayseri, area_code: areaCode('KA'), name: 'E2E Kayseri Alan' })
     iWbs = await adminInsert('project_wbs', { project_id: izmir, wbs_code: code('IW'), name: 'E2E İzmir WBS' })
     iWbsPassive = await adminInsert('project_wbs', { project_id: izmir, wbs_code: code('IWP'), name: 'E2E pasif', is_active: false })
     created.wbs.push(kWbs.id, iWbs.id, iWbsPassive.id)
@@ -49,7 +51,7 @@ test.describe('Proje Kontrol — WBS/Alan master veri yetkileri', () => {
     // Testlerin kendi açtıkları dahil, bu koşunun bütün fikstürlerini kod önekinden bul ve sil.
     const prefix = `E2E-PK-${stamp}-%`
     const [{ data: areas }, { data: wbs }] = await Promise.all([
-      admin.from('project_areas').select('id').like('area_code', prefix),
+      admin.from('project_areas').select('id').like('area_code', `E2EPK${stamp}%`),
       admin.from('project_wbs').select('id').like('wbs_code', prefix),
     ])
     const areaIds = (areas ?? []).map(r => r.id)
@@ -59,7 +61,7 @@ test.describe('Proje Kontrol — WBS/Alan master veri yetkileri', () => {
     if (areaIds.length) expect((await admin.from('project_areas').delete().in('id', areaIds)).error).toBeNull()
     if (wbsIds.length) expect((await admin.from('project_wbs').delete().in('id', wbsIds)).error).toBeNull()
     const [{ count: leftAreas }, { count: leftWbs }] = await Promise.all([
-      admin.from('project_areas').select('id', { count: 'exact', head: true }).like('area_code', prefix),
+      admin.from('project_areas').select('id', { count: 'exact', head: true }).like('area_code', `E2EPK${stamp}%`),
       admin.from('project_wbs').select('id', { count: 'exact', head: true }).like('wbs_code', prefix),
     ])
     expect(leftAreas).toBe(0)
@@ -87,23 +89,30 @@ test.describe('Proje Kontrol — WBS/Alan master veri yetkileri', () => {
   })
 
   test('İzmir şantiye şefi Kayseri Alanını ekleyemez, değiştiremez, silemez', async () => {
-    expect((await santiye.from('project_areas').insert({ project_id: kayseri, area_code: code('S-KA'), name: 'x' }).select()).error).toBeTruthy()
+    expect((await santiye.from('project_areas').insert({ project_id: kayseri, area_code: areaCode('S-KA'), name: 'x' }).select()).error).toBeTruthy()
     expect(denied(await santiye.from('project_areas').update({ name: 'HACK' }).eq('id', kArea.id).select('id'))).toBe(true)
     expect(denied(await santiye.from('project_areas').delete().eq('id', kArea.id).select('id'))).toBe(true)
     const { data } = await admin.from('project_areas').select('name').eq('id', kArea.id).single()
     expect(data.name).toBe('E2E Kayseri Alan')
   })
 
-  test('şantiye şefi kendi alanını açabilir ama başka projeye taşıyamaz ve silemez', async () => {
-    const own = await santiye.from('project_areas').insert({ project_id: izmir, area_code: code('S-IA'), name: 'E2E şef alanı' }).select().single()
-    expect(own.error).toBeNull() // tasarım gereği izinli (05.10 policy'si)
+  // Karar 55: Ç-6 RLS daraltması (Adım 5 A7) 6a'da canlıya gelir; sonra şantiye şefi kendi projesinde de alan açamaz.
+  // 6a uygulandı mı: B1 (aynı pakette) get_my_register_permissions'ı açar.
+  test('şantiye şefi alan yetkisi: 6a öncesi kendi alanını açar ama taşıyamaz/silemez; 6a sonrası hiç açamaz', async () => {
+    const after6a = !(await santiye.rpc('get_my_register_permissions', { p_project_id: izmir })).error
+    const own = await santiye.from('project_areas').insert({ project_id: izmir, area_code: areaCode('S-IA'), name: 'E2E şef alanı' }).select().single()
+    if (after6a) {
+      expect(own.error).toBeTruthy()
+      return
+    }
+    expect(own.error).toBeNull() // 05.10 policy'si (A7 öncesi)
     const move = await santiye.from('project_areas').update({ project_id: kayseri }).eq('id', own.data.id).select('id')
     expect(denied(move)).toBe(true)
     expect(denied(await santiye.from('project_areas').delete().eq('id', own.data.id).select('id'))).toBe(true)
   })
 
   test('İzmir şantiye şefi Kayseri area_wbs bağını ekleyemez/silemez; projeler arası bağ FK ile reddedilir', async () => {
-    const otherArea = await adminInsert('project_areas', { project_id: kayseri, area_code: code('KA2'), name: 'E2E Kayseri Alan 2' })
+    const otherArea = await adminInsert('project_areas', { project_id: kayseri, area_code: areaCode('KA2'), name: 'E2E Kayseri Alan 2' })
     expect((await santiye.from('area_wbs').insert({ project_id: kayseri, area_id: otherArea.id, wbs_id: kWbs.id }).select()).error).toBeTruthy()
     expect((await santiye.from('area_wbs').insert({ project_id: izmir, area_id: kArea.id, wbs_id: iWbs.id }).select()).error).toBeTruthy()
     expect(denied(await santiye.from('area_wbs').delete().eq('area_id', kArea.id).select('area_id'))).toBe(true)
@@ -113,7 +122,7 @@ test.describe('Proje Kontrol — WBS/Alan master veri yetkileri', () => {
 
   test('muhasebe hiçbir master tabloya yazamaz', async () => {
     expect((await muhasebe.from('project_wbs').insert({ project_id: kayseri, wbs_code: code('M-W'), name: 'x' }).select()).error).toBeTruthy()
-    expect((await muhasebe.from('project_areas').insert({ project_id: kayseri, area_code: code('M-A'), name: 'x' }).select()).error).toBeTruthy()
+    expect((await muhasebe.from('project_areas').insert({ project_id: kayseri, area_code: areaCode('M-A'), name: 'x' }).select()).error).toBeTruthy()
     expect((await muhasebe.from('area_wbs').insert({ project_id: kayseri, area_id: kArea.id, wbs_id: kWbs.id }).select()).error).toBeTruthy()
     expect(denied(await muhasebe.from('project_wbs').update({ name: 'HACK' }).eq('id', kWbs.id).select('id'))).toBe(true)
     expect(denied(await muhasebe.from('project_areas').delete().eq('id', kArea.id).select('id'))).toBe(true)

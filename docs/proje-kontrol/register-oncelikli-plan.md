@@ -18,7 +18,7 @@ Tarih: 14.10.2026. Onay: kullanıcı, 14.10.2026. Hiçbir adım uygulanmadı.
      - her paketten sonra kendi doğrulaması koşulur;
      - en sonda mevcut ekranlar `PW_TARGET=live` ile kontrol edilir.
    - **Docx:** şema değiştiği için `fons_solar_*` docx'lerinin güncellenmesi gerekir (kural 7).
-3. **Faz 2** (B5 hariç): B3, B6, dört göz, S4a (`four_eyes_enabled` admin fonksiyonu), S4b (Karar 64 istisnası), kalıcı G-01 çözümü. Test: Adım 2 yöntemi, canlıda ROLLBACK, psql ile (Karar 70).
+3. **Faz 2** (B5 hariç): B3, B6, dört göz, S4a (`four_eyes_enabled` admin fonksiyonu), S4b (Karar 64 istisnası), kalıcı G-01 çözümü ve **test bildirim süzgeci** (Karar 75; Faz 3 UI testlerinden önce uygulanır). Test: Adım 2 yöntemi, canlıda ROLLBACK, psql ile (Karar 70).
 4. **Faz 3:** RFI pilot → Document, Drawing (external link) → Action, Risk (kritik kapanış onayı, `created_by`, RSK, Karar 14/65) → Decision. UI testleri canlıda yalnızca TIZ, `PW_TARGET=live` (Karar 72).
 5. **6b:** Docker ve yerel ortam, Adım 5 testleri, Adım 5 SQL + frontend, Excel v8 import deploy, Diyarbakır (Karar 74), F1 A4.
 6. **Faz 4**, ardından **MVP canlıya alma**.
@@ -38,6 +38,50 @@ Tarih: 14.10.2026. Onay: kullanıcı, 14.10.2026. Hiçbir adım uygulanmadı.
   - iptal görev + eski günlük rapor formu;
   - Excel'de durumu "iptal" yapılan görev (oturumsuz import reddedilir, import yarım kalır).
 - Kullanıcı duyurusu: 6b'ye kadar görev iptal edilmez, Excel'de görev durumu "iptal" yapılmaz.
+
+## 6a mevcut ekran kontrolü (Karar 77)
+
+Canlıda yalnızca bildirim üretmeyen spec'ler koşar: `PW_TARGET=live`, ana klasörden (`faz-a-proje-kontrol`). Yeni dalda proje-kontrol testleri yok.
+
+**Bildirim üreten akışlar** (canlı kataloğundan, 14.10.2026):
+- trigger'lar: `daily_reports`, `invoices` (durum), `invoice_approvals` (gönderim ve onay), `purchase_requests` (ekleme ve durum), `tickets` (ekleme ve durum), `ticket_comments`;
+- fonksiyonlar: `add_task_progress`, `create_procurement_item_add_request`, `create_procurement_item_change_request`, `review_procurement_item_change_request`.
+
+**Hariç tutulan spec'ler** (yukarıdakilerden birini çalıştırıyor):
+
+| Spec | Bildirim kaynağı |
+|---|---|
+| `procurement-workflow`, `procurement-security`, `procurement-concurrency`, `procurement-two-initiators`, `procurement-role-acceptance`, `procurement-negotiation-flow`, `procurement-monthly-plan-link`, `purchase-single-item`, `notification-realtime` | Satın alma talebi oluşturma ve durum değişikliği |
+| `invoice-self-revize`, `faz-e` | Fatura ve fatura onayı |
+| `manual-task-progress` | `add_task_progress` (proje yöneticisine/şefe bildirim) |
+| `material-list-excel`, `material-boundaries`, `approver-role-routing`, `onaylar-tab-ve-talep-eden-filtresi` | Malzeme değişiklik/ekleme talebi ve onayı |
+
+**Koşacak spec'ler:**
+- **İş/finans ekranları:** `accounting-scope` (salt okuma), `bom-matching`, `purchase-risk-classification` (saf fonksiyon), `category-weights` (ağırlık RPC'si), `company-selector` (faturasız kayıt; bildirim trigger'ı yok), `is-plani-hiyerarsi` (görev ekler/siler), `pdf-export`, `project-excel-layout`.
+- **Kullanıcı:** `user-management` (geçici kullanıcı açar ve siler; bildirim yok, `user_management_audit`'e yazar).
+- **Proje Kontrol:**
+  - `proje-kontrol-guvenlik`: saldırı denemeleri reddedilmeli; reddedilmezse kayıt ve bildirim oluşur, bu zaten test hatasıdır.
+  - `proje-kontrol-master-veri`: 14.10'da A7 ve tiresiz alan koduna uyarlandı.
+  - `proje-kontrol-uyum`, `proje-kontrol-b1-yetki`, `proje-kontrol-b2-audit`, `proje-kontrol-b4-activity` (yeni 5 parametreli imza geriye uyumlu), `proje-kontrol-wbs-alan-excel`.
+- **Kendiliğinden atlananlar:** `proje-kontrol-b3/b5/b6` (paket yok), `proje-kontrol-adim5` (canlıda atlar).
+
+**Hariç tutulan ekranların doğrulaması:**
+- **Yazma yolları:** 6a'nın değiştirdiği yazma yolları (`save_daily_report`, `add_task_progress`, görev durumu, iptal koruması) psql provasında ROLLBACK içinde test edilir (R6-R16, A8 testleri). Bildirimler de geri alındığı için kimseye gitmez.
+- **Ekranlar:** ekranlar canlıda yalnızca açılış ve okuma düzeyinde elle kontrol edilir; **kaydetme yapılmaz**, çünkü kaydetme gerçek kişilere bildirim gönderir.
+
+| # | Ekran (rol) | Kontrol |
+|---|---|---|
+| 1 | Satın Alma › Talepler, Malzeme Listesi, Riskler, Onaylar, Teklif/Pazarlık/Sipariş (admin, PM) | Listeler ve sayılar 6a öncesiyle aynı; bir talep detayı açılıyor; "Yeni Talep" formu açılıyor, kategori ve malzeme listesi doluyor (kaydetmeden kapat) |
+| 2 | Finans › Faturalar, Onay Kuyruğu, Ödeme Takibi (admin, PM, muhasebe) | Liste, sekme sayıları, bir fatura detayı; "Fatura / Harcama Ekle" sihirbazı açılıyor (kaydetmeden kapat) |
+| 3 | Tickets (admin, PM, şantiye şefi) | Liste ve detay; "Yeni Ticket" formu açılıyor (kaydetmeden kapat) |
+| 4 | Günlük rapor formu (şantiye şefi, TIZ) | Form açılıyor; İlerleme Girişi'nde görev listesi doluyor; taslak otomatik kaydı hata vermiyor (taslak tablosunda bildirim yok) |
+| 5 | Günlük rapor listesi ve detayı (PM) | Mevcut raporlar açılıyor; PDF/Excel indirme |
+| 6 | İş Planı (PM, şantiye şefi) | Gantt ve Detaylı İş Planı açılıyor; görev sayısı ve yüzdeler 6a öncesiyle aynı; "İlerleme Gir" penceresi açılıyor (kaydetmeden kapat) |
+| 7 | Genel Proje ve Genel Bakış (admin) | İlerleme yüzdesi, S-eğrisi ve kategori kartı 6a öncesiyle aynı (iptal görev yok, değişmemeli) |
+| 8 | Proje Yönetimi (admin) | Proje listesi; Excel dışa aktarma indiriliyor; düzenleme sihirbazı açılıyor (kaydetmeden kapat). Excel içe aktarma yapılmaz |
+| 9 | Bildirimler (admin) | Liste açılıyor; 6a sırasında yeni bildirim oluşmadı (sayı öncesiyle aynı) |
+
+Karşılaştırma için 6a'dan önce aynı ekranların ekran görüntüsü veya sayıları alınır.
 
 ## Test bildirimleri (Karar 72 eki; 14.10.2026 salt okunur kontrol)
 
@@ -67,7 +111,7 @@ Tarih: 14.10.2026. Onay: kullanıcı, 14.10.2026. Hiçbir adım uygulanmadı.
   - Admin ve muhasebe tarafında test hesabı görünmüyor.
   - Playwright'ın `.env.test`'teki admin ve muhasebe hesaplarının gerçek kişilere mi ait olduğu doğrulanamadı (`.env.test` okunmuyor).
 
-**Plan (Faz 3 UI testlerinden önce, kullanıcı onayıyla uygulanır):**
+**Plan — ONAYLANDI (14.10.2026, Karar 75), Faz 2 kapsamında; Faz 3 UI testlerinden önce uygulanır. Her adımın SQL'i gösterilip onaylanır:**
 1. **Test hesapları:**
    - 4 rol için ayrı test hesapları: admin ve muhasebe için yeni; PM ve şantiye şefi için mevcut test hesapları ya da yenileri.
    - E-postalar ayırt edilebilir olur (ör. `…+e2e@…`).
@@ -83,16 +127,27 @@ Tarih: 14.10.2026. Onay: kullanıcı, 14.10.2026. Hiçbir adım uygulanmadı.
 4. **Erişim:** TIZ erişimini yalnızca test hesaplarıyla sınırlamak rol modeli yüzünden mümkün değil (Karar 63: admin/PM/muhasebe her projeye erişir). Bu yüzden asıl önlem bildirim süzgeci; erişim değiştirilmez.
 5. **Faz 3'te register bildirimi eklenirse** aynı süzgeçten geçer; alıcılar rol bazlı değil, proje erişimine göre seçilir.
 
-## Takvim (13.10.2026 tahmini; hafta sonu ve 29 Ekim çalışılmaz, girdiler en geç 2 iş gününde)
+## Takvim (14.10.2026 tahmini; hafta sonu ve 29 Ekim çalışılmaz, girdiler en geç 2 iş gününde)
+
+Faz 2'ye bildirim süzgeci ve test hesapları eklendi (+1 iş günü).
 
 | Adım | Tarih |
 |---|---|
 | Yedek araçları | 14-15 Ekim |
 | 6a | 16-19 Ekim |
-| Faz 2 | 20-28 Ekim |
-| İlk register ekranda (RFI pilot, canlıda TIZ) | **5 Kasım** |
-| Faz 3 | 16 Kasım |
-| 6b | 17-26 Kasım |
-| Faz 4 | 27 Kasım - 10 Aralık |
-| Canlıya alma hazırlığı | 11, 14, 15 Aralık |
-| MVP canlı | **16 Aralık** (sıralı). Docker Faz 3 sırasında paralel kurulursa **14 Aralık** |
+| Faz 2 (süzgeç dahil) | 20-30 Ekim |
+| İlk register ekranda (RFI pilot, canlıda TIZ) | **6 Kasım** |
+| Faz 3 | 17 Kasım |
+| 6b | 18-27 Kasım |
+| Faz 4 | 30 Kasım - 11 Aralık |
+| Canlıya alma hazırlığı | 14, 15, 16 Aralık |
+| MVP canlı | **17 Aralık** (sıralı). Docker Faz 3 sırasında paralel kurulursa **15 Aralık** |
+
+## Repo yeri (Karar 76)
+
+- **Durum:** Repo OneDrive içinde ve iki çalışma klasörü var (`GES_Dashboard`, `GES_Dashboard-faz23`; aynı `.git`).
+- **Riskler:**
+  - OneDrive eşitlemesi `.git` dosyalarında çakışma üretebilir;
+  - `.gitignore`'daki gizli dosyalar (`.env.test`, `supabase/.local/`) buluta gider;
+  - iki klasör aynı anda eşitlenir.
+- **Plan:** MVP öncesi repo OneDrive dışına taşınır (ör. `C:\dev\GES_Dashboard`). Tarihi kullanıcı belirler; taşımadan önce çalışma ağaçları `git worktree list` ile kontrol edilir ve yeni yolda yeniden bağlanır.

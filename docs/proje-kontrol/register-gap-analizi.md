@@ -8,6 +8,7 @@
 geçti, uygulanmadı; gerçek Diyarbakır Excel'i projesiz kontrol için bekleniyor). MVP senaryosu (b) seçildi (Karar 45).
 Önceki: 12.10.2026, Faz 1 Adım 3 kapandı.
 Ek (13.10.2026, kapanış değil): "Kullanıcıdan beklenen girdiler" ve Faz 5 başlangıç kontrol listesi eklendi (Karar 63).
+Ek (14.10.2026, kapanış değil): Faz 2'ye test bildirim süzgeci (Karar 75, +1 iş günü); MVP canlı tahmini 17 Aralık (paralelde 15 Aralık).
 Ek (14.10.2026, kapanış değil): register öncelikli sıra (Karar 66-74); faz tarihleri yeniden yazıldı, MVP canlı tahmini 16 Aralık (paralelde 14 Aralık).
 Ek (13.10.2026, kapanış değil): Karar 6 ve 10 onaylandı; Faz 3'e kritik risk kapanış onayı eklendi (+1 iş günü), Faz 3-4 ve MVP canlı tahmini kaydı (11 → 14 Aralık).
 
@@ -60,11 +61,11 @@ Tahmin varsayımları:
 | Faz | İçerik | Tahmini bitiş | MVP'ye (15 Aralık) göre | Ana risk |
 |---|---|---|---|---|
 | 1 · 6a | DB omurgası canlıya: B1, B2, B4, F1 A1-A3, AID, Adım 4, A7 (önce yedek + psql tam zincir provası) | 19 Ekim 2026 | 57 gün önce | Yedek araçlarının (pg_dump, psql) zamanında hazır olması; sihirbaz düzeltmesi yokken koşullu kırılmalar (Karar 69) |
-| 2 | Ortak altyapı: B3, B6, dört göz, S4a, S4b (Karar 64), G-01 kalıcı (B5 hariç) | 28 Ekim 2026 | 48 gün önce | Testler canlıda ROLLBACK (Karar 70); B5 patron onayı paralel |
-| 3 | 6 register standardı + UI. Sıra: RFI pilot (**ekranda 5 Kasım**) → Document, Drawing (external link) → Action, Risk (RSK, onay alanları, kritik kapanış onayı, `created_by`; Karar 14, 10, 65) → Decision | 16 Kasım 2026 | 29 gün önce | UI testleri canlıda TIZ'de (Karar 72); bildirim süzgeci ve test hesapları önce; görev bağı alanı gizli (Karar 69) |
-| 1 · 6b | Docker + yerel ortam; Adım 5 testleri; Adım 5 SQL + frontend (WBS/alan ekranı, Kod ata, sihirbaz düzeltmesi); Excel v8 import deploy; Diyarbakır (Karar 74); F1 A4. **Faz 1 burada kapanır** | 26 Kasım 2026 | 19 gün önce | Diyarbakır Excel'i, proje kodu ve kategori ağırlıkları; Adım 5 kodu ilk kez test ediliyor |
-| 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 10 Aralık 2026 | 5 gün önce | Satın alma ve finans regresyonu |
-| 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü); kullanıcı hesapları ve rol/proje atamaları (0,5): canlıdaki test hesaplarının gözden geçirilmesi (test e-postasına benzeyen PM hesabı dahil); genel "Admin" hesabını kullananlara kişisel hesap açılması ve ardından genel hesabın kapatılması (Karar 64; o zamana kadar hesap B3'teki istisnayla register onayı yapamaz); kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5). Hazırlık 3 iş günü (11, 14, 15 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **16 Aralık 2026** (Docker Faz 3 sırasında paralel kurulursa 14 Aralık); destek 16-22 Aralık | 1 gün sonra (paralelde 1 gün önce); 1 Ocak 2027 sınırından 16 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
+| 2 | Ortak altyapı: B3, B6, dört göz, S4a, S4b (Karar 64), G-01 kalıcı, test bildirim süzgeci + test hesapları (Karar 75) (B5 hariç) | 30 Ekim 2026 | 46 gün önce | Testler canlıda ROLLBACK (Karar 70); B5 patron onayı paralel |
+| 3 | 6 register standardı + UI. Sıra: RFI pilot (**ekranda 6 Kasım**) → Document, Drawing (external link) → Action, Risk (RSK, onay alanları, kritik kapanış onayı, `created_by`; Karar 14, 10, 65) → Decision | 17 Kasım 2026 | 28 gün önce | UI testleri canlıda TIZ'de (Karar 72); bildirim süzgeci ve test hesapları önce; görev bağı alanı gizli (Karar 69) |
+| 1 · 6b | Docker + yerel ortam; Adım 5 testleri; Adım 5 SQL + frontend (WBS/alan ekranı, Kod ata, sihirbaz düzeltmesi); Excel v8 import deploy; Diyarbakır (Karar 74); F1 A4. **Faz 1 burada kapanır** | 27 Kasım 2026 | 18 gün önce | Diyarbakır Excel'i, proje kodu ve kategori ağırlıkları; Adım 5 kodu ilk kez test ediliyor |
+| 4 | Köprüler (procurement, sahada gerekli tarih, `purchase_documents`, tedarikçi ödeme görünümü) | 11 Aralık 2026 | 4 gün önce | Satın alma ve finans regresyonu |
+| 4+ | **MVP canlıya alma:** Diyarbakır gerçek verisinin doğrulanması (1 iş günü); kullanıcı hesapları ve rol/proje atamaları (0,5): canlıdaki test hesaplarının gözden geçirilmesi (test e-postasına benzeyen PM hesabı dahil); genel "Admin" hesabını kullananlara kişisel hesap açılması ve ardından genel hesabın kapatılması (Karar 64; o zamana kadar hesap B3'teki istisnayla register onayı yapamaz); kısa eğitim dokümanı (rol başına 1-2 sayfa; 1,5). Hazırlık 3 iş günü (14, 15, 16 Aralık); ardından canlıya alma ve ilk hafta destek (5 iş günü) | Canlı: **17 Aralık 2026** (Docker Faz 3 sırasında paralel kurulursa 15 Aralık); destek 17-23 Aralık | 2 gün sonra (paralelde aynı gün); 1 Ocak 2027 sınırından 15 gün önce | Gerçek veride çıkan düzeltmeler; kullanıcıların hesap/eğitime zamanında katılması |
 | 5 | Change, Claim, Interface; Technical Submittal ve Material Approval ekranları (Karar 45) | Ocak 2027 (MVP sonrası) | — | — |
 | 6 | `subcontracts`, `progress_payments`, fatura WBS/aktivite bağı | Şubat 2027 | — | Ç8, Ç10, Ç11 Faz 6 başında |
 | 7 | Aktivite 360, KPI | Mart 2027 | — | — |
@@ -81,9 +82,10 @@ Faz 5-9 tarihleri kaba tahmindir; MVP'den sonra kapasiteye göre yeniden yazıl�
 
 | Girdi | Gerektiği yer | En geç |
 |---|---|---|
-| PostgreSQL 17 Command Line Tools + `.env.local` (Session pooler) + `npm run db:backup` ve `db:backup:data` (Karar 67) | 6a | 15 Ekim |
-| Docker kurulumu | 6b (yerel ortam, Adım 5 testleri) | 17 Kasım (Faz 3 sırasında kurulursa 2 gün kazanılır) |
-| Bildirim süzgeci ve test hesapları planının onayı (Karar 72) | Faz 3 UI testleri | 30 Ekim |
+| PostgreSQL 17 Command Line Tools + `C:\fons-yedek\.env.local` (Session pooler; OneDrive dışı) + `npm run db:backup` ve `db:backup:data` (Karar 67) | 6a | 15 Ekim |
+| Docker kurulumu | 6b (yerel ortam, Adım 5 testleri) | 18 Kasım (Faz 3 sırasında kurulursa 2 gün kazanılır) |
+| Test hesapları için e-posta adresleri ve şifrelerin `.env.test`'e yazılması (Karar 75; süzgeç planı onaylandı) | Faz 2 sonu, Faz 3 UI testlerinden önce | 30 Ekim |
+| Reponun OneDrive dışına taşınma tarihi (Karar 76) | MVP öncesi | MVP canlıya alma hazırlığından önce (en geç 11 Aralık) |
 | `ProjeDetay.jsx`, `DailyReportList.jsx`, `projectExcelBridge.js` commit'i ve haber (Karar 53) | Adım 5 Ek A | Adım 5 kapanışı |
 | Kategori ağırlık değerleri (tüm kategoriler, fiziksel olmayanlar %0) | Adım 6, Diyarbakır importu | Adım 6 |
 | Diyarbakır Excel'i ve proje kodu (DYB / DYB1 / DYB2) | Adım 6 | Adım 6 |
