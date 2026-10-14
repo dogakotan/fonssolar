@@ -1799,6 +1799,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 81 | Mevcut kayıtların geri doldurulması (R4) | B3 A0 durmaz; A1b panel kayıtlarını doldurur (`source = 'import'`, `record_state` iş durumundan, `approved_at = created_at`, `rfis.created_by = raised_by`). B5 A1 kısıttan önce Storage dışı revizyonları `ready` yapar. İkisi de yeniden test bekliyor | **ONAYLANDI (14.10.2026)**, taslaklara işlendi |
 | 82 | Paylaşım (R6) | Faz 3'e kadar register listeleri panelden CSV ile paylaşılır (rehber §4.10) | **ONAYLANDI (14.10.2026)** |
 | 83 | 6a provası | Askıda; `psql` (PostgreSQL 17 Command Line Tools) kurulumu ve yedek kullanıcıdan beklenen girdi. Prova betiği `scripts/proje-kontrol/prova-6a.mjs` | **ONAYLANDI (14.10.2026)** |
+| 84 | F5 yedeksiz uygulama | Change, Claim, Interface tabloları (`taslak-sql/f5_changes_claims_interfaces.sql`) `npm run db:backup` yedeği olmadan uygulanabilir. Gerekçe (kullanıcı): yalnızca yeni tablolar, mevcut tablolar etkilenmiyor, geri alma SQL'i hazır ve ROLLBACK ile test edilmiş (BÖLÜM B). Koşul: mesai dışı, aktif bağlantı kontrolü, `apply_migration`, ardından `f5_dogrulama.sql` ve parmak izi. Bu istisna yalnızca F5 içindir; diğer paketlerde yedek kuralı (Karar 67) geçerli | **ONAYLANDI (14.10.2026)** |
 
 **Edge function / secret'lar:**
 - Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
@@ -1946,6 +1947,17 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   statik dosyaya taşındı.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
+
+- **Proje sihirbazının Riskler adımı otomatik riskleri bozuyor (14.10.2026, yayındaki `main` kodu okunarak; ROLLBACK ile denenmedi; bugün canlıda).**
+  - **Nasıl:** `ProjeEditWizard.jsx` adım "Kaydet"i ve `Adim8Tamamlandi.jsx` düzenleme kaydı projenin bütün `project_risks` satırlarını siliyor, formdakileri yeniden ekliyor. `Adim4Riskler.jsx` yükünde `source`, `rule_code`, `subject_ref`, `closed_at`, `id` yok.
+  - **Etkisi:**
+    - otomatik riskler `manuel` olarak yeniden yazılır;
+    - risk motoru aynı konu için yeni otomatik risk açar, kopya oluşur;
+    - id'ler değişir, kapalı risklerin kapanış tarihi kayıt anına kayar;
+    - register kaydına bağlı risk (`risk_id`) varsa kayıt FK hatasıyla düşer.
+  - **Kapsam:** 14.10'da canlıdaki 55 riskin hepsi otomatik (ADN1 8, TIZ 33, TKY 14).
+  - **Düzeltme:** 6b sihirbaz paketinde `save_project_risks` (yalnızca manuel riskleri günceller, otomatiklere dokunmaz). Tasarım ve test planı `faz1-adim5-tasarim.md` §3.4 ve §3.3 (7-11).
+  - **O zamana kadar:** risk girişi `register-veri-giris-rehberi.md` §4.9'daki SQL Editor şablonuyla; sihirbazın Riskler adımı kullanılmaz.
 
 - **Proje sihirbazının İş Kalemleri kaydı ilerlemesi olan projede kırık (09.10.2026'da ROLLBACK ile doğrulandı,
   Faz 1'den bağımsız, bugün canlıda).** `ProjeEditWizard.jsx` (adım kaydı) ve `Adim8Tamamlandi.jsx` (düzenleme)
@@ -2243,6 +2255,16 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**14.10.2026 (23. tur) — F5 geri alma testi, Karar 84, Change/Claim/Interface şablonları, docx metni; sihirbaz Riskler bulgusu 6b'ye (canlıya kalıcı değişiklik yok).**
+- **Sihirbaz Riskler bulgusu:** "Bilinen açık noktalar"a eklendi. Düzeltme 6b sihirbaz paketinde: `save_project_risks` yalnızca manuel riskleri günceller. Tasarım `faz1-adim5-tasarim.md` §3.4, test §3.3 (7-11).
+- **F5 BÖLÜM B (geri alma):**
+  - Kapsam: yalnızca 3 tablo (trigger/indeks/RLS/kısıt onlarla düşer) ve sayaç/durum geçmişindeki CHG/CLM/ITF satırları. Ortak fonksiyonlara dokunmaz. Veri varken açık onay ister.
+  - Canlıda ROLLBACK ile test edildi: uygula → geri al → 16 anahtarlı parmak izi birebir; koruma çalıştı.
+- **Karar 84:** F5 yedeksiz uygulanabilir.
+- **Kalıcı uygulama yapılmadı:** saat 10:37, mesai içi; mesai dışına kaldı.
+- **Rehber §3.9-3.11, §4.11-4.13:** Change/Claim/Interface şablonları. F5 kurulumuyla birlikte ROLLBACK ile test edildi, 3/3 OK, parmak izi birebir.
+- **`docs/proje-kontrol/docx-guncelleme-14-10.md`:** iki docx için değişiklik metni (kullanıcı işleyecek). Veritabanı docx'i bu bilgisayarda bulunamadı.
 
 **14.10.2026 (22. tur) — Karar 78-83; rehbere SQL Editor şablonları; F5 ve şablonlar ROLLBACK ile test edildi (canlıya değişiklik yok).**
 - **Sihirbaz Riskler adımı (kod okuması, yayındaki `main`):** adım "Kaydet"i yalnızca riskleri yazar (Ç-B'ye takılmaz), ama projenin bütün risklerini silip `source`/`rule_code`/`subject_ref`/`closed_at` olmadan yeniden ekler. Canlıdaki 55 riskin hepsi otomatik; kaydetme bunları manuele çevirir ve motor kopya açar. Son adım "Kaydet"i görevleri de yeniden yazar (Ç-B). Risk girişi rehberde SQL Editor şablonuyla.

@@ -4,6 +4,10 @@
 -- Test (14.10.2026, canlıda ROLLBACK, MCP, Adım 2 yöntemi): BÖLÜM A + f5_dogrulama.sql tek işlemde →
 --   "DOGRULAMA SONUCU: OK | F5 | 6 kontrol grubu". Oturum 0 aktif bağlantı 0; Oturum 5 parmak izi Oturum 0 ile
 --   birebir (katalog md5'leri, sayaçlar boş, durum geçmişi 0, yeni tablo yok).
+-- Geri alma testi (14.10.2026, canlıda ROLLBACK): BÖLÜM A → veri ekleme → koruma onaysız geri almayı durdurdu →
+--   BÖLÜM B (onaylı) → 16 anahtarlı parmak izi (tablo, tip, fonksiyon, kısıt, trigger, indeks, yetki, RLS, yorum,
+--   sayaç, durum geçmişi, risk, register satırları) uygulama öncesiyle birebir.
+-- Yedek: Karar 84 ile yedeksiz uygulanabilir (yalnızca yeni tablolar). Uygulama mesai dışında, apply_migration ile.
 --
 -- Çelişkiler (register-veri-giris-rehberi.md §0 R5):
 --   * Karar 13/66: bu üç register Faz 5'te. Karar 63: PM'in tüm projelere erişimi Faz 5 Claim/Change öncesinde
@@ -236,12 +240,37 @@ grant select on public.changes, public.claims, public.interfaces to authenticate
 commit;
 
 -- ############################################################################
--- BÖLÜM B — GERİ AL (tablolar boşken; doluysa önce veri yedeği)
+-- BÖLÜM B — GERİ AL (14.10.2026; canlıda ROLLBACK ile test edildi: uygula → geri al → parmak izi uygulama öncesiyle aynı)
 -- ############################################################################
--- begin;
--- drop table if exists public.claims;      -- changes'e FK verdiği için önce
--- drop table if exists public.changes;
--- drop table if exists public.interfaces;
--- delete from public.project_register_counters where register_code in ('CHG','CLM','ITF');
--- delete from public.register_status_history where register_code in ('change','claim','interface');
--- commit;
+-- Kapsam: yalnızca F5'in oluşturdukları.
+--   * 3 tablo. DROP TABLE tablonun trigger'larını, indekslerini, RLS kurallarını, kısıtlarını, yorumlarını ve satır
+--     tipini birlikte düşürür.
+--   * Fonksiyon: F5 fonksiyon OLUŞTURMAZ. Kullandığı fn_assign_register_no, fn_log_register_status,
+--     update_updated_at_column ortak fonksiyonlardır; düşürülmez.
+--   * Mevcut iki tabloda yalnızca bu üç tipe ait satırlar silinir: sayaç (CHG/CLM/ITF), durum geçmişi
+--     (change/claim/interface).
+--   * Başka hiçbir nesneye dokunulmaz (FK hedefi tablolarda F5 bir şey oluşturmaz; kısıtlar F5 tablolarında durur).
+-- Veri koruması: tablolarda kayıt varsa, geri alma yalnızca açık onayla çalışır
+--   (aynı işlemde önce: select set_config('fons.f5_geri_al_veri_sil', 'evet', true);). Kayıtlar kalıcı olarak silinir;
+--   önce CSV ile dışa aktarılmalı.
+-- Canlıya apply_migration ile uygulandıysa geri alma da ayrı bir migration olarak (apply_migration) uygulanır.
+-- Yorum bloğu içinde: yalnızca gerekirse, ayrı çalıştırılır.
+/*
+begin;
+set local lock_timeout = '3s';
+do $$
+declare v_rows bigint;
+begin
+  select (select count(*) from public.changes) + (select count(*) from public.claims)
+       + (select count(*) from public.interfaces) into v_rows;
+  if v_rows > 0 and coalesce(current_setting('fons.f5_geri_al_veri_sil', true), '') <> 'evet' then
+    raise exception 'F5 geri alma durdu: change/claim/interface tablolarında % kayıt var. Önce CSV ile dışa aktarın, sonra aynı işlemde fons.f5_geri_al_veri_sil = evet ayarlayın', v_rows;
+  end if;
+end $$;
+drop table public.claims;        -- changes'e FK verdiği için önce
+drop table public.changes;
+drop table public.interfaces;
+delete from public.project_register_counters where register_code in ('CHG','CLM','ITF');
+delete from public.register_status_history where register_code in ('change','claim','interface');
+commit;
+*/

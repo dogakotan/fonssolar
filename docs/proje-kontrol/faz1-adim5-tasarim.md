@@ -270,7 +270,7 @@ Bu makinede kontrol edildi (12.10.2026): `docker` yok, `supabase` CLI yok (globa
 - **Sihirbaz:**
   - Son adımda "Kaydet" önce önizleme modalını açar; "Onayla" gerçek çağrıyı yapar.
   - `ProjeEditWizard`'ın adım bazlı "Kaydet"i aynı RPC'yi kullanır.
-- **Kapsam dışı (not):** aynı sil-yeniden-yaz deseni `project_risks` ve `budget_lines` için de var (`TABLE_MAP`). Risklerde otomatik risk kayıtları ve `closed_at` bundan etkilenebilir. Bu adımda düzeltilmez, "Bilinen açık noktalar"a yazılır.
+- **Riskler:** aynı sil-yeniden-yaz deseni `project_risks` için de var; **14.10.2026'da 6b sihirbaz paketine alındı** (§3.4). `budget_lines` (`TABLE_MAP` 6) kapsam dışı, not olarak kalır.
 - Sihirbaz bütünü (proje satırı + ağırlıklar + görevler) bugün de tek işlem değil; bu değişmiyor. Görev kaydı kendi içinde atomik.
 
 ### 3.3 Zorunlu test
@@ -284,6 +284,44 @@ Tohumda ilerlemesi olan proje kurulur (TIZ benzeri; bazı görevlerde `progress_
 6. Proje ilerleme yüzdesi iptal görevi hariç hesaplanır.
 
 Önizleme modalındaki sayılar DB sonucu ile karşılaştırılır.
+
+Riskler (§3.4):
+7. Otomatik riskli projede (TIZ benzeri; açık ve kapalı otomatik riskler) Riskler adımında yalnızca bir manuel riskin
+   başlığı değiştirilip kaydedilir → yalnızca o satır güncellenir; id aynı.
+8. Otomatik risklerin `source`, `rule_code`, `subject_ref`, `status`, `closed_at` ve id'si kayıttan önce ve sonra birebir
+   aynı; risk sayısı değişmez.
+9. Kayıttan sonra `fn_recompute_auto_risks` çağrılır → kopya risk oluşmaz.
+10. Yeni manuel risk eklenir → `source = 'manuel'`; formdan çıkarılan manuel risk silinir. Register kaydına bağlı
+    (`risk_id`) manuel risk çıkarılırsa açık hata verilir, hiçbir şey yazılmaz.
+11. Son adımdaki "Kaydet" de aynı yolu kullanır; kapalı manuel riskin `closed_at`'i değişmez.
+
+### 3.4 Riskler adımı (14.10.2026 bulgusu; 6b sihirbaz paketi)
+
+**Bugün (yayındaki `main`, kod okuması):**
+- `ProjeEditWizard.jsx` adım "Kaydet"i (`TABLE_MAP[4]`) ve `Adim8Tamamlandi.jsx` düzenleme kaydı projenin bütün
+  risklerini siler, formdaki satırları yeniden ekler.
+- `Adim4Riskler.jsx` `handleSave` yükünde `source`, `rule_code`, `subject_ref`, `closed_at` ve `id` yok.
+- **Sonuçlar:**
+  - otomatik riskler `manuel` olarak yeniden yazılır, kuralla bağ kopar;
+  - risk motoru aynı konu için yeni otomatik risk açar (kısmi unique yalnızca `source = 'otomatik'`), yani kopya oluşur;
+  - id'ler değişir; kapalı risklerin `closed_at`'i kayıt anına kayar;
+  - risk register kaydına bağlıysa (`decisions.risk_id`, `project_actions.risk_id`) silme FK ile reddedilir.
+- 14.10.2026'da canlıdaki 55 riskin hepsi otomatik. O zamana kadar risk girişi SQL Editor şablonuyla
+  (`register-veri-giris-rehberi.md` §4.9).
+
+**Yeni akış:**
+- Yeni RPC: `save_project_risks(p_project_id text, p_risks jsonb, p_dry_run boolean default true)`:
+  - DEFINER veya INVOKER kararı `save_project_tasks` ile aynı; yalnızca admin/PM; atomik.
+  - **Yalnızca `source = 'manuel'` satırlara yazar.**
+  - Eşleşme `id` ile: id'li satırda yalnızca değişen kolonlar güncellenir; id'siz satır yeni manuel risk olarak eklenir.
+  - Formdan çıkarılan manuel risk silinir. Register bağı varsa `validation` hatası verilir.
+  - Otomatik riskler yükte gelse bile yok sayılır; hiçbir alanı yazılmaz, silinmez.
+  - Önizleme raporu: eklenecek / güncellenecek / silinecek / dokunulmayan otomatik risk sayısı.
+- **Sihirbaz:**
+  - Riskler adımı otomatik riskleri salt okunur listeler (rozet "Otomatik"); yalnızca manuel satırlar düzenlenir.
+  - `handleSave` yükünde `id` korunur.
+  - Adım "Kaydet"i ve son adım "Kaydet"i aynı RPC'yi kullanır; `TABLE_MAP`'ten 4 çıkar.
+- Karar 10/65 (kritik kapanış onayı) Faz 3'te; bu paket yalnızca veri korumasıdır.
 
 ## 4. Proje oluşturma
 

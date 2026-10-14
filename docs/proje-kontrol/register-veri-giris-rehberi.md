@@ -9,7 +9,7 @@ Tarih: 14.10.2026. Kaynak: canlı katalog, yalnızca salt okunur SELECT. Şablon
 > - **Yalnızca §4'teki şablonları kullanın.** Table Editor'da hücre düzenleme, satır silme veya serbest SQL yazmayın.
 > - **Register dışı hiçbir tabloda değişiklik yapmayın.** Şablonların yazdığı tablolar: `documents`,
 >   `document_revisions`, `drawings`, `rfis`, `project_actions`, `decisions`, `technical_submittals`,
->   `material_approvals`, `project_risks`.
+>   `material_approvals`, `project_risks`; uygulandıktan sonra `changes`, `claims`, `interfaces`.
 > - UPDATE şablonlarında `where` satırını silmeyin ve değiştirmeden bırakmayın; her zaman tek kaydın numarasını yazın.
 > - Toplu giriş günlerinde önce `npm run db:backup:data` (Karar 67).
 
@@ -27,8 +27,11 @@ admin'lerdedir.
 | 82 | Paylaşım için panelden CSV (§4.10) |
 | 83 | 6a provası askıda; `psql` kurulumu kullanıcıdan beklenen girdi |
 
-Change, Claim, Interface (Faz 5) tabloları canlıda yok. Taslak `taslak-sql/f5_changes_claims_interfaces.sql`
-14.10'da ROLLBACK ile test edildi, uygulanmadı.
+| 84 | Change, Claim, Interface tabloları yedeksiz uygulanabilir (yalnızca yeni tablolar; geri alma SQL'i test edildi) |
+
+Change, Claim, Interface (`changes`, `claims`, `interfaces`): taslak `taslak-sql/f5_changes_claims_interfaces.sql`
+ROLLBACK ile test edildi; **kalıcı uygulama mesai dışında yapılacak**. §4.11-4.13 şablonları tablolar canlıya
+uygulandıktan sonra kullanılır.
 
 ## 1. Canlıdaki register tabloları (14.10.2026)
 
@@ -135,7 +138,26 @@ Alanlar: `title` (Z); `severity`: `kritik`, `yüksek`, `orta`, `düşük`; `stat
 `is_kalemi`, `satin_alma`, `diger`; **`source` her zaman `manuel`**, `rule_code`/`subject_ref` boş (otomatik
 risklere dokunulmaz). Numara ve `created_by` yok (Faz 3, Karar 14/65).
 
-### 3.9 WBS ve alan
+### 3.9 Change (değişiklik talebi) — `changes`, numara `CHG`
+`title` (Z); `origin`: `owner_request` (işveren talebi), `design_change`, `site_condition`, `other`; `status`:
+`identified`, `submitted`, `approved`, `rejected`, `implemented`; `priority` RFI ile aynı; `cost_estimate` sayı +
+`currency` (`TRY`, `USD`, `EUR`); `time_impact_days` gün; `contract_ref` sözleşme maddesi. **Onay (Karar 10):**
+yalnızca kaydı girenden farklı bir admin; onaylayan `approved_by`'a yazılır.
+
+### 3.10 Claim (hak talebi / ihbar) — `claims`, numara `CLM`
+`title`, `notice_type` (`time`, `cost`, `both`), `event_date` (Z); `notice_deadline` olay tarihinden önce olamaz
+(ihbar süresi proje ayarı yok, tarih elle hesaplanır); `status`: `notice_due`, `notice_sent`, `submitted`,
+`negotiating`, `settled`, `rejected`; `amount_claimed` + `currency`; `time_claimed_days`; `change_id` aynı projedeki
+bir değişiklik talebi (isteğe bağlı). Onay Change ile aynı (Karar 10).
+
+### 3.11 Interface (arayüz) — `interfaces`, numara `ITF`
+`title`, `party_a`, `party_b` (Z; iki taraf farklı olmalı); `interface_type` serbest (`elektrik`, `inşaat`, `izin` …);
+`status`: `open`, `agreed`, `closed`; `priority`; `due_date`.
+
+Görme yetkisi (Karar 6, uygulamada Faz 5 ekranları gelince): change ve claim admin, PM, muhasebe; interface admin,
+PM, şantiye şefi.
+
+### 3.12 WBS ve alan
 Panelden girilmez; ilk yükleme 6a ile gelen Excel import'uyla (Karar 19, 50).
 
 ## 4. SQL Editor şablonları
@@ -362,7 +384,88 @@ select r.rfi_no, r.subject, r.status, r.priority, r.raised_date, r.due_date, r.a
 ```
 
 Diğer register'lar için tablo ve numara kolonu değişir: `documents`/`document_no`, `project_actions`/`action_no`,
-`decisions`/`decision_no`, `technical_submittals`/`submittal_no`, `material_approvals`/`approval_no`.
+`decisions`/`decision_no`, `technical_submittals`/`submittal_no`, `material_approvals`/`approval_no`,
+`changes`/`change_no`, `claims`/`claim_no`, `interfaces`/`interface_no`.
+
+### 4.11 Change aç / gönder / onayla
+
+```sql
+insert into public.changes (project_id, title, description, origin, priority, cost_estimate, currency,
+                            time_impact_days, contract_ref, due_date, created_by)
+values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+        'Trafo köşkü yer değişikliği',                                                     -- başlık
+        'İşveren yazısıyla köşk 30 m kuzeye alınacak',                                     -- açıklama
+        'owner_request', 'high',                                                           -- köken, öncelik
+        250000.00, 'TRY',                                                                  -- tahmini maliyet, para birimi
+        10, 'Sözleşme md. 12.3',                                                           -- süre etkisi (gün), madde
+        date '2026-11-15',                                                                 -- termin
+        (select id from public.profiles where full_name = 'Ad Soyad'))                    -- giren kişi
+returning change_no;
+```
+
+```sql
+update public.changes
+   set status = 'submitted'                                             -- submitted / rejected / implemented
+ where change_no = 'CHG-TIZ-0001'                                       -- değişiklik no
+returning change_no, status;
+```
+
+Onay yalnızca kaydı girenden farklı bir admin onay verdiyse (Karar 10):
+
+```sql
+update public.changes
+   set status = 'approved',
+       approved_by = (select id from public.profiles where full_name = 'Onaylayan Admin'),   -- onaylayan admin
+       approved_at = now()
+ where change_no = 'CHG-TIZ-0001'                                       -- değişiklik no
+returning change_no, status;
+```
+
+### 4.12 Claim (ihbar) aç / ihbar gönderildi
+
+```sql
+insert into public.claims (project_id, title, description, notice_type, event_date, notice_deadline,
+                           amount_claimed, currency, time_claimed_days, contract_ref, change_id, created_by)
+values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+        'Geç saha teslimi',                                                                -- başlık
+        'Saha 15 gün geç teslim edildi',                                                   -- açıklama
+        'both',                                                                            -- time / cost / both
+        date '2026-10-01', date '2026-10-29',                                              -- olay tarihi, ihbar son tarihi
+        500000.00, 'TRY', 20,                                                              -- tutar, para birimi, süre (gün)
+        'Sözleşme md. 20.1',                                                               -- madde
+        (select id from public.changes where change_no = 'CHG-TIZ-0001'),                  -- bağlı değişiklik (yoksa null yazın)
+        (select id from public.profiles where full_name = 'Ad Soyad'))                    -- giren kişi
+returning claim_no;
+```
+
+```sql
+update public.claims
+   set status = 'notice_sent', notice_sent_at = now()                   -- notice_sent / submitted / negotiating / settled / rejected
+ where claim_no = 'CLM-TIZ-0001'                                        -- claim no
+returning claim_no, status;
+```
+
+### 4.13 Interface aç / mutabakat
+
+```sql
+insert into public.interfaces (project_id, title, description, interface_type, party_a, party_b,
+                               priority, due_date, created_by)
+values ((select project_id from public.project_register_settings where prefix = 'TIZ'),   -- proje kodu
+        'OG bağlantı noktası',                                                             -- başlık
+        'Bağlantı hücresi ve sayaç yeri',                                                  -- açıklama
+        'elektrik',                                                                        -- tür
+        'Fons Solar', 'Dağıtım şirketi',                                                   -- taraf A, taraf B
+        'high', date '2026-11-30',                                                         -- öncelik, termin
+        (select id from public.profiles where full_name = 'Ad Soyad'))                    -- giren kişi
+returning interface_no;
+```
+
+```sql
+update public.interfaces
+   set status = 'agreed'                                                -- agreed / closed
+ where interface_no = 'ITF-TIZ-0001'                                    -- interface no
+returning interface_no, status;
+```
 
 ## 5. Riskler ve 6a / Faz 2 sonrası durum
 

@@ -21,7 +21,7 @@ Tarih: 14.10.2026. Onay: kullanıcı, 14.10.2026. Hiçbir adım uygulanmadı.
    - **Docx:** şema değiştiği için `fons_solar_*` docx'lerinin güncellenmesi gerekir (kural 7).
 3. **Faz 2** (B5 hariç): B3, B6, dört göz, S4a (`four_eyes_enabled` admin fonksiyonu), S4b (Karar 64 istisnası), kalıcı G-01 çözümü ve **test bildirim süzgeci** (Karar 75; Faz 3 UI testlerinden önce uygulanır). Test: Adım 2 yöntemi, canlıda ROLLBACK, psql ile (Karar 70).
 4. **Faz 3:** RFI pilot → Document, Drawing (external link) → Action, Risk (kritik kapanış onayı, `created_by`, RSK, Karar 14/65) → Decision. UI testleri canlıda yalnızca TIZ, `PW_TARGET=live` (Karar 72).
-5. **6b:** Docker ve yerel ortam, Adım 5 testleri, Adım 5 SQL + frontend, Excel v8 import deploy, Diyarbakır (Karar 74), F1 A4.
+5. **6b:** Docker ve yerel ortam, Adım 5 testleri, Adım 5 SQL + frontend (sihirbaz Ç-B ve **Riskler adımı düzeltmesi**, `faz1-adim5-tasarim.md` §3.4), Excel v8 import deploy, Diyarbakır (Karar 74), F1 A4.
 6. **Faz 4**, ardından **MVP canlıya alma**.
 7. **Baseline migration:** Ocak 2027 (Karar 71).
 
