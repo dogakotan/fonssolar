@@ -140,6 +140,24 @@ Bildirim üretmez (aşağıda). Adımlar Playwright (`PW_TARGET=live`, `faz-a` k
 **Durma kuralı:** beklenmeyen sonuçta durulur. Test projeleri yine T12 ile temizlenir; temizlik silme olduğu için önce
 sorulur. Fonksiyon geri dönüşü (7.1/5) de onayla yapılır.
 
+### 7.3 `.env.test` hesap kontrolü (14.10.2026)
+`.env.test` yalnızca bu karşılaştırma için okundu (kullanıcı izni). E-postalar ekrana yazılmadı: tuzlu SHA-256 özeti
+canlı `auth.users` ile eşleştirildi.
+- **admin:** gerçek. Genel "Admin" hesabı, kişiye ait değil ama ortak işletim hesabı (Karar 64).
+- **pm:** test hesabı ("TEST PROJE YÖNETİCİSİ").
+- **muhasebe:** gerçek kişi.
+
+Bu yüzden T1-T12 başlamadı. Önce admin ve muhasebe için ayırt edilebilir e-postalı test hesabı açılacak; plan
+kullanıcı onayında. Admin rolünde hesap yalnızca admin oturumuyla açılabiliyor (`create-user`).
+
+### 7.4 Dal tabanı (14.10.2026, `git merge-tree`, diske yazılmadı)
+- **`faz-a-proje-kontrol`:** taban `938e0d3`; `origin/main` 10 commit ileride (PR #31-37). Çakışma yalnızca
+  `Adim8Tamamlandi.jsx` ve `export-project-excel/template_builder.ts` (6b listesi değişmedi). Kullanıcının 8
+  commit'lenmemiş dosyası `main` tarafında değişmemiş.
+- **`faz-2-3-register`:** taban `468b224` (bayat); `origin/main` 86 commit ileride. Çakışma yalnızca `CLAUDE.md`. Dalın
+  CLAUDE.md'si `faz-a`'dan alındığı için `main`'in 938e0d3'e kadarki içeriğini zaten taşıyor; `main`'in CLAUDE.md'si
+  938e0d3'ten beri değişmedi. `package.json` dalda değişmediği için birleşmede `main`'inki (exceljs, react-router v7) gelir.
+
 ## 6. Kategori ağırlıkları (P4) — öneri, değerler sizin onayınızda
 
 **Bugünkü varsayılan** (yeni projeye DB trigger'ı `fn_seed_default_category_weights` ve Excel import'u
