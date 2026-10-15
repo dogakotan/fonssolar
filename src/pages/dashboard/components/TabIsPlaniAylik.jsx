@@ -269,7 +269,6 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
       </tr>,
     ]
     if (!isOpen) return out
-    node.childList.forEach(child => out.push(...renderNode(child)))
     node.tasks.forEach(task => {
       const cells = cellsByTask.get(task.id) || []
       out.push(
@@ -289,6 +288,7 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
         </tr>
       )
     })
+    node.childList.forEach(child => out.push(...renderNode(child)))
     return out
   }
 

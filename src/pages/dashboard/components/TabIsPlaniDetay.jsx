@@ -301,7 +301,7 @@ function buildDetayRows(node, ctx) {
 
   const childRows = node.childList.flatMap(child => buildDetayRows(child, ctx))
   const taskRows = node.tasks.map(task => buildDetayTaskRow(task, node.depth, ctx))
-  return [headerRow, ...childRows, ...taskRows]
+  return [headerRow, ...taskRows, ...childRows]
 }
 
 function buildDetayTaskRow(task, depth, ctx) {

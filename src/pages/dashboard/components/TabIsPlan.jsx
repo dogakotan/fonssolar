@@ -240,8 +240,6 @@ function renderGanttGroupNode(node, ctx) {
         <small>{allTasks.length} görev | %{avg}</small>
       </button>
 
-      {isOpen && node.childList.map(child => renderGanttGroupNode(child, ctx))}
-
       {isOpen && node.tasks.map((task, index) => {
         const taskCfg = groupConfigFor(node.label)
         const barLeft = timelineOffsetPct(task.planned_start, timelineStart, timelineUnits)
@@ -284,6 +282,8 @@ function renderGanttGroupNode(node, ctx) {
           </button>
         )
       })}
+
+      {isOpen && node.childList.map(child => renderGanttGroupNode(child, ctx))}
     </div>
   )
 }
