@@ -32,20 +32,23 @@ arası ilişkileri içeren bir bilgi grafiği var.
 
 - **Tek sunucu:** Aynı anda tek yerel sunucu açık olur: entegrasyon, http://localhost:5173.
   - Klasör: `GES_Dashboard-entegrasyon`.
-  - Başlatma: `VITE_ENTEGRASYON_6AB_YOK=true npm run dev`. Bu komut 8002'de PDF servisini de açar.
+  - Başlatma: `npm run dev` ya da `scripts/entegrasyon-yenile.ps1`. Bu komut 8002'de PDF servisini de açar.
   - Diğer çalışma kopyalarında (`GES_Dashboard`, `-aylik`, `-faz23`, `-hotfix`) sunucu açılmaz.
-- **Yeniden oluşturma:** Bir feature dalı güncellenince entegrasyon dalı silinip `origin/main`'den sıfırdan kurulur.
+- **Yeniden oluşturma:** Bir feature dalı güncellenince entegrasyon dalı silinip `origin/main`'den sıfırdan kurulur: `powershell -File scripts/entegrasyon-yenile.ps1`.
   - Merge sırası: `faz-a-proje-kontrol` → `feature/aylik-is-plani` → (onaylanan diğerleri).
   - Rebase değil merge kullanılır; orijinal dallara dokunulmaz.
-- **Geliştirme yok:** Entegrasyon dalında özellik geliştirilmez. Bu dala özgü tek değişiklikler:
-  - `src/lib/entegrasyon.js` ve 6a/6b kilidi;
-  - bu bölüm;
-  - yeniden kurulumda tekrar uygulanır.
+  - Betik sıfırlamadan önce mevcut hali `local/entegrasyon-yedek`'e alır. Bir adım hata verirse geri dönüş: `git switch -C local/entegrasyon local/entegrasyon-yedek`.
+  - `local(entegrasyon):` ile başlayan commit'ler yeniden uygulanır. Yalnızca CLAUDE.md çakışması otomatik çözülür (iki taraf korunur); diğer çakışmalarda betik durur.
+- **Geliştirme yok:** Entegrasyon dalında özellik geliştirilmez; yalnızca aşağıdaki "Bu dala özgü ekler" bulunur.
 - **Push yok:** `local/entegrasyon` asla push edilmez.
-- **Canlı veritabanı:** Sunucu canlı veritabanına bağlıdır. `VITE_ENTEGRASYON_6AB_YOK=true` iken canlıda olmayan 6a/6b RPC'lerine dayanan yazma düğmeleri gri ve tıklanamaz ("6a/6b canlıya uygulanmadı"):
-  - sihirbaz son Kaydet;
-  - düzenleme sihirbazında İş Kalemleri Kaydet;
-  - Toplu ata, Kod ata, Sınıflandır.
+- **Canlı veritabanı:** Sunucu canlı veritabanına bağlıdır. Canlıda olmayan 6a/6b RPC'lerine dayanan yazma düğmeleri gri ve tıklanamaz ("6a/6b canlıya uygulanmadı").
+  - **Kilit kalıcıdır:** kod varsayılan olarak kilitli (`src/lib/entegrasyon.js`, yalnızca `VITE_ENTEGRASYON_6AB_YOK=false` açar). Ayrıca klasördeki `.env.development.local` (gitignore) bayrağı `true` tutar.
+  - Sunucu bayraksız, elle `npm run dev` ile açıldığında da kilitli olduğu 15.10.2026'da doğrulandı.
+  - Kilitli düğmeler:
+    - sihirbaz son Kaydet;
+    - düzenleme sihirbazında İş Kalemleri Kaydet;
+    - Toplu ata, Kod ata, Sınıflandır.
+- **Bu dala özgü ekler:** `src/lib/entegrasyon.js` ve kilit, bu bölüm, `scripts/entegrasyon-yenile.ps1`, "Bilinen açık noktalar"daki entegrasyon notları. Hepsi `local(entegrasyon):` commit'leri. `.env.development.local` git'te değil; betik yoksa oluşturur.
 - **Diğer yazma işlemleri gerçek veriye gider.** Satın alma, fatura, günlük rapor ve ticket kaydı gerçek kişilere bildirim üretir. Yerelde yalnızca okuma ile kontrol edilir.
 
 ## Kesin kurallar
@@ -2017,6 +2020,19 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   statik dosyaya taşındı.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
+
+- **Genel Bakış'ta 503 / "Failed to fetch" ve Hava Durumu "Veri alınamadı" (15.10.2026, entegrasyon duman testi; araştırma sonra).**
+  - İlk açılışta konsolda bir 503 ile `get_dashboard_summary` için "Failed to fetch" görüldü.
+  - İkinci denemede tekrarlanmadı; yalnızca geliştirme modundaki iptal edilen istekler (`ERR_ABORTED`) görüldü.
+  - Kart verileri tam yüklendi. Hava Durumu kartı her iki denemede de "Veri alınamadı" gösterdi.
+  - Muhtemel kaynak hava durumu servisi; doğrulanmadı.
+- **Onaylı yazan spec'ler canlı tablolarda iz bırakıyor (15.10.2026).**
+  - Karar 77 listesindeki bazı spec'ler kendi kayıtlarını oluşturup temizliyor, ama izleri canlıda kalıyor:
+    - `company-selector`: `financial_transactions`'a 2 kayıt açıp iptal ediyor (biri PV Solution, projesiz). Kayıtlar silinmiyor, çünkü tabloda istemci DELETE yolu yok.
+    - `user-management`: `user_management_audit`'e satır yazıyor.
+    - `category-weights`: TIZ ağırlıklarını aynı değerlerle yeniden yazıyor; satır kimlikleri değişiyor.
+  - **İş:** test admin hesabı açılınca (Karar 75 süzgeci ile) bu spec'ler yalnızca TIZ'e ve test hesaplarına yönlendirilecek. Projesiz PV Solution kaydı için ayrıca karar gerekiyor.
+- **Sihirbaz İş Kalemleri adımında yükleniyor göstergesi yok (küçük).** Düzenleme sihirbazında adım görevler yüklenene kadar kısa süre "Henüz görev yok" gösteriyor; veri doğru yükleniyor (TIZ 35 görev, 15.10.2026'da doğrulandı).
 
 - **Ayrı iş: 14.10.2026 F5 metni docx'lere işlenmedi.** Change, Claim ve Interface için hazırlanan değişiklik metni (`faz-a-proje-kontrol` dalında `docs/proje-kontrol/docx-guncelleme-14-10.md`) iki docx'e henüz işlenmedi. `feature/aylik-is-plani` dalında yapılmayacak (kullanıcı kararı, 15.10.2026).
 
