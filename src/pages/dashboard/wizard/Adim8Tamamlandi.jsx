@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { fetchProjectTaskLock } from '../../../utils/projectTaskLock'
 
 // Varsayılan (Proje Düzenleme'deki 6 adımlık akış — Riskler dahil). Yeni proje
 // oluşturma akışında (YeniProjeWizard.jsx) Riskler adımı yok — bu bileşene kendi
@@ -54,6 +55,25 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
     }
 
     let projectId
+
+    // İş kalemi kilidi (utils/projectTaskLock.js): düzenlemede görevler silinip yeniden
+    // yazılacaksa, önce projede bağımlılık/aylık plan/ilerleme/WBS/göreve bağlı kayıt var mı
+    // bakılır. Varsa HİÇBİR adım yazılmaz (proje bilgileri dahil), yarım kayıt oluşmaz.
+    // Adım 2 kilitli döndüyse (skipped) bu yola hiç girilmez; burası eski bir taslaktan gelen
+    // satırlara karşı ikinci kontrol.
+    if (isEdit) {
+      const taskStep = steps.find(s => s.table === 'project_tasks')
+      const taskRes  = taskStep ? stepsResult?.[taskStep.step] : null
+      if (taskRes && !taskRes.skipped && taskRes.rows?.length) {
+        const lock = await fetchProjectTaskLock(supabase, project.id)
+        if (lock.locked) {
+          savingRef.current = false
+          setStatus('error')
+          setErrorMsg(`${lock.message} Hiçbir değişiklik kaydedilmedi; İş Kalemleri adımına dönüp sayfayı yenileyin.`)
+          return
+        }
+      }
+    }
 
     if (!isEdit) {
       // Proje + kod tek işlemde (Karar 29, 35; F1 A1-A3 14.10.2026). Hata mesajı fonksiyonun hint alanında.
@@ -212,7 +232,7 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
                 <span style={{ fontSize: 15 }}>{done ? (res.skipped ? '⊘' : '✓') : '○'}</span>
                 <span style={{ fontSize: 13, fontWeight: 600, color: done ? (res.skipped ? '#94a3b8' : '#166534') : '#64748b' }}>{label}</span>
                 <span style={{ fontSize: 12, marginLeft: 'auto', color: done ? (res.skipped ? '#94a3b8' : '#15803d') : '#94a3b8' }}>
-                  {done ? (res.skipped ? 'yetki proje yöneticisinde' : (res.completed ? 'tamamlandı' : `${res.count} kayıt`)) : 'ziyaret edilmedi'}
+                  {done ? (res.locked ? 'kilitli — kaydedilmeyecek' : res.skipped ? 'yetki proje yöneticisinde' : (res.completed ? 'tamamlandı' : `${res.count} kayıt`)) : 'ziyaret edilmedi'}
                 </span>
               </div>
             )

@@ -9,6 +9,7 @@ import Adim5Tedarik             from './Adim5Tedarik'
 import Adim6Butce               from './Adim6Butce'
 import Adim8Tamamlandi          from './Adim8Tamamlandi'
 import { projectWizardDraftKey, loadProjectWizardDraft, saveProjectWizardDraft, clearProjectWizardDraft } from '../../../utils/projectWizardDraft'
+import { fetchProjectTaskLock, taskLockMessage } from '../../../utils/projectTaskLock'
 
 const TABLE_MAP = {
   2: 'project_tasks',
@@ -62,14 +63,29 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
   const goNext = () => setStep(s => s + 1)
   const goBack = () => setStep(s => s - 1)
 
-  function showToast(msg, ok = true) {
+  function showToast(msg, ok = true, ms = 3000) {
     setToast({ msg, ok })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), ms)
   }
 
   async function directSave(stepNo, result) {
     setSaving(true)
     try {
+      // İş kalemi kilidi (utils/projectTaskLock.js): görevler silinip yeniden yazılmadan önce
+      // projede bağımlılık, aylık plan, ilerleme, WBS veya göreve bağlı kayıt var mı bakılır.
+      // Adım kilitli olarak döndüyse (result.locked) ya da eski bir taslaktan satır geldiyse
+      // ama proje artık kilitliyse hiçbir şey yazılmaz.
+      if (stepNo === 2 && result.locked) {
+        showToast(result.lockMessage || taskLockMessage({ locked: true, reasons: [] }), false, 10000)
+        return
+      }
+      if (stepNo === 2 && !result.skipped && result.rows?.length) {
+        const lock = await fetchProjectTaskLock(supabase, projectId)
+        if (lock.locked) {
+          showToast(lock.message, false, 10000)
+          return
+        }
+      }
       if (stepNo === 1) {
         const n = v => (v !== '' && v != null ? Number(v) : null)
         const payload = {
