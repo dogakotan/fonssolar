@@ -1,5 +1,7 @@
 import { useState, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { GorevKayitOnizleme } from './GorevKayitOnizleme'
+import { callSaveProjectTasks } from './saveProjectTasks'
 
 // Varsayılan (Proje Düzenleme'deki 6 adımlık akış — Riskler dahil). Yeni proje
 // oluşturma akışında (YeniProjeWizard.jsx) Riskler adımı yok — bu bileşene kendi
@@ -25,7 +27,39 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
   const isEdit = mode === 'edit'
   const step1  = stepsResult?.[1] ?? {}
 
+  const tasksStep   = steps.find(x => x.table === 'project_tasks')
+  const weightsStep = steps.find(x => x.rpc === 'save_project_category_weights')
+  const tasksRes    = tasksStep ? stepsResult?.[tasksStep.step] : null
+  const weightsRes  = weightsStep ? stepsResult?.[weightsStep.step] : null
+  const tasksUsable   = Boolean(tasksRes && !tasksRes.skipped && tasksRes.rows?.length)
+  const weightsUsable = Boolean(weightsRes && !weightsRes.skipped && weightsRes.rows?.length)
+  const [preview, setPreview] = useState(null) // { report, errorItems, error }
+
+  function fail(msg) {
+    savingRef.current = false
+    setStatus('error')
+    setErrorMsg(msg)
+  }
+
+  // Düzenlemede görev listesi önce önizlenir (Ç-B, Karar 59); yeni projede bütün satırlar eklenir, önizleme gerekmez.
   async function handleSave() {
+    if (savingRef.current) return
+    setErrorMsg(null)
+    if (isEdit && tasksUsable) {
+      savingRef.current = true
+      setStatus('saving')
+      const r = await callSaveProjectTasks(project.id, tasksRes.rows, { dryRun: true, weights: weightsUsable ? weightsRes.rows : null })
+      savingRef.current = false
+      setStatus('idle')
+      if (!r.missing) {
+        setPreview({ report: r.data || null, errorItems: r.items, error: r.error || null })
+        return
+      }
+    }
+    await doSave()
+  }
+
+  async function doSave() {
     if (savingRef.current) return
     savingRef.current = true
     setStatus('saving')
@@ -56,34 +90,49 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
     let projectId
 
     if (!isEdit) {
-      // Proje + kod tek işlemde (Karar 29, 35; F1 A1-A3 14.10.2026). Hata mesajı fonksiyonun hint alanında.
-      const { data: created, error } = await supabase.rpc('create_project_with_code', {
+      // Proje + kod tek işlemde (Karar 29, 35). Fonksiyon yoksa (Faz 1 migration'ı öncesi) eski doğrudan ekleme.
+      const { data: created, error: rpcErr } = await supabase.rpc('create_project_with_code', {
         p_project: { ...projectPayload, id: step1.id }, p_code: step1.code,
       })
-      if (error) {
-        savingRef.current = false
-        setStatus('error')
-        setErrorMsg(error.hint || error.message)
-        return
+      if (rpcErr && (rpcErr.code === 'PGRST202' || /could not find the function/i.test(rpcErr.message || ''))) {
+        const { data, error } = await supabase.from('projects').insert([{ ...projectPayload, id: step1.id }]).select().single()
+        if (error) {
+          return fail(error.code === '23505'
+            ? `"${step1.id}" ID'siyle bir proje zaten mevcut. Geri dönüp farklı bir ID girin.`
+            : error.message)
+        }
+        projectId = data.id
+      } else if (rpcErr) {
+        return fail(rpcErr.hint || rpcErr.message)
+      } else {
+        projectId = created.id
       }
-      projectId = created.id
     } else {
       projectId = project.id
       const { error } = await supabase
         .from('projects')
         .update(projectPayload)
         .eq('id', projectId)
-      if (error) {
-        savingRef.current = false
-        setStatus('error')
-        setErrorMsg(error.message)
-        return
+      if (error) return fail(error.message)
+    }
+
+    // Görevler ve kategori ağırlıkları tek işlemde (ağırlıksız kategori kontrolü commit anında, Karar 56)
+    let tasksDone = false
+    let weightsDone = false
+    if (tasksUsable) {
+      const r = await callSaveProjectTasks(projectId, tasksRes.rows, { dryRun: false, weights: weightsUsable ? weightsRes.rows : null })
+      if (r.error) {
+        setPreview(p => (p ? { ...p, error: r.error, errorItems: r.items } : p))
+        return fail(`${tasksStep.label} kaydedilirken hata: ${r.error}`)
       }
+      if (!r.missing) { tasksDone = true; weightsDone = weightsUsable }
     }
 
     for (const { step, table, rpc, label } of steps) {
       const res = stepsResult?.[step]
       if (!res || res.skipped) continue
+      if (table === 'project_tasks' && tasksDone) continue
+      if (rpc === 'save_project_category_weights' && weightsDone) continue
 
       if (rpc) {
         // Tedarik onayı isteğe bağlı (Karar 88): yalnızca PM gerçekten onayladıysa çağrılır.
@@ -92,37 +141,23 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
           ? { p_project_id: projectId, p_completed: res.completed === true }
           : { p_project_id: projectId, p_weights: res.rows }
         const { error: rpcError } = await supabase.rpc(rpc, params)
-        if (rpcError) {
-          savingRef.current = false
-          setStatus('error')
-          setErrorMsg(`${label} kaydedilirken hata: ${rpcError.message}`)
-          return
-        }
+        if (rpcError) return fail(`${label} kaydedilirken hata: ${rpcError.message}`)
         continue
       }
 
       if (!res.rows?.length) continue
 
+      // Eski yol (görevler için yalnızca save_project_tasks yoksa; riskler ve bütçe bugünkü gibi)
       if (isEdit) {
         const { error: delErr } = await supabase.from(table).delete().eq('project_id', projectId)
-        if (delErr) {
-          savingRef.current = false
-          setStatus('error')
-          setErrorMsg(`${label} silinirken hata: ${delErr.message}`)
-          return
-        }
+        if (delErr) return fail(`${label} silinirken hata: ${delErr.message}`)
       }
-
-      const rowsWithId = res.rows.map(r => ({ ...r, project_id: projectId }))
+      const rowsWithId = res.rows.map(({ id: _omit, ...r }) => ({ ...r, project_id: projectId }))
       const { error: insErr } = await supabase.from(table).insert(rowsWithId)
-      if (insErr) {
-        savingRef.current = false
-        setStatus('error')
-        setErrorMsg(`${label} kaydedilirken hata: ${insErr.message}`)
-        return
-      }
+      if (insErr) return fail(`${label} kaydedilirken hata: ${insErr.message}`)
     }
 
+    setPreview(null)
     setSavedId(projectId)
     setSavedName(step1.name)
     setStatus('done')
@@ -219,6 +254,11 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
           })}
         </div>
       </div>
+
+      {preview && (
+        <GorevKayitOnizleme report={preview.report} errorItems={preview.errorItems} error={preview.error}
+          busy={status === 'saving'} onClose={() => setPreview(null)} onConfirm={doSave} />
+      )}
 
       <div style={{ display: 'none' }}>
         <button

@@ -59,6 +59,7 @@ export default function TabProjeYonetimi({ onViewProject }) {
   const [importState,   setImportState]   = useState('idle')   // 'idle' | 'importing'
   const [importError,   setImportError]   = useState(null)
   const [importConflict, setImportConflict] = useState(null)   // { file, existingId, existingName } | null
+  const [duplicateCode, setDuplicateCode] = useState('')
   const fileInputRef = useRef(null)
 
   const [toast, setToast] = useState(null)
@@ -175,10 +176,12 @@ export default function TabProjeYonetimi({ onViewProject }) {
   // "yeni kopya olarak yükle" seçene kadar hiçbir veri değişmez (2026-07-30'da
   // bulunan bug: eskiden "Yeni Proje" butonu aynı ID'yle sessizce mevcut
   // projeyi güncelliyordu, kullanıcı yeni bir proje oluştuğunu sanıyordu).
-  async function runImport(file, mode) {
+  // Kopya yeni proje kodu ister (Karar 57; prefix UNIQUE). Kod, köprüye üçüncü argüman olarak verilir ve
+  // form alanı "code" ile edge function'a gider (projectExcelBridge.js değişikliği: faz1-adim5-tasarim.md Ek A).
+  async function runImport(file, mode, code = null) {
     setImportState('importing')
     try {
-      const result = await importProjectExcel(file, mode)
+      const result = await importProjectExcel(file, mode, code)
       setImportState('idle')
       setImportConflict(null)
       const label = result?.duplicated
@@ -425,9 +428,20 @@ export default function TabProjeYonetimi({ onViewProject }) {
               >
                 Mevcut projeyi güncelle
               </button>
+              <label style={{ display: 'grid', gap: 4, fontSize: 12, fontWeight: 700, color: 'var(--color-text-sub)', marginTop: 4 }}>
+                Kopya için yeni proje kodu
+                <input
+                  value={duplicateCode}
+                  maxLength={5}
+                  placeholder="ör. DYB2"
+                  onChange={e => setDuplicateCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                  style={{ border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'inherit' }}
+                />
+                <span style={{ fontWeight: 400, color: 'var(--color-muted)' }}>2-5 karakter, harfle başlar (aslının kodu kullanılamaz)</span>
+              </label>
               <button
-                onClick={() => runImport(importConflict.file, 'duplicate')}
-                disabled={importState === 'importing'}
+                onClick={() => runImport(importConflict.file, 'duplicate', duplicateCode)}
+                disabled={importState === 'importing' || !/^[A-Z][A-Z0-9]{1,4}$/.test(duplicateCode)}
                 style={{ background: 'var(--color-surface)', color: 'var(--color-text)', border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '10px 16px', fontSize: 13, fontWeight: 700, cursor: importState === 'importing' ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
               >
                 Yeni bir kopya olarak yükle

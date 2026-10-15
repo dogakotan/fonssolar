@@ -1,12 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
-import ExcelJS from 'exceljs'
+import { Fragment, useState, useEffect, useRef } from 'react'
 import { AGENTS, getAgentById, getTabConfig } from './agentConfig'
 import { fetchTabContext } from './agentContext'
 import { supabase } from '../../lib/supabase'
-
-const GEMINI_KEY   = import.meta.env.VITE_GEMINI_API_KEY
-const GEMINI_MODEL = 'gemini-2.0-flash'
-const GEMINI_URL   = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`
 
 const TAB_LABEL = {
   genel:        'Genel Bakış',
@@ -20,9 +15,15 @@ const TAB_LABEL = {
 }
 
 // ─── Dosya tipi ───────────────────────────────────────────────────────────────
-const ACCEPTED = '.pdf,.xlsx,.xls,.csv,.jpg,.jpeg,.png'
+const ACCEPTED = '.pdf,.xlsx,.csv,.jpg,.jpeg,.png,.webp,.gif'
 const IMG_TYPES  = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const PDF_TYPE   = 'application/pdf'
+const MAX_FILE_SIZE_BYTES = 12 * 1024 * 1024
+const MAX_CHAT_MESSAGES = 40
+const MAX_REQUEST_BODY_BYTES = 17 * 1024 * 1024
+const MAX_TEXT_LENGTH = 100_000
+const MAX_FILE_TEXT_LENGTH = MAX_TEXT_LENGTH - 512
+const MAX_SYSTEM_PROMPT_LENGTH = 100_000
 
 // ─── Dosya → base64 ───────────────────────────────────────────────────────────
 function fileToBase64(file) {
@@ -82,6 +83,7 @@ function excelToText(file) {
           })
           if (data.length > 60) lines.push(`_(... ${data.length - 60} satır daha)_`)
         } else {
+          const { default: ExcelJS } = await import('exceljs')
           const wb = new ExcelJS.Workbook()
           await wb.xlsx.load(e.target.result)
           wb.worksheets.slice(0, 3).forEach(ws => {
@@ -96,7 +98,10 @@ function excelToText(file) {
             if (data.length > 60) lines.push(`_(... ${data.length - 60} satır daha)_`)
           })
         }
-        resolve(lines.join('\n'))
+        const output = lines.join('\n')
+        resolve(output.length > MAX_FILE_TEXT_LENGTH
+          ? `${output.slice(0, MAX_FILE_TEXT_LENGTH)}\n_(Dosya içeriği 100.000 karakterlik aktarım sınırı nedeniyle kısaltıldı.)_`
+          : output)
       } catch (err) {
         reject(err)
       }
@@ -146,28 +151,29 @@ function toGeminiPart(block) {
 
 // ─── Gemini API ───────────────────────────────────────────────────────────────
 async function callGemini(systemPrompt, messages) {
-  const contents = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: Array.isArray(m.content) ? m.content.map(toGeminiPart) : [{ text: m.content || '' }],
-  }))
+  let requestMessages = messages
+  let body = null
+  const encoder = new TextEncoder()
 
-  const res = await fetch(GEMINI_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents,
-      generationConfig: { maxOutputTokens: 1500, temperature: 0.7 },
-    }),
-  })
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `Gemini API hatası: ${res.status}`)
+  while (requestMessages.length > 0) {
+    const contents = requestMessages.map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: Array.isArray(m.content) ? m.content.map(toGeminiPart) : [{ text: m.content || '' }],
+    }))
+    body = { systemPrompt, contents }
+    if (encoder.encode(JSON.stringify(body)).byteLength <= MAX_REQUEST_BODY_BYTES) break
+    if (requestMessages.length <= 1) {
+      throw new Error('Bu mesaj istek boyutu sınırını aşıyor. Daha küçük bir dosya ekleyin veya yeni sohbet başlatın.')
+    }
+    // Geçmiş user/model çiftleri halinde tutulur; en yenideki kullanıcı mesajı korunur.
+    requestMessages = requestMessages.slice(2)
   }
 
-  const data = await res.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || ''
+  const { data, error } = await supabase.functions.invoke('agent-chat', {
+    body,
+  })
+  if (error) throw new Error(error.message || 'Gemini API request failed')
+  return data?.text || ''
 }
 
 function greeting(agent) {
@@ -175,11 +181,30 @@ function greeting(agent) {
 }
 
 function renderMd(text) {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^### (.+)$/gm, '<strong style="display:block;margin-top:6px;color:#185FA5">$1</strong>')
-    .replace(/\n/g, '<br/>')
+  const renderInline = line => line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>
+    }
+    if (part.startsWith('*') && part.endsWith('*')) {
+      return <em key={index}>{part.slice(1, -1)}</em>
+    }
+    return part
+  })
+
+  const lines = String(text ?? '').split('\n')
+  return lines.map((line, index) => {
+    const isHeading = line.startsWith('### ')
+    const content = isHeading
+      ? <strong style={{ display: 'block', marginTop: 6, color: '#185FA5' }}>{renderInline(line.slice(4))}</strong>
+      : renderInline(line)
+
+    return (
+      <Fragment key={index}>
+        {content}
+        {index < lines.length - 1 && <br />}
+      </Fragment>
+    )
+  })
 }
 
 // ─── Dosya ikonu ──────────────────────────────────────────────────────────────
@@ -251,9 +276,9 @@ export default function AgentChat({ activeTab, onClose, projectId, selectedDate 
   function handleFileChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    // 20 MB limit
-    if (file.size > 20 * 1024 * 1024) {
-      setErr('Dosya 20 MB\'den büyük olamaz.')
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setErr('Dosya 12 MB\'den büyük olamaz.')
+      e.target.value = ''
       return
     }
     setAttachedFile(file)
@@ -283,7 +308,7 @@ export default function AgentChat({ activeTab, onClose, projectId, selectedDate 
       const liveContext = await fetchTabContext(activeTab, projectId, selectedDate)
 
       // 2. System prompt
-      const systemPrompt = `${activeAgent.systemPrompt}
+      let systemPrompt = `${activeAgent.systemPrompt}
 
 Aktif sekme: ${TAB_LABEL[activeTab] || activeTab}
 Proje ID: ${projectId || 'genel'}
@@ -297,6 +322,9 @@ Kullanıcı bir belge/fotoğraf eklediyse:
 - Somut, eyleme dönük bulgular sun
 
 Yanıtların net ve yapılandırılmış olsun (başlıklar kullanabilirsin).${liveContext}`
+      if (systemPrompt.length > MAX_SYSTEM_PROMPT_LENGTH) {
+        systemPrompt = `${systemPrompt.slice(0, MAX_SYSTEM_PROMPT_LENGTH - 128).trimEnd()}\n\n[Canlı proje bağlamı 100.000 karakter sınırı nedeniyle kısaltıldı.]`
+      }
 
       // 3. Claude'a gönderilecek mesaj içeriği
       let userContent = []
@@ -320,16 +348,19 @@ Yanıtların net ve yapılandırılmış olsun (başlıklar kullanabilirsin).${l
         ? userContent[0].text
         : userContent
       }
-      const newHistory = [...history, historyMsg]
-      setHistory(newHistory)
+      // Keep complete user/model pairs and leave room for this turn's reply.
+      const newHistory = [...history.slice(-(MAX_CHAT_MESSAGES - 2)), historyMsg]
 
       const reply = await callGemini(systemPrompt, newHistory)
       lastAssistantRef.current = reply
 
       setMessages(m => [...m, { id: Date.now() + 1, role: 'assistant', content: reply }])
-      setHistory(h => [...h, { role: 'assistant', content: reply }])
+      setHistory([...newHistory, { role: 'assistant', content: reply }])
     } catch (e) {
       setErr(e.message)
+      setInput(current => current || text)
+      if (currentFile) setAttachedFile(current => current || currentFile)
+      setMessages(current => current.filter(message => !(message.id === userMsg.id && message.role === 'user')))
     } finally {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
@@ -463,9 +494,9 @@ Yanıtların net ve yapılandırılmış olsun (başlıklar kullanabilirsin).${l
                 <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0, background: `${activeAgent.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
                   {activeAgent.icon}
                 </div>
-                <div style={{ background: '#F3F4F6', borderRadius: '0 12px 12px 12px', padding: '8px 12px', fontSize: 13, lineHeight: 1.55, color: '#111827' }}
-                  dangerouslySetInnerHTML={{ __html: renderMd(m.content) }}
-                />
+                <div style={{ background: '#F3F4F6', borderRadius: '0 12px 12px 12px', padding: '8px 12px', fontSize: 13, lineHeight: 1.55, color: '#111827' }}>
+                  {renderMd(m.content)}
+                </div>
               </div>
             )}
             {m.role === 'user' && (
@@ -532,7 +563,7 @@ Yanıtların net ve yapılandırılmış olsun (başlıklar kullanabilirsin).${l
         />
         <button
           onClick={() => fileInputRef.current?.click()}
-          title="Dosya ekle (PDF, Excel, Fotoğraf)"
+          title="Dosya ekle (PDF, XLSX, CSV, JPG, PNG, WEBP, GIF)"
           style={{
             width: 34, height: 34, borderRadius: 8, flexShrink: 0,
             background: attachedFile ? '#EFF6FF' : '#F9FAFB',
@@ -548,6 +579,8 @@ Yanıtların net ve yapılandırılmış olsun (başlıklar kullanabilirsin).${l
         <textarea
           ref={inputRef}
           value={input}
+          maxLength={MAX_TEXT_LENGTH}
+          title="Mesaj en fazla 100.000 karakter olabilir"
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKey}
           placeholder={attachedFile ? 'Dosya hakkında soru sor (opsiyonel)…' : `${activeAgent.short}'a sor…`}

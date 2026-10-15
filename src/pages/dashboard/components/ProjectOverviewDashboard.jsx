@@ -244,16 +244,6 @@ function DetailRow({ label, value, tone }) {
   )
 }
 
-function SummaryLine({ icon, label, value }) {
-  return (
-    <div className="project-summary-line">
-      <span className="project-summary-icon">{icon}</span>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  )
-}
-
 function LinkButton({ children, onClick }) {
   return (
     <button type="button" className="project-card-link" onClick={onClick}>

@@ -72,6 +72,7 @@ function normalizeMachineType(value) {
 }
 
 const DAILY_REPORT_ERROR_RULES = [
+  { match: 'İptal edilmiş göreve ilerleme girilemez', message: 'İptal edilmiş bir göreve ilerleme girilemez. Görevi yeniden açmak için admin veya proje yöneticisine başvurun.' },
   { match: 'general_status', message: 'Genel durum geçersiz. Lütfen listeden seçin.' },
   // Bu iki kural gerçek Postgres constraint adlarıyla eşleşir — sıra önemli:
   // report_machine_unique (aynı makine türü tekrar eklendi) status_check'ten
@@ -439,6 +440,9 @@ export default function DailyReportForm({ reportId: initialReportId, onBack, onS
           .select('id, task_name, unit, target_qty, total_progress, category, planned_start, planned_end, status')
           .eq('project_id', effectiveProjectId)
           .gt('target_qty', 0)
+          // İptal göreve ilerleme girilemez (Karar 44; DB de reddeder). Eski raporda iptal görevin satırı varsa
+          // save_daily_report onu korur (AID A8c), bu yüzden listeden çıkarmak veri kaybettirmez.
+          .neq('status', 'iptal')
           .order('planned_start'),
         supabase.from('daily_reports')
           .select('id', { count: 'exact', head: true })

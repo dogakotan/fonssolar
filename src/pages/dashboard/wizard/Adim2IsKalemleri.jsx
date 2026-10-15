@@ -122,7 +122,19 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
     if (rows.length === 0) { onDone({ skipped: true, count: 0 }); return }
     const invalid = rows.filter(r => !r.task_name?.trim())
     if (invalid.length > 0) { setError('Her satırda "Görev Adı" zorunludur.'); return }
-    const payload = rows.map(({ _id, id, created_at, tracking, ...r }) => {
+    // Görev kodu zorunlu ve projede tekil (Karar 59): kayıt görevleri id, yoksa koda göre eşleştirir.
+    const noCode = rows.findIndex(r => !String(r.task_code || '').trim())
+    if (noCode >= 0) { setError(`Görev #${noCode + 1}: "Görev Kodu" zorunludur.`); return }
+    const seen = new Map()
+    for (const [i, r] of rows.entries()) {
+      const k = String(r.task_code).trim()
+      if (seen.has(k)) { setError(`Görev kodu tekrar ediyor: ${k} (Görev #${seen.get(k) + 1} ve #${i + 1}).`); return }
+      seen.set(k, i)
+    }
+    // id korunur (düzenlemede eşleşme anahtarı); disiplin/alan/WBS/Activity ID yüke konmaz — İş Planı'ndan yönetilir
+    // ve save_project_tasks yükte olmayan kolonu olduğu gibi bırakır. group_label ve responsible_role korunur
+    // (12.10.2026 bulgusu: eski yük group_label'ı siliyordu).
+    const payload = rows.map(({ _id, created_at, tracking, ...r }) => {
       const isIlerleme = tracking === 'ilerleme'
       const targetQty = isIlerleme && r.target_qty !== '' ? Number(r.target_qty) : 0
       const totalProgress = isIlerleme && r.total_progress !== '' ? Number(r.total_progress) : 0
@@ -136,8 +148,8 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
         : r.status
 
       return {
-        project_id:      projectId,
-        task_code:       r.task_code       || null,
+        ...(r.id ? { id: r.id } : {}),
+        task_code:       String(r.task_code).trim(),
         task_name:       r.task_name,
         category:        r.category,
         sub_category:    r.sub_category    || null,
@@ -146,6 +158,8 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
         progress_pct:    progressPct,
         status,
         responsible:     r.responsible     || null,
+        responsible_role: r.responsible_role || null,
+        group_label:     r.group_label     || null,
         team_size:       r.team_size !== '' ? Number(r.team_size) : null,
         equipment_notes: r.equipment_notes || null,
         notes:           r.notes           || null,
@@ -215,7 +229,7 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.75rem' }}>
               <div>
-                <label style={lbl}>Görev Kodu</label>
+                <label style={lbl}>Görev Kodu <span style={{ color: '#ef4444' }}>*</span></label>
                 <input style={inp} value={row.task_code} onChange={e => upd(row._id, 'task_code', e.target.value)} placeholder="T001" />
               </div>
               <div style={{ gridColumn: 'span 2' }}>

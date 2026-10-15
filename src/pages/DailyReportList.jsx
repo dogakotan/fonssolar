@@ -454,8 +454,10 @@ export default function DailyReportList({ onNewReport, onEditReport, projectId: 
         const a = document.createElement('a')
         a.href = url
         a.download = `gunluk-rapor-${exportProjectId}-${reportDate}.pdf`
+        document.body.appendChild(a)
         a.click()
-        URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
         return
       }
       if (type === 'excel') {

@@ -3,6 +3,10 @@ import { supabase } from '../../../lib/supabase'
 import { StatusDot } from '../../../components/ui/Badge'
 import { TONE } from '../../../components/ui/StatusBadge'
 import { buildGroupTree, collectNodeTasks, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
+import { useProjectStructure } from '../../../hooks/useProjectStructure'
+import { wbsAreaErrorMessage } from '../../../utils/wbsAreaErrors'
+import { GorevDuzenleModal, IptalModal, KodAtaModal, TopluAtaModal } from './is-plani/GorevSiniflandirmaModals'
+import { MAX_SELECTION } from './is-plani/modalStyles'
 
 // Adim2IsKalemleri.jsx'teki wizard durum düzenleyicisiyle aynı 5 değer —
 // yalnız target_qty'si olmayan (miktarla ölçülemeyen, kilometre taşı) iş
@@ -108,11 +112,12 @@ const TH = {
 }
 const TD = { padding: '6px 7px', fontSize: 11.5, color: 'var(--color-text)', whiteSpace: 'nowrap', borderTop: '1px solid var(--color-border)' }
 const BASE_COLUMN_COUNT = 12
+const STRUCTURE_COLUMN_COUNT = 4 // Activity ID, Disiplin, Alan, WBS (Faz 1 Adım 5)
 
 // Tablo satırı içine sığan, kutu/etiket olmayan sade bir durum seçici —
 // TabIsPlan.jsx'teki (Gantt detay panelindeki) MilestoneStatusControl'ün
 // aynı RPC'yi (set_task_milestone_status) çağıran, satır-içi sıkıştırılmış hâli.
-function InlineMilestoneStatus({ task, onSaved }) {
+function InlineMilestoneStatus({ task, onSaved, canCancel = false }) {
   const [status, setStatus] = useState(task.status)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -131,7 +136,7 @@ function InlineMilestoneStatus({ task, onSaved }) {
     })
     setSaving(false)
     if (rpcError) {
-      setError(rpcError.message || 'Durum güncellenemedi.')
+      setError(wbsAreaErrorMessage(rpcError) || 'Durum güncellenemedi.')
       setStatus(previous)
       return
     }
@@ -150,8 +155,9 @@ function InlineMilestoneStatus({ task, onSaved }) {
           color: 'var(--color-text)', background: '#fff', cursor: saving ? 'wait' : 'pointer',
         }}
       >
-        {MILESTONE_STATUS_OPTIONS.map(opt => (
-          <option key={opt.v} value={opt.v}>{opt.l}</option>
+        {/* İptal seçeneği yalnızca admin/PM (Karar 44); DB de bunu zorunlu kılar */}
+        {MILESTONE_STATUS_OPTIONS.filter(opt => opt.v !== 'iptal' || canCancel || status === 'iptal').map(opt => (
+          <option key={opt.v} value={opt.v} disabled={opt.v === 'iptal' && !canCancel}>{opt.l}</option>
         ))}
       </select>
       {error && <p style={{ margin: '3px 0 0', fontSize: 9.5, color: 'var(--color-danger)', fontWeight: 600, whiteSpace: 'normal' }}>{error}</p>}
@@ -303,13 +309,28 @@ function buildDetayRows(node, ctx) {
 }
 
 function buildDetayTaskRow(task, depth, ctx) {
-  const { canAddProgress, setProgressTask, onProgressSaved } = ctx
+  const { canAddProgress, setProgressTask, onProgressSaved, structureOn, canManage, selected, toggleSelect, disciplineLabel, setEditTask, setCancelTask } = ctx
   const sapma = task._sapma ?? null
   const duration = task.duration_days || daysBetween(task.planned_start, task.planned_end)
   const isLate = sapma !== null && sapma > 0 && task.status !== 'tamamlandi' && task.status !== 'iptal' && !task.actual_end
+  const cancelled = task.status === 'iptal'
+  const rowStyle = cancelled ? { opacity: 0.55, textDecoration: 'line-through' } : undefined
   return (
-    <tr key={task.id}>
+    <tr key={task.id} style={rowStyle} data-task-code={task.task_code}>
+      {structureOn && canManage && (
+        <td style={{ ...TD, textDecoration: 'none' }}>
+          {!cancelled && <input type="checkbox" checked={selected.has(task.id)} onChange={() => toggleSelect(task.id)} aria-label={`${task.task_code} seç`} />}
+        </td>
+      )}
       <td style={TD}><span style={{ fontWeight: 700 }}>{task.task_code || '-'}</span></td>
+      {structureOn && (
+        <>
+          <td style={TD}>{task.activity_id ? <span style={{ fontWeight: 700, color: 'var(--color-primary)' }}>{task.activity_id}</span> : <span style={{ color: 'var(--color-muted-light)' }}>—</span>}</td>
+          <td style={TD}>{task.discipline ? disciplineLabel(task.discipline) : '—'}{task.activity_id && task.discipline ? ' 🔒' : ''}</td>
+          <td style={TD}>{task.area_code || '—'}{task.activity_id && task.area_code ? ' 🔒' : ''}</td>
+          <td style={TD}>{task.wbs_code || '—'}</td>
+        </>
+      )}
       <td style={{ ...TD, whiteSpace: 'normal', minWidth: 160, paddingLeft: 7 + (depth + 1) * GROUP_INDENT_PX }}>
         {task.task_name || '-'}
         {task.sub_category && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--color-muted)' }}>· {task.sub_category}</span>}
@@ -325,9 +346,15 @@ function buildDetayTaskRow(task, depth, ctx) {
       <td style={TD}>%{Math.round(Number(task.progress_pct || 0))}</td>
       <td style={TD}><StatusDot map={TASK_STATUS} value={task.status} /></td>
       <td style={{ ...TD, whiteSpace: 'normal', maxWidth: 180, color: 'var(--color-text-sub)' }} title={task.notes || ''}>{task.notes || '—'}</td>
-      {canAddProgress && (
-        <td style={{ ...TD, whiteSpace: 'normal' }}>
-          {Number(task.target_qty || 0) > 0 ? (
+      {(canAddProgress || canManage) && (
+        <td style={{ ...TD, whiteSpace: 'normal', textDecoration: 'none' }}>
+          {canManage && (
+            <span style={{ display: 'inline-flex', gap: 4, marginRight: 6 }}>
+              {!cancelled && <button type="button" onClick={() => setEditTask(task)} style={ACTION_BTN}>Sınıflandır</button>}
+              <button type="button" onClick={() => setCancelTask(task)} style={{ ...ACTION_BTN, color: cancelled ? 'var(--color-primary)' : 'var(--color-danger)' }}>{cancelled ? 'Yeniden aç' : 'İptal et'}</button>
+            </span>
+          )}
+          {!canAddProgress || cancelled ? null : Number(task.target_qty || 0) > 0 ? (
             <button
               type="button"
               onClick={() => setProgressTask(task)}
@@ -341,12 +368,17 @@ function buildDetayTaskRow(task, depth, ctx) {
               + İlerleme Gir
             </button>
           ) : (
-            <InlineMilestoneStatus task={task} onSaved={onProgressSaved} />
+            <InlineMilestoneStatus task={task} onSaved={onProgressSaved} canCancel={canManage} />
           )}
         </td>
       )}
     </tr>
   )
+}
+
+const ACTION_BTN = {
+  border: '1px solid var(--color-border-md)', borderRadius: 6, padding: '3px 7px', background: '#fff',
+  fontFamily: 'inherit', fontSize: 10.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', color: 'var(--color-text-sub)',
 }
 
 // "Genel İş Planı" (Gantt) yalnızca hem planned_start hem planned_end'i olan
@@ -356,27 +388,53 @@ function buildDetayTaskRow(task, depth, ctx) {
 // Gruplama/aç-kapa Gantt'la aynı görsel dili (.gantt-group-row/tone-*) ve aynı
 // grup sırasını (GROUP_ORDER → bilinmeyenler en erken plan tarihine göre → _diğer
 // en sonda) paylaşır — kullanıcı iki görünüm arasında geçince aynı bölümleri tanır.
-export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddProgress = false, onProgressSaved }) {
+export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddProgress = false, onProgressSaved, projectId = null, canManage = false, isAdmin = false }) {
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [sortBy, setSortBy] = useState('plan_start')
   const [collapsed, setCollapsed] = useState(new Set())
   const [progressTask, setProgressTask] = useState(null)
-  const columnCount = canAddProgress ? BASE_COLUMN_COUNT + 1 : BASE_COLUMN_COUNT
+  // Faz 1 Adım 5: proje yapısı (disiplin/alan/WBS) ve Activity ID. Faz 1 tabloları yoksa (structure.available
+  // false) bu kolonlar ve işlemler gizlenir.
+  const structure = useProjectStructure(projectId)
+  const structureOn = Boolean(projectId && structure.available)
+  const manageOn = Boolean(canManage && structureOn)
+  const [disciplineFilter, setDisciplineFilter] = useState('all')
+  const [areaFilter, setAreaFilter] = useState('all')
+  const [wbsFilter, setWbsFilter] = useState('all')
+  const [onlyWithoutId, setOnlyWithoutId] = useState(false)
+  const [showCancelled, setShowCancelled] = useState(false)
+  const [selected, setSelected] = useState(() => new Set())
+  const [editTask, setEditTask] = useState(null)
+  const [cancelTask, setCancelTask] = useState(null)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [assignTasks, setAssignTasks] = useState(null)
+  const [flash, setFlash] = useState('')
+  const columnCount = BASE_COLUMN_COUNT
+    + (canAddProgress || manageOn ? 1 : 0)
+    + (structureOn ? STRUCTURE_COLUMN_COUNT : 0)
+    + (manageOn ? 1 : 0)
+  const disciplineLabel = key => structure.disciplines.find(d => d.discipline === key)?.label_tr || key
 
   const filteredRows = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('tr-TR')
     return tasks.filter(task => {
       if (groupFilter !== 'all' && resolveGroup(task) !== groupFilter) return false
       if (statusFilter !== 'all' && task.status !== statusFilter) return false
+      // İptal görevler varsayılan gizli; "İptalleri göster" ya da durum filtresi "İptal" ile görünür
+      if (task.status === 'iptal' && !showCancelled && statusFilter !== 'iptal') return false
+      if (disciplineFilter !== 'all' && (task.discipline || '') !== (disciplineFilter === '-' ? '' : disciplineFilter)) return false
+      if (areaFilter !== 'all' && (task.area_id || '') !== (areaFilter === '-' ? '' : areaFilter)) return false
+      if (wbsFilter !== 'all' && (task.wbs_id || '') !== (wbsFilter === '-' ? '' : wbsFilter)) return false
+      if (onlyWithoutId && task.activity_id) return false
       if (term) {
-        const hay = `${task.task_code || ''} ${task.task_name || ''}`.toLocaleLowerCase('tr-TR')
+        const hay = `${task.task_code || ''} ${task.task_name || ''} ${task.activity_id || ''}`.toLocaleLowerCase('tr-TR')
         if (!hay.includes(term)) return false
       }
       return true
     }).map(task => ({ task, sapma: computeSapma(task, today) }))
-  }, [tasks, search, groupFilter, statusFilter, today])
+  }, [tasks, search, groupFilter, statusFilter, today, showCancelled, disciplineFilter, areaFilter, wbsFilter, onlyWithoutId])
 
   // Gantt'ın (Genel İş Planı) kullandığı ÇOK SEVİYELİ ağaç burada da birebir
   // paylaşılıyor — öncesinde bu tablo `resolveGroup` ile tek seviyeli düz bir
@@ -404,6 +462,37 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
 
   function resetFilter(setter) {
     return event => setter(event.target.value)
+  }
+
+  function toggleSelect(id) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const visibleSelectable = filteredRows.map(r => r.task).filter(t => t.status !== 'iptal')
+  const allVisibleSelected = visibleSelectable.length > 0 && visibleSelectable.every(t => selected.has(t.id))
+  function toggleAllVisible() {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (allVisibleSelected) visibleSelectable.forEach(t => next.delete(t.id))
+      else visibleSelectable.forEach(t => next.add(t.id))
+      return next
+    })
+  }
+  const selectedTasks = tasks.filter(t => selected.has(t.id))
+  const tooMany = selectedTasks.length > MAX_SELECTION
+
+  function afterWrite(message) {
+    setEditTask(null)
+    setCancelTask(null)
+    setBulkOpen(false)
+    setAssignTasks(null)
+    if (message) { setFlash(message); setTimeout(() => setFlash(''), 4000) }
+    structure.reload()
+    onProgressSaved?.()
   }
 
   return (
@@ -435,8 +524,44 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
           <select value={sortBy} onChange={resetFilter(setSortBy)}>
             {SORT_OPTIONS.map(opt => <option key={opt.v} value={opt.v}>{opt.l}</option>)}
           </select>
+          {structureOn && (
+            <>
+              <select value={disciplineFilter} onChange={resetFilter(setDisciplineFilter)} aria-label="Disiplin filtresi">
+                <option value="all">Tüm Disiplinler</option>
+                <option value="-">Disiplinsiz</option>
+                {structure.disciplines.map(d => <option key={d.discipline} value={d.discipline}>{d.label_tr}</option>)}
+              </select>
+              <select value={wbsFilter} onChange={resetFilter(setWbsFilter)} aria-label="WBS filtresi">
+                <option value="all">Tüm WBS</option>
+                <option value="-">WBS atanmamış</option>
+                {structure.treeOrder(structure.wbs).map(({ item, depth }) => <option key={item.id} value={item.id}>{'\u00A0\u00A0'.repeat(depth)}{item.wbs_code}</option>)}
+              </select>
+              <select value={areaFilter} onChange={resetFilter(setAreaFilter)} aria-label="Alan filtresi">
+                <option value="all">Tüm Alanlar</option>
+                <option value="-">Alan atanmamış</option>
+                {structure.treeOrder(structure.areas).map(({ item, depth }) => <option key={item.id} value={item.id}>{'\u00A0\u00A0'.repeat(depth)}{item.area_code}</option>)}
+              </select>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                <input type="checkbox" checked={onlyWithoutId} onChange={e => setOnlyWithoutId(e.target.checked)} /> Activity ID yok
+              </label>
+            </>
+          )}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+            <input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} /> İptalleri göster
+          </label>
         </div>
       </div>
+
+      {flash && <p role="status" style={{ margin: '0 0 8px', padding: '8px 10px', borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#166534', fontSize: 12.5, fontWeight: 600 }}>{flash}</p>}
+      {manageOn && selected.size > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px', padding: '8px 10px', borderRadius: 8, background: 'var(--color-bg)', border: '1px solid var(--color-border-md)' }}>
+          <strong style={{ fontSize: 12.5 }}>{selected.size} görev seçili</strong>
+          {tooMany && <span style={{ fontSize: 12, color: 'var(--color-danger)', fontWeight: 700 }}>En fazla {MAX_SELECTION} görev; WBS/alan filtresiyle daraltın.</span>}
+          <button type="button" style={ACTION_BTN} disabled={tooMany} onClick={() => setBulkOpen(true)}>Toplu ata</button>
+          <button type="button" style={ACTION_BTN} disabled={tooMany} onClick={() => setAssignTasks(selectedTasks)}>Kod ata</button>
+          <button type="button" style={{ ...ACTION_BTN, marginLeft: 'auto' }} onClick={() => setSelected(new Set())}>Seçimi temizle</button>
+        </div>
+      )}
 
       {filteredRows.length === 0 ? (
         <p className="gantt-empty">Filtreye uyan iş kalemi bulunamadı.</p>
@@ -445,7 +570,18 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
             <thead>
               <tr>
+                {manageOn && (
+                  <th style={TH}><input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} aria-label="Görünen görevlerin hepsini seç" /></th>
+                )}
                 <th style={TH}>Kod</th>
+                {structureOn && (
+                  <>
+                    <th style={TH}>Activity ID</th>
+                    <th style={TH}>Disiplin</th>
+                    <th style={TH}>Alan</th>
+                    <th style={TH}>WBS</th>
+                  </>
+                )}
                 <th style={TH}>Görev Adı</th>
                 <th style={TH}>Sorumlu</th>
                 <th style={TH}>Ekip</th>
@@ -457,14 +593,33 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
                 <th style={TH}>İlerl.</th>
                 <th style={TH}>Durum</th>
                 <th style={TH}>Not</th>
-                {canAddProgress && <th style={TH}>İşlem</th>}
+                {(canAddProgress || manageOn) && <th style={TH}>İşlem</th>}
               </tr>
             </thead>
             <tbody>
-              {groupTree.flatMap(node => buildDetayRows(node, { collapsed, toggleGroup, columnCount, canAddProgress, setProgressTask, onProgressSaved }))}
+              {groupTree.flatMap(node => buildDetayRows(node, {
+                collapsed, toggleGroup, columnCount, canAddProgress, setProgressTask, onProgressSaved,
+                structureOn, canManage: manageOn, selected, toggleSelect, disciplineLabel, setEditTask, setCancelTask,
+              }))}
             </tbody>
           </table>
         </div>
+      )}
+      {editTask && (
+        <GorevDuzenleModal task={editTask} structure={structure} isAdmin={isAdmin}
+          onClose={() => setEditTask(null)} onSaved={() => afterWrite('Görev güncellendi.')} />
+      )}
+      {cancelTask && (
+        <IptalModal task={cancelTask} onClose={() => setCancelTask(null)}
+          onSaved={() => afterWrite(cancelTask.status === 'iptal' ? 'Görev yeniden açıldı.' : 'Görev iptal edildi.')} />
+      )}
+      {bulkOpen && (
+        <TopluAtaModal tasks={selectedTasks} structure={structure} onClose={() => setBulkOpen(false)}
+          onSaved={res => { setSelected(new Set()); afterWrite(`${res?.summary?.written ?? 0} görev güncellendi.`) }} />
+      )}
+      {assignTasks && (
+        <KodAtaModal tasks={assignTasks} onClose={() => setAssignTasks(null)}
+          onSaved={res => { setSelected(new Set()); afterWrite(`${res?.summary?.assigned ?? 0} göreve Activity ID atandı.`) }} />
       )}
       {progressTask && (
         <ProgressEntryModal

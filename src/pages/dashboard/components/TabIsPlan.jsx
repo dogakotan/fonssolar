@@ -571,8 +571,13 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   // korunuyor, yalnızca stili kendine özgü kalıyor.
   const allGroupNames = useMemo(() => [...new Set(tasks.map(t => resolveGroup(t)))].sort(), [tasks])
 
+  // İptal görevler Gantt'ta yalnızca "İptal" filtresiyle görünür; KPI'lara hiç girmez (Faz 1 Adım 5, Karar 40).
+  const activeTasks = useMemo(() => tasks.filter(t => t.status !== 'iptal'), [tasks])
+
   const filteredTasks = useMemo(() => tasks.filter(task => {
     if (groupFilter !== 'all' && resolveGroup(task) !== groupFilter) return false
+    if (statusFilter === 'iptal') return task.status === 'iptal'
+    if (task.status === 'iptal') return false
     if (statusFilter === 'devam') return task.status === 'devam_ediyor'
     if (statusFilter === 'tamamlandi') return task.status === 'tamamlandi'
     if (statusFilter === 'geciken') {
@@ -584,10 +589,10 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const withDates = filteredTasks.filter(t => t.planned_start && t.planned_end)
 
   const kpis = useMemo(() => {
-    const ongoing = tasks.filter(t => t.status === 'devam_ediyor').length
-    const risky = tasks.filter(t => isTaskLate(t, today)).length
-    return { ongoing, risky }
-  }, [tasks, today])
+    const ongoing = activeTasks.filter(t => t.status === 'devam_ediyor').length
+    const risky = activeTasks.filter(t => isTaskLate(t, today)).length
+    return { total: activeTasks.length, ongoing, risky }
+  }, [activeTasks, today])
 
   useEffect(() => {
     if (!selectedTaskId && withDates[0]) setSelectedTaskId(withDates[0].id)
@@ -596,6 +601,8 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
 
   const selectedTask = withDates.find(task => task.id === selectedTaskId) || null
   const canAddProgress = Boolean(projectId && ['santiye_sefi', 'proje_yoneticisi'].includes(role))
+  // Sınıflandırma, Kod ata, iptal/yeniden aç: yalnızca admin ve proje yöneticisi (Karar 33, 44, 54)
+  const canManage = Boolean(projectId && ['admin', 'proje_yoneticisi'].includes(role))
 
   // Görevin kendi bugünkü katkısı — proje-geneli değil, sadece bu göreve bağlı
   // project_tasks.target_qty'ye karşı bugün girilen miktar üzerinden hesaplanır. Erken
@@ -638,6 +645,9 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           allGroupNames={allGroupNames}
           canAddProgress={canAddProgress}
           onProgressSaved={refetch}
+          projectId={projectId}
+          canManage={canManage}
+          isAdmin={role === 'admin'}
         />
       </div>
     )
@@ -648,7 +658,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
       <div className="gantt-page">
         <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
         {sectionToggle}
-        <KpiStrip total={tasks.length} devam={kpis.ongoing} risky={kpis.risky} />
+        <KpiStrip total={kpis.total} devam={kpis.ongoing} risky={kpis.risky} />
         <GanttShell
           project={project}
           statusFilter={statusFilter}
@@ -756,7 +766,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     <div className="gantt-page">
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
       {sectionToggle}
-      <KpiStrip total={tasks.length} devam={kpis.ongoing} risky={kpis.risky} />
+      <KpiStrip total={kpis.total} devam={kpis.ongoing} risky={kpis.risky} />
 
       <div className={`gantt-workspace${panelOpen ? ' has-panel' : ''}`}>
         <GanttShell
@@ -891,6 +901,7 @@ function GanttShell({ project, statusFilter, setStatusFilter, groupFilter, setGr
             <option value="devam">Devam Eden</option>
             <option value="geciken">Geciken</option>
             <option value="tamamlandi">Tamamlanan</option>
+            <option value="iptal">İptal</option>
           </select>
           <select value={groupFilter} onChange={event => setGroupFilter(event.target.value)}>
             <option value="all">Tüm Gruplar</option>
@@ -907,7 +918,7 @@ function GanttShell({ project, statusFilter, setStatusFilter, groupFilter, setGr
 
 function KpiStrip({ total, devam, risky }) {
   const cards = [
-    { label: 'Toplam Görev', value: total, note: 'Tüm iş kalemleri', icon: 'clipboard', tone: 'blue' },
+    { label: 'Toplam Görev', value: total, note: 'İptal edilenler hariç', icon: 'clipboard', tone: 'blue' },
     { label: 'Devam Eden', value: devam, note: 'Aktif görevler', icon: 'play', tone: 'green' },
     { label: 'Riskli / Geciken', value: risky, note: 'Tarihi geçmiş işler', icon: 'warning', tone: 'red' },
   ]
@@ -981,6 +992,10 @@ function TaskDetailPanel({ task, group, dailyPct, siteChief, isRisky, siteChiefV
   const rows = [
     ['Durum', statusLabel(task.status), task.status === 'devam_ediyor' ? 'blue' : 'muted'],
     ['Grup', group || '-', groupCfg.tone],
+    ...(task.activity_id ? [['Activity ID', task.activity_id, 'blue']] : []),
+    ...(task.discipline ? [['Disiplin', task.discipline]] : []),
+    ...(task.area_code ? [['Alan', task.area_code]] : []),
+    ...(task.wbs_code ? [['WBS', task.wbs_code]] : []),
     // Şantiye şefi kendi projesini görüntülediği için "Sorumlu" satırı gereksiz — onun yerine
     // sahada işe yarayan ekipman/genel notları gösterilir (get_project_gantt RPC'sinden gelir).
     ...(siteChiefView ? [] : [['Sorumlu', siteChief || '-']]),

@@ -80,6 +80,13 @@ export default function Adim3KategoriAgirliklari({ projectId, taskRows, result, 
 
   useEffect(() => { onDraftChange?.({ rows, skipped: false, count: rows.length }) }, [rows]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Ağırlıksız kategori (Karar 56): görevlerde kullanılıp tabloda olmayan kategori kaydı DB'de reddeder.
+  // Fiziksel ilerlemesi olmayan kategoriler %0 ile tabloda yer almalı.
+  const missingCategories = taskCategories.filter(category => !rows.some(row => row.category === category))
+  function addMissingWithZero() {
+    setRows(current => [...current, ...missingCategories.map(category => ({ category, weight_pct: '0' }))])
+  }
+
   const total = rows.reduce((sum, row) => sum + (Number(row.weight_pct) || 0), 0)
   const validTotal = Math.abs(total - 100) <= 0.01
 
@@ -95,6 +102,10 @@ export default function Adim3KategoriAgirliklari({ projectId, taskRows, result, 
     }
     if (rows.some(row => row.weight_pct === '' || Number(row.weight_pct) < 0 || Number(row.weight_pct) > 100)) {
       setError('Her kategori ağırlığı 0 ile 100 arasında olmalıdır.')
+      return
+    }
+    if (missingCategories.length) {
+      setError(`Bu kategoriler için ağırlık tanımlayın; fiziksel değilse %0 girin: ${missingCategories.map(c => CATEGORY_LABELS[c] || c).join(', ')}`)
       return
     }
     if (!validTotal) {
@@ -125,6 +136,18 @@ export default function Adim3KategoriAgirliklari({ projectId, taskRows, result, 
         {error && (
           <div role="alert" style={{ padding: '0.65rem 0.85rem', marginBottom: '1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#991b1b', fontSize: 13 }}>
             {error}
+          </div>
+        )}
+
+        {!loading && missingCategories.length > 0 && (
+          <div role="alert" data-testid="agirliksiz-kategori" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '0.65rem 0.85rem', marginBottom: '1rem', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#991b1b', fontSize: 13 }}>
+            <span style={{ flex: 1 }}>
+              İş kalemlerinde kullanılan ama ağırlığı olmayan kategoriler: <b>{missingCategories.map(c => CATEGORY_LABELS[c] || c).join(', ')}</b>.
+              Bu kategorilerdeki görevlerin ilerlemesi proje yüzdesine katılmaz; kayıt reddedilir.
+            </span>
+            <button type="button" onClick={addMissingWithZero} style={{ border: '1px solid #991b1b', borderRadius: 6, background: '#fff', color: '#991b1b', padding: '5px 10px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              %0 ile ekle
+            </button>
           </div>
         )}
 

@@ -47,6 +47,27 @@ arası ilişkileri içeren bir bilgi grafiği var.
    (`save_daily_report`, `create_purchase_request_with_items` deseni).
 7. Şema değişikliğinde kullanıcıya `fons_solar_sistem_dokumantasyonu.docx` ve
    `fons_solar_veritabani_dokumantasyonu.docx` dosyalarının güncellenmesi gerektiğini hatırlat (varsa).
+8. **Çelişen talimat.** Bir talimat canlı şema veya `docs/proje-kontrol` kararlarıyla çelişirse uygulamadan önce
+   çelişkiyi listele ve onay iste. Proje Kontrol işlerinde kurallar: `docs/proje-kontrol/CONVENTIONS.md`.
+9. **Durum tablosu.** Proje Kontrol'de her adım ve faz kapanışında `docs/proje-kontrol/register-gap-analizi.md`
+   başındaki durum tablosunu (16 register × faz × güncel durum × Faz 1 bağımlılığı) ve fazların 15 Aralık MVP'ye
+   göre tahmini bitiş tablosunu güncelle; "Son güncelleme" satırına tarih ve kapanan adımı yaz.
+10. **Test betiği ön kontrolü.** Canlıda (BEGIN…ROLLBACK) veya yerelde koşulacak her PL/pgSQL test betiği, koşmadan önce
+    şu üç hata türüne karşı gözden geçirilir ve bulunanlar düzeltilir (Faz 1 Adım 3'te üçü de koşuları durdurdu):
+    - **Ad çakışması:**
+      - bloktaki PL/pgSQL değişkenleri (dış bloktakiler dahil: `out`, `r`, `n`, `v`, `ok`…) ile sorgudaki takma ad ve kolon adları aynı olmamalı (`column reference "v" is ambiguous`);
+      - takma adlar değişken adlarından ayrışacak şekilde seçilir.
+    - **Beklenen metin kolon tipinden türetilir:**
+      - numeric ölçeği: `numeric(5,2)` → `5.00`, `5.0` değil;
+      - boolean: `x::text` → `true`/`false`; `concat_ws`/`format('%s')`/kayıt çıktısındaki ham boolean → `t`/`f`
+        (12.10.2026'da canlıda SELECT ile doğrulandı; beklenende hangi biçimin üretildiği yazılır);
+      - tarih ve zaman damgası biçimi;
+      - enum metni.
+      - Gerekirse önce `information_schema.columns` okunur.
+    - **Aynı ifadede yaz-oku yok:**
+      - bir SQL ifadesindeki alt sorgu, ifade başındaki anlık görüntüyü görür; aynı ifadede çağrılan fonksiyonların yazdıklarını görmez.
+      - Tek ifadedeki birden fazla çağrının değerlendirme sırası da garanti değildir.
+      - Bu yüzden sıra bağımlı her yazma ayrı bir ifadededir (`a := …; a := a || … ;`) ve sonuç ayrı bir ifadede okunur.
 
 ### Kod tarama notu — supabase.from() sayımı
 `grep -rn "supabase\.from(" src/` **tek satırlık** desendir ve kodda zincirleme
@@ -1555,6 +1576,7 @@ Risk girişi yalnızca proje **düzenleme** akışında var, **oluşturmada yok*
 | Kullanıcı yönetimi / navigasyon | roles, role_allowed_tabs, role_sidebar_items, profiles, user_project_access, user_management_audit |
 | Bildirim | notifications |
 | Destek / diğer | tickets, ticket_comments, ticket_history, ticket_attachments, agent_reports, procurement_items, procurement_item_adjustments, procurement_item_change_requests |
+| Proje kontrol (register, 05-07.10.2026 + 14.10.2026; canlıda toplam 58 tablo) | project_wbs, project_areas, area_wbs, project_actions, documents, document_revisions, drawings, rfis, decisions, technical_submittals, material_approvals, project_register_settings, project_register_counters, register_status_history, changes, claims, interfaces — bkz. "Proje Kontrol (Faz A)" |
 
 View'lar (hepsi `security_invoker=on`): `project_cost_summary`, `personnel_logs`,
 `v_invoice_payment_overview`, `vw_delayed_tasks`, `vw_monthly_progress`,
@@ -1663,7 +1685,221 @@ Playwright regresyon suite'i (`npm run test:e2e`), kimlik bilgileri `.env.test`'
 (gitignore'da). **Credential değerleri (şifre/token) hiçbir zaman chat metnine
 yazılmaz.** Admin test hesabının `profiles.id`'si değişebilir — `select id from
 profiles where role_key='admin'` ile doğrula.
+**12.10.2026'dan beri (Karar 52) Playwright'ın varsayılan hedefi YEREL Supabase.**
+- Kurulum: `node scripts/local-db/setup.mjs`. Docker ve `npm run db:backup` şema dökümü gerekir (`docs/proje-kontrol/faz1-adim5-yerel-ortam.md`).
+- Adres, anahtar ve kurgu test kullanıcıları `supabase/.local/env.json`'dan (gitignore) okunur.
+- Vite 5183 portunda ayrı süreçte çalışır.
+- Canlıya karşı koşmak yalnızca açıkça `PW_TARGET=live` ile mümkün; bu durumda `.env.test` ve 5173 kullanılır.
 
+### Proje Kontrol (Faz A tamamlanıyor, Faz B taslakları hazır — 06-07.10.2026)
+
+Kaynak tasarım: `docs/proje-kontrol/tasarim.md` (**v3, 07.10.2026** — kullanıcının verdiği sürüm; önceki taslak
+`docs/proje-kontrol/arsiv/` altında, v2 ve `FONS_Diyarbakir_Sistem_Revizyon_Yol_Haritasi.docx` v1 geçersiz).
+Öncelik: onaylı kararlar (bu bölüm) > canlı şema (`docs/proje-kontrol/canli-sema-ozeti.md`) > tasarim.md; tasarım
+canlıyla çelişirse tasarim.md düzeltilir ve fark `docs/proje-kontrol/v3-uyum-notlari.md`'ye yazılır.
+Branch: `faz-a-proje-kontrol` (push edilmedi).
+
+**Dosya deposu: Supabase Storage, Google Drive / SharePoint YOK.** Şirkette Microsoft 365 ve Google Workspace
+olmadığı için dosyalar yeni bir özel (private) bucket'ta tutulur; kullanıcı Fons içindeki klasörlü dosya gezgininden
+ulaşır (klasör ağacı arayüzde, `documents`/`document_revisions` kayıtlarından üretilir; depoda klasör yönetimi yok).
+drive-gateway, drive-sync, Google/Microsoft entegrasyonu ve bunların secret'ları planda yok. Bu karar (Karar 5)
+**PATRON ONAYI BEKLİYOR** (öneri: Supabase Pro, aylık 25 $). Onay gelmeden bucket ve yükleme akışı (B5) uygulanmaz,
+yalnızca taslağı durur; kayıt/yetki işleri (B1-B4, B6) onayı beklemez.
+
+**Ücretsiz plan sınırları (bugün geçerli):** 500 MB veritabanı (07.10'da 28 MB), 1 GB dosya (07.10'da ~2,2 MB),
+tek dosya 50 MB, otomatik yedek yok, 1 hafta işlemsizlikte duraklama. Bu yüzden: dokümanın tam metni DB'de kalıcı
+saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları tutar, AI taslakları hedef tabloya değil
+`register_drafts`'a yazılır (Faz C), register tablolarına yazma yalnızca RPC ile (G-01 bugün geçici; B3 ile kalıcı).
+
+**Kararlar.** Onaylanmamış karar uygulanmaz; kararlar tasarim.md ile çelişirse kararlar geçerlidir.
+
+| # | Karar | İçerik | Durum |
+|---|---|---|---|
+| 0 | 05.10 canlı şeması | Tablolar korunup tasarıma hizalandı (`20261007072501_uyum_project_control_registers`) | **ONAYLANDI ve UYGULANDI (07.10.2026)** |
+| 1 | Action | Ayrı tablo `project_actions` (eski `actions`); ticket sahadan bildirim olarak kalır, genişletilmez; kaynak listesinde `inspection`/`ncr` yok | **ONAYLANDI (07.10.2026)** |
+| 2 | Numara biçimi | `{TÜR}-{PROJE_KODU}-{SIRA}` (ör. `RFI-ADN1-0007`): yıl ve disiplin yok, sıra proje+tür bazında boşluksuz, 4 haneye kadar sıfır, kırpma yok; proje kodları ADN1, ADN2, TIZ, TKY; çizim türü doküman `DRW`, diğerleri `DOC`; `TS`/`MA` önekleri | **ONAYLANDI (07.10.2026)** |
+| 3 | Revizyon | Tek doküman + `document_revisions` (ifr/ifa/ifc/as_built), dokümanın tek `is_current` revizyonu; `drawings` dokümana bire bir uzantı (3 kolonlu FK) | **ONAYLANDI (07.10.2026)** |
+| 4 | Submittal / Material Approval | `technical_submittals` ve `material_approvals` iki ayrı tablo | **ONAYLANDI (07.10.2026)** |
+| 5 | Dosya deposu | Supabase Storage özel bucket + Fons içi klasörlü gezgin; Supabase Pro (25 $/ay) önerisi. **Ek not (09.10):** şirket M365'e geçiyor; dosya bağlantısı sağlayıcıdan bağımsız tutulur (`document_revisions.storage_provider` canlıda `supabase_storage`/`sharepoint`/`external` destekliyor), SharePoint ileride şema değişmeden eklenebilir — karar tersine dönmedi (`CONVENTIONS.md` §5) | **PATRON ONAYI BEKLİYOR** |
+| 6 | Roller ve yetki matrisi | Mevcut 4 rol; register × eylem yetkisi `register_permissions`'ta. Matris `docs/proje-kontrol/karar-6-10-yetki-ve-dort-goz.md` §1 (B1 seed'i). Tasarım 4.3'ten farklar: şantiye şefi risk ve document düzenler (yalnızca kendi kaydı), change görmez/açmaz (değişiklik talebi Ticket ile), interface açmaz; PM decision/change/claim onaylamaz; procurement/subcontractor/payment tüm rollerde en fazla görüntüleme; silme yalnızca admin; ncr/inspection kimsede yok. "P1" = Faz 3 kapsamı (document, drawing, rfi, action, risk, decision) | **ONAYLANDI (13.10.2026)**; B1 canlıda ROLLBACK ile yeniden test edildi, parmak izi birebir |
+| 7 | AI sağlayıcı ve gizlilik | Önce İsdemir OYAK izni; sağlayıcı 10-15 gerçek belgeyle iki aday ölçülerek seçilir (ChatGPT de aday); izin yoksa AI yalnızca metadata | **AÇIK** |
+| 8 | NCR ve Inspection | Pilotta yok; mobilizasyondan sonra, kalite modülünün kaldırılma kararı hatırlanarak | **AÇIK** (tasarımda öneri) |
+| 9 | Agent kimliği ve ilk agent'lar | Her agent için ayrı, proje kapsamlı rol, yalnızca izinli RPC'ler; ilk agent'lar Reconciliation ve Planning (Faz E) | **AÇIK** (tasarımda öneri) |
+| 10 | Dört göz kuralı | Yalnızca decision, risk, change, claim: oluşturan kullanıcı hesabı kendi kaydını onaylayamaz. Admin'in kendi kaydını başka bir admin onaylar; ön koşul genel "Admin" hesabının onay yapamaması (mekanizma önerisi M1 hesap bazlı istisna / M2 rol değişikliği, hesap kararı kullanıcıda). `four_eyes_enabled` kalır, varsayılan açık, yalnızca admin değiştirir, audit'li (B3'e eklenecek). Kritik risk: elle açılmış kritik riskin kapanışı önce "onay bekliyor"a geçer, PM veya admin (oluşturan dışında) onaylar; kritik olmayan onaysız kapanır; otomatik riskler kapsam dışı (Faz 3, Karar 14 ile; `project_risks.created_by` eklenmeli). Decision kaydını yalnızca admin onaylar, iş durumu yalnızca onaylı kayıtta değişir. Change/Claim admin onayı, ayrıntı Faz 5. Ayrıntı `karar-6-10-yetki-ve-dort-goz.md` | **ONAYLANDI (13.10.2026)**; genel Admin hesabı Karar 64 ile, eski riskler Karar 65 ile netleşti |
+| 11 | Payment | Şimdi (Faz 4): tedarikçi ödemeleri mevcut tablolar (`invoices`, `invoice_payments`, `financial_transactions`) üzerinden okuma görünümü. Faz 6: taşeron hakedişi ve işveren hakedişi tek `progress_payments` tablosunda, `direction` (alacak \| borç). `financial_transactions.transaction_type='hakedis'` yalnızca nakit hareketi; hakediş detayı `progress_payments`'ta | **ONAYLANDI (09.10.2026)** |
+| 12 | Subcontractor | `suppliers.party_type` (tedarikci \| taseron \| ikisi; `supplier_type` adı başka anlamla dolu). Ayrıca proje bazlı `subcontracts` tablosu (kapsam, bedel, süre, teminat), Faz 6 | **ONAYLANDI (09.10.2026)** |
+| 13 | Faz tanımları | Faz 0 zemin (kapandı); 1 WBS/Area/Activity kodu; 2 ortak altyapı (numaralama, links, files, history, `register_permissions`); 3 mevcut 8 register'ı standarda getirme + UI, RFI pilot; 4 köprüler (procurement görünümü + sahada gerekli tarih, tedarikçi ödeme görünümü); 5 Change, Claim, Interface; 6 `subcontracts`, `progress_payments`, faturalara WBS/aktivite bağı; 7 Aktivite 360 ve KPI; 8 alarmlar; 9 import, test, go-live. Ertelenen: NCR, Inspection (Karar 8), SharePoint (M365 sonrası). Tasarımın A-E fazlarıyla eşleşme ve açık çakışmalar: `docs/proje-kontrol/register-gap-analizi.md` §c | **ONAYLANDI (09.10.2026)**, çakışmalar kullanıcıda |
+| 14 | Risk numarası | `project_risks`'e RSK önekli numara; otomatik riskler de numara alır; ayrım `source` (manuel \| otomatik) ile; numara boşlukları kabul | **ONAYLANDI (09.10.2026)** |
+| 15 | Satın alma köprüsü | Faz 4'te `purchase_requests`'e nullable "sahada gerekli tarih" kolonu; doküman bağı Faz 4'te `purchase_documents` ara tablosuyla (talep × doküman, çoka çok; Karar 22 ile düzeltildi — `register_links` açılmıyor); `SAT-YYYY-NNN` numaraları değişmez | **ONAYLANDI (09.10.2026)** |
+| 16 | NCR / Inspection kodları | Mobilizasyon sonrası yeniden değerlendirilir (Karar 8 geçerli); `ncr` ve `inspection` register tipi kodları Faz 2'de şimdiden ayrılır | **ONAYLANDI (09.10.2026)** |
+| 17 | Faz sırası (Ç2, Ç5) | B1, B2, B4 Faz 1'e taşındı. B5 Faz 2'de tek başına; patron onayı paralel alınır | **ONAYLANDI (09.10.2026)** |
+| 18 | Activity ID | Sistem üretir, elle yazılmaz. Biçim `{PROJE}-{DİSİPLİN}-{ALAN}-{NNNN}`, sıra onar artar. Yalnızca disiplin, alan ve WBS doluyken "Kod ata" ile atanır; düzeltme yalnızca B4. Mevcut `task_code` görünen kısa kod olarak kalır. Önce tek WBS grubunda pilot, onaydan sonra toplu atama | **ONAYLANDI (09.10.2026)** |
+| 19 | WBS ve alan verisi | İlk yükleme Excel import script'iyle, sonrası ekrandan. Başlangıç projesi Diyarbakır İsdemir | **ONAYLANDI (09.10.2026)** — Diyarbakır projesi canlıda yok (bkz. gap Ç13) |
+| 20 | Disiplin | Liste: mechanical, dc, ac, mv, hv, enh, civil, scada, general. ID kısaltmaları MEC, DC, AC, MV, HV, EIH, CIV, SCA, GEN. Mevcut görevlerde DB zorunluluğu yok; yeni görev formunda ve ID atamada zorunlu | **ONAYLANDI (09.10.2026)** |
+| 21 | Proje kodu (Ç7) | NOT NULL + unique + biçim kontrolü (2-5 büyük harf); proje oluşturma formunda zorunlu | **ONAYLANDI (09.10.2026)** — canlı CHECK ve ADN1/ADN2 ile çakışıyor (gap Ç14, Ç15) |
+| 22 | Links (Ç1) | `register_links` açılmıyor; satın alma-doküman bağı Faz 4'te `purchase_documents` ara tablosuyla | **ONAYLANDI (09.10.2026)** |
+| 23 | AI (Ç3) | RFI pilotu AI'sız. AI akışları (`register_drafts`, `process-document`, agent'lar) Faz 7 sonrası ayrı faz | **ONAYLANDI (09.10.2026)** |
+| 24 | MVP takvimi (Ç4) | 1 Ocak 2027 MVP = Faz 1-4, hedef 15 Aralık 2026 | **ONAYLANDI (09.10.2026)** |
+| 25 | Tip kodları (Ç12) | `ncr`, `inspection` B1'e şimdi eklenir (yetkisiz seed) | **ONAYLANDI ve taslağa işlendi (09.10.2026)** |
+| 26 | Ertelenen çakışmalar | Ç6 Faz 3 başında (**Karar 45 ile kapandı**); Ç8, Ç10, Ç11 Faz 6 başında çözülür | **ONAYLANDI (09.10.2026)** |
+| 27 | Pilot projesi (Ç13) | Mekanizma pilotu TIZ'de. Diyarbakır, Faz 1 Adım 6'da güncellenmiş `import-project-excel` ile oluşturulur, gerçek pilot orada. ADN1/ADN2'ye Faz 1'de dokunulmaz. Diyarbakır kodu (DYB / DYB1 / DYB2) Adım 6'ya kadar bekliyor | **ONAYLANDI (09.10.2026)**; Diyarbakır 6b'ye kaydı (Karar 74) |
+| 28 | Proje kodu biçimi (Ç14) | `^[A-Z][A-Z0-9]{1,4}$`; mevcut 4 kod (ADN1, ADN2, TIZ, TKY) geçerli | **ONAYLANDI (09.10.2026)**, taslak `f1_proje_kodu_ve_olusturma.sql` |
+| 29 | Proje oluşturma (Ç15) | Tek DB fonksiyonu (`create_project_with_code`): proje + kod aynı işlemde; kodsuz projeyi reddeden ertelenmiş kural. Sihirbaz ve `import-project-excel` bu fonksiyonu kullanır; deploy Adım 6'da | **ONAYLANDI (09.10.2026)**, taslak F1 + `f1-import-project-excel-diff.md` |
+| 30 | Activity ID yazımı (Ç16) | Yalnızca kod atama fonksiyonu ve B4 düzeltmesi yazabilir (Adım 3'te guard'a eklenecek) | **ONAYLANDI (09.10.2026)** |
+| 31 | Test ortamı (Ç17) | Faz 1 Adım 2 canlıda BEGIN…ROLLBACK ile; Faz 2'den itibaren lokal Docker testi zorunlu; Adım 6'dan önce yedek zorunlu | **ONAYLANDI (09.10.2026)**; Faz 2 testi canlıda ROLLBACK, yerel Docker 6b'den itibaren (Karar 70) |
+| 32 | Alan kodu (Ç18) | `^[A-Z0-9]+$` (tiresiz) | **ONAYLANDI (09.10.2026)**, taslak F1 |
+| 33 | İş Planı toplu atama | Adım 5'e ek: seçili görevlere toplu disiplin/alan/WBS atama | **ONAYLANDI (09.10.2026)** |
+| 34 | F1 A4 ayrı migration | Adım 6 sırası: (1) F1 A1-A3 → (2) frontend + `import-project-excel` deploy → (3) sihirbaz ve Excel import ile kodlu proje oluşturmanın canlıda doğrulanması → (4) A4 (kodsuz projeyi reddeden kural) | **ONAYLANDI (09.10.2026)** |
+| 35 | Proje oluşturma yetkisi | admin ve proje_yoneticisi. Bugünkü `projects_insert_admin` (yalnızca admin) bir tutarsızlıktı; `create_project_with_code` ile düzeltiliyor | **ONAYLANDI (09.10.2026)** |
+| 36 | F1 A4 trigger yapısı | Tek `fn_require_project_code` (CASE ile NEW/OLD seçimi) yerine tablo başına iki trigger fonksiyonu (`fn_projects_require_code`, `fn_project_register_settings_keep_code`) + ortak `project_code_missing()`. Gerekçe: her fonksiyon yalnızca kendi tablosunun kaydına bakar, "record has no field" hata sınıfı yapısal olarak ortadan kalkar; IF/ELSE de çalışırdı ama tablo adına göre dallanma yeni tablo eklenince aynı hatayı tekrar üretebilir. `f1_dogrulama.sql`'e kuralı fiilen tetikleyen R1-R5 regresyon testleri eklendi (Adım 6'da da çalışır) | **UYGULANDI (taslakta), Adım 2'de doğrulandı (09.10.2026)** |
+| 37 | Disiplin listesi | `task_disciplines` tablosu (anahtar → ID kısaltması: mechanical=MEC, dc=DC, ac=AC, mv=MV, hv=HV, enh=EIH, civil=CIV, scada=SCA, general=GEN); `project_tasks.discipline` ona FK ile bağlı, boş değer serbest. Canlıda daha önce DB listesi yoktu (yalnızca ekran sözlüğü) | **ONAYLANDI (09.10.2026)**, taslak `f1_aid_activity_id.sql` |
+| 38 | Alan-WBS kuralı (Activity ID) | Görevin WBS'inde (veya üst WBS'lerinde) alan bağı tanımlıysa ve görevin alanı aralarında yoksa atama engellenir; hiç bağ yoksa uyarı verilip atanır | **ONAYLANDI (09.10.2026)** |
+| 39 | ID sonrası kilit | Activity ID atanmış görevde disiplin ve alan kilitli; düzeltme yalnızca genişletilmiş B4 (`admin_correct_task_activity_id`, admin, gerekçe zorunlu, ID + alan/disiplin birlikte, yeni ID görevin proje/disiplin/alanıyla uyumlu olmalı). WBS değişikliği `register_audit`'e yazılır; **Karar 51 ile daraltıldı:** yeni WBS zinciri Karar 38'e uymalı | **ONAYLANDI (09.10.2026)**, Karar 51 ile daraltıldı (12.10.2026) |
+| 40 | ID'li görev silinmez | Activity ID atanmış görev silinemez, durumu `iptal` yapılır; proje silme zinciri çalışır. Sihirbazın sil-yeniden-yaz akışının görev koduna göre güncellemeye çevrilmesi Adım 5'e eklendi ve Adım 6 deploy'unun ön koşulu. İptal görevler ilerleme/ağırlık/S-eğrisi hesaplarından çıkarılır. **Ek (12.10):** iptal göreve ilerleme DB'de her yoldan (günlük rapor dahil) "İptal edilmiş göreve ilerleme girilemez" ile reddedilir; iptal görevi yalnızca admin ve proje_yoneticisi yeniden açar (taslak A8) | **ONAYLANDI (09.10.2026)**; "Adım 6 ön koşulu" Karar 69 ile değişti |
+| 41 | Atama çağrısı | Önizleme (`p_dry_run`) varsayılan açık; çağrı başına en fazla 500 görev, tek proje; gerçek atamada hepsi ya da hiçbiri | **ONAYLANDI (09.10.2026)** |
+| 42 | Adım 3 migration sırası | Ayrı migration, B4'ten sonra; `fn_project_tasks_identity_guard`'ın son hali Adım 3'te (B4'ün kuralını içerir) | **ONAYLANDI (09.10.2026)** |
+| 43 | Önizleme yetkisi | Önizleme de yalnızca admin ve proje_yoneticisi | **ONAYLANDI (09.10.2026)** |
+| 44 | İptal görev koruması (A8) | İptal göreve ilerleme her yoldan reddedilir (`add_task_progress`, günlük rapor, `progress_daily`'ye doğrudan yazma): "İptal edilmiş göreve ilerleme girilemez". **Görevi iptal etmek ve iptal görevi yeniden açmak yalnızca admin ve proje_yoneticisi** (12.10.2026 güncellemesi: iptal etme de kısıtlandı; oturumsuz bağlam — service role ile çalışan Excel import dahil — durumu iptale çekemez/iptalden çıkaramaz). Eski raporun aynen yeniden kaydı korunur; iptal görevin eski ilerlemesinin düşürülmesi yeniden açma ile yapılır | **ONAYLANDI (12.10.2026)**, güncellendi (12.10.2026, 14. tur); taslak `f1_aid_activity_id.sql` A8b |
+| 45 | MVP senaryosu (b) | Technical Submittal ve Material Approval ekranları Ocak 2027'ye. Document ekranı external link ile başlar; Storage yüklemesi B5 onayından sonra. Ç6 kapandı: Faz 3 kapsamı Document, Drawing, RFI, Action, Risk, Decision. MVP canlı 11 Aralık 2026 (durum tablosu; 13.10.2026 tahmini 14 Aralık 2026, Faz 3'e kritik risk kapanış onayı eklendi) | **ONAYLANDI (12.10.2026)** |
+| 46 | WBS/alan şablonu | WBS'te sıra kolonu yok, liste koda göre; şablonda "kodları sabit haneli yazın (DYB-020, DYB-100)" notu. Örnek satırlar kurgu (TIZ tarzı). Not kolonları şablonda. Kolonlar canlı tablolardan | **ONAYLANDI (12.10.2026)**, `docs/proje-kontrol/sablon/` |
+| 47 | WBS disiplini | `project_wbs_discipline_fk` → `task_disciplines` | **ONAYLANDI (12.10.2026)**, taslak `f1_wbs_alan_import.sql` A1 |
+| 48 | Activity ID bütünlüğü DB'de | Trigger düzeyinde: görevi olan alan/WBS kodu değişmez (canlı kural); ID'li görevin alanı, WBS'i veya üst WBS'i pasifleştirilemez / taşınamaz; Karar 38'i bozan `area_wbs` INSERT'i ve ID'li görevin alanını kümeden çıkaran DELETE reddedilir; ID'li görevin alanı/WBS'i silinemez. Import yalnızca rapor (`aid_impact`). B4 muafiyeti önerilmedi (B4 `project_tasks`'ı yazar, bu trigger'lar alan/WBS/bağ tablolarında) | **ONAYLANDI (12.10.2026)**, taslak A2-A5 |
+| 49 | Ç-7 guard düzeltmesi | Aktif alt kaydı olan alan/WBS pasifleştirilemez; taşınan WBS'in alt WBS'lerinin `level`'ı güncellenir | **ONAYLANDI (12.10.2026)**, taslak A3 |
+| 50 | WBS/alan importu | Excel ön yüzde (`src/utils/wbsAreaExcel.js`) okunur → `import_wbs_areas(p_project_id, p_payload, p_dry_run default true)` (DEFINER). Yalnızca admin/PM; hepsi ya da hiçbiri; koda göre eşleşme; silme yok, bağ yalnızca eklenir; `not_in_file` raporu; her yazma audit'e (`project_wbs`/`project_areas` B2 trigger'ı, `area_wbs` ayrı trigger). Projesiz kontrol: `p_project_id = null` önizleme ve `scripts/proje-kontrol/wbs-alan/kontrol.mjs` | **ONAYLANDI (12.10.2026)**, taslak A6-A7 |
+| 51 | Görev tarafında alan-WBS kuralı | ID'li görevde WBS veya alan değişince görevin trigger'ı (`trg_project_tasks_wbs_area_link_guard`, SECURITY DEFINER) Karar 38'in karma kuralını uygular: yeni WBS zincirinde (WBS + üstleri) alan bağı tanımlıysa görevin alanı içinde olmalı, hiç bağ yoksa serbest. B4'ün alan düzeltmesi de aynı kontrolden geçer (red → `validation`). ID'siz görev ve ID'nin temizlendiği B4 çağrısı kontrol dışı | **ONAYLANDI (12.10.2026)**, taslak `f1_aid_activity_id.sql` A3b; ROLLBACK testleri T35a-e ve R27 geçti |
+| 52 | Test ortamı (Adım 5) | Yerel Supabase (Docker); taban canlı şema dökümü (`npm run db:backup`'ı kullanıcı çalıştırır; `.env*` okunmaz). Playwright'ın varsayılan hedefi yerel; canlıya karşı koşmak yalnızca açık ortam değişkeniyle (`PW_TARGET=live`). Baseline migration Karar 61 ile ertelendi; yerel ortam yalnızca şema dökümüyle kurulur | **ONAYLANDI (12.10.2026)** |
+| 53 | Kullanıcının üç dosyası | `ProjeDetay.jsx`, `DailyReportList.jsx` ve `projectExcelBridge.js`'e kullanıcı kendi değişikliklerini commit edip haber verene kadar dokunulmaz; gereken değişiklikler tasarımda hazır tutulur (`faz1-adim5-tasarim.md` Ek A) | **ONAYLANDI (12.10.2026)**, ProjeDetay eklendi (13.10.2026) |
+| 54 | Kod ata sınırı | Seçim başına en fazla 500 görev; parçalı yazma yok (Karar 41'in "hepsi ya da hiçbiri"si ekranda da geçerli) | **ONAYLANDI (12.10.2026)** |
+| 55 | Ç-6 kapandı | Şantiye şefi WBS/alan/alan-WBS'te yalnızca okuma; RLS daraltması Adım 5 migration'ında (`f1_adim5_ekran_rpc.sql` A7). Alan talebi Ticket ile | **ONAYLANDI (12.10.2026)** |
+| 56 | Ağırlıksız kategori | DB'de red: yeni görevde veya kategori değişince, proje ağırlık tablosu doluysa ve kategori yoksa "Bu kategori için ağırlık tanımlayın; fiziksel değilse %0 girin". Ağırlık tarafında görevi (iptal hariç) olan kategori silinemez. İkisi de ertelenebilir constraint trigger (`f1_adim5_ekran_rpc.sql` A6) | **ONAYLANDI (12.10.2026)** |
+| 57 | Excel v8 proje kodu | E13 proje kodu; yeni projede zorunlu; güncellemede E13 projenin koduyla uyuşmazsa import reddedilir; kopya yeni kod ister | **ONAYLANDI (12.10.2026)** |
+| 58 | WBS/alan ekranının yeri | ProjeDetay › Proje Ayarları › WBS ve Alanlar, **yalnızca admin ve proje_yoneticisi**. Şantiye şefi için ayrı WBS/alan görünümü yok; İş Planı'ndaki Activity ID/WBS/alan/disiplin kolonları ve filtreleri yeterli (Ç5-6 kapandı). (ProjeDetay.jsx kullanıcının commit'lenmemiş dosyası; rol koşullu sekme bağlantısı Karar 53 gibi bekliyor) | **ONAYLANDI (12.10.2026)**, güncellendi (13.10.2026) |
+| 59 | Sihirbaz Ç-B | Sil-yeniden-yaz yerine `save_project_tasks` (id, yoksa görev kodu ile eşleşme; çıkarılan görev Activity ID / ilerleme / bağlı kayıt varsa iptal, yoksa silinir; önizleme). `group_label` kaybı aynı pakette düzelir; ilerlemesi olan ve grup etiketli projede düzenleme testi zorunlu | **ONAYLANDI (12.10.2026)** |
+| 60 | Boş E13 | Güncellemede boş E13 reddedilir: "Bu dosya eski şablon (v7). Projeyi dışa aktarıp yeni dosya üzerinde çalışın." (`import-project-excel`, `legacy_template: true`; deploy Adım 6'da) | **ONAYLANDI (13.10.2026)** |
+| 61 | Baseline migration ertelendi | Faz 1 kapandıktan sonra, Faz 2'den önce ayrı paket. O pakette önce canlıya migration'ların hangi yolla uygulandığı ve `schema_migrations` geçmişinin baseline ile nasıl uzlaştırılacağı (migration repair vb.) gösterilir. Şimdi yerel ortam yalnızca şema dökümüyle kurulur | **ONAYLANDI (13.10.2026)**; zamanlama Karar 71 ile Ocak 2027'ye |
+| 62 | Ek B ara kararları | `set_tasks_classification`/`save_project_tasks` DEFINER, ertelenebilir ağırlık trigger'ları + `p_weights`, bağlı kayıtlı görevin iptali, Excel import'un iptal durumunu değiştirememesi onaylandı. Koşul: toplu atama, görev kaydı, alan-WBS bağ kaydı, Kod ata, WBS/alan import için yerel yetki matrisi testi zorunlu: A projesinin PM'i B'ye yazamaz, şantiye şefi ve muhasebe çağıramaz, anon EXECUTE yok (`f1_dogrulama.sql` R32, `proje-kontrol-adim5.spec.js`). **Açık çakışma Ç5-7:** PM canlıda `cross_project=true`, `has_project_access` PM'e her projede true; R32 erişim kontrolünü alt işlemde `cross_project=false` ile ölçer (`faz1-adim5-tasarim.md` Ek B) | **ONAYLANDI (13.10.2026)**; Ç5-7 Karar 63 ile kapandı |
+| 63 | PM'in proje erişimi (Ç5-7) | (a): PM'in tüm projelere erişimi (`cross_project=true`) bu haliyle kalır; R32 kod yolunu kısıtlı PM ile (alt işlemde `cross_project=false`) doğrulamaya devam eder. **Yeniden değerlendirme koşulu:** projeye özel PM veya dış kullanıcı (müşavir, işveren, taşeron) sisteme girmeden önce bu karar yeniden açılır; özellikle Faz 5 Claim/Change öncesinde kontrol edilir (`register-gap-analizi.md` Faz 5 başlangıç kontrol listesi) | **ONAYLANDI (13.10.2026)** |
+| 64 | Genel "Admin" hesabı | Şimdi M1: hesap bazlı onay istisnası (`register_approval_exclusions`; `register_can(…,'approve')` listedeki hesapta false). Hesap yalnızca register onaylarından çıkarılır, uygulamanın geri kalanında admin kalır. B3 tasarımına eklendi (`faz-b-migration-plani.md` S4b; B1 dosyası değişmez). Hedef: MVP canlıya alma "kullanıcı hesapları" diliminde, hesabı kullananlara kişisel hesap açıldıktan sonra genel hesap kapatılır; hesabı kimin kullandığını kullanıcı netleştirecek | **ONAYLANDI (13.10.2026)**; SQL B3'te yazılacak |
+| 65 | Eski risklerde kritik kapanış | `created_by`'ı boş olan eski risklerde kritik kapanışı herhangi bir PM veya admin onaylar; "oluşturan onaylayamaz" kuralı yalnızca `created_by` dolu kayıtlarda uygulanır (Faz 3 tasarım notu) | **ONAYLANDI (13.10.2026)** |
+| 66 | Register öncelikli sıra | 6a (DB omurgası) → Faz 2 (B5 hariç) → Faz 3 (register ekranları) → 6b (Docker, Adım 5, v8 import, Diyarbakır, A4) → Faz 4 → MVP canlıya alma. Faz 1, 6b ile kapanır. Plan ve takvim: `docs/proje-kontrol/register-oncelikli-plan.md` | **ONAYLANDI (14.10.2026)** |
+| 67 | Yedek aracı | `pg_dump` (PostgreSQL 17 Command Line Tools), Docker gerekmez; `npm run db:backup` şema (public, storage, supabase_migrations), `db:backup:data` veri (public + **auth**; oturum/token tabloları hariç). Auth yedeği şifre özetleri içerir; yedekler repoya ve paylaşılan klasörlere konmaz (`backups/` ve `.env.local` `.gitignore`'da, doğrulandı). 6a'dan önce şema + veri yedeği zorunlu; kullanıcı çalıştırır | **ONAYLANDI (14.10.2026)** |
+| 68 | Adım 6a kapsamı | B1, B2, B4, F1 A1-A3 (A4 hariç), AID, Adım 4 SQL ve **A7 (Ç-6 RLS daraltması)**. Önce psql ile tam zincir provası (tek işlem, R1-R27, ROLLBACK, parmak izi; prova SQL'i ve planı gösterilir, "başla" denmeden koşulmaz), sonra paket paket `apply_migration` ("uygula" + yedek hatırlatması). Adım 5 SQL'inin geri kalanı 6b'de frontend'le birlikte (ağırlıksız kategori kuralı eski sihirbazı ve Excel import'u kırar) | **ONAYLANDI (14.10.2026)** |
+| 69 | Karar 40 güncellemesi | Sihirbaz düzeltmesi (Ç-B) yayına çıkana kadar (6b) canlıda Activity ID atanmaz ve register kayıtları göreve bağlanmaz; register formlarında görev bağı alanı 6b'ye kadar kapalı/gizli (ADN1/ADN2'de sihirbaz kırılmasın). Günlük rapor iptal filtresi ilk Faz 3 deploy'unda. Kullanıcı duyurusu: 6b'ye kadar görev iptal edilmez, Excel'de görev durumu "iptal" yapılmaz | **ONAYLANDI (14.10.2026)** |
+| 70 | Karar 31 güncellemesi | Faz 2 testleri canlıda ROLLBACK (Adım 2 yöntemi, psql). Yerel Docker testi 6b'den itibaren | **ONAYLANDI (14.10.2026)** |
+| 71 | Karar 61 güncellemesi | Baseline migration MVP sonrasına (Ocak 2027), Faz 5'ten önce | **ONAYLANDI (14.10.2026)** |
+| 72 | Faz 3 UI testleri | Canlıda yalnızca TIZ, `PW_TARGET=live`; test kayıtlarına önek; sonda taslaklar silinir, onaylılar iptal edilir; öncesi/sonrası parmak izi; yalnızca register spec'leri. **Ek (bildirim):** register akışı bugün bildirim üretmiyor, ama `notify_role`/`notify_managers` rol bazlı (proje bazlı değil), TIZ'deki diğer akışlar gerçek kişilere bildirim gönderiyor. Faz 3 UI testlerinden önce, onayla: 4 rol için test hesapları, `projects.is_test` + `profiles.is_test_account`, test projesinin bildirimlerini yalnızca test hesaplarına yönlendiren süzgeç (`register-oncelikli-plan.md`) | **ONAYLANDI (14.10.2026)**; bildirim süzgeci Karar 75 ile onaylandı |
+| 73 | Dal stratejisi | Faz 2-3 `main`'den açılan `faz-2-3-register` dalında (ayrı çalışma klasörü `GES_Dashboard-faz23`, git worktree). Adım 5 frontend'i `faz-a-proje-kontrol`'de 6b'ye kadar bekler | **ONAYLANDI (14.10.2026)** |
+| 74 | Karar 27 güncellemesi | Diyarbakır 6b'de, v8 Excel import ile oluşturulur. Register pilotu TIZ'de | **ONAYLANDI (14.10.2026)** |
+| 75 | Test bildirim süzgeci | 3 adımlı plan Faz 2 kapsamında, Faz 3 UI testlerinden önce uygulanır: 4 rol için ayırt edilebilir test hesapları; `projects.is_test` + `profiles.is_test_account`; `notify_role`/`notify_managers`/`notify_user`'a süzgeç (test projesinin bildirimi yalnızca test hesaplarına, gerçek projelerinki test hesaplarına gitmez; imzalar değişmez). Her adımın SQL'i gösterilip onaylanır. Faz 2'ye +1 iş günü | **ONAYLANDI (14.10.2026)** |
+| 76 | Repo yeri | Repo OneDrive içinde ve iki çalışma klasörü var (`GES_Dashboard`, `GES_Dashboard-faz23`). MVP öncesi repo OneDrive dışına taşınacak; tarih kullanıcıda ("Kullanıcıdan beklenen girdiler"). Yedekler ve `.env.local` şimdiden OneDrive dışında (`C:\fons-yedek\`; `FONS_BACKUP_ENV`/`FONS_BACKUP_DIR`) | **ONAYLANDI (14.10.2026)**; taşıma planlanacak |
+| 77 | 6a mevcut ekran kontrolü | Canlıda yalnızca bildirim üretmeyen Playwright spec'leri koşar (`PW_TARGET=live`). Bildirim üretenler (satın alma, fatura, malzeme değişikliği, ilerleme girişi; 16 spec) hariç; kapsadıkları ekranlar elle, kaydetmeden kontrol edilir; yazma yolları psql provasında ROLLBACK içinde test edilir. Liste ve kontrol listesi `register-oncelikli-plan.md` | **ONAYLANDI (14.10.2026)** |
+| 78 | Panelden register girişi (R1) | G-01'e geçici istisna: register'lar Supabase SQL Editor'den, yalnızca `register-veri-giris-rehberi.md` §4 şablonlarıyla girilir. Panel/SQL Editor erişimi yalnızca admin'lerde. Faz 3 ekranları gelince sona erer | **ONAYLANDI (14.10.2026)** |
+| 79 | Numara (R2) | Numara kolonu boş bırakılır, trigger (`next_register_no`, canlıda) üretir; elle numara yok | **ONAYLANDI (14.10.2026)** |
+| 80 | SharePoint linki (R3) | `document_revisions.storage_provider = 'external'`, tam adres `storage_file_id`'de. Link yalnızca SharePoint'te dosyaya erişimi olanlarda açılır (`sharepoint` değeri Graph öğe kimliğine ayrılı, CONVENTIONS §5) | **ONAYLANDI (14.10.2026)** |
+| 81 | Mevcut kayıtların geri doldurulması (R4) | B3 A0 durmaz; A1b panel kayıtlarını doldurur (`source = 'import'`, `record_state` iş durumundan, `approved_at = created_at`, `rfis.created_by = raised_by`). B5 A1 kısıttan önce Storage dışı revizyonları `ready` yapar. İkisi de yeniden test bekliyor | **ONAYLANDI (14.10.2026)**, taslaklara işlendi |
+| 82 | Paylaşım (R6) | Faz 3'e kadar register listeleri panelden CSV ile paylaşılır (rehber §4.10) | **ONAYLANDI (14.10.2026)** |
+| 83 | 6a provası | Askıda; `psql` (PostgreSQL 17 Command Line Tools) kurulumu ve yedek kullanıcıdan beklenen girdi. Prova betiği `scripts/proje-kontrol/prova-6a.mjs` | **ONAYLANDI (14.10.2026)** |
+| 84 | F5 yedeksiz uygulama | Change, Claim, Interface tabloları (`taslak-sql/f5_changes_claims_interfaces.sql`) `npm run db:backup` yedeği olmadan uygulanabilir. Gerekçe (kullanıcı): yalnızca yeni tablolar, mevcut tablolar etkilenmiyor, geri alma SQL'i hazır ve ROLLBACK ile test edilmiş (BÖLÜM B). Koşul: aktif bağlantı kontrolü, `apply_migration`, ardından `f5_dogrulama.sql` ve parmak izi. **Ek (14.10.2026): mesai dışı kuralından da feragat** — gerekçe (kullanıcı): yalnızca yeni tablolar; mevcut tablolarda yalnızca FK eklenirken milisaniyelik kilit; `lock_timeout` 3s ile kimse beklemez. İki istisna (yedek, mesai dışı) yalnızca F5 içindir; diğer paketlerde Karar 67 ve mesai dışı kuralı geçerli | **ONAYLANDI (14.10.2026)** |
+| 85 | F1 A1-A3 öne alındı | Proje ekleme kırık olduğu için (PM sihirbazda RLS'e takılıyor, yeni projeye kod verilmiyor) F1 A1-A3 6a'dan ayrılıp şimdi uygulanır (`taslak-sql/f1_a1_a3_proje_olusturma.sql`). Yedeksiz ve mesai dışı kuralı olmadan (yalnızca bu paket; gerekçe: iki küçük tabloda CHECK değişimi, kısa kilit, `lock_timeout` 3s, geri alma SQL'i test edildi). A4 sonraya kalır (Karar 34). Uygulandıktan sonra 6a'nın F1 parçası yalnızca A4 | **ONAYLANDI ve UYGULANDI (14.10.2026, `20261014102306_f1_a1_a3_proje_olusturma`)**; doğrulama canlıda 7/7 |
+| 86 | Proje ekleme hotfix dalı | `hotfix/proje-ekleme` `main`'den, ayrı klasör `GES_Dashboard-hotfix`. Değişiklik en az; `faz-a`'daki aynı amaçlı parçalar birebir taşınır, hotfix'e özgü ekler `faz-a`'ya da işlenir (6b çakışmasını azaltmak için). `projectExcelBridge.js`'e dokunulmaz (Karar 53). Plan `docs/proje-kontrol/proje-ekleme-hotfix-plani.md` | **ONAYLANDI (14.10.2026)** |
+| 87 | Excel v8 şimdi | Şablon v8 (E13 proje kodu) hotfix'le yayına çıkar; Karar 57/60 geçerli (eski dosyayla güncelleme reddedilir). Ekip duyurusu planda §5 | **ONAYLANDI (14.10.2026)** |
+| 88 | Tedarik onayı yeni projede isteğe bağlı | Sihirbazın Tedarik adımı yeni projede onaysız geçilebilir; `set_project_procurement_completed` yalnızca PM gerçekten onaylarsa çağrılır | **ONAYLANDI (14.10.2026)** |
+| 89 | Varsayılan kategori ağırlıkları | Yeni projeler için 15 kategori, toplam 100: kolon 10, kiriş 8, aşık 7, panel 17, mekanik 5, DC 10, AC 10, OG 8, köşk 5, topraklama 5, ENH 7, devreye alma 8; mobilizasyon, evrak süreci, satın alma 0. Değişen nesne `fn_seed_default_category_weights()` (`taslak-sql/kategori_agirlik_varsayilan.sql`) + Excel import `mapping.ts`. Mevcut projeler değişmez; ADN1/ADN2 kararı ayrı. Değerler PM ile görüşülüp değişebilir | **ONAYLANDI ve UYGULANDI (14.10.2026, `20261014103635_kategori_agirlik_varsayilan`)**; ADN1/ADN2 için `taslak-sql/adn_kategori_agirlik.sql` ROLLBACK ile test edildi, PM onayı bekliyor |
+| 90 | P3 test hesapları | Test admin hesabını kullanıcı Kullanıcılar sayfasından açar ve `.env.test`'e kendisi yazar. Muhasebe test hesabı açılmaz; T10 test şantiye şefiyle yapılır. Test admin, Karar 75 süzgeci gelene kadar gerçek admin bildirimlerini de alır (kabul). `.env.test` kontrolü (14.10): admin genel hesap, PM test, muhasebe gerçek kişi | **ONAYLANDI (14.10.2026)** |
+| 91 | Dal tabanı | `faz-a-proje-kontrol`: `git merge origin/main` (çakışmalarda `faz-a` sürümü). `faz-2-3-register`: kendi klasöründe `git rebase origin/main` | **ONAYLANDI ve UYGULANDI (14.10.2026)**; lint 0 hata, build başarılı (iki klasör) |
+| 92 | Import Notlar | `import-project-excel` İş Kalemleri M kolonunu `project_tasks.notes`'a yazar; öncül ayrı kolon yerine nota "Öncül: …" olarak. Deploy T1-T12'den önce; T1-T12'ye not/öncül kontrolü (T13) | **ONAYLANDI (14.10.2026)**; kod `hotfix/import-notlar` dalında, PR onay bekliyor |
+| 93 | Diyarbakır şalt sahası ve ortak altyapı | Pilotta şalt görevleri `elektrik_og` + grup etiketi "Şalt Sahası"; ayrı `salt_sahasi` kategorisi 6b'ye (açık nokta). ENH ve şalt DYB1'de kalır, DYB2'den çıkarılır; DYB2 E19'un Ş5 öncülü nota döner ("Ortak şalt sahası enerjilendirmesi DYB1 ŞS7'ye bağlı"). İki dosyanın tarih tutarsızlığı planlamaya soruldu; şimdilik DYB1 tarihleri | **ONAYLANDI (14.10.2026)** |
+| 94 | Diyarbakır eşleme ve import yolu | Belirsiz görevler: DYB1 E10 → elektrik_dc, E20 → elektrik_og, K4 → elektrik_ac, N2 → evrak_sureci, ŞS7 → devreye_alma, ŞS8 → evrak_sureci, T3/İK2 → devreye_alma, İK4 → evrak_sureci; DYB2 E9 → elektrik_dc, S4 → devreye_alma. Riskler: proje açıldıktan sonra aynı v8 dosyasıyla "Mevcut projeyi güncelle"; şiddet = kaynaktaki Risk Seviyesi, durum açık, kategori Tedarik → Satın Alma, Teknik/Program/Hava → İş Kalemi, diğerleri Diğer. Sorumlu görev notunda ve risk açıklamasında "Sorumlu: <Rol> (AJAN-xx)"; ajan → rol eşlemesi planlamadan teyit bekliyor, AJAN-15 "tanımsız". EK1 kalır, notuna "Teyit bekleniyor". Kapasite kWp/kWe, panel ve inverter adedi alınır. Kaynak ve v8 dosyaları `C:\fons-yedek\veri-kaynak\`, repoya müşteri verisi girmez. **Karar 74 güncellemesi:** Diyarbakır 6b'yi beklemez; T1-T12 geçtikten sonra kullanıcı dashboard'dan import eder | **ONAYLANDI (14.10.2026)** |
+| 95 | Diyarbakır ağırlıkları | DYB1: kolon 10, kiriş 8, aşık 7, panel 17, mekanik 3, DC 12, AC 4, OG 18 (şalt dahil), köşk 5, ENH 8, devreye alma 8. DYB2: kolon 12, kiriş 10, aşık 9, panel 22, DC 18, OG 11, köşk 7, devreye alma 11. Diğerleri 0, toplam 100. Import'tan sonra SQL ile (`taslak-sql/dyb_kategori_agirlik.sql`) | **ONAYLANDI (14.10.2026), değerler PM onayında**; ROLLBACK testi geçti (15/100 iki projede, ilerleme formülü, geri alma), parmak izi birebir; uygulama onayla |
+| 96 | Diyarbakır aktarımı SQL ile | Dashboard'dan aktarılamayınca DYB1/DYB2 canlıya SQL ile eklenir: v8 dosyalarından `import-project-excel` v25'in yazacağı satırların aynısı (`create_project_with_code` admin oturumuyla, görevler, riskler, varsayılan ağırlık). **Yedeksiz ve mesai kuralından muaf** (yalnızca bu iki proje). Gerekçe (kullanıcı): yalnızca yeni projeler, mevcut veriye dokunulmuyor, projeler silinerek geri alınabiliyor. Önce her proje ROLLBACK provası, sonra DYB1 → doğrula → DYB2 → doğrula. Geri alma `taslak-sql/dyb_import_geri_al.sql`. Ağırlıklar varsayılan kalır (Karar 95 PM onayından sonra) | **ONAYLANDI ve UYGULANDI (14.10.2026)**; genel "Admin" hesabıyla. **Karar 94 bu aktarım için kaldırıldı** (kullanıcı): DYB1/DYB2 T1-T12'yi beklemedi; T1-T12 ve dashboard import testi test admin hesabından sonra yine yapılacak. DYB1: 58 görev (53 öncüllü), 25 manuel + 2 otomatik risk (ŞM2, ŞM3; kritik); DYB2: 27 görev (26 öncüllü), 16 risk; ikisinde 15 kategori/100, bildirim 0. Mevcut satırların parmak izi (proje, kod, ağırlık, görev, risk) değişmedi |
+
+**Edge function / secret'lar:**
+- Canlıda 4 edge function (create-user, manage-user, import/export-project-excel); `agent-chat` repoda var ama
+  deploy edilmemiş — `AgentChat.jsx` onu çağırıyor (G-09). Proje Kontrol için planlanan tek yeni function
+  `process-document` (Faz C); dosya erişimi için function gerekmez (süreli imzalı adres + Storage politikaları).
+- Secret'lar yalnızca `supabase secrets set` ile: `AI_PROVIDER`, `AI_API_KEY` (Faz C). Google/Microsoft anahtarı yok.
+  Repoda, `.env`'de ve `VITE_` önekli değişkende asla. AI ölçümü için yerel kabuk değişkenleri `AI_OLCUM_{A,B}_*` +
+  `AI_OLCUM_GIZLILIK_ONAYI=evet`.
+- **Eskiyen dosyalar (v3 ile geçersiz, silinmedi — kullanıcı kararı bekliyor):** `supabase/functions/drive-gateway/`
+  (iskelet, hiç deploy edilmedi) ve `scripts/proje-kontrol/drive-limit-test.mjs`. Yeni iş bunlara dayanmamalı.
+- pg_cron 1.6.4 kurulu (tek iş: `daily-report-reminders`); pg_net kurulu değil.
+- **Storage notu (07.10'da doğrulandı):** `storage.objects` ve `storage.buckets`'ta `protect_*_delete` trigger'ı
+  SQL'den doğrudan silmeyi engelliyor ("Use the Storage API instead"). Yani bir pg_cron işi dosyanın kendisini
+  silemez; yalnızca kayıtları işaretleyebilir. Dosya silme Storage API'si (istemci veya edge function) ile olur.
+
+**Faz A güvenlik bulguları** (`docs/proje-kontrol/guvenlik-bulgulari.md`):
+- **G-02/G-03 YÜKSEK — UYGULANDI (07.10.2026, `20261007063825`).** `daily_report_photos`/`ticket_attachments`
+  INSERT policy'leri yalnızca oturum kontrol ediyordu; sahte metadata satırıyla başka projenin saha
+  fotoğrafı/ticket eki indirilebiliyordu. Artık metadata satırı kendi adına (`uploaded_by = auth.uid()`),
+  erişilebilir projede ve **dosya yolunun ilk klasörü proje id'si (foto) / ticket id'si (ek) olmak zorunda**;
+  storage SELECT policy'leri de klasör = proje/ticket eşleşmesini arıyor (ikinci katman). Yeni bir yükleme
+  akışı yazılırsa yol biçimi `{project_id}/…` (saha-fotolari) ve `{ticket_id}/…` (ticket-ekleri) olmak zorunda.
+- **G-01 YÜKSEK — yazma tarafı GEÇİCİ olarak kapatıldı (07.10.2026, `20261007063808`):** 8 register/geçmiş
+  tablosunda `authenticated` yalnızca SELECT; doğrudan yazma policy'leri duruyor ama etkisiz. Kalıcı çözüm B3
+  (policy'ler düşer, SELECT `register_can(..., 'view')` ile daralır, yazma yalnızca RPC). `project_wbs`/
+  `project_areas`/`area_wbs` bilinçli olarak kapsam dışı (WBS/Alan ekranı doğrudan yazacak).
+- G-11 ORTA — **DÜZELTİLDİ (07.10.2026, uyum migration'ı):** numara 4 haneye kadar sıfır, kırpma yok.
+- Açık: G-04 ORTA (mevcut `saha-fotolari`/`ticket-ekleri` bucket'larında storage silme/yükleme sahiplik ve rol
+  kontrolü yok; yeni doküman bucket'ı için çözüm B5 taslağında), G-12 DÜŞÜK (YeniTicketModal ek hatasını yok sayıyor),
+  G-13 DÜŞÜK (master tablolarda `authenticated` TRUNCATE/REFERENCES/TRIGGER; çözüm B2 taslağında), G-05..G-09 düşük/bilgi.
+- Geri alma: `docs/proje-kontrol/yedek-policy-07-10.sql`, `yedek-uyum-07-10.sql` (nesne anlık görüntüleri). Tam şema
+  ve veri yedeği hâlâ yok: `npm run db:backup` (şema) / `npm run db:backup:data` (veri) `.env.local` ister
+  (`scripts/db-backup/README.md`).
+
+**Register şeması (07.10.2026 itibarıyla canlı; kolon düzeyi `canli-sema-ozeti.md`):**
+- `project_actions` (eski `actions`); `source_type` ∈ manual/risk/rfi/decision/meeting/other.
+- Numara kolonu tabloya özel: `document_no`, `rfi_no`, `action_no`, `decision_no`, `submittal_no`, `approval_no`
+  (`drawings`'te yok; çizimin numarası dokümanınki). Trigger boş gelen numarayı `next_register_no` ile doldurur;
+  elle verilen numara sayaçla çakışabilir → yazma RPC'leri numarayı dışarıdan kabul etmez.
+- Proje kodu `project_register_settings(project_id, prefix)` (ADN1, ADN2, TIZ, TKY). Yeni projede satır eklenmezse
+  o projede register kaydı açılamaz (açık hata). Sıra `project_register_counters(project_id, register_code)`.
+- `documents` yalnızca kimlik (`status` active/void); dosya ve revizyon `document_revisions`'ta (`storage_provider`,
+  `storage_file_id`, `file_name`, `mime_type`, `size_bytes`, `sha256` kolonları zaten var; `is_current` kısmi unique,
+  değişimde önce eskisi false sonra yenisi true). `drawings` yalnızca `document_id` + `drawing_type`.
+- Bugün canlıda olmayan ama tasarımın beklediği ortak kolonlar (`record_state`, `source`, `approved_by/at`,
+  `rejected_reason`, eksik `created_by`) B3 taslağında `ADD COLUMN` ile ekleniyor.
+- `project_tasks.is_critical` yeniden kaldırıldı; `activity_id` atandıktan sonra `trg_project_tasks_identity_guard`
+  ile değiştirilemez (düzeltme yolu B4 taslağı: yalnızca admin, gerekçeli, audit'li RPC).
+
+**Faz B iş listesi** (ayrıntı: `docs/proje-kontrol/faz-b-migration-plani.md`; hiçbiri uygulanmadı, hepsi
+BEGIN…ROLLBACK ile canlıda denendi; her biri SQL'i gösterilip onaylanınca uygulanır):
+
+| Paket | İçerik | Taslak | Durum |
+|---|---|---|---|
+| B1 | `register_permissions` (+`edit_scope` own/all), `register_status_transitions`, `register_can()`, `get_my_register_permissions()`, admin `set_register_permission()`, 4 rol seed | `taslak-sql/b1_register_permissions.sql` | Onay bekliyor; **Faz 1'e taşındı (Karar 17)**; seed Karar 6'ya göre güncellendi ve canlıda ROLLBACK ile yeniden test edildi (13.10.2026: 13 kontrol grubu OK, parmak izi birebir) |
+| B2 | `register_audit` (yalnızca değişen alanlar) + trigger, 30 indekssiz FK'ye indeks, G-13 | `taslak-sql/b2_register_audit_indexes.sql` | Onay bekliyor |
+| B3 | Ortak kolonlar, `save/submit/approve/reject/reopen/delete_register_record`, `set_register_status`, `link/unlink_register_records`, dört göz, G-01'in kalıcılaşması | `taslak-sql/b3_register_write_rpcs.sql` | Onay bekliyor (B1, B2'ye bağlı); A1b panel kayıtlarını geri doldurma eklendi (Karar 81), yeniden test bekliyor |
+| B4 | `admin_correct_task_activity_id` (yalnızca admin, gerekçe zorunlu, audit) | `taslak-sql/b4_identity_guard_admin_fix.sql` | Onay bekliyor (B2'ye bağlı) |
+| B5 | `proje-dokumanlari` bucket, Storage politikaları (G-04 çözümü), begin/complete/abort upload, `void_document`, `get_storage_usage`, pg_cron temizlik | `taslak-sql/b5_document_storage.sql` | **PATRON ONAYI BEKLİYOR** (B1-B3'e bağlı). **Değiştirildi (09.10; 14.10 A1 geri doldurma, Karar 81), yeniden test bekliyor** |
+| B6 | `vw_reg_*` görünümleri, `get_register_list/detail/overview/audit`, realtime yayını | `taslak-sql/b6_register_read_rpcs.sql` | Onay bekliyor (B1-B3'e bağlı) |
+| F1 | Proje kodu biçimi `^[A-Z][A-Z0-9]{1,4}$`, alan kodu `^[A-Z0-9]+$`, `create_project_with_code` (admin + proje_yoneticisi), kodsuz projeyi reddeden ertelenmiş kural; edge function ve sihirbaz diff'i `f1-import-project-excel-diff.md` | `taslak-sql/f1_proje_kodu_ve_olusturma.sql` | Faz 1; **Adım 2 kapandı** (`faz1-adim2-sonuclar.md`): B1, B2, B4, F1 canlıda ROLLBACK ile tüm oturumlarda geçti, rollback parmak izi birebir; uygulanmadı (Adım 6) |
+| F1-AID | Activity ID: `task_disciplines` + FK, `activity_id_counters`, `assign_activity_ids`/`assign_activity_id` (önizleme varsayılan), kimlik korumasının son hali (Ç16: yalnızca atama fonksiyonu ve B4 yazar; ID'li görevde disiplin/alan kilidi; ID'li görev silinmez), genişletilmiş B4 (5 parametre), iptal görevleri ilerleme/S-eğrisi/ağırlık hesaplarından çıkarma (7 fonksiyon/görünüm), A8 iptal görev koruması (`progress_daily` trigger'ı, yeniden açma yalnızca admin/PM, `save_daily_report` eski satırı korur) | `taslak-sql/f1_aid_activity_id.sql`, tasarım `faz1-adim3-tasarim.md` | Faz 1 **Adım 3 kapandı (12.10.2026)** (`faz1-adim3-sonuclar.md`):
+- 1a, 1c (R1-R16), 1d (B4 + dört projede uygulama sonrası etki yok), 2a (11/11) ve 2b (12/12) canlıda ROLLBACK ile geçti.
+- Oturum 5 = Oturum 0.
+- Uygulanmadı; Adım 6'da B4'ten sonra ayrı migration (Karar 42). |
+| F1-WA | WBS/alan bütünlüğü ve importu: `project_wbs_discipline_fk`, Activity ID'li göreve etki eden alan/WBS/bağ değişikliklerini reddeden trigger'lar (Karar 48), Ç-7 guard düzeltmesi (Karar 49), audit trigger'ları, `import_wbs_areas` (Karar 50); şablon, ayrıştırıcı, projesiz kontrol betiği | `taslak-sql/f1_wbs_alan_import.sql`, tasarım `faz1-adim4-tasarim.md` | Faz 1 **Adım 4 kapandı (12.10.2026)** (`faz1-adim4-sonuclar.md`): 4a 10/10, 4b 20/20, 4c 10/10, 4d 12/12, 4e (R17-R26) canlıda ROLLBACK ile geçti; Oturum 5 = Oturum 0. Uygulanmadı; Adım 6'da F1-AID'den sonra ayrı migration |
+| F1-W5 | Adım 5 ekran DB parçaları: `get_project_gantt` yeni alanlar, `save_area_wbs_links`, `set_tasks_classification`, `save_project_tasks` (Ç-B), ağırlıksız kategori constraint trigger'ları (Karar 56), Ç-6 RLS (Karar 55); Karar 44 güncellemesi AID A8b'de | `taslak-sql/f1_adim5_ekran_rpc.sql`, tasarım `faz1-adim5-tasarim.md` (Ek B: uygulama durumu) | **Yazıldı, test edilmedi** (yerel ortam bekleniyor; `faz1-adim5-yerel-ortam.md`). Uygulanmadı; Adım 6'da Adım 4'ten sonra ayrı migration |
+| — | G-04 (mevcut bucket'lar), G-12, `RegisterList`/`RegisterDetail` iskeleti, "Proje Kontrol" girişi (`frontend-giris-karari.md`) | — | Faz B frontend |
+
+**Dosyalar:**
+- `docs/proje-kontrol/` — `CONVENTIONS.md` (adlandırma, ortak kolonlar, yetki, dosya, migration kuralları),
+  `register-gap-analizi.md` (16 register durumu, satın alma/finans köprü eksikleri, faz durum tablosu),
+  `tasarim.md` (v3), `canli-sema-ozeti.md`, `v3-uyum-notlari.md`, `faz-b-migration-plani.md`,
+  `frontend-giris-karari.md`, `uyum-migration-plani.md`, `sema-dogrulama.md`, `guvenlik-bulgulari.md`,
+  `frontend-tasarim-notu.md`, `canli-05-10-migrations/` (05.10 migration'larının birebir arşivi), `arsiv/`.
+- `docs/proje-kontrol/taslak-sql/` — uygulanmışlar (`g01_…`, `g02_g03_…`, `uyum_migration_*`) ve Faz B taslakları
+  (`b1`…`b6`, her biri: BÖLÜM A uygula / BÖLÜM B geri al + `*_dogrulama.sql`); `yedek-faz-b-07-10.sql` (Faz B'nin
+  değiştireceği canlı nesnelerin anlık görüntüsü).
+- `supabase/migrations/20261007063808_…`, `20261007063825_…`, `20261007072501_…`, `20261014082055_f5_changes_claims_interfaces.sql`, `20261014102306_f1_a1_a3_proje_olusturma.sql`, `20261014103635_kategori_agirlik_varsayilan.sql` — canlıya uygulanan SQL'in birebir aynısı.
+- Testler: `proje-kontrol-guvenlik.spec.js` (8), `proje-kontrol-master-veri.spec.js` (9), `proje-kontrol-uyum.spec.js`
+  (7 + 3 fixme, B3 gelince açılır), Faz B test taslakları `proje-kontrol-b{1..6}-*.spec.js` (ilgili paket canlıda
+  yoksa kendini atlar).
+- `scripts/proje-kontrol/ai-olcum/` — ölçüm iskeleti (`olcum-seti/`, `sonuclar/` gitignore'da).
+- Not: `pg_default_acl` yeni tablolarda `authenticated`'a tüm yetkileri, yeni fonksiyonlarda `anon`/`authenticated`'a
+  EXECUTE veriyor — yeni nesnelerde açık REVOKE şart.
+
+**Frontend girişi:** santiye_sefi ve muhasebe `projeler` sekmesine sahip olmadığından ProjeDetay'a ulaşamaz;
+seçenekler ve öneri `docs/proje-kontrol/frontend-giris-karari.md`'de (karar Faz B'de).
 ---
 
 ## Tamamlanan büyük görevler (özet)
@@ -1724,6 +1960,80 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
+- **`salt_sahasi` görev kategorisi 6b'de (Karar 93, 14.10.2026).** Diyarbakır pilotunda şalt sahası görevleri
+  `elektrik_og` + grup etiketi "Şalt Sahası" ile giriliyor. Ayrı kategori için gerekenler:
+  - `task_category` enum'una değer (görev, ağırlık tabloları ve `vw_delayed_tasks` kullanıyor) ve `fn_seed_default_category_weights` (%0);
+  - import/export `mapping.ts`, `template_builder.ts` listesi, statik v8 şablon;
+  - sihirbaz İş Kalemleri ve Ağırlıklar adımları, `TabIsPlan.jsx`, `projectExcelImport.js`, `ProjectOverviewDashboard.jsx` (kullanıcı dosyası).
+  - Kategori açılınca DYB1'in şalt görevleri ve OG ağırlığının şalt payı taşınır.
+
+- **Proje sihirbazının Riskler adımı otomatik riskleri bozuyor (14.10.2026, yayındaki `main` kodu okunarak; ROLLBACK ile denenmedi; bugün canlıda).**
+  - **Nasıl:** `ProjeEditWizard.jsx` adım "Kaydet"i ve `Adim8Tamamlandi.jsx` düzenleme kaydı projenin bütün `project_risks` satırlarını siliyor, formdakileri yeniden ekliyor. `Adim4Riskler.jsx` yükünde `source`, `rule_code`, `subject_ref`, `closed_at`, `id` yok.
+  - **Etkisi:**
+    - otomatik riskler `manuel` olarak yeniden yazılır;
+    - risk motoru aynı konu için yeni otomatik risk açar, kopya oluşur;
+    - id'ler değişir, kapalı risklerin kapanış tarihi kayıt anına kayar;
+    - register kaydına bağlı risk (`risk_id`) varsa kayıt FK hatasıyla düşer.
+  - **Kapsam:** 14.10'da canlıdaki 55 riskin hepsi otomatik (ADN1 8, TIZ 33, TKY 14).
+  - **Düzeltme:** 6b sihirbaz paketinde `save_project_risks` (yalnızca manuel riskleri günceller, otomatiklere dokunmaz). Tasarım ve test planı `faz1-adim5-tasarim.md` §3.4 ve §3.3 (7-11).
+  - **O zamana kadar:** risk girişi `register-veri-giris-rehberi.md` §4.9'daki SQL Editor şablonuyla; sihirbazın Riskler adımı kullanılmaz.
+
+- **Proje sihirbazının İş Kalemleri kaydı ilerlemesi olan projede kırık (09.10.2026'da ROLLBACK ile doğrulandı,
+  Faz 1'den bağımsız, bugün canlıda).** `ProjeEditWizard.jsx` (adım kaydı) ve `Adim8Tamamlandi.jsx` (düzenleme)
+  projenin tüm `project_tasks` satırlarını silip yeniden ekliyor. `progress_daily.task_id` FK'si silmeye izin
+  vermediğinden, günlük rapor ilerlemesi girilmiş bir projede (ör. TIZ: 35 görevin 16'sı) kayıt
+  `progress_daily_task_id_fkey` hatasıyla düşer. İlerleme yoksa kayıt geçer ama görev ID'leri değişir. Düzeltme Faz 1
+  Adım 5'te: görev koduna göre güncelleme (Karar 40), Adım 6 deploy'unun ön koşulu. Ayrıntı: `docs/proje-kontrol/faz1-adim3-tasarim.md` §7.
+  **Ek bulgu (12.10.2026, kod okumasıyla):** `Adim2IsKalemleri.jsx` `handleSave` yükünde `group_label`,
+  `responsible_role`, `duration_days` yok; düzenleme sihirbazından geçen her kayıt `group_label`'ı silip İş Planı
+  hiyerarşisini düzleştiriyor. Düzeltme aynı paket (`faz1-adim5-tasarim.md` §3).
+
+- **Ç-6 — KAPANDI (Karar 55, 12.10.2026).** Şantiye şefi WBS/alan/alan-WBS'te yalnızca okuma; RLS daraltması
+  `f1_adim5_ekran_rpc.sql` A7'de (uygulanmadı). Canlıda bugün hâlâ şantiye şefi `project_areas` insert/update ve `area_wbs`
+  insert/delete yapabiliyor; Adım 6'ya kadar böyle kalır.
+
+- **Ç5-7 — KAPANDI (Karar 63, 13.10.2026): proje yöneticisi her projeye yazar.** `roles.proje_yoneticisi.cross_project = true`;
+  `has_project_access` PM'e (ve `is_manager` olan admin/muhasebeye) her projede true döner. Yeni RPC'lerdeki proje erişim kontrolü
+  bugün yalnızca savunma katmanı; R32 bunu alt işlemde `cross_project=false` ile ölçer. Projeye özel PM veya dış kullanıcı
+  (müşavir, işveren, taşeron) girmeden ve Faz 5 Claim/Change'den önce yeniden açılır.
+
+- **Adım 6 ön koşulu — tam zincir provası (12.10.2026).** MCP ~95 KB sınırı yüzünden B1 + B2 + B4 + F1 + AID + Adım 4
+  hiçbir oturumda birlikte kurulmadı. Adım 6'dan önce `.env.local` bağlantısıyla psql üzerinden hepsi tek transaction'da
+  kurulur, `f1_dogrulama.sql`'in tamamı (R1-R27) koşulur, ROLLBACK; öncesi/sonrası parmak izi. Ayrıntı:
+  `docs/proje-kontrol/faz1-adim3-tasarim.md` §9.
+
+- **Kategori ağırlık tablosunda olmayan kategorilerdeki görevler proje ilerlemesine hiç katılmıyor (12.10.2026'da salt
+  okunur sorguyla bulundu, Faz 1'den bağımsız, bugün canlıda).**
+  - Nasıl hesaplanıyor: proje ağırlık tablosu varsa `projects.progress` (`fn_sync_project_progress`) ve `overall_pct` (`get_project_by_date`) yalnızca `project_category_weights`'teki kategorilerin ortalamasını tartar.
+  - Ağırlığı olmayan kategorideki görevlerin ilerlemesi hiç sayılmaz.
+  - Görevi olmayan ağırlıklı kategori de 0 olarak sayılır; bu yüzden proje %100'e ulaşamaz.
+  - Dört projenin dördünde de var (proje, kategori, görev sayısı, ilerleme kaydı olan görev):
+
+    | Proje | Kategori | Görev | İlerleme kaydı olan |
+    |---|---|---|---|
+    | TIZ | `enh` | 1 | 1 |
+    | TIZ | `mobilizasyon` | 6 | 6 |
+    | TKY | `enh` | 1 | 0 |
+    | TKY | `mobilizasyon` | 3 | 3 |
+    | ADN1 | `enh` | 2 | 0 |
+    | ADN1 | `mobilizasyon` | 9 | 0 |
+    | ADN2 | `enh` | 3 | 0 |
+    | ADN2 | `evrak_sureci` | 9 | 0 (2'si durumla %>0) |
+    | ADN2 | `mekanik` | 6 | 0 |
+    | ADN2 | `mobilizasyon` | 5 | 0 (1'i durumla %>0) |
+    | ADN2 | `satin_alma` | 13 | 0 |
+
+  - TIZ ve TKY'de ilerleme kaydı olan 10 görevin ilerlemesi bugün proje yüzdesine yansımıyor.
+  - TKY'de görevi olmayan `kosk_trafo` %5 ağırlıkta; proje en fazla %95 olabilir.
+  - Kaynak: yeni projeye `trg_seed_default_category_weights` 10 kategorilik sabit varsayılan yazıyor. `enh`, `mobilizasyon`, `mekanik`, `evrak_sureci`, `satin_alma` bu listede yok.
+  - Düzeltme kararı kullanıcıda; önerilmedi.
+  - Bugün yalnızca test projeleri (TIZ, TKY) etkileniyor.
+  - ADN1/ADN2'de ilerleme başladığında ADN2'de 36 görev yüzdeye yansımayacak (ADN1'de 11).
+  - Adım 6 ön koşullarına iki madde eklendi (`docs/proje-kontrol/faz1-adim3-tasarim.md` §9):
+    - Diyarbakır importundan önce ağırlık tablosu tüm kategorileri kapsayacak; fiziksel olmayanlar açıkça %0, toplam %100.
+    - Excel import ve sihirbazda ağırlıksız kategoriye uyarı veya red; hangisi olacağı Adım 5 tasarımında önerilecek.
+  - Hangi kategoriye ne ağırlık verileceği iş kararı; kullanıcı bildirecek.
+
 - ~~`xlsx` (SheetJS) bağımlılığı — HIGH severity güvenlik açığı~~ — **çözüldü
   (10.09.2026, 2. tur).** Önceki "kabul et/izle" kararı, gerçek saldırı
   yüzeyinin dokümante edilenden çok daha geniş olduğu ortaya çıkınca yeniden
@@ -1772,27 +2082,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   (_,i)=>row.values[i+1])` her index'i açıkça ziyaret ettiğinden bu sorunu
   yaşamıyor — düzeltme bu, uzunluk pad'lemek değil. İkisi de yeniden çalıştırılıp
   geçtiği doğrulandı.
-- **`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
-  duplicate key) — KISMEN çözüldü (10.09.2026), tam kapanmadı.** Önceki
-  turlarda "PgBouncer/PostgREST kaynaklı, bu projenin araçlarıyla
-  düzeltilemez" sanılmıştı — bu hipotez YANLIŞ çıktı. Gerçek (ve kanıtlanmış)
-  bir mekanizma bulundu: `fn_next_purchase_request_no()` sayacı normal bir
-  tabloda tutup çağıranın transaction'ı İÇİNDE artırıyordu; PL/pgSQL'in
-  `exception when unique_violation` savepoint-rollback'i bu artışı da geri
-  alıyor, aynı numarayı tekrar tekrar üretiyordu (canlı bir zorlanmış-
-  çakışma testiyle kanıtlandı). Düzeltme: sayaç tablosu yerine yıl başına
-  gerçek bir Postgres `SEQUENCE` (`nextval()` rollback'ten etkilenmez).
-  **AMA** tam regresyon paketi bu düzeltmeden SONRA tekrar çalıştırılınca
-  6/74 test hâlâ aynı imzayla başarısız oldu — kapsamlı canlı adli inceleme
-  (sequence izole test, süreç listesi, `pg_stat_activity`, farklı-proje
-  peer-oturum kontrolü, Supabase branch listesi) kalıntı nedeni AÇIKLAYAMADI.
-  Pragmatik önlem olarak retry sınırı 5'ten 20'ye çıkarıldı
-  (`bump_request_no_retry_cap_to_20`) — kök nedeni çözmüyor, yalnızca
-  kullanıcı etkisini azaltıyor. Ayrıntı için "Son değişiklik" 10.09.2026
-  girdisine (ve altındaki "DÜZELTME" notuna) bak. Etkilenen testler
-  (`procurement-concurrency`, `procurement-two-initiators`,
-  `procurement-workflow`, `purchase-single-item`,
-  `procurement-negotiation-flow`) hâlâ ara sıra flaky olabilir.
+- ~~`request_no` cakismasi (`purchase_requests_request_no_key` duplicate key)~~ - **uygulama akisi kapandi; kalan test yolu izole edildi (24.09.2026).** Talep kodu uretimi yil bazli Postgres `SEQUENCE` ve atomik `nextval()` kullaniyor; `create_purchase_request_with_items` ile aylik plan RPC'leri cakismada yeniden deneyebiliyor. Canli veritabaninin salt okunur kontrolunde sequence son degeri mevcut kodlarin ilerisindeydi ve bos `request_no` yoktu. Belgelenen son hata, `purchase-single-item.spec.js` icindeki eszamanli kalem ekleme testinin talebi dogrudan REST ile olusturup varsayilan kod uretimine istemeden bagimli olmasindan kaynaklaniyordu. Test simdi kendi benzersiz fixture kodunu veriyor; boylece yalnizca kalem ekleme yarisini olcuyor. Bu test calistirmada yeniden kosturulmadi.
 - ~~Tedarikçi bakiyesi/Finans Raporları — `paid_amount`/`remaining_amount`
   TRY'ye çevrilmiyordu~~ — **tam çözüldü (18.08.2026).** Önceki kısmi düzeltme
   (2026-07-31) yalnızca `total_amount_try`'yi kapsıyordu; şimdi `paid_amount`/
@@ -1873,16 +2163,6 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `20260731100738_add_project_risks_delete_policy`)**: `authenticated_delete_risks`
   policy'si eklendi, aynı tablodaki `authenticated_insert_risks`/`authenticated_update_risks`
   ile birebir aynı deseni (`user_has_project_access(project_id)`) kullanıyor.
-- **Migration `20260724072957_invoice_flow_single_approver_with_revision_and_payment_tracking`
-  yerel dosyası eksik.** Bu görev sırasında canlıda uygulanmış ama
-  `supabase/migrations/` altında karşılığı olmadığı fark edildi (muhasebe
-  ayrı bir oturum/araçla doğrudan uygulamış olmalı) — `taslak`/
-  `duzeltme_bekliyor`/`odeme_bekliyor` durumları, `requires_payment_tracking`/
-  `payment_date`/`payment_note` kolonları ve `fn_invoice_approval_submitted`/
-  `fn_invoice_approval_cascade`'in ilk sürümü bu migration'la geldi. Üstüne
-  düzeltme migration'ı (`20260724081031`) eklendi ama orijinali hâlâ yerel
-  dosya olarak yok — fark edilirse (`schema_migrations` ile `supabase/migrations/`
-  karşılaştırması) geriye dönük eklenmesi gerekebilir.
 - ~~Faturalar mobil kart görünümü yok~~ — **bu not bayatmış, düzeltildi
   (2026-07-31).** Gerçek kod zaten tam bir mobil kart görünümüne sahip:
   `FaturaListesi.jsx`'te `.invoice-mobile-list` (article kartları) JSX'i +
@@ -1918,12 +2198,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   garantisi yok, ama bir `db reset`'te aynı nihai duruma ulaştırır ve sonraki
   gerçek yerel dosyalarla (`fix_kismen_odendi_status_omissions` vb.) çakışmaz.
   **`invoice_flow_single_approver_with_revision_and_payment_tracking`
-  (07-24 072957) kalıcı olarak kurtarılamaz** — bunu düzelten sonraki migration
-  (`20260724081031_invoice_workflow_single_approver_backend_fix`, yerelde zaten
-  var) `create_invoice_approval_chain()`/`trg_notify_invoice_insert()` gibi
-  fonksiyonları DROP ediyor; bu fonksiyonların orijinal gövdesi artık ne canlı
-  DB'de ne de hiçbir dosyada var — yeniden yazılırsa uydurma olur, kullanıcı
-  kararıyla bu tek migration açık madde olarak bırakıldı. En güncel iki migration
+  (07-24 072957) 24.09.2026'da arşivden kurtarıldı:** canlı
+  `supabase_migrations.schema_migrations.statements` kaydındaki özgün SQL
+  `supabase/migrations/20260724072957_invoice_flow_single_approver_with_revision_and_payment_tracking.sql`
+  dosyasına alındı. Bu fonksiyonların mevcut gövdeleri canlı DB'de artık yoktu;
+  bu nedenle yaşayan şemadan tahmin edilmedi, saklanan migration SQL'i kullanıldı.
+  En güncel iki migration
   (`20260803101019_drop_critical_path_and_dashboard_visible_fields`,
   `20260803101309_update_functions_after_dropping_critical_path_columns` —
   `is_critical`/`dashboard_visible`/`dashboard_order` kaldırma turu) de aynı
@@ -1938,9 +2218,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   yok" görünüyordu, bunların 52'si zaten bilinen zararsız timestamp
   sürüklenmesiydi — ör. DB'de `20260904083650` olan `link_monthly_plan_to_purchase_requests`
   yerelde `20260904090000` adı altında duruyor). Geriye, isimle de eşleşmeyen
-  **15 gerçek boşluk** kaldı — yukarıdaki `invoice_flow_single_approver...`
-  (zaten bilinen/kabul edilmiş) hariç **14'ü yeni bulgu**: `create_procurement_monthly_plan`
-  (20260812060349) + Kaptan Demir Çelik (Adana GES-1/GES-2) projesinin gerçek
+  **15 gerçek boşluk** kaldı: invoice workflow migration'ı,
+  `create_procurement_monthly_plan` ve Kaptan Demir Çelik (Adana GES-1/GES-2)
+  projesinin gerçek verisine dokunan 13 migration. İlk ikisi sonradan
+  arşivlendi; güncel durumda yalnızca aşağıda açıklanan **13 müşteri-verisi
+  migration'i** eksik. 15.09.2026'daki karşılaştırmanın tam listesi:
+  `create_procurement_monthly_plan` (20260812060349) + gerçek proje verisine
+  dokunan
   verisine dokunan 13 migration — `import_kaptan_demir_1ay_plan`,
   7 adet `adana_faz1_*` (WBS'in fotoğraf bazlı yapıya geçirilmesi, task kodu
   formatı, OG/ENH alt-kategori düzeltmeleri, group_label düzleştirme/birleştirme)
@@ -1969,6 +2253,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   Çelik'in WBS/aylık plan verisi hiç oluşmaz — yalnızca bu iki gerçek proje
   için, yalnızca bir `db reset` senaryosunda önemli, günlük geliştirme akışını
   etkilemiyor. Canlı DB'de veri zaten mevcut ve bu karardan hiç etkilenmiyor.
+- **Migration arşiv durumu (24.09.2026):** Canlı `schema_migrations` listesindeki eksik dosyalar yeniden karşılaştırıldı. `20260918132417_allow_muhasebe_self_revize_invoice_from_manager_approval` yaşayan fonksiyon tanımından, `20260724072957_invoice_flow_single_approver_with_revision_and_payment_tracking` ise migration tablosunda saklanan özgün SQL'den arşivlendi. `20260722135051` dosyası canlıdaki `allow_report_creators_delete_own_daily_reports` adına taşındı ve policy tanımıyla karşılaştırıldı. Bu işlemler yalnızca repo tarihçesini tamamladı; canlı veritabanına migration uygulanmadı. Açık kalan 13 migration, önceki karara göre müşteri WBS/plan verisini git'e koymamak için yerel dosya olmadan bırakıldı.
 - **`esbuild` (Vite'ın dahili bundler'ı) — moderate CVE, yalnızca dev-server'a
   özgü, kabul edildi (11.09.2026).** `GHSA-67mh-4wv8-2f99`: herhangi bir web
   sitesi dev server'a istek atıp yanıtı okuyabiliyor — bu yalnızca `npm run dev`
@@ -1989,6 +2274,351 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**14.10.2026 (29. tur) — Karar 90-95; dallar güncel `main`'e alındı; import Notlar düzeltmesi (PR bekliyor); Diyarbakır v8 dosyaları ve ağırlık SQL'i.**
+- **`.env.test` (yalnızca karşılaştırma izniyle, e-postalar yazdırılmadan):** admin genel hesap, PM test, muhasebe gerçek kişi → Karar 90.
+- **Dallar (Karar 91):** `faz-a` ← `origin/main` merge (`e0f322a`, iki çakışmada `faz-a` sürümü); `faz-2-3-register` rebase (10 commit, çakışma yalnızca CLAUDE.md, dalın sürümü). İki klasörde lint 0 hata, build başarılı. Push yok.
+- **Import Notlar (Karar 92):** `hotfix/import-notlar` (`55cc7c8`) ve `faz-a`'da aynı satır; push/PR/deploy onay bekliyor.
+- **Diyarbakır (Karar 93-95):**
+  - Kaynaklar ve üretilen `DYB1_v8_proje.xlsx` (58 görev, 25 risk), `DYB2_v8_proje.xlsx` (27 görev, 16 risk) `C:\fons-yedek\veri-kaynak\`'te (üretim `uret-v8.cjs`, doğrulama `dogrula-v8.cjs`).
+  - Proje olmadan doğrulama: import'un kendi kontrolleri 0 hata; ID ve kodlar canlıda boş.
+  - `taslak-sql/dyb_kategori_agirlik.sql` canlıda ROLLBACK ile geçti, parmak izi birebir; uygulanmadı.
+- **T1-T12:** test admin hesabı bekleniyor.
+- **Sonra (aynı gün):**
+  - Notlar düzeltmesi PR #38 ile `main`'e birleşti (`2e3ff8e`); `import-project-excel` deploy edildi (canlı sürüm **v25**; beklenen v24'tü, aradaki sürüm numarasının nedeni doğrulanamadı). Canlı içerik dal dosyasıyla aynı, `verify_jwt` true, DB parmak izi deploy öncesi/sonrası aynı.
+  - Diyarbakır proje ID'leri gerçek proje kuralına (`{müşteri}-{il}-{tür}-faz{N}`, ör. `kaptan-demir-adana-arazi-faz1`) uyduruldu: `isdemir-diyarbakir-arazi-faz1` / `-faz2` (canlıda boş).
+  - DYB2 R13-R15 açıklamalarına "Ortak altyapı (DYB1) bağımlılık riski — " eklendi; v8 dosyaları yeniden üretildi, doğrulama 0 hata.
+  - `dyb_kategori_agirlik.sql` yeni ID'lerle güncellendi, ROLLBACK testi yeniden geçti (15/100 iki projede, ilerleme 9/8, geri alma 7/7), parmak izi birebir; uygulama PM onayından sonra.
+  - **Karar 96 — Diyarbakır SQL ile aktarım:** aktarım SQL'i `C:\fons-yedek\veri-kaynak\DYB{1,2}_import.sql` (`uret-import-sql.cjs`; veri blokları MD5 korumalı). Canlıda ROLLBACK provası iki projede temiz: DYB1 58 görev (notlu 58, öncüllü 53), 25 manuel risk ve 2 otomatik risk (ŞM2, ŞM3); DYB2 27/27/26, 16 risk; 15 kategori ağırlık (toplam 100); bildirim 0. Parmak izi öncesi ve sonrası birebir. **Kalıcı uygulandı** (Karar 94 bu aktarım için kaldırıldı; genel Admin hesabı): projeler 4→6, görev 228→313, risk 55→98, ağırlık satırı 40→70, kod 4→6, bildirim 1268 (değişmedi); Diyarbakır dışı satırların parmak izi birebir. Geri alma `taslak-sql/dyb_import_geri_al.sql` (çalıştırılmadı).
+  - Proje adları Adana biçimine uyduruldu: "İsdemir (Diyarbakır GES-1)" / "İsdemir (Diyarbakır GES-2)"; v8 dosyaları yeniden üretildi, doğrulama 0 hata. Import adımları `C:\fons-yedek\veri-kaynak\IMPORT-ADIMLARI.md`.
+
+**14.10.2026 (28. tur) — Proje ekleme hotfix'i yayında (PR #36, #37); edge function'lar deploy edildi; uçtan uca test bekliyor.**
+- **Yerel `main` bayatmış (468b224, uzak 81 commit ileride).** Hotfix'in dosyaları o commit'lerde değişmemişti; dal `origin/main`'e rebase edildi. lint 0 hata, build başarılı. Yerel `main` başvurusu güncellendi.
+- **PR #36** (sihirbaz, v8 şablon, import/export, migration dosyaları) ve **#37** birleşti; Vercel production "success". Canlı sitede şablon md5'i v8 ile aynı, JS paketinde `create_project_with_code` var.
+  - #37'nin gerekçesi: export çalışma kitabını `template_builder.ts` ile ürettiği için E13'ün etiketi yoktu; #37 etiketi, doğrulamayı ve v8 notunu ekledi.
+- **Edge function'lar:** export v22, import v23 deploy edildi (ACTIVE, `verify_jwt` true). Veritabanı parmak izi deploy öncesi ve sonrası aynı.
+- **Uçtan uca test (T1-T12) yapılmadı:** fonksiyonlar kullanıcı oturumu istiyor, girişsiz smoke test mümkün değil; `.env.test` hesaplarının durumu (gerçek kişi mi test mi) bekleniyor.
+- **ADN1/ADN2 ağırlıkları:** PM onayı yok, uygulanmadı.
+- **6b çakışmaları (`faz-a` ↔ güncel `main`):** yalnızca `Adim8Tamamlandi.jsx` ve `export-project-excel/template_builder.ts`; ikisinde de `faz-a` sürümü alınır. `faz-a`'ya E13 doğrulama satırı eklendi.
+
+**14.10.2026 (27. tur) — Varsayılan kategori ağırlıkları canlıya uygulandı (Karar 89); hotfix'e özgü değişiklikler faz-a'ya işlendi; P3 deploy planı.**
+- **Ağırlıklar:** `apply_migration` (`20261014103635_kategori_agirlik_varsayilan`). Doğrulamada yeni projede 15 kategori / toplam 100; mevcut 40 satır, diğer fonksiyonlar, trigger'lar ve projeler değişmedi. Migration dosyası üç dalda.
+- **ADN1/ADN2:** `taslak-sql/adn_kategori_agirlik.sql` ROLLBACK ile test edildi:
+  - ilerleme öncesi ve sonrası 0;
+  - ADN2'de ilerlemesi olan kategoriler (evrak süreci, mobilizasyon) %0 ağırlıkta;
+  - geri alma birebir.
+  - PM onayı bekleniyor; uygulanmadı.
+- **faz-a'ya port:** Adim5, `import-project-excel/index.ts` ve `mapping.ts` hotfix'ten birebir; Adim8'e tedarik koşulu. lint 0 hata, build başarılı.
+- **P3 planı:** `docs/proje-kontrol/proje-ekleme-hotfix-plani.md` §7.
+
+**14.10.2026 (26. tur) — F1 A1-A3 canlıya uygulandı; varsayılan ağırlık taslağı (Karar 89); hotfix kodu yazıldı (push yok).**
+- **F1 A1-A3:** Oturum 0 temiz; `apply_migration` (`20261014102306_f1_a1_a3_proje_olusturma`); `f1_a1_a3_dogrulama.sql` canlıda 7/7. Mevcut nesnelerde değişiklik yok; değişenler yalnızca `create_project_with_code` (fonksiyon 116 → 117) ve iki CHECK. Migration dosyası üç dalda.
+- **Karar 89:** `taslak-sql/kategori_agirlik_varsayilan.sql` (yalnızca `fn_seed_default_category_weights()` gövdesi). ROLLBACK testi geçti: sihirbaz ve doğrudan eklemede 15 kategori / toplam 100; ertelenmiş toplam kontrolü geçti; mevcut 40 satır değişmedi; geri alma md5 özgünle aynı. DB için "uygula" bekliyor.
+- **Hotfix `hotfix/proje-ekleme` (`678806a`, push yok):**
+  - `faz-a`'daki Adim1, export ve şablon v8 parçaları birebir taşındı.
+  - Adim8 `create_project_with_code` ile çalışıyor, tedarik koşulu eklendi; Adim5'te tedarik isteğe bağlı.
+  - `import-project-excel`: güncellemede rol kontrolü, Türkçe risk varsayılanları, yazmadan önce doğrulama, kopya kodu E13'ten.
+  - `mapping.ts`: 15 kategori ve geçerli değer listeleri.
+  - lint 0 hata, build başarılı, edge function'lar esbuild ile sözdizimi temiz.
+  - Değişen yollar için otomatik test yok; Playwright `main`'de canlıya yazar.
+
+**14.10.2026 (25. tur) — Proje ekleme incelemesi ve hotfix planı (Karar 85-88); canlıya kalıcı değişiklik yok.**
+- **Canlıda ROLLBACK testi (gerçek admin/PM oturumu):**
+  - PM sihirbazda `projects` INSERT RLS'ine takılıyor.
+  - Admin projeyi açıyor ama proje kodu yok, register numarası alınamıyor.
+  - Admin'de tedarik RPC'si yalnızca PM'e açık; adım listesinden atlanırsa kayıt yarıda kalıyor.
+- **Excel (kod okuması, v22 = `main`):** risk varsayılanları CHECK'e uymuyor (`acik`/`yuksek`/`dusuk`); güncelleme yolunda rol kontrolü yok; yükleme tek işlem değil.
+- **F1 A1-A3 ayrı pakette** (`f1_a1_a3_proje_olusturma.sql`, A1-A3 kaynakla birebir) ve davranış testi (`f1_a1_a3_dogrulama.sql`, kural 10 ön kontrollü). Canlıda ROLLBACK:
+  - geri alma (uygula → proje aç → geri al → parmak izi 16 alan birebir; geri alma yeni kodlu projeyi bozmuyor);
+  - doğrulama 7/7.
+  - "uygula" bekliyor.
+- **Rehber §4.14:** kodsuz projeye kod ekleme şablonu; ROLLBACK ile 5/5 senaryo.
+- **Hotfix:** dal `hotfix/proje-ekleme` (`GES_Dashboard-hotfix` klasörü) açıldı, kod yazılmadı. Plan, çakışma tablosu, deploy adımları, ekip duyurusu ve kategori ağırlığı önerisi `docs/proje-kontrol/proje-ekleme-hotfix-plani.md`'de.
+
+**14.10.2026 (24. tur) — F5 (Change, Claim, Interface) canlıya uygulandı: `20261014082055_f5_changes_claims_interfaces`.**
+- **Karar 84:** mesai dışı kuralından da feragat (yalnızca F5).
+- **Sıra:**
+  - Oturum 0: aktif bağlantı ve uzun işlem 0, parmak izi alındı.
+  - `apply_migration` (BÖLÜM A birebir, `lock_timeout` 3s).
+  - `f5_dogrulama.sql` canlıda 6/6 OK; test satırları hata ile geri alındı.
+  - Uygulama sonrası mevcut tabloların parmak izi değişmedi: fonksiyon, kısıt, trigger, indeks, yetki, RLS, yayın, görünüm, sayaç, durum geçmişi, proje, görev, risk, register satırları, bildirim sayısı. Nesne sayısı 305 → 337 (3 tablo + 29 indeks); tablo 55 → 58.
+- **Repo:**
+  - Migration dosyası `supabase/migrations/20261014082055_f5_changes_claims_interfaces.sql`.
+  - Durum tablosu (`register-gap-analizi.md`), rehber, `canli-sema-ozeti.md`, docx metni güncellendi.
+  - Karar 69: rehberdeki Change/Claim/Interface şablonlarında görev bağı alanı yok (teyit edildi).
+- **Kural 7:** `fons_solar_sistem_dokumantasyonu.docx` ve `fons_solar_veritabani_dokumantasyonu.docx` güncellenmeli; metin `docs/proje-kontrol/docx-guncelleme-14-10.md` (kullanıcı işler).
+
+**14.10.2026 (23. tur) — F5 geri alma testi, Karar 84, Change/Claim/Interface şablonları, docx metni; sihirbaz Riskler bulgusu 6b'ye (canlıya kalıcı değişiklik yok).**
+- **Sihirbaz Riskler bulgusu:** "Bilinen açık noktalar"a eklendi. Düzeltme 6b sihirbaz paketinde: `save_project_risks` yalnızca manuel riskleri günceller. Tasarım `faz1-adim5-tasarim.md` §3.4, test §3.3 (7-11).
+- **F5 BÖLÜM B (geri alma):**
+  - Kapsam: yalnızca 3 tablo (trigger/indeks/RLS/kısıt onlarla düşer) ve sayaç/durum geçmişindeki CHG/CLM/ITF satırları. Ortak fonksiyonlara dokunmaz. Veri varken açık onay ister.
+  - Canlıda ROLLBACK ile test edildi: uygula → geri al → 16 anahtarlı parmak izi birebir; koruma çalıştı.
+- **Karar 84:** F5 yedeksiz uygulanabilir.
+- **Kalıcı uygulama yapılmadı:** saat 10:37, mesai içi; mesai dışına kaldı.
+- **Rehber §3.9-3.11, §4.11-4.13:** Change/Claim/Interface şablonları. F5 kurulumuyla birlikte ROLLBACK ile test edildi, 3/3 OK, parmak izi birebir.
+- **`docs/proje-kontrol/docx-guncelleme-14-10.md`:** iki docx için değişiklik metni (kullanıcı işleyecek). Veritabanı docx'i bu bilgisayarda bulunamadı.
+
+**14.10.2026 (22. tur) — Karar 78-83; rehbere SQL Editor şablonları; F5 ve şablonlar ROLLBACK ile test edildi (canlıya değişiklik yok).**
+- **Sihirbaz Riskler adımı (kod okuması, yayındaki `main`):** adım "Kaydet"i yalnızca riskleri yazar (Ç-B'ye takılmaz), ama projenin bütün risklerini silip `source`/`rule_code`/`subject_ref`/`closed_at` olmadan yeniden ekler. Canlıdaki 55 riskin hepsi otomatik; kaydetme bunları manuele çevirir ve motor kopya açar. Son adım "Kaydet"i görevleri de yeniden yazar (Ç-B). Risk girişi rehberde SQL Editor şablonuyla.
+- **Rehber:** başta uyarı (panel tüm veritabanına yazar, yedek yok, yalnızca şablonlar); §4'te 9 register işlemi için şablonlar. Canlıda tek işlemde koşuldu, 8/8 kontrol OK, ROLLBACK, parmak izi birebir.
+- **F5 (Change/Claim/Interface):** `f5_dogrulama.sql` (kural 10 ön kontrollü) ile canlıda ROLLBACK: 6/6 grup OK (CHG/CLM/ITF numaraları, durum geçmişi, Karar 6 okuma matrisi, uygulamadan yazma reddi, kısıtlar); Oturum 5 = Oturum 0. Uygulanmadı, "uygula" bekliyor.
+- **Taslaklar:** B3 A0/A1b ve B5 A1 geri doldurma (Karar 81).
+- **6a provası askıda (Karar 83);** `scripts/proje-kontrol/prova-6a.mjs` commit edildi.
+
+**14.10.2026 (21. tur) — Register'lara panelden veri girişi: rehber, Change/Claim/Interface taslağı, 6a notu (canlıya değişiklik yok).**
+- Salt okunur: 7 register tablosu boş, `project_risks` 55 satır. Panel `postgres` rolüyle RLS'i atlıyor (`rolbypassrls`). Numara trigger'ı ve sayacı zaten canlıda.
+- `docs/proje-kontrol/register-veri-giris-rehberi.md`: register başına zorunlu kolonlar ve geçerli değerler, riskler, 6a/Faz 2 etkisi. Onay bekleyen 6 çelişki (R1-R6): RPC-dışı yazma istisnası, elle numara, SharePoint linki (`external`), B3 A0 ve B5 geri doldurma, Faz 5 tabloları, uygulamada görünmezlik.
+- `taslak-sql/f5_changes_claims_interfaces.sql`: yalnızca yeni tablo, SELECT RLS (Karar 6), CHG/CLM/ITF önek önerisi. Uygulanmadı, test edilmedi.
+- `register-oncelikli-plan.md`: sayaç/biçim ön kontrol sorguları (canlıda salt okunur koşuldu, sonuçlar 0).
+
+**14.10.2026 (20. tur) — Karar 75-77; yedek betiği OneDrive dışı yolları destekliyor; 6a kontrol listesi.**
+- `run-backup.mjs`: `.env.local` ve yedek klasörü sırasıyla `FONS_BACKUP_ENV`/`FONS_BACKUP_DIR` → `C:\fons-yedek\` → repo içi; seçilen yol OneDrive altındaysa uyarı. README "Dosyaların yeri" ve kullanıcı adımları.
+- `tests/proje-kontrol-master-veri.spec.js`: alan kodları tiresiz (F1 biçimi 6a ile gelir); şantiye şefi alan testi 6a öncesi/sonrası koşullu (A7, Karar 55).
+- Salt okunur: bildirim üreten trigger ve fonksiyonlar listelendi; 16 spec 6a kontrolünden hariç.
+- Takvim: Faz 2'ye süzgeç (+1 iş günü) → ilk register ekranda 6 Kasım, MVP canlı 17 Aralık (paralelde 15 Aralık).
+
+**14.10.2026 (19. tur) — Plan değişikliği: register öncelikli sıra (Karar 66-74); yedek betiği pg_dump'a geçti; yeni dal.**
+- Plan, 6a etkileri, bildirim bulguları ve takvim: `docs/proje-kontrol/register-oncelikli-plan.md`. İlk register ekranda tahmini 5 Kasım; MVP canlı tahmini 16 Aralık (Docker paralel kurulursa 14 Aralık).
+- `scripts/db-backup/run-backup.mjs`: varsayılan kip `pg_dump` (Docker'sız; şema + veri + auth), eski CLI yolu `--cli` (Windows başlatma hatası giderildi). README güvenlik bölümü (auth şifre özetleri, yedekler repoya/paylaşılan klasöre konmaz). Gerçek döküm alınmadı.
+- Salt okunur: register tablolarında ve B1-B6 taslaklarında bildirim yok; `notify_role`/`notify_managers` rol bazlı; TIZ'e özel bağlı tek hesap test benzeri şantiye şefi; admin ve muhasebede test e-postasına benzeyen hesap yok.
+- Dal: `faz-2-3-register` (`main`'den), taslak SQL'ler, `docs/proje-kontrol/`, CLAUDE.md ve `scripts/db-backup/` alındı.
+- Canlıya hiçbir şey uygulanmadı.
+
+**13.10.2026 (18. tur) — Karar 64 (genel Admin hesabı: M1, canlıya almada kapatma) ve Karar 65 (eski risklerde kritik kapanış); yalnızca doküman.**
+- B3 tasarımına S4a (`four_eyes_enabled` admin fonksiyonu) ve S4b (M1 hesap bazlı onay istisnası) eklendi; SQL yazılmadı, B1 değişmedi.
+- Durum tablosu: canlıya alma › kullanıcı hesapları dilimine "kişisel hesaplar açıldıktan sonra genel Admin hesabını kapat"; hesabın kullanıcıları kullanıcıdan bekleniyor.
+
+**13.10.2026 (17. tur) — Karar 6 (yetki matrisi) ve Karar 10 (dört göz) onaylandı; B1 seed'i güncellendi ve yeniden test edildi.**
+- Ayrıntı: `docs/proje-kontrol/karar-6-10-yetki-ve-dort-goz.md`.
+- B1 A2 seed'i Karar 6 matrisiyle değişti. `b1_dogrulama.sql`'e hücre hücre matris kontrolü ve yeni rol kontrolleri, `b3_dogrulama.sql`'e "PM decision onaylayamaz" kontrolü, `proje-kontrol-b1-yetki.spec.js`'e matris beklentileri eklendi.
+- Canlıda yalnızca ROLLBACK (Adım 2 yöntemi): B1 + doğrulama 13 kontrol grubu OK; Oturum 5 parmak izi Oturum 0 ile birebir. B3 koşulmadı.
+- Salt okunur sayım: 3 admin, 3 PM hesabı (biri test e-postasına benziyor). `project_risks`'te `created_by` yok (Faz 3'te eklenecek).
+- Durum tablosu: Faz 3'e kritik risk kapanış onayı (+1 iş günü) → Faz 3 24 Kasım, Faz 4 8 Aralık, MVP canlı tahmini 14 Aralık 2026. "Kullanıcı hesapları" dilimine test hesaplarının gözden geçirilmesi ve genel Admin hesabı kararı eklendi.
+
+**13.10.2026 (16. tur) — Karar 63 (Ç5-7: PM tüm projelere erişir, yeniden değerlendirme koşullu); yalnızca doküman.**
+- Faz 5 başlangıç kontrol listesi ve "Kullanıcıdan beklenen girdiler" tablosu `register-gap-analizi.md` durum bölümüne eklendi.
+- Açık kararlardan 6 (yetki matrisi; B1 Adım 6'da) ve 10 (dört göz; B3 Faz 2) MVP'yi bekletiyor; 7, 8, 9 bekletmiyor.
+
+**13.10.2026 (15. tur) — Karar 58 güncellendi, Karar 60-62 (yalnızca doküman, test planı ve küçük kod; canlı/deploy yok).**
+- **Karar 58:** WBS ve Alanlar yalnızca admin/PM; şantiye şefine ayrı görünüm yok, Ç5-6 kapandı. `ProjeAyarlari.jsx` başka rolde boş döner; Ek A'daki ProjeDetay diff'i rol koşullu.
+- **Karar 53:** `ProjeDetay.jsx` de bekleyen dosyalara eklendi.
+- **Karar 60:** boş E13 mesajı `import-project-excel`'de (deploy yok).
+- **Karar 61:** baseline migration Faz 1 sonrasına ertelendi; `faz1-adim5-yerel-ortam.md` §3.
+- **Karar 62:** Ek B onaylandı; yetki matrisi testi `f1_dogrulama.sql` R32 + spec'te. Canlıda salt okunur SELECT: `roles.cross_project` PM'de true, `project_wbs/areas/area_wbs` policy'leri → **Ç5-7** (PM her projeye erişir; "A'nın PM'i B'ye yazamaz" testi yalnızca alt işlemde `cross_project=false` ile ölçülebilir).
+- Testler koşulmadı (yerel ortam bekleniyor).
+
+**12.10.2026 (14. tur) — Karar 52-59; Adım 5 kodu ve yerel ortam betikleri yazıldı (test yok, canlı/deploy yok).**
+- **Kararlar:** 52-59 eklendi, Karar 44 güncellendi: iptal etme de yalnızca admin/PM; AID A8b ve R15 buna göre.
+- **Yerel ortam** (`faz1-adim5-yerel-ortam.md`):
+  - `scripts/local-db/setup.mjs` + `seed.mjs`; yığın `supabase/local/stack`'ten migration'sız başlar;
+  - taban `npm run db:backup` dökümü + `supabase/local/reference_data.sql` (auth tetikleyicisi, roller/navigasyon, bucket'lar);
+  - Playwright'ın varsayılan hedefi yerel, canlı yalnızca `PW_TARGET=live`;
+  - baseline migration önerisi **onay bekliyor**.
+- **DB taslağı:**
+  - `f1_adim5_ekran_rpc.sql`;
+  - `f1_dogrulama.sql`: §7 R28-R31 eklendi, §5 R15 güncellendi.
+- **Ön yüz:**
+  - İş Planı: Activity ID/disiplin/alan/WBS kolonları, filtreler, seçim, toplu atama, Kod ata (500 sınırı), sınıflandırma ve admin ID düzeltme, iptal/yeniden aç, KPI iptal hariç;
+  - Proje Ayarları › WBS ve Alanlar bileşenleri: ProjeDetay bağlantısı kullanıcı dosyası, Ek A;
+  - sihirbaz: proje kodu, `save_project_tasks` önizlemesi, `group_label` korunur, ağırlıksız kategori uyarısı;
+  - Excel v8: E13; şablon dosyası güncellendi; edge function kodu güncellendi, **deploy yok**;
+  - günlük rapor formunda iptal görev yok.
+- **Testler:** `tests/proje-kontrol-adim5.spec.js` yazıldı; yerel + taslaklı ortamda koşar.
+- **Doğrulama:** build ve lint temiz.
+- **Kullanıcı dosyalarına dokunulmadı:** `DailyReportList.jsx`, `projectExcelBridge.js`, `ProjeDetay.jsx`; hazır diff'ler Ek A'da.
+- **Yeni çakışma Ç5-6:** şantiye şefi ProjeDetay'a ulaşamadığı için Proje Ayarları'nı göremez.
+
+**12.10.2026 (13. tur) — Karar 51 (görev tarafında alan-WBS kuralı) ve Adım 5 tasarımı (kod yok, uygulama yok).**
+- **Karar 51:**
+  - Ayrı SECURITY DEFINER trigger olarak AID taslağına eklendi (A3b); Karar 39 daraltıldı.
+  - Canlıda yalnızca ROLLBACK:
+    - K1: T35a-e 7/7 geçti;
+    - K2: §5 R6-R16 + yeni R27 geçti;
+    - parmak izi öncesi = sonrası.
+- **Adım 6 ön koşulu:** tam zincir provası (psql, tek transaction, R1-R27, ROLLBACK). Parmak izi sorgusu `taslak-sql/parmak_izi.sql`'e alındı.
+- **Adım 5 tasarımı:** `docs/proje-kontrol/faz1-adim5-tasarim.md`.
+  - Yerel Docker + canlı şema dökümü tabanı. `supabase/migrations` sıfırdan kuramıyor: ilk migration `projects`/`profiles`'a dayanıyor.
+  - Ekranlar, sihirbaz Ç-B, proje kodu, ağırlıksız kategori reddi, Playwright matrisi.
+  - 8 karar sorusu var.
+- **Yeni bulgu:** sihirbaz düzenlemesi `group_label`'ı siliyor ("Bilinen açık noktalar", Ç-B maddesi).
+
+**12.10.2026 (12. tur) — Faz 1 Adım 4 kapandı (WBS/alan bütünlüğü ve Excel importu; yalnızca taslak, uygulama yok).**
+- **Kararlar:** 45-50 eklendi.
+  - Senaryo (b) seçildi; Ç6 kapandı.
+  - Durum tablosu (b)'ye göre güncellendi: MVP canlı 11 Aralık 2026.
+- **Canlı kontrol (salt okunur):**
+  - kod değişikliği bugün görevi olan kayıtta engelli;
+  - pasifleştirme, taşıma ve `area_wbs` yazımı kontrolsüz;
+  - silme FK RESTRICT ile engelli.
+- **Taslak `f1_wbs_alan_import.sql`:**
+  - Activity ID'li göreve etki eden değişiklikler trigger'da reddediliyor (Karar 48);
+  - Ç-7 guard düzeltmesi;
+  - üç tabloda audit;
+  - `import_wbs_areas` (önizleme varsayılan).
+- **JS tarafı:**
+  - şablon `docs/proje-kontrol/sablon/`;
+  - `src/utils/wbsAreaExcel.js`;
+  - projesiz kontrol betiği `scripts/proje-kontrol/wbs-alan/kontrol.mjs`.
+- **Testler:**
+  - Canlıda yalnızca ROLLBACK: 4a-4e geçti (T21-T34, R17-R26); Oturum 5 = Oturum 0.
+  - Kurulumda MCP boyut sınırı nedeniyle B2 A3, F1 ve AID A7-A8 kurulmadı (`faz1-adim4-sonuclar.md`).
+  - JS spec 23/23 geçti.
+- **Kural 10:** boolean metni düzeltildi.
+- **Açık noktalar:** Ç-6 ve görev tarafında Karar 38 açığı eklendi.
+- **Bekleyen:** gerçek Diyarbakır Excel'i.
+
+**12.10.2026 (11. tur) — Faz 1 Adım 3 kapandı.**
+- **Test betiği:** üç hata türüne karşı gözden geçirildi; aynı ifadede sıra bağımlı yazmalar bölündü. Bu kontrol kural 10 olarak eklendi.
+- **ROLLBACK:** 2b 12/12 geçti; Oturum 5 = Oturum 0.
+- **Ç16 madde 5:** yayınlanabilir anahtarla tek salt okunur GET (`Accept-Profile: pg_catalog`), yanıt `PGRST106`. Exposed schemas yalnızca `public, graphql_public`.
+- **Durum tablosu** (`register-gap-analizi.md`):
+  - Faz 1, 28 Ekim'e kaydı.
+  - MVP canlıya alma dilimi eklendi.
+  - İki senaryolu MVP tarihi eklendi: (a) 22 Aralık 2026, (b) 11 Aralık 2026.
+
+**12.10.2026 (10. tur) — Faz 1 Adım 3: Karar 44 (A8); 2a geçti, 2b'de üç test betiği hatası, durduruldu.**
+- Canlıda yalnızca ROLLBACK:
+  - 2a 11/11 geçti.
+  - 2b: 13 test geçti; şantiye şefinin iptal göreve ilerleme girişini ve yeniden açmasını test eden T20c de geçti.
+  - 2b'de T15, T18 ve T20d test betiği hatasıyla kaldı: okuma ile çağrı aynı ifadedeydi ve ondalık biçim yanlış yazılmıştı. Betik düzeltildi, yeniden koşulmadı.
+  - Oturum 5 parmak izi Oturum 0 ile birebir aynı.
+- Kategori ağırlığı kaydına eklendi: bugün yalnızca TIZ/TKY etkileniyor; ADN2'de 36, ADN1'de 11 görev etkilenecek. Adım 6 ön koşulları `faz1-adim3-tasarim.md` §9'da.
+- Exposed schemas listesi bu mesajda da gelmedi (yer tutucu kaldı).
+- Adım 3 kapanmadı; durum tablosu güncellenmedi.
+
+**12.10.2026 (9. tur) — Faz 1 Adım 3: A8 eklendi; ROLLBACK testleri 1c ve 1d'de geçti, 2a'da test betiği hatasıyla durdu.**
+
+Taslağa A8 eklendi: iptal göreve ilerleme her yoldan reddediliyor, iptal görevi yalnızca admin ve proje yöneticisi yeniden açıyor. Testler T20c ve T20d olarak eklendi.
+
+Canlıda yalnızca ROLLBACK ile koşuldu:
+- 1c: R1-R16 geçti.
+- 1d: B4 geçti. Uygulama sonrası etki ölçüldü: dört projenin ilerleme yüzdesi ve özet metrikleri değişmedi.
+- 2a: T11 satırında test betiğinin değişken adı çakışmasıyla düştü. Betik düzeltildi, yeniden koşulmadı.
+- Oturum 5 parmak izi Oturum 0 ile birebir aynı.
+
+Yeni bulgu: kategori ağırlık tablosunda olmayan kategorilerdeki görevler proje ilerlemesine katılmıyor ("Bilinen açık noktalar"). Ç16 madde 5 (exposed schemas) hâlâ doğrulanamadı: kullanıcının mesajında liste boş kaldı. Adım 3 kapanmadı; durum tablosu güncellenmedi.
+
+**09.10.2026 (8. tur) — Faz 1 Adım 3 taslağı yazıldı; canlıda ROLLBACK testleri başladı, Oturum 1c'de durdu.**
+Karar 37-43 eklendi. Taslak `f1_aid_activity_id.sql`:
+- disiplin sözlüğü;
+- Activity ID atama ve önizleme;
+- Ç16 kimlik koruması;
+- genişletilmiş B4;
+- iptal görevlerin ilerleme hesaplarından çıkarılması.
+
+Kontrol (a): `iptal` durumu canlıda var ama ilerleme, kategori ağırlıkları, S-eğrisi, şantiye kalemleri ve özet
+görünüm onu saymaya devam ediyordu. İptal göreve ilerleme girilince görev yeniden `devam_ediyor` oluyordu. 7 fonksiyon/görünüm
+düzeltildi. Kontrol (b): `activity_id` kontrolü 5 haneye ve uzun alan koduna izin veriyor; değişiklik gerekmedi.
+
+Ç-B (sihirbaz sil-yeniden-yaz) bugün canlıda hata veriyor ("Bilinen açık noktalar"). Canlıda yalnızca ROLLBACK:
+- Oturum 1b ve 1a geçti.
+- Oturum 1c'de R15 test betiği hatası çıktı. Varsayılan kategori ağırlıklarında `mekanik` yok; betik düzeltildi, yeniden koşulmadı.
+- Oturum 5 parmak izi Oturum 0 ile birebir aynı.
+
+Ç16 güvenlik notunun tek açık maddesi (PostgREST exposed schemas) kullanıcının panel kontrolünü bekliyor.
+
+**09.10.2026 (7. tur) — Faz 1 Adım 2 kapandı.** Oturum 4 düzeltilmiş betikle 10/10 geçti, Oturum 5 parmak izi
+Oturum 0 ile birebir. `register-gap-analizi.md` başına 16 register durum tablosu ve fazların 15 Aralık MVP'ye göre
+tahmini bitişi eklendi; her adım/faz kapanışında güncellenmesi kural 9 oldu.
+
+**09.10.2026 (6. tur) — Faz 1 Adım 2 düzeltilmiş F1 ile yeniden koşuldu.** F1 A4 iki trigger fonksiyonuna bölündü
+(Karar 36), `f1_dogrulama.sql`'e R1-R5 regresyon testleri eklendi. Canlıda ROLLBACK ile: Oturum 1-3 tamamen geçti
+(T2f-h artık geçiyor; satın alma, görev ve günlük rapor risk akışları hatasız), Oturum 4'te rol yetkileri doğru
+ama 5 satır test betiğinin boolean→metin karşılaştırması (`f` ≠ `false`) yüzünden "KALDI" yazdı — betik düzeltildi,
+kural gereği yeniden koşulmadı. Oturum 5 parmak izi Oturum 0 ile birebir aynı. Test blokları
+`taslak-sql/f1_adim2_testler_oturum{2,3,4}.sql`.
+
+**09.10.2026 (5. tur) — Faz 1 Adım 2 canlıda ROLLBACK ile koşuldu, Oturum 2'de durdu.** Karar 34-35 eklendi.
+Ön kontroller temiz (http/pg_net/webhook yok, aktif bağlantı yok). Oturum 1 (B1, B2, B4, F1 doğrulamaları) ve
+Oturum 2'nin 18 testinden 15'i geçti; F1 A4'teki `fn_require_project_code` `CASE` içinde iki trigger'ın kayıt
+alanlarını birlikte çözdüğü için her tetiklenmede hata veriyordu (uygulansaydı proje oluşturma/silme kırılırdı).
+Taslakta `IF`'e çevrildi, yeniden test bekliyor. Oturum 3-4 koşulmadı. Rollback sonrası parmak izi Oturum 0 ile
+birebir aynı (`faz1-adim2-sonuclar.md`).
+
+**09.10.2026 (4. tur) — Faz 1 Adım 1 tamamlandı (yalnızca taslak, canlıya uygulama yok).** Karar 17-33 eklendi.
+F1 taslağı (proje kodu biçimi, `create_project_with_code`, kodsuz projeyi reddeden ertelenmiş kural, tiresiz alan
+kodu) + doğrulama betiği, `import-project-excel`/sihirbaz diff'i ve Adım 2 test planı yazıldı. B1'e ncr/inspection
+eklendi. Bulgu: `projects` INSERT policy'si yalnızca admin — sihirbaz proje yöneticisinde bugün muhtemelen
+başarısız (doğrulanmadı); yeni fonksiyon admin + proje_yoneticisi'ne izin veriyor.
+
+**09.10.2026 (3. tur) — Faz 0 kapandı; Karar 11-16 eklendi (yalnızca doküman, migration yok).** Payment,
+Subcontractor, Faz 1-9 tanımları, RSK numarası, satın alma köprüsü ve NCR/Inspection kodları karar tablosuna
+yazıldı. `register-gap-analizi.md` faz tablosu yeni fazlarla yeniden yazıldı; kullanıcı kararı bekleyen 12
+çakışma (Ç1-Ç12: links yapısı, Faz 1'in B1/B2 bağımlılığı, AI/agent'ın fazsızlığı, takvim, RSK ve proje kodu
+zorunluluğu…) ve Faz 1 kapsam paragrafı aynı dosyada. B5 "değiştirildi, yeniden test bekliyor" olarak işaretlendi.
+
+**09.10.2026 (2. tur) — Proje Kontrol kuralları ve register eksik analizi yazıldı (şema değişmedi).**
+`docs/proje-kontrol/CONVENTIONS.md` ve `register-gap-analizi.md` eklendi; CLAUDE.md'ye kural 8 (çelişen talimatta
+önce listele, onay iste) ve Karar 5'e sağlayıcıdan bağımsız dosya bağlantısı notu eklendi. B5 taslağındaki
+temizlik işi yalnızca `storage_provider='supabase_storage'` satırlarına daraltıldı (taslak, uygulanmadı). Canlıya
+yalnızca salt okunur SELECT yapıldı.
+
+**09.10.2026 — Proje Kontrol tasarım v3'e geçildi; Faz B migration taslakları (B1-B6) yazıldı ve canlıda yalnızca
+BEGIN…ROLLBACK ile denendi (hiçbiri uygulanmadı).**
+- Kullanıcının verdiği tasarim.md v3 yerleşti, önceki sürüm `docs/proje-kontrol/arsiv/`'e alındı.
+- v3'ün §4.1/4.2/4.8'i canlıyla satır satır karşılaştırıldı ve canlıya göre düzeltildi (`v3-uyum-notlari.md`). Örnekler: tabloya özel numara kolonları, kompozit FK, `priority` medium, `suppliers.supplier_type` ad çakışması → `party_type`, `document_revisions`'ta zaten var olan dosya kolonları.
+- B1-B6 taslakları, doğrulama betikleri, anlık görüntü ve test taslakları hazır (`docs/proje-kontrol/faz-b-migration-plani.md`).
+- Denemelerin hepsi OK. B5 denemesi gerçek bir hata yakaladı: iptal edilen revizyon numarasını tutuyordu, sonraki yükleme çakışıyordu. Taslakta düzeltildi.
+- Canlıda doğrulanan iki kısıt:
+  - Supabase `storage.objects`'ten SQL ile silmeyi engelliyor → dosya silme Storage API ile yapılır.
+  - MCP aracı ~95 KB üstü isteği düşürüyor → altı paket tek blokta denenemedi.
+- Katalog parmak izi bütün denemelerden önce ve sonra birebir aynı.
+- `npm run db:backup:data` eklendi (`scripts/db-backup/README.md`; `.env.local` olmadığı için çalıştırılmadı).
+- Giriş kararı notu yazıldı (`frontend-giris-karari.md`, öneri: şantiye şefine üst seviye `kontrol` sekmesi, muhasebeye Faz D'de).
+- Doğrulama:
+  - lint 0 hata;
+  - build başarılı;
+  - Proje Kontrol spec'leri 24 geçti, 25 atlandı (B taslakları + 3 fixme), başarısız yok.
+- Şema değişmediği için docx dokümantasyonu güncellenmedi.
+
+**07.10.2026 (3. tur) — Uyum migration'ı canlıya uygulandı (`20261007072501`).**
+Uygulama öncesinde aktif sorgu ve hedef tablolarda kilit yoktu. Uygulama sonrası doğrulama betiği OK verdi ve test satırı kalmadı. Testler: uyum + iki güvenlik spec'i 24/24 geçti (3 fixme atlandı). Tam Playwright seti 118/118 geçti (3 fixme atlandı, başarısız yok).
+`fons_solar_sistem_dokumantasyonu.docx` güncellendi:
+- Tablo sayısı 55 oldu.
+- Modül haritasına "Proje kontrol" satırı eklendi.
+- 6.8 bölümü eklendi.
+- Önceki hâli `…yedek-07-10.docx` olarak saklandı.
+
+Veritabanı dokümantasyonu docx'u (`fons_solar_teknik_veritabani_v2.docx` / `fons_solar_veritabani_dokumantasyonu.docx`) bilgisayarda bulunamadı, güncellenmedi.
+
+**07.10.2026 (2. tur) — Karar #0 alt kararları ve #3 onaylandı; uyum migration'ı ROLLBACK'li denemede geçti.**
+Migration ve doğrulama betiği tek bir ROLLBACK'li blokta canlıda denendi. Tüm kontroller geçti:
+- Yeni tablolarda yetki ve RLS kontrolü.
+- Numaralar `RFI-TIZ-0001` … `RFI-TIZ-10000`; kırpma yok, boşluk yok.
+- DRW/DOC önekleri ayrı.
+- Çizim yalnızca çizim türündeki dokümana bağlanıyor.
+- Dokümanın tek güncel revizyonu oluyor.
+- `ncr`/`inspection` kaynakları reddediliyor.
+
+Denemeden sonra katalog parmak izi birebir aynıydı. Kalıcı uygulama, kullanıcının SQL'i gözden geçirip onaylamasını bekliyor. Ayrıntı: "Proje Kontrol (Faz A)".
+
+**07.10.2026 — G-01 (geçici) ve G-02/G-03 canlıya uygulandı.** Başka projenin saha fotoğrafını/ticket ekini
+sahte metadata satırıyla indirme açığı kapatıldı; 05.10 register tablolarında `authenticated` yazma yetkisi
+geçici olarak geri alındı. Tam şema yedeği alınamadığı için kullanıcı onayıyla değişen nesnelerin doğrulanmış
+anlık görüntüsü (`docs/proje-kontrol/yedek-policy-07-10.sql`) yedek olarak kullanıldı. `tests/proje-kontrol-guvenlik.spec.js`
+8/8. Ayrıntı: "Sistem mimarisi" → "Proje Kontrol (Faz A)".
+
+**06.10.2026 — Proje Kontrol Faz A başladı (şema değişmedi).** Canlı şema doğrulandı; 05.10'da
+tasarımla çelişen, yerel dosyası olmayan 3 Proje Kontrol migration'ı bulundu (Karar #0). Güvenlik
+testi iki YÜKSEK açık kanıtladı (sahte metadata satırıyla başka projenin fotoğraf/ekini indirme).
+drive-gateway iskeleti, Drive sınır betiği, AI ölçüm iskeleti ve frontend notu yazıldı. Ayrıntı:
+"Sistem mimarisi" → "Proje Kontrol (Faz A)".
+
+**24.09.2026 — AI ajanı dosya boyutu sınırı eşitlendi.** İstemci 20 MB dosyaya izin verirken Edge Function'ın Base64 ve toplam istek sınırları bazı seçilen dosyaları gönderim sırasında reddediyordu. İstemci limiti 12 MB'a indirildi ve reddedilen dosyada input temizleniyor; böylece aynı dosya yeniden seçilebilir. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı konuşma geçmişi sunucu sınırında tutuluyor.** Edge Function en fazla 40 mesaj kabul ediyor, istemci geçmişi sınırsız büyütebiliyordu. İstemci şimdi son 38 mesajı ve yeni kullanıcı mesajını gönderiyor; yanıt başarılı olunca geçmişi tam kullanıcı/asistan çiftleriyle kaydediyor (en fazla 40). Başarısız istekler geçmişe yazılmıyor. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı toplam istek boyutu istemcide sınırlandırılıyor.** Geçmişteki dosya ekleri Base64 olarak saklandığından birden fazla eki olan konuşmalar Edge Function'ın 18 MiB sınırını aşabiliyordu. İstemci istek gövdesini hesaplıyor, 17 MiB üstünde en eski tam user/model çiftlerini istekten çıkarıyor ve hâlâ sığmayan tek mesaj için açıklayıcı hata gösteriyor. Görüntülenen sohbet ve kaydedilen geçmiş değişmiyor. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı metin sınırları istemciye uygulandı.** Edge Function mesaj başına 100.000 karakter doğrularken arayüz serbest uzunlukta girişe izin veriyordu; Excel/CSV çıkarımı da tek metin parçası sınırını aşabilirdi. Metin kutusu aynı üst sınıra alındı, tablo çıkarımı sınıra takıldığında kontrollü kısaltılıp kullanıcıya bildiriliyor. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı canlı bağlamı sistem prompt sınırına göre kısaltılıyor.** Bazı context sorguları sınırsız satır döndürdüğünden prompt, Edge Function'ın 100.000 karakter doğrulamasını aşabilirdi. İstemci şimdi statik yönergeleri koruyup proje bağlamını sınır içinde kesiyor ve yanıta kısaltma notu ekliyor. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı başarısız istekte kullanıcı içeriğini koruyor.** Gemini çağrısı hata verdiğinde gönderim öncesi temizlenen metin ve dosya kayboluyordu. Hata halinde başarısız mesaj balonu kaldırılıyor, içerik giriş alanına geri yükleniyor ve yeni bir yazı/dosyanın üzerine yazılmıyor; kullanıcı doğrudan yeniden deneyebilir. Test çalıştırılmadı.
+
+**24.09.2026 — ExcelJS yalnızca Excel işlemi gerektiğinde yükleniyor.** Ajan dosya analizi, proje sihirbazı içe aktarımı ve rapor dışa aktarımlarındaki statik importlar dinamik importa çevrildi. Production `index.html` artık 938 kB'lık `vendor-xlsx` dosyasını ön yüklemiyor; kullanıcı bir Excel işlevi çağırınca yükleniyor. Bu ayrı chunk hâlâ büyük olduğu için build boyut uyarısı devam ediyor. Lint ve build başarılı; lint'te 10 önceden var olan Fast Refresh uyarısı bulunuyor.
+
+**24.09.2026 — `fn_next_purchase_request_no` için doğrudan RPC erişimi kapatıldı.** Salt okunur catalog kontrolü, `authenticated` rolünün sequence tabanlı numara üreticisini doğrudan çağırabildiğini doğruladı; keyfi yıl girdileri boş yere sayaç/sequence tüketebilirdi. `20260924110039_revoke_authenticated_execute_on_request_no_allocator` migration'ı kullanıcı onayından sonra uygulandı. Sonraki salt okunur kontrol `authenticated_exec=false`, `service_role_exec=true` ve iki iç satın alma RPC'sinde `postgres_exec=true` gösterdi; uygulama akışı korunurken doğrudan çağrı kapandı.
 
 **18.09.2026 (2. tur) — Kullanıcı isteğiyle 4 demo tedarikçi (Güneş Panel A.Ş./
 Elektrik Malzeme Ltd./Nakliye Lojistik A.Ş./Çelik Yapı San. Ltd.,

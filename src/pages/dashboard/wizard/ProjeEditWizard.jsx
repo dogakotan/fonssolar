@@ -9,6 +9,8 @@ import Adim5Tedarik             from './Adim5Tedarik'
 import Adim6Butce               from './Adim6Butce'
 import Adim8Tamamlandi          from './Adim8Tamamlandi'
 import { projectWizardDraftKey, loadProjectWizardDraft, saveProjectWizardDraft, clearProjectWizardDraft } from '../../../utils/projectWizardDraft'
+import { GorevKayitOnizleme } from './GorevKayitOnizleme'
+import { callSaveProjectTasks } from './saveProjectTasks'
 
 const TABLE_MAP = {
   2: 'project_tasks',
@@ -27,6 +29,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
   const [draftNotice, setDraftNotice] = useState(!!initialDraft)
   const [saving,      setSaving]      = useState(false)
   const [toast,       setToast]       = useState(null) // { msg, ok }
+  const [taskPreview, setTaskPreview] = useState(null) // { report, errorItems, error, rows }
   const actionRef = useRef('next')
 
   useEffect(() => {
@@ -106,6 +109,20 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
           p_completed: true,
         })
         if (error) throw error
+      } else if (stepNo === 2 && !result.skipped && result.rows?.length) {
+        // Ç-B (Karar 59): görev listesi önce önizlenir, onaydan sonra save_project_tasks ile kaydedilir.
+        const r = await callSaveProjectTasks(projectId, result.rows, { dryRun: true })
+        if (!r.missing) {
+          setTaskPreview({ report: r.data || null, errorItems: r.items, error: r.error || null, rows: result.rows })
+          return
+        }
+        // save_project_tasks yoksa (Faz 1 migration'ı öncesi) eski yol
+        const { error: delErr } = await supabase.from('project_tasks').delete().eq('project_id', projectId)
+        if (delErr) throw delErr
+        const { error: insErr } = await supabase.from('project_tasks').insert(
+          result.rows.map(({ id: _omit, ...r }) => ({ ...r, project_id: projectId }))
+        )
+        if (insErr) throw insErr
       } else {
         const table = TABLE_MAP[stepNo]
         if (table && !result.skipped && result.rows?.length) {
@@ -123,6 +140,15 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
     } finally {
       setSaving(false)
     }
+  }
+
+  async function confirmTaskSave() {
+    setSaving(true)
+    const r = await callSaveProjectTasks(projectId, taskPreview.rows, { dryRun: false })
+    setSaving(false)
+    if (r.error) { setTaskPreview(p => ({ ...p, error: r.error, errorItems: r.items })); return }
+    setTaskPreview(null)
+    showToast('Değişiklikler kaydedildi')
   }
 
   function handleStepDone(stepNo, result) {
@@ -152,6 +178,10 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             Taslağı Sil ve Baştan Başla
           </button>
         </div>
+      )}
+      {taskPreview && (
+        <GorevKayitOnizleme report={taskPreview.report} errorItems={taskPreview.errorItems} error={taskPreview.error}
+          busy={saving} onClose={() => setTaskPreview(null)} onConfirm={confirmTaskSave} />
       )}
       <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
       <div className="card" style={{ width: 210, flexShrink: 0, overflow: 'hidden' }}>

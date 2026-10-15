@@ -12,6 +12,7 @@ export default function ExportButton({ getData, title, disabled }) {
   const [acikYukarı, setAcikYukarı] = useState(false)
   const [periyot, setPeriyot]   = useState('aylik')
   const [yukleniyor, setYukleniyor] = useState(false)
+  const [hata, setHata] = useState('')
   const wrapperRef = useRef(null)
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export default function ExportButton({ getData, title, disabled }) {
   async function indir(tip) {
     if (disabled || yukleniyor) return
     setYukleniyor(true)
+    setHata('')
     try {
       const { columns, rows } = getData(periyot)
       if (tip === 'excel') {
@@ -44,7 +46,7 @@ export default function ExportButton({ getData, title, disabled }) {
         await exportToPdf(title, periyot, columns, rows)
       }
     } catch (e) {
-      // hata sessiz geç — kullanıcı deneyimini bozmaz
+      setHata(e?.message || 'Dışa aktarma sırasında bir hata oluştu.')
     } finally {
       setYukleniyor(false)
       setAcik(false)
@@ -53,6 +55,7 @@ export default function ExportButton({ getData, title, disabled }) {
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative', display: 'inline-block' }}>
+      {hata && <p role="alert" style={{ position: 'absolute', right: 0, bottom: '100%', zIndex: 10, maxWidth: 280, padding: '8px 10px', margin: '0 0 6px', background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA', borderRadius: 6, fontSize: 12 }}>{hata}</p>}
       <button
         onClick={toggle}
         disabled={disabled}

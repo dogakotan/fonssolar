@@ -65,7 +65,7 @@ export function downloadBlob(blob, filename) {
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export function formatImportSummary(summary) {

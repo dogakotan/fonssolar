@@ -231,11 +231,6 @@
 .project-progress-card p { max-width: 180px; margin: .85rem auto 0; color: var(--color-muted); font-size: .82rem; line-height: 1.45; }
 .project-ring { width: 142px; height: 142px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at center, #fff 0 56%, transparent 57%), conic-gradient(var(--color-primary) calc(var(--pct) * 1%), #e8eef7 0); box-shadow: inset 0 0 0 1px #eef2f7; }
 .project-ring span { color: var(--color-primary); font-size: 1.75rem; font-weight: 800; }
-.project-summary-line { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: .55rem; padding: .72rem 0; border-bottom: 1px solid #eef2f7; }
-.project-summary-line:last-child { border-bottom: 0; }
-.project-summary-icon { font-size: 1rem; }
-.project-summary-line span:not(.project-summary-icon) { color: var(--color-text-sub); font-size: .78rem; }
-.project-summary-line strong { color: var(--color-text); font-size: .78rem; text-align: right; }
 .project-weather-card { display: flex; flex-direction: column; }
 .project-weather-main { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; padding: .65rem 0 .75rem; min-width: 0; }
 .project-weather-emoji { font-size: 2rem; line-height: 1; flex-shrink: 0; }

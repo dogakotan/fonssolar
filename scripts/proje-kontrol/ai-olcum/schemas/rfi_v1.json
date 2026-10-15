@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fons/proje-kontrol/rfi_v1",
+  "title": "rfi_v1 — RFI yapılandırılmış çıkarım şeması",
+  "description": "Kaynak: docs/proje-kontrol/tasarim.md Bölüm 4.6. Her alan {value, confidence, source:{page, quote}} döner; belgede olmayan alan value=null. x-compare ölçüm betiğinin karşılaştırma kuralıdır, modele gönderilmez.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["subject", "question", "raised_by_party", "raised_at", "due_date", "drawing_no", "task_code", "area_code", "wbs_code", "contract_ref", "schedule_impact_days", "priority"],
+  "$defs": {
+    "source": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["page", "quote"],
+      "properties": {
+        "page": { "type": ["integer", "null"], "minimum": 1 },
+        "quote": { "type": ["string", "null"], "maxLength": 500 }
+      }
+    },
+    "textField": {
+      "type": "object", "additionalProperties": false, "required": ["value", "confidence", "source"],
+      "properties": {
+        "value": { "type": ["string", "null"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "dateField": {
+      "type": "object", "additionalProperties": false, "required": ["value", "confidence", "source"],
+      "properties": {
+        "value": { "type": ["string", "null"], "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "intField": {
+      "type": "object", "additionalProperties": false, "required": ["value", "confidence", "source"],
+      "properties": {
+        "value": { "type": ["integer", "null"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    }
+  },
+  "properties": {
+    "subject": { "$ref": "#/$defs/textField", "description": "Zorunlu. RFI konusu.", "x-compare": "text", "x-label": "Konu" },
+    "question": { "$ref": "#/$defs/textField", "description": "Zorunlu. Belgedeki soru metni.", "x-compare": "text", "x-label": "Soru" },
+    "raised_by_party": {
+      "type": "object", "additionalProperties": false, "required": ["value", "confidence", "source"],
+      "properties": {
+        "value": { "enum": ["contractor", "owner", "subcontractor", "engineer", null] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source": { "$ref": "#/$defs/source" }
+      },
+      "description": "Emin değilse null.", "x-compare": "enum", "x-label": "Soran taraf"
+    },
+    "raised_at": { "$ref": "#/$defs/dateField", "description": "ISO tarih; belgede yoksa null.", "x-compare": "date", "x-label": "Soru tarihi" },
+    "due_date": { "$ref": "#/$defs/dateField", "description": "Belgede açıkça yazılı değilse null.", "x-compare": "date", "x-label": "Termin" },
+    "drawing_no": { "$ref": "#/$defs/textField", "description": "Belgedeki çizim numarası, olduğu gibi.", "x-compare": "code", "x-label": "Çizim no" },
+    "task_code": { "$ref": "#/$defs/textField", "description": "Aktivite kodu (project_tasks.task_code).", "x-compare": "code", "x-label": "Aktivite kodu" },
+    "area_code": { "$ref": "#/$defs/textField", "description": "Alan kodu.", "x-compare": "code", "x-label": "Alan kodu" },
+    "wbs_code": { "$ref": "#/$defs/textField", "description": "WBS kodu.", "x-compare": "code", "x-label": "WBS kodu" },
+    "contract_ref": { "$ref": "#/$defs/textField", "description": "Belgede geçen sözleşme madde numarası.", "x-compare": "code", "x-label": "Sözleşme maddesi" },
+    "schedule_impact_days": { "$ref": "#/$defs/intField", "description": "Yalnızca belgede sayı olarak yazılıysa.", "x-compare": "int", "x-label": "Program etkisi (gün)" },
+    "priority": {
+      "type": "object", "additionalProperties": false, "required": ["value", "confidence", "source"],
+      "properties": {
+        "value": { "enum": ["low", "normal", "high", "critical", null] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source": { "$ref": "#/$defs/source" }
+      },
+      "description": "Yalnızca öneri; kullanıcı belirler.", "x-compare": "enum", "x-label": "Öncelik (öneri)"
+    }
+  }
+}
