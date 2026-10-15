@@ -4,7 +4,7 @@ import { splitTaskName } from '../../../utils/taskName'
 import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { buildGroupTree, collectNodeTasks, GROUP_INDENT_PX, groupConfigFor } from './TabIsPlan'
 import {
-  buildMonthRange, buildTaskCells, categoryLabel, cellTooltip, fmtPct, fmtQty,
+  buildMonthRange, buildTaskCells, categoryLabel, cellTooltip, displayPlanned, fmtPct, fmtQty,
   indexRowsByTask, isActiveCell, monthKey, monthPhase, performanceTone,
 } from '../../../utils/aylikPlan'
 
@@ -52,10 +52,10 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
   let content = null
 
   if (mode === 'plan') {
-    if (cell.planned > 0) content = fmtQty(cell.planned)
+    if (cell.planned > 0) content = fmtQty(displayPlanned(cell, task))
   } else if (mode === 'plan_gercek') {
     if (cell.planned > 0 || cell.actual > 0) {
-      content = <>{fmtQty(cell.actual)}<span className="aylik-sep">/</span>{fmtQty(cell.planned)}</>
+      content = <>{fmtQty(cell.actual)}<span className="aylik-sep">/</span>{fmtQty(displayPlanned(cell, task))}</>
       const tone = phase === 'future' ? null : performanceTone(cell.planned, cell.actual)
       if (tone) classes.push(`tone-${tone}`)
     }
