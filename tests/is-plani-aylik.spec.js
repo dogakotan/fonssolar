@@ -71,20 +71,62 @@ test.describe('aylikPlan yardımcıları', () => {
     expect(fmtPct(1, 0)).toBe('—')
   })
 
-  test('tooltip: kaynak etiketi, Excel ham değeri ve not', () => {
-    const task = { task_code: 'E6', unit: 'mt (tahmini)', target_qty: 1000 }
-    const cell = {
-      monthKey: '2026-11', planned: 250, actual: 0, plannedCum: 250, actualCum: 0,
-      source: 'excel_aylik', sourceQty: 2, sourceUnit: 'Trafo Merkezi', note: 'orantılandı',
-    }
-    const text = cellTooltip(cell, task)
-    expect(text).toContain('Kaynak: Excel Aylık İş Planı')
-    expect(text).toContain('Excel: 2 Trafo Merkezi')
-    expect(text).toContain('Not: orantılandı')
-    expect(text).toContain('Plan: 250 mt (tahmini)')
-    expect(cellTooltip({ ...cell, source: 'hesaplanan', sourceQty: null, note: null }, task)).toContain('Gün bazlı hesaplandı')
-    // Birim ve miktar aynıysa ham değer tekrar yazılmaz.
-    expect(excelRawText({ ...cell, sourceUnit: 'mt (tahmini)', sourceQty: 250 }, task.unit)).toBeNull()
+  // İpucu her sayının hesabını açıklar. Örnekler DYB1'in gerçek satırları (15.10.2026).
+  const cellsFor = (task, rows, from, to) => buildTaskCells(
+    indexRowsByTask(rows.map(r => ({ task_id: 't', actual_qty: 0, note: null, ...r }))).get('t'),
+    buildMonthRange(from, to))
+
+  test('ipucu: Excel değeri birim farkıyla orantılandı (E9: 105.000 × 2 ÷ 16)', () => {
+    const task = { task_code: 'E9', task_name: 'DC Kazı Kapatma', unit: 'mt (tahmini)', target_qty: 105000, planned_start: '2026-11-01', planned_end: '2027-05-31' }
+    const ex = (month, planned_qty, source_qty) => ({ month, planned_qty, source: 'excel_aylik', source_qty, source_unit: 'Trafo Merkezi' })
+    const cells = cellsFor(task, [ex('2026-11-01', 13125, 2), ex('2026-12-01', 19688, 3), ex('2027-03-01', 19687, 3), ex('2027-04-01', 26250, 4), ex('2027-05-01', 26250, 4)], '2026-11-01', '2027-05-31')
+    const nov = cellTooltip(cells[0], task, { phase: 'future' })
+    expect(nov).toContain('Bu ayın planı: 13.125 mt (tahmini)')
+    expect(nov).toContain('"Trafo Merkezi" biriminde')
+    expect(nov).toContain("Excel'deki bütün ayların toplamı 16 Trafo Merkezi")
+    expect(nov).toContain('105.000 × 2 ÷ 16 = 13.125')
+    expect(nov).toContain('Gelecek ay')
+    const dec = cellTooltip(cells[1], task, { phase: 'future' })
+    expect(dec).toContain('105.000 × 3 ÷ 16 = 19.687,5')
+    expect(dec).toContain('19.688 olarak yuvarlandı')
+    expect(dec).toContain('13.125 (Kas 26) + 19.688 (Ara 26) = 32.813')
+    expect(dec).toContain('= %31,3')
+    // Ocak: plan yok, kümülatif taşınır.
+    const jan = cellTooltip(cells[2], task, { phase: 'future' })
+    expect(jan).toContain('Bu ay için plan yok')
+    expect(jan).toContain('önceki aylardan taşındı')
+  })
+
+  test('ipucu: Excel toplamı hedefe eşit değil, aynı birimde orantılandı (DYB2 E2)', () => {
+    const task = { task_code: 'E2', unit: 'mt', target_qty: 900000 }
+    const ex = (month, planned_qty, source_qty) => ({ month, planned_qty, source: 'excel_aylik', source_qty, source_unit: 'mt' })
+    const cells = cellsFor(task, [ex('2027-03-01', 25000, 20000), ex('2027-04-01', 250000, 200000), ex('2027-05-01', 312500, 250000), ex('2027-06-01', 312500, 250000)], '2027-03-01', '2027-06-30')
+    const text = cellTooltip(cells[0], task, { phase: 'future' })
+    expect(text).toContain('Excel toplamı (720.000) görev hedefine (900.000) eşit olmadığı için')
+    expect(text).toContain('900.000 × 20.000 ÷ 720.000 = 25.000')
+    expect(text).not.toContain('yuvarlandı')
+  })
+
+  test('ipucu: Excel değeri olduğu gibi (M4) ve gerçekleşme oranı/renk', () => {
+    const task = { task_code: 'M4', unit: 'Adet', target_qty: 63384 }
+    const cells = cellsFor(task, [{ month: '2026-11-01', planned_qty: 4464, actual_qty: 3200, source: 'excel_aylik', source_qty: 4464, source_unit: 'Adet' }], '2026-11-01', '2026-11-30')
+    const text = cellTooltip(cells[0], task, { phase: 'past' })
+    expect(text).toContain("Excel'de bu ay 4.464 Adet yazıyor; olduğu gibi alındı")
+    expect(text).toContain('3.200 ÷ 4.464 = %71,7 → sarı (%70–99)')
+    expect(text).toContain('Günlük raporlarda Kas 26 içinde')
+  })
+
+  test('ipucu: gün bazlı dağıtım (EK1: 16 × 30 ÷ 61)', () => {
+    const task = { task_code: 'EK1', unit: 'Pano/Köşk', target_qty: 16, planned_start: '2027-06-01', planned_end: '2027-07-31' }
+    const h = (month, planned_qty) => ({ month, planned_qty, source: 'hesaplanan', note: 'Excel Aylık İş Planında yok; gün bazlı dağıtıldı' })
+    const cells = cellsFor(task, [h('2027-06-01', 7.87), h('2027-07-01', 8.13)], '2027-06-01', '2027-07-31')
+    const jun = cellTooltip(cells[0], task, { phase: 'future' })
+    expect(jun).toContain('toplam 61 gün; bunun 30 günü bu ayda (01.06 – 30.06)')
+    expect(jun).toContain('16 × 30 ÷ 61 = 7,87 Pano/Köşk')
+    expect(jun).toContain('Not: Excel Aylık İş Planında yok')
+    expect(cellTooltip(cells[1], task, { phase: 'future' })).toContain('16 × 31 ÷ 61 = 8,13')
+    // Birim ve miktar aynıysa ham değer tekrar yazılmaz (eski yardımcı).
+    expect(excelRawText({ planned: 250, sourceUnit: 'mt', sourceQty: 250 }, 'mt')).toBeNull()
   })
 })
 
@@ -124,7 +166,13 @@ test.describe.serial('Aylık İş Planı arayüzü (canlı, salt okunur)', () =>
 
     const firstPlanned = row.locator('td.aylik-cell[data-month="2026-11"]')
     await expect(firstPlanned).toHaveText('4.464')
-    await expect(firstPlanned).toHaveAttribute('title', /Kaynak: Excel Aylık İş Planı/)
+    await expect(firstPlanned).toHaveAttribute('data-tip', /Kaynak: Excel Aylık İş Planı/)
+    // Fareyle üzerine gelince ipucu kutusu anında açılır, imleç soru işareti olmaz.
+    await firstPlanned.hover()
+    await expect(page.getByRole('tooltip')).toContainText('Kaynak: Excel Aylık İş Planı')
+    expect(await firstPlanned.evaluate(c => getComputedStyle(c).cursor)).not.toBe('help')
+    await page.locator('.aylik-legend').hover()
+    await expect(page.getByRole('tooltip')).toHaveCount(0)
 
     // Plan / Gerçekleşen ve Kümülatif modları aynı satırı yeniden çizer.
     await page.getByRole('button', { name: 'Plan / Gerçekleşen' }).click()

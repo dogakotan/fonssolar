@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { buildGroupTree, collectNodeTasks, GROUP_INDENT_PX, groupConfigFor } from './TabIsPlan'
 import {
@@ -66,7 +66,10 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
     )
   }
 
-  const hasData = cell.hasRow || cell.actual > 0
+  // İpucu metni data-tip'te; kutuyu üst bileşen anında gösterir (tarayıcının yerleşik
+  // title ipucu geç açılıyor ve güvenilir değil). Kümülatif kipte plan satırı olmayan
+  // ama yüzde gösteren hücreler de ipucu alır.
+  const tip = (cell.hasRow || cell.actual > 0 || content !== null) ? cellTooltip(cell, task, { phase }) : null
   return (
     <td
       className={classes.join(' ')}
@@ -74,7 +77,7 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
       data-planned={cell.planned}
       data-actual={cell.actual}
       data-source={cell.source || ''}
-      title={hasData ? cellTooltip(cell, task) : undefined}
+      data-tip={tip || undefined}
     >
       {content}
     </td>
@@ -91,10 +94,66 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [onlyCurrent, setOnlyCurrent] = useState(false)
   const [collapsed, setCollapsed] = useState(new Set())
+  const [tip, setTip] = useState(null) // { text, anchor: hücrenin ekran dikdörtgeni }
+  const tipCellRef = useRef(null)
+  const tipBoxRef = useRef(null)
 
   useEffect(() => {
     try { window.localStorage.setItem('is-plani-aylik-mod', mode) } catch { /* yok say */ }
   }, [mode])
+
+  function hideTip() {
+    tipCellRef.current = null
+    setTip(null)
+  }
+
+  // Tablo üzerinde tek dinleyici: fare data-tip'li bir hücreye girince kutu açılır.
+  // Kutu position:fixed; kaydırmada kapanır. Yeri aşağıdaki layout efektinde,
+  // kutunun gerçek boyutu ölçülerek ekranın içine sığacak şekilde verilir.
+  function handleTipOver(event) {
+    const td = event.target.closest?.('td[data-tip]') ?? null
+    if (td === tipCellRef.current) return
+    tipCellRef.current = td
+    if (!td) { setTip(null); return }
+    const r = td.getBoundingClientRect()
+    setTip({ text: td.dataset.tip, anchor: { left: r.left, right: r.right, top: r.top, bottom: r.bottom } })
+  }
+
+  // Kutu çizildikten sonra (boyanmadan önce) ölçülür: yatayda hücreye ortalanır ama
+  // ekran kenarından en az 8 px içeride kalır; altına sığmıyorsa hücrenin üstüne,
+  // oraya da sığmıyorsa ekranın içine yerleştirilir. Kaydırma çubuğu hariç genişlik
+  // (clientWidth) kullanılır.
+  useLayoutEffect(() => {
+    const el = tipBoxRef.current
+    if (!tip || !el) return
+    const margin = 8
+    const gap = 6
+    const vw = document.documentElement.clientWidth
+    const vh = document.documentElement.clientHeight
+    const { width, height } = el.getBoundingClientRect()
+    const a = tip.anchor
+    const center = (a.left + a.right) / 2
+    const left = Math.min(Math.max(center - width / 2, margin), Math.max(margin, vw - width - margin))
+    let top = a.bottom + gap
+    if (top + height > vh - margin) {
+      top = a.top - gap - height
+      if (top < margin) top = Math.max(margin, vh - height - margin)
+    }
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
+    el.style.visibility = 'visible'
+  }, [tip])
+
+  useEffect(() => {
+    if (!tip) return undefined
+    const close = () => { tipCellRef.current = null; setTip(null) }
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [tip])
 
   // Görünüm source_qty/source_unit/source_code döndürmediği için (tooltip'teki
   // "Excel: …" satırı) bu üç alan aynı RLS'li tablodan paralel çekilip
@@ -248,7 +307,7 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
         <div className="gantt-toolbar">
           <div className="aylik-mode" role="group" aria-label="Hücre görünümü">
             {MODES.map(m => (
-              <button key={m.key} type="button" className={mode === m.key ? 'active' : ''} aria-pressed={mode === m.key} onClick={() => setMode(m.key)}>
+              <button key={m.key} type="button" className={mode === m.key ? 'active' : ''} aria-pressed={mode === m.key} onClick={() => { setMode(m.key); hideTip() }}>
                 {m.label}
               </button>
             ))}
@@ -286,7 +345,16 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
         <p className="gantt-empty">Filtreye uyan iş kalemi bulunamadı.</p>
       ) : (
         <>
-          <div className="aylik-scroll">
+          {tip && (
+            <div ref={tipBoxRef} className="aylik-tip" role="tooltip" style={{ left: 0, top: 0, visibility: 'hidden' }}>
+              {tip.text.split('\n').map((line, i) => (
+                line.startsWith('• ')
+                  ? <div key={i} className="aylik-tip-line">{line.slice(2)}</div>
+                  : <div key={i} className={i === 0 ? 'aylik-tip-title' : 'aylik-tip-head'}>{line}</div>
+              ))}
+            </div>
+          )}
+          <div className="aylik-scroll" onMouseOver={handleTipOver} onMouseLeave={hideTip}>
             <table className="aylik-table">
               <thead>
                 <tr>
