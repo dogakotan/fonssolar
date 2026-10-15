@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { splitTaskName } from '../../../utils/taskName'
+import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { StatusDot } from '../../../components/ui/Badge'
 import { TONE } from '../../../components/ui/StatusBadge'
 import { buildGroupTree, collectNodeTasks, compareTaskCode, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
@@ -109,7 +111,7 @@ const TH = {
   position: 'sticky', top: 0, zIndex: 2, borderBottom: '1px solid var(--color-border-md)',
 }
 const TD = { padding: '6px 7px', fontSize: 11.5, color: 'var(--color-text)', whiteSpace: 'nowrap', borderTop: '1px solid var(--color-border)' }
-const BASE_COLUMN_COUNT = 12
+const BASE_COLUMN_COUNT = 13
 
 // Tablo satırı içine sığan, kutu/etiket olmayan sade bir durum seçici —
 // TabIsPlan.jsx'teki (Gantt detay panelindeki) MilestoneStatusControl'ün
@@ -305,7 +307,7 @@ function buildDetayRows(node, ctx) {
 }
 
 function buildDetayTaskRow(task, depth, ctx) {
-  const { canAddProgress, setProgressTask, onProgressSaved } = ctx
+  const { canAddProgress, setProgressTask, onProgressSaved, detailOpen, toggleDetail } = ctx
   const sapma = task._sapma ?? null
   const duration = task.duration_days || daysBetween(task.planned_start, task.planned_end)
   const isLate = sapma !== null && sapma > 0 && task.status !== 'tamamlandi' && task.status !== 'iptal' && !task.actual_end
@@ -313,9 +315,16 @@ function buildDetayTaskRow(task, depth, ctx) {
     <tr key={task.id}>
       <td style={TD}><span style={{ fontWeight: 700 }}>{task.task_code || '-'}</span></td>
       <td style={{ ...TD, whiteSpace: 'normal', minWidth: 160, paddingLeft: 7 + (depth + 1) * GROUP_INDENT_PX }}>
-        {task.task_name || '-'}
+        {splitTaskName(task.task_name).base || '-'}
         {task.sub_category && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--color-muted)' }}>· {task.sub_category}</span>}
         {isLate && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--color-danger-text)' }}>({riskSeverityLabel(task)})</span>}
+      </td>
+      <td
+        onClick={toggleDetail}
+        title={splitTaskName(task.task_name).detail || undefined}
+        style={{ ...TD, cursor: 'pointer', color: 'var(--color-muted)', textAlign: detailOpen ? 'left' : 'center', ...(detailOpen ? { whiteSpace: 'normal', minWidth: 180, maxWidth: 240 } : { width: 46, maxWidth: 46 }) }}
+      >
+        {detailOpen ? (splitTaskName(task.task_name).detail || '—') : (splitTaskName(task.task_name).detail ? '…' : '')}
       </td>
       <td style={TD}>{task.responsible || task.responsible_role || '—'}</td>
       <td style={TD}>{task.team_size || '—'}</td>
@@ -363,6 +372,7 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
   const [groupFilter, setGroupFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [sortBy, setSortBy] = useState('kod')
+  const [detailOpen, toggleDetail] = useDetailColumn()
   const [collapsed, setCollapsed] = useState(new Set())
   const [progressTask, setProgressTask] = useState(null)
   const columnCount = canAddProgress ? BASE_COLUMN_COUNT + 1 : BASE_COLUMN_COUNT
@@ -449,6 +459,9 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
               <tr>
                 <th style={TH}>Kod</th>
                 <th style={TH}>Görev Adı</th>
+                <th style={{ ...TH, cursor: 'pointer', color: 'var(--color-primary)', userSelect: 'none' }} role="button" tabIndex={0} aria-expanded={detailOpen} onClick={toggleDetail} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleDetail(e) }}>
+                  {detailOpen ? 'Detay ◂' : 'Detay ▸'}
+                </th>
                 <th style={TH}>Sorumlu</th>
                 <th style={TH}>Ekip</th>
                 <th style={TH}>Plan</th>
@@ -463,7 +476,7 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
               </tr>
             </thead>
             <tbody>
-              {groupTree.flatMap(node => buildDetayRows(node, { collapsed, toggleGroup, columnCount, canAddProgress, setProgressTask, onProgressSaved }))}
+              {groupTree.flatMap(node => buildDetayRows(node, { collapsed, toggleGroup, columnCount, canAddProgress, setProgressTask, onProgressSaved, detailOpen, toggleDetail }))}
             </tbody>
           </table>
         </div>

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
+import { splitTaskName } from '../../../utils/taskName'
+import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
@@ -209,6 +211,10 @@ const STATUS_LABELS = {
 
 const W_NO = 42
 const W_NAME = 170
+// Detay kolonu (iş kalemi adının sonundaki parantezli açıklama): kapalıyken
+// dar, dokununca açılır.
+const W_DETAIL_CLOSED = 46
+const W_DETAIL_OPEN = 220
 const W_START = 72
 const W_END = 72
 const W_DUR = 54
@@ -224,7 +230,7 @@ export const GROUP_INDENT_PX = 20
 // başlık + "X görev | %Y" özeti) — iki görünüm aynı veri hiyerarşisini
 // paylaşır, yalnızca görsel kimlikleri ayrışık kalır (09.09.2026).
 function renderGanttGroupNode(node, ctx) {
-  const { collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen } = ctx
+  const { collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail } = ctx
   const isOpen = !collapsed.has(node.key)
   const allTasks = collectNodeTasks(node)
   const avg = allTasks.length
@@ -249,6 +255,7 @@ function renderGanttGroupNode(node, ctx) {
         const pct = Math.round(Number(task.progress_pct || 0))
         const isLate = isTaskLate(task, today)
         const isSelected = task.id === selectedTaskId
+        const { base: nameBase, detail } = splitTaskName(task.task_name)
 
         return (
           <button
@@ -256,13 +263,16 @@ function renderGanttGroupNode(node, ctx) {
             className={`gantt-task-row${isSelected ? ' selected' : ''}`}
             onClick={() => { setSelectedTaskId(task.id); setPanelOpen(true) }}
           >
-            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
+            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-detail': `${wDetail}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
               <span className="gantt-code">
                 {task.task_code || index + 1}
               </span>
               <span className={`gantt-name${isLate ? ' late' : ''}`} style={{ paddingLeft: (node.depth + 1) * GROUP_INDENT_PX }}>
-                {task.task_name || '-'}
+                {nameBase || '-'}
                 {isLate ? ` (${riskSeverityLabel(task)})` : ''}
+              </span>
+              <span className={`gantt-detay-col${detailOpen ? ' open' : ''}`} onClick={toggleDetail} title={detail || undefined}>
+                {detailOpen ? (detail || '—') : (detail ? '…' : '')}
               </span>
               <span>{fmtDate(task.planned_start)}</span>
               <span className={isLate ? 'late' : ''}>{fmtDate(task.planned_end)}</span>
@@ -445,6 +455,8 @@ function readSection(projectId) {
 export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily', siteChiefView = false }) {
   const { role } = useAuth()
   const [tasks, setTasks] = useState([])
+  const [detailOpen, toggleDetail] = useDetailColumn()
+  const wDetail = detailOpen ? W_DETAIL_OPEN : W_DETAIL_CLOSED
   const [project, setProject] = useState(null)
   const [siteChief, setSiteChief] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -741,7 +753,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   // yalnızca renderGanttGroupNode'un KENDİ (renkli/tarihsiz) başlık stiliyle
   // render edilir, Detaylı'nın düz/beyaz+tarihli stili hiç kullanılmaz.
   const topGroupNodes = buildGroupTree(withDates)
-  const leftWidth = W_NO + W_NAME + W_START + W_END + W_DUR + W_PROGRESS
+  const leftWidth = W_NO + W_NAME + wDetail + W_START + W_END + W_DUR + W_PROGRESS
   const timelineWidth = weeks.length * W_WEEK
   const minWidth = leftWidth + timelineWidth
 
@@ -839,9 +851,12 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
             >
               <div className="gantt-board" style={{ '--gantt-min-width': `${minWidth}px`, '--left-width': `${leftWidth}px`, '--timeline-width': `${timelineWidth}px`, '--week-width': `${W_WEEK}px`, '--week-count': weeks.length }}>
               <div className="gantt-header-row">
-                <div className="gantt-left-head" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
+                <div className="gantt-left-head" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-detail': `${wDetail}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
                   <span>No</span>
                   <span>İş Kalemi / Bölüm</span>
+                  <span className="gantt-detay-head" role="button" tabIndex={0} aria-expanded={detailOpen} onClick={toggleDetail} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleDetail(e) }}>
+                    {detailOpen ? 'Detay ◂' : 'Detay ▸'}
+                  </span>
                   <span>Başlangıç</span>
                   <span>Bitiş</span>
                   <span>Süre</span>
@@ -869,7 +884,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                 )}
 
                 {topGroupNodes.map(node => renderGanttGroupNode(node, {
-                  collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen,
+                  collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail,
                 }))}
               </div>
               </div>
