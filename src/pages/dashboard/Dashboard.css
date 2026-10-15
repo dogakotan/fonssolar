@@ -2005,29 +2005,29 @@ body, #root { overflow-x: hidden; }
 
 .aylik-scroll { overflow: auto; max-height: 640px; border-top: 1px solid var(--color-border); }
 .aylik-table { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 11.5px; }
-.aylik-table th, .aylik-table td { padding: 5px 7px; border-bottom: 1px solid var(--color-border); white-space: nowrap; background: var(--color-surface); }
+.aylik-table th, .aylik-table td { padding: 4px 6px; border-bottom: 1px solid var(--color-border); border-right: 1px solid var(--color-border); white-space: nowrap; background: var(--color-surface); }
 .aylik-table thead th { position: sticky; top: 0; z-index: 3; background: var(--color-bg); color: var(--color-muted); font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .2px; text-align: left; border-bottom: 1px solid var(--color-border-md); }
 .aylik-table thead th.aylik-sticky { z-index: 5; }
 .aylik-table tfoot td { position: sticky; bottom: 0; z-index: 3; background: var(--color-bg); font-weight: 700; border-top: 1px solid var(--color-border-md); }
 .aylik-table tfoot td.aylik-sticky { z-index: 5; }
 
 .aylik-sticky { position: sticky; z-index: 2; }
-.aylik-col-kod { left: 0; width: 58px; min-width: 58px; max-width: 58px; font-weight: 700; color: var(--color-muted); }
-.aylik-col-ad { left: 58px; width: var(--aylik-ad-w); min-width: var(--aylik-ad-w); max-width: var(--aylik-ad-w); overflow: hidden; text-overflow: ellipsis; }
-.aylik-col-detay { left: calc(58px + var(--aylik-ad-w)); width: var(--aylik-detay-w); min-width: var(--aylik-detay-w); max-width: var(--aylik-detay-w); cursor: pointer; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; }
+.aylik-col-kod { left: 0; width: 46px; min-width: 46px; max-width: 46px; font-weight: 700; color: var(--color-muted); }
+.aylik-col-ad { left: 46px; width: var(--aylik-ad-w); min-width: var(--aylik-ad-w); max-width: var(--aylik-ad-w); overflow: hidden; text-overflow: ellipsis; }
+.aylik-col-detay { left: calc(46px + var(--aylik-ad-w)); width: var(--aylik-detay-w); min-width: var(--aylik-detay-w); max-width: var(--aylik-detay-w); cursor: pointer; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; }
 .aylik-table td.aylik-col-detay.open { white-space: normal; line-height: 1.25; }
 td.aylik-col-detay:not(.open) { text-align: center; }
 th.aylik-col-detay { color: var(--color-primary) !important; user-select: none; }
-.aylik-col-birim { left: calc(58px + var(--aylik-ad-w) + var(--aylik-detay-w)); width: 84px; min-width: 84px; max-width: 84px; overflow: hidden; text-overflow: ellipsis; color: var(--color-muted); }
-.aylik-col-hedef { left: calc(142px + var(--aylik-ad-w) + var(--aylik-detay-w)); width: 84px; min-width: 84px; max-width: 84px; text-align: right; font-variant-numeric: tabular-nums; box-shadow: inset -1px 0 0 var(--color-border-md); }
+.aylik-col-birim { left: calc(46px + var(--aylik-ad-w) + var(--aylik-detay-w)); width: 70px; min-width: 70px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; color: var(--color-muted); }
+.aylik-col-hedef { left: calc(116px + var(--aylik-ad-w) + var(--aylik-detay-w)); width: 76px; min-width: 76px; max-width: 76px; text-align: right; font-variant-numeric: tabular-nums; box-shadow: inset -1px 0 0 var(--color-border-md); }
 .aylik-kod-mobil { display: none; color: var(--color-muted); font-weight: 700; }
-.aylik-group-label { left: 0; width: calc(58px + var(--aylik-ad-w)); min-width: calc(58px + var(--aylik-ad-w)); max-width: calc(58px + var(--aylik-ad-w)); overflow: hidden; }
-.aylik-group-rest { left: calc(58px + var(--aylik-ad-w)); width: calc(168px + var(--aylik-detay-w)); min-width: calc(168px + var(--aylik-detay-w)); max-width: calc(168px + var(--aylik-detay-w)); text-align: right; color: var(--color-muted); font-size: 10.5px; box-shadow: inset -1px 0 0 var(--color-border-md); }
+.aylik-group-label { left: 0; width: calc(46px + var(--aylik-ad-w)); min-width: calc(46px + var(--aylik-ad-w)); max-width: calc(46px + var(--aylik-ad-w)); overflow: hidden; }
+.aylik-group-rest { left: calc(46px + var(--aylik-ad-w)); width: calc(146px + var(--aylik-detay-w)); min-width: calc(146px + var(--aylik-detay-w)); max-width: calc(146px + var(--aylik-detay-w)); text-align: right; color: var(--color-muted); font-size: 10.5px; box-shadow: inset -1px 0 0 var(--color-border-md); }
 
-.aylik-month { text-align: center !important; min-width: 74px; }
+.aylik-month { text-align: center !important; min-width: 62px; }
 .aylik-month.is-current { color: var(--color-primary) !important; background: var(--color-primary-bg) !important; box-shadow: inset 0 -2px 0 var(--color-primary); }
 
-.aylik-cell { position: relative; text-align: right; min-width: 74px; font-variant-numeric: tabular-nums; color: var(--color-text); }
+.aylik-cell { position: relative; text-align: right; min-width: 62px; font-variant-numeric: tabular-nums; color: var(--color-text); }
 .aylik-cell.phase-current { background: var(--color-primary-bg); }
 .aylik-cell.phase-future { color: var(--color-muted); }
 .aylik-cell.src-hesaplanan { outline: 1px dashed #94a3b8; outline-offset: -3px; }

@@ -89,10 +89,10 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
 export default function TabIsPlaniAylik({ projectId, project, tasks, today, dataVersion }) {
   const [rows, setRows] = useState([])
   const [detailOpen, toggleDetail] = useDetailColumn()
-  const [nameW, setNameW] = useState(230)
+  const [nameW, setNameW] = useState(200)
 
   // İş kalemi adları tam sığsın: kolon genişliği en uzun görünen ada göre
-  // ayarlanır (en az 230, en çok 460 px; daha uzunu üç noktayla kesilir).
+  // ayarlanır (en az 200, en çok 460 px; daha uzunu üç noktayla kesilir).
   // Her çizimden sonra ölçer; genişlik değişmedikçe state güncellenmez (döngü yok).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
@@ -104,7 +104,7 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
       const pad = cell ? parseFloat(getComputedStyle(cell).paddingLeft) + parseFloat(getComputedStyle(cell).paddingRight) : 0
       widest = Math.max(widest, el.getBoundingClientRect().width + pad)
     })
-    const next = Math.min(460, Math.max(230, Math.ceil(widest) + 6))
+    const next = Math.min(460, Math.max(200, Math.ceil(widest) + 4))
     if (next !== nameW) setNameW(next)
   })
   const [loading, setLoading] = useState(true)
@@ -305,7 +305,7 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
           <td className={`aylik-sticky aylik-col-detay${detailOpen ? ' open' : ''}`} onClick={toggleDetail} title={detail || undefined}>
             {detailOpen ? (detail || '—') : (detail ? '…' : '')}
           </td>
-          <td className="aylik-sticky aylik-col-birim">{task.unit || '—'}</td>
+          <td className="aylik-sticky aylik-col-birim" title={task.unit || undefined}>{task.unit || '—'}</td>
           <td className="aylik-sticky aylik-col-hedef">{Number(task.target_qty) > 0 ? fmtQty(task.target_qty) : '—'}</td>
           {cells.map(cell => (
             <MonthCell key={cell.monthKey} cell={cell} task={task} mode={mode} phase={monthPhase(cell.monthKey, currentKey)} />
@@ -380,7 +380,7 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
             </div>
           )}
           <div className="aylik-scroll" onMouseOver={handleTipOver} onMouseLeave={hideTip}>
-            <table className="aylik-table" style={{ '--aylik-detay-w': detailOpen ? '220px' : '46px', '--aylik-ad-w': `${nameW}px` }}>
+            <table className="aylik-table" style={{ '--aylik-detay-w': detailOpen ? '220px' : '58px', '--aylik-ad-w': `${nameW}px` }}>
               <thead>
                 <tr>
                   <th className="aylik-sticky aylik-col-kod">Kod</th>
