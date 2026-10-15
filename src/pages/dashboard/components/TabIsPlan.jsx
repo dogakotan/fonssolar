@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import { useAuth } from '../../../context/AuthContext'
 import TabIsPlaniDetay from './TabIsPlaniDetay'
+import TabIsPlaniAylik from './TabIsPlaniAylik'
 
 // Gantt grupları project_tasks.group_label kolonundan DOĞRUDAN gelir — bu
 // kolon serbest metin (admin elle giriyor, ör. "KABUL", "ENH", "Mekanik
@@ -410,13 +412,25 @@ function pctFromDailyProgress(targetQty, dailyRows) {
   return Math.min(100, Math.round((dailyDone / targetQty) * 100))
 }
 
-// Genel İş Planı (Gantt, görsel zaman çizelgesi) ve Detaylı İş Planı (tam
-// veri tablosu + plan/gerçekleşen sapma) — Malzeme Listesi/Riskler alt-sekme
-// deseniyle aynı fikir, tek sayfada iki bölüm. Proje-özel localStorage anahtarı
-// (projectId ile sonlandırılmış) — farklı bir proje açmak önceki projenin
-// seçtiği bölümü miras almasın diye.
+// Genel İş Planı (Gantt, görsel zaman çizelgesi), Detaylı İş Planı (tam
+// veri tablosu + plan/gerçekleşen sapma) ve Aylık İş Planı (görev × ay plan
+// ızgarası, task_monthly_plan) — Malzeme Listesi/Riskler alt-sekme deseniyle
+// aynı fikir, tek sayfada üç bölüm. Seçili bölüm adres çubuğunda `?view=`
+// ile tutulur (yenileme/paylaşılan link); parametre yoksa projeye özel
+// localStorage'daki son seçim kullanılır (projectId ile sonlandırılmış anahtar —
+// farklı bir proje açmak önceki projenin seçtiği bölümü miras almasın diye).
+// Aylık bölüm tek proje ister; menü seviyesindeki (projesiz) görünümde yok.
+const SECTION_KEYS = ['gantt', 'detay', 'aylik']
+
+function sectionAllowed(key, projectId) {
+  return SECTION_KEYS.includes(key) && (key !== 'aylik' || Boolean(projectId))
+}
+
 function readSection(projectId) {
-  try { return window.localStorage.getItem(`is-plani-active-section-${projectId}`) || 'gantt' } catch { return 'gantt' }
+  try {
+    const stored = window.localStorage.getItem(`is-plani-active-section-${projectId}`)
+    return sectionAllowed(stored, projectId) ? stored : 'gantt'
+  } catch { return 'gantt' }
 }
 
 export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily', siteChiefView = false }) {
@@ -424,7 +438,10 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const [tasks, setTasks] = useState([])
   const [project, setProject] = useState(null)
   const [siteChief, setSiteChief] = useState(null)
-  const [section, setSection] = useState(() => readSection(projectId))
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [storedSection, setStoredSection] = useState(() => readSection(projectId))
+  const urlView = searchParams.get('view')
+  const section = sectionAllowed(urlView, projectId) ? urlView : storedSection
   // Görev bazlı "Kümülatif/Günlük İlerleme" hesaplamak için ham veriler tutulur —
   // önceden tek bir proje-geneli yüzde hesaplanıp HER görevin detay panelinde
   // aynı (yanlış) sayı gösteriliyordu, task_id ile filtrelenmediği için.
@@ -445,10 +462,23 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     [filterDate, reportPeriod]
   )
 
-  useEffect(() => { setSection(readSection(projectId)) }, [projectId])
+  useEffect(() => { setStoredSection(readSection(projectId)) }, [projectId])
+  // URL'den gelen bölüm de son seçim olarak saklanır — parametresiz bir
+  // sonraki ziyarette aynı bölüm açılsın.
   useEffect(() => {
     try { window.localStorage.setItem(`is-plani-active-section-${projectId}`, section) } catch { /* yok say */ }
   }, [section, projectId])
+
+  // Diğer sorgu parametreleri korunur; replace — her bölüm değişimi geçmişe
+  // ayrı girdi eklemesin (proje içi sekme değişimleriyle aynı ilke).
+  function setSection(next) {
+    setStoredSection(next)
+    setSearchParams(prev => {
+      const params = new URLSearchParams(prev)
+      params.set('view', next)
+      return params
+    }, { replace: true })
+  }
 
   const { data: ganttData, loading: ganttLoading, refreshing, error, refetch } = useDashboardData(
     'get_project_gantt',
@@ -621,8 +651,26 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   }
 
   const sectionToggle = (
-    <SectionToggle section={section} onChange={setSection} />
+    <SectionToggle section={section} onChange={setSection} showAylik={Boolean(projectId)} />
   )
+
+  // Aylık İş Planı da tarihsiz görevleri gösterir (satır sırası ve hiyerarşi
+  // Genel/Detaylı ile aynı görev listesinden) — withDates'e bağlı değil.
+  if (section === 'aylik') {
+    return (
+      <div className="gantt-page">
+        <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
+        {sectionToggle}
+        <TabIsPlaniAylik
+          projectId={projectId}
+          project={project}
+          tasks={tasks}
+          today={today}
+          dataVersion={ganttData}
+        />
+      </div>
+    )
+  }
 
   // Detaylı İş Planı Gantt'ın planned_start/planned_end zorunluluğuna bağlı
   // değil (tarihsiz görevleri de satır olarak gösterir) — bu yüzden withDates
@@ -847,15 +895,17 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
 const IS_PLANI_SECTIONS = [
   { key: 'gantt', label: 'Genel İş Planı' },
   { key: 'detay', label: 'Detaylı İş Planı' },
+  { key: 'aylik', label: 'Aylık İş Planı' },
 ]
 
 // ProjeTabSatinAlma.jsx'teki alt-sekme şeridiyle aynı görsel dil (altı çizgili
 // pill, ayrı bir dosya/CSS class'ı gerekmiyor).
-function SectionToggle({ section, onChange }) {
+function SectionToggle({ section, onChange, showAylik }) {
   return (
-    <div style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--color-border-md)' }}>
-      {IS_PLANI_SECTIONS.map(s => (
-        <button key={s.key} onClick={() => onChange(s.key)} style={{
+    <div className="is-plani-sections" style={{ display: 'flex', gap: 0, marginBottom: 12, borderBottom: '2px solid var(--color-border-md)', overflowX: 'auto' }}>
+      {IS_PLANI_SECTIONS.filter(s => showAylik || s.key !== 'aylik').map(s => (
+        <button key={s.key} type="button" aria-pressed={section === s.key} onClick={() => onChange(s.key)} style={{
+          whiteSpace: 'nowrap',
           background: 'none', border: 'none', padding: '10px 22px',
           fontSize: 14, fontWeight: section === s.key ? 600 : 400,
           color: section === s.key ? 'var(--color-primary)' : 'var(--color-muted)',

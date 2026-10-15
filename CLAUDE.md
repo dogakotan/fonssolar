@@ -301,6 +301,27 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
   İş Planı (`TabIsPlan.jsx`) kritik yol görselleştirmesi kullanmaz: plan bitiş
   tarihi geçmiş ve görev tamamlanmamışsa `Riskli`, aksi halde `Normal`. KPI
   şeridi 3 kart: Toplam Görev, Devam Eden, Riskli/Geciken.
+  İş Planı'nda üç bölüm var: **Genel İş Planı** (Gantt), **Detaylı İş Planı**
+  (`TabIsPlaniDetay.jsx`) ve **Aylık İş Planı** (`TabIsPlaniAylik.jsx`, 15.10.2026,
+  Faz 1 salt okunur).
+  - **Seçim:** URL'de `?view=gantt|detay|aylik` (`useSearchParams`, `replace`,
+    diğer sorgu parametreleri korunur). Parametre yoksa projeye özel localStorage'daki
+    son seçim (`is-plani-active-section-{projectId}`) açılır. Aylık bölüm tek proje
+    ister; menü seviyesindeki projesiz görünümde gizli.
+  - **Aylık veri:** `vw_task_monthly_plan_vs_actual` + aynı RLS'li `task_monthly_plan`'dan
+    `source_qty/source_unit/source_code` (görünüm bu üçünü döndürmüyor; tooltip'teki
+    "Excel: …" satırı için). İki sorgu da 1000'lik sayfalarla çekilir.
+  - **Satırlar ve kolonlar:** satır sırası ve hiyerarşi Gantt ile aynı
+    (`get_project_gantt` görev listesi + `buildGroupTree`). Ay kolonları proje
+    `start_date`→`target_date`; aralık dışında veri varsa aralık genişler.
+  - **Hesaplar** yan etkisiz `src/utils/aylikPlan.js`'te: kümülatif taşıma,
+    renk eşikleri ≥%100 / %70–99 / <%70, tr-TR biçim, tooltip.
+  - **Hücre modları:** Plan, Plan / Gerçekleşen, Kümülatif %. Kümülatif değerler
+    yalnızca görevin ilk–son plan ayı arasında gösterilir.
+  - **Yenileme:** `task_monthly_plan` realtime yayınında değil. Görünüm, sayfanın
+    `get_project_gantt` yenilemesiyle (görev/ilerleme realtime'ı, sekmeye dönüş)
+    yeniden çekilir.
+  - **Faz 2:** hücre düzenleme `MonthCell`'in `editable` özelliğine bağlanacak.
   Proje Finans sekmesi (`ProjeTabFinans.jsx`) rol bazlı: admin ve proje
   yöneticisi (`canApprove = isAdmin || role==='proje_yoneticisi'`) proje içinde
   Genel/Faturalar/Onay Kuyruğu görür (2026-07-24'te proje yöneticisine açıldı;
@@ -1547,7 +1568,7 @@ Risk girişi yalnızca proje **düzenleme** akışında var, **oluşturmada yok*
 ### Modül → tablo haritası (40 tablo + 7 view + `notifications`, 31.07.2026'da canlı şemayla doğrulandı)
 | Modül | Tablolar |
 |---|---|
-| Proje yönetimi | projects, project_tasks, project_category_weights, project_risks |
+| Proje yönetimi | projects, project_tasks, project_category_weights, project_risks, task_monthly_plan (görev × ay planı, 15.10.2026), task_dependencies (öncül/ardıl FS/SS/FF/SF + `lag_days`, 15.10.2026; ekranda henüz kullanılmıyor) |
 | Günlük saha raporlama | daily_reports, daily_tasks, personnel_log_entries, machinery_logs, daily_report_photos, daily_report_issues, daily_report_material_usage (kullanımda değil), daily_report_drafts |
 | İmalat ilerlemesi | progress_daily |
 | Satın alma | purchase_requests, purchase_request_items, purchase_request_status_log, purchase_offers (teklif toplama, 03.09.2026), procurement_monthly_plan (`request_no` üretimi artık `purchase_request_no_counters` tablosu değil bir Postgres SEQUENCE — 10.09.2026'da eklendi, ayrıntı için "Son değişiklik") |
@@ -1558,7 +1579,14 @@ Risk girişi yalnızca proje **düzenleme** akışında var, **oluşturmada yok*
 
 View'lar (hepsi `security_invoker=on`): `project_cost_summary`, `personnel_logs`,
 `v_invoice_payment_overview`, `vw_delayed_tasks`, `vw_monthly_progress`,
-`vw_project_progress_summary`, `vw_weekly_progress`.
+`vw_project_progress_summary`, `vw_weekly_progress`, `vw_task_monthly_plan_vs_actual`
+(görev × ay plan/gerçekleşen/kümülatif; gerçekleşen `progress_daily`, rapor tarihinin ayına göre).
+
+`task_monthly_plan` ve `task_dependencies` 15.10.2026'da başka bir oturumda canlıya
+uygulandı. Migration dosyaları canlı `schema_migrations.statements`'tan birebir
+arşivlendi (md5 aynı).
+- **task_monthly_plan:** SELECT `user_has_project_access`; yazma admin veya erişimli PM.
+- **task_dependencies:** yazma admin/PM; şantiye şefi kendi ev projesinde ekler/günceller, silemez.
 
 **Kalite kontrol modülü denendi ve kullanıcı kararıyla tamamen kaldırıldı** —
 ilgili tablolar/RPC'ler/trigger'lar DB'den silindi. Yeniden eklenmesi teklif
@@ -1723,6 +1751,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   statik dosyaya taşındı.
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
+
+- **`is-plani-hiyerarsi.spec.js` test projesinde sahipsiz risk bırakıyor (15.10.2026'da bulundu).**
+  - Spec TIZ'e plan bitişi sabit `2026-09-30` olan 3 görev ekliyor. Bu tarih artık geçmişte.
+  - Risk motoru bu görevler için `gorev_gecikmesi` riski açıyor; aynı hesap TIZ'in zaten gecikmiş başka görevleri için de risk açabiliyor.
+  - `afterAll` görevleri siliyor, riskleri silmiyor. 15.10'daki koşudan TIZ'de `subject_ref` `E2ISP…` olan 3 açık risk kaldı.
+  - Bildirim üretmiyor.
+  - **Düzeltme önerisi:** gelecek tarih kullanmak ve temizlikte riskleri de silmek. Temizlik ve düzeltme kullanıcı onayı bekliyor.
 
 - ~~`xlsx` (SheetJS) bağımlılığı — HIGH severity güvenlik açığı~~ — **çözüldü
   (10.09.2026, 2. tur).** Önceki "kabul et/izle" kararı, gerçek saldırı
@@ -1989,6 +2024,24 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**15.10.2026 — İş Planı'na Aylık İş Planı bölümü (Faz 1, salt okunur); iki migration arşivlendi.**
+- **Dal:** `feature/aylik-is-plani` (`main`'den, `GES_Dashboard-aylik` klasörü).
+- **Kod:**
+  - `TabIsPlan.jsx`: üçüncü bölüm ve `?view=` senkronu;
+  - yeni `TabIsPlaniAylik.jsx`, `src/utils/aylikPlan.js`;
+  - `Dashboard.css` `.aylik-*` sınıfları; mobilde yalnızca İş Kalemi sabit.
+  - Ayrıntı: "Frontend yapısı" → İş Planı.
+- **Migration arşivi:** `20261015060347_create_task_dependencies.sql`, `20261015062921_create_task_monthly_plan.sql` (canlı kayıtla md5 aynı). Canlıya bir şey uygulanmadı.
+- **Testler:**
+  - `tests/is-plani-aylik.spec.js` 9/9 geçti: 6 yardımcı + 3 canlı arayüz.
+    - Canlı kısım isdemir faz1'de, PM test hesabıyla, salt okunur (Karar 72 istisnası).
+    - Kapsam: URL ve yenileme, M4'te 6 hücre ve toplam 63.384, tooltip kaynağı, modlar, filtreler.
+  - Bildirimsiz spec'ler 31/31 geçti: accounting-scope, bom-matching, purchase-risk-classification, category-weights, company-selector, is-plani-hiyerarsi, pdf-export, project-excel-layout, user-management.
+  - lint 0 hata (önceden var olan 10 uyarı), build başarılı.
+- **Parmak izi:** `projects`, `project_tasks`, `task_monthly_plan` değişmedi.
+  - `project_risks` +5: `is-plani-hiyerarsi` kaynaklı ("Bilinen açık noktalar").
+  - `notifications` +3: testlerden değil; aynı aralıkta muhasebe rolündeki bir kullanıcının uygulamadan oluşturduğu PV Solution faturası.
 
 **18.09.2026 (2. tur) — Kullanıcı isteğiyle 4 demo tedarikçi (Güneş Panel A.Ş./
 Elektrik Malzeme Ltd./Nakliye Lojistik A.Ş./Çelik Yapı San. Ltd.,
