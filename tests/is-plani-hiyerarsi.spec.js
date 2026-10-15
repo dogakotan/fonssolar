@@ -22,6 +22,16 @@ const INV2 = `${TOP}-INV2`
 const AC = `${TOP}-AC`
 const DC = `${TOP}-DC`
 
+// Plan tarihleri bugüne göreli İLERİ tarih. Sabit bir geçmiş tarih (önceden
+// 2026-09-30) zamanla geçmişte kalıp risk motorunun (fn_recompute_auto_risks)
+// bu geçici görevler için gorev_gecikmesi riski açmasına yol açıyordu; görevler
+// silinince riskler TIZ'de sahipsiz kalıyordu (15.10.2026'da bulundu).
+function isoDaysFromToday(days) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 test.describe.serial('İş Planı hiyerarşi gruplaması (buildGroupTree)', () => {
   let admin
   const taskIds = []
@@ -38,8 +48,8 @@ test.describe.serial('İş Planı hiyerarşi gruplaması (buildGroupTree)', () =
       ...r,
       project_id: projectId,
       category: 'elektrik_dc',
-      planned_start: '2026-09-01',
-      planned_end: '2026-09-30',
+      planned_start: isoDaysFromToday(30),
+      planned_end: isoDaysFromToday(60),
       status: 'devam_ediyor',
     }))
 
@@ -50,6 +60,16 @@ test.describe.serial('İş Planı hiyerarşi gruplaması (buildGroupTree)', () =
 
   test.afterAll(async () => {
     if (taskIds.length) await admin.from('project_tasks').delete().in('id', taskIds)
+    // İleri tarihle risk açılmamalı; yine de bu koşunun görevlerine bağlı
+    // otomatik risk kalmışsa (ör. saat dilimi sınırı) temizlenir.
+    const { error } = await admin
+      .from('project_risks')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('source', 'otomatik')
+      .eq('rule_code', 'gorev_gecikmesi')
+      .like('subject_ref', `${TOP}-%`)
+    expect(error).toBeNull()
   })
 
   test('Genel İş Planı çok seviyeli group_label\'ı tek kovaya indirgemeden, her dalı ayrı başlık olarak gösterir', async ({ page }) => {
