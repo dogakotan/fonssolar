@@ -28,6 +28,26 @@ arası ilişkileri içeren bir bilgi grafiği var.
 - Kullanıcı `/graphify` yazdığında, başka bir şey yapmadan önce Skill tool'unu
   `skill: "graphify"` ile çağır.
 
+## Yerel çalışma kuralı (yalnızca `local/entegrasyon` dalı, 15.10.2026)
+
+- **Tek sunucu:** Aynı anda tek yerel sunucu açık olur: entegrasyon, http://localhost:5173.
+  - Klasör: `GES_Dashboard-entegrasyon`.
+  - Başlatma: `VITE_ENTEGRASYON_6AB_YOK=true npm run dev`. Bu komut 8002'de PDF servisini de açar.
+  - Diğer çalışma kopyalarında (`GES_Dashboard`, `-aylik`, `-faz23`, `-hotfix`) sunucu açılmaz.
+- **Yeniden oluşturma:** Bir feature dalı güncellenince entegrasyon dalı silinip `origin/main`'den sıfırdan kurulur.
+  - Merge sırası: `faz-a-proje-kontrol` → `feature/aylik-is-plani` → (onaylanan diğerleri).
+  - Rebase değil merge kullanılır; orijinal dallara dokunulmaz.
+- **Geliştirme yok:** Entegrasyon dalında özellik geliştirilmez. Bu dala özgü tek değişiklikler:
+  - `src/lib/entegrasyon.js` ve 6a/6b kilidi;
+  - bu bölüm;
+  - yeniden kurulumda tekrar uygulanır.
+- **Push yok:** `local/entegrasyon` asla push edilmez.
+- **Canlı veritabanı:** Sunucu canlı veritabanına bağlıdır. `VITE_ENTEGRASYON_6AB_YOK=true` iken canlıda olmayan 6a/6b RPC'lerine dayanan yazma düğmeleri gri ve tıklanamaz ("6a/6b canlıya uygulanmadı"):
+  - sihirbaz son Kaydet;
+  - düzenleme sihirbazında İş Kalemleri Kaydet;
+  - Toplu ata, Kod ata, Sınıflandır.
+- **Diğer yazma işlemleri gerçek veriye gider.** Satın alma, fatura, günlük rapor ve ticket kaydı gerçek kişilere bildirim üretir. Yerelde yalnızca okuma ile kontrol edilir.
+
 ## Kesin kurallar
 
 1. **Migration onayı zorunlu.** Hiçbir migration'ı SQL'ini gösterip onay almadan
