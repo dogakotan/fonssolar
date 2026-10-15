@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { StatusDot } from '../../../components/ui/Badge'
 import { TONE } from '../../../components/ui/StatusBadge'
-import { buildGroupTree, collectNodeTasks, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
+import { buildGroupTree, collectNodeTasks, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
+import { computeSapma, daysInclusive, diffDays, formatDate, todayKey, toKey } from '../../../lib/isPlan'
 import { useProjectStructure } from '../../../hooks/useProjectStructure'
 import { wbsAreaErrorMessage } from '../../../utils/wbsAreaErrors'
 import { GorevDuzenleModal, IptalModal, KodAtaModal, TopluAtaModal } from './is-plani/GorevSiniflandirmaModals'
@@ -25,8 +26,7 @@ const MILESTONE_STATUS_OPTIONS = [
 // gösteriliyor, bu yüzden fmtDate (TabIsPlan.jsx'in tam tarihli hâli) burada
 // kullanılmıyor.
 function fmtShort(date) {
-  if (!date) return null
-  return new Date(date).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  return toKey(date) ? formatDate(date, { shortYear: true }) : null
 }
 
 // Yalnız başlangıcı olan (hâlâ açık) görevde "?" gibi kafa karıştıran bir
@@ -55,22 +55,9 @@ const SORT_OPTIONS = [
   { v: 'ad', l: 'Göreve Göre (A-Z)' },
 ]
 
-function dayDiff(a, b) {
-  return Math.round((new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86400000)
-}
-
-// Sapma: gerçek bitiş varsa plan bitişle karşılaştırılır (+ gecikme, - erken).
-// Gerçek bitiş henüz yoksa ama plan bitiş tarihi geçmiş ve görev hâlâ açıksa
-// (tamamlandı/iptal değilse) bugüne kadarki gecikme gösterilir — Gantt'taki
-// "Riskli/Geciken" ile aynı mantık, burada sayısal gün farkı olarak.
-function computeSapma(task, today) {
-  if (task.actual_end && task.planned_end) return dayDiff(task.actual_end, task.planned_end)
-  if (task.planned_end && task.status !== 'tamamlandi' && task.status !== 'iptal') {
-    const end = new Date(`${task.planned_end}T00:00:00`)
-    if (today.getTime() > end.getTime()) return dayDiff(today.toISOString().slice(0, 10), task.planned_end)
-  }
-  return null
-}
+// Sapma (computeSapma, lib/isPlan/delay.js): gerçek bitiş varsa plan bitişle karşılaştırılır
+// (+ gecikme, - erken). Gerçek bitiş henüz yoksa ama plan bitiş tarihi geçmiş ve görev hâlâ açıksa
+// asOf'a kadarki gecikme gösterilir — Gantt'taki "Riskli/Geciken" ile aynı mantık, gün farkı olarak.
 
 // `buildGroupTree`'nin ürettiği düğümlerdeki `tasks` dizisi ham task
 // objeleridir (sapma değeri `_sapma` alanına önceden eklenmiş) — kullanıcının
@@ -86,7 +73,7 @@ function sortTaskList(list, sortBy) {
     const diff = byNullLast(a.planned_start) - byNullLast(b.planned_start)
     if (diff !== 0) return diff
     if (!a.planned_start || !b.planned_start) return 0
-    return new Date(a.planned_start) - new Date(b.planned_start)
+    return diffDays(a.planned_start, b.planned_start)
   })
 }
 
@@ -192,7 +179,8 @@ function ProgressEntryModal({ task, onClose, onSaved }) {
       p_task_id: task.id,
       p_qty: qty,
       p_note: note.trim() || null,
-      p_report_date: new Date().toISOString().slice(0, 10),
+      // Bugün (Europe/Istanbul); eski toISOString() 00:00-03:00 arası girişi bir önceki güne yazıyordu.
+      p_report_date: todayKey(),
     })
     setSaving(false)
     if (rpcError) {
@@ -312,7 +300,7 @@ function buildDetayRows(node, ctx) {
 function buildDetayTaskRow(task, depth, ctx) {
   const { canAddProgress, setProgressTask, onProgressSaved, structureOn, canManage, selected, toggleSelect, disciplineLabel, setEditTask, setCancelTask } = ctx
   const sapma = task._sapma ?? null
-  const duration = task.duration_days || daysBetween(task.planned_start, task.planned_end)
+  const duration = task.duration_days || daysInclusive(task.planned_start, task.planned_end)
   const isLate = sapma !== null && sapma > 0 && task.status !== 'tamamlandi' && task.status !== 'iptal' && !task.actual_end
   const cancelled = task.status === 'iptal'
   const rowStyle = cancelled ? { opacity: 0.55, textDecoration: 'line-through' } : undefined
@@ -389,7 +377,7 @@ const ACTION_BTN = {
 // Gruplama/aç-kapa Gantt'la aynı görsel dili (.gantt-group-row/tone-*) ve aynı
 // grup sırasını (GROUP_ORDER → bilinmeyenler en erken plan tarihine göre → _diğer
 // en sonda) paylaşır — kullanıcı iki görünüm arasında geçince aynı bölümleri tanır.
-export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddProgress = false, onProgressSaved, projectId = null, canManage = false, isAdmin = false }) {
+export default function TabIsPlaniDetay({ tasks, asOf, allGroupNames, canAddProgress = false, onProgressSaved, projectId = null, canManage = false, isAdmin = false }) {
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -434,8 +422,8 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
         if (!hay.includes(term)) return false
       }
       return true
-    }).map(task => ({ task, sapma: computeSapma(task, today) }))
-  }, [tasks, search, groupFilter, statusFilter, today, showCancelled, disciplineFilter, areaFilter, wbsFilter, onlyWithoutId])
+    }).map(task => ({ task, sapma: computeSapma(task, asOf) }))
+  }, [tasks, search, groupFilter, statusFilter, asOf, showCancelled, disciplineFilter, areaFilter, wbsFilter, onlyWithoutId])
 
   // Gantt'ın (Genel İş Planı) kullandığı ÇOK SEVİYELİ ağaç burada da birebir
   // paylaşılıyor — öncesinde bu tablo `resolveGroup` ile tek seviyeli düz bir

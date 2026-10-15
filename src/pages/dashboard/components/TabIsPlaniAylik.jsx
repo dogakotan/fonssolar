@@ -5,6 +5,7 @@ import {
   buildMonthRange, buildTaskCells, categoryLabel, cellTooltip, fmtPct, fmtQty,
   indexRowsByTask, isActiveCell, monthKey, monthPhase, performanceTone,
 } from '../../../utils/aylikPlan'
+import { todayKey } from '../../../lib/isPlan'
 
 // Aylık İş Planı (Faz 1: salt okunur). Satırlar görevler (Genel/Detaylı ile
 // aynı buildGroupTree hiyerarşisi ve aynı görev sırası — üst bileşenin
@@ -81,7 +82,7 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
   )
 }
 
-export default function TabIsPlaniAylik({ projectId, project, tasks, today, dataVersion }) {
+export default function TabIsPlaniAylik({ projectId, project, tasks, asOf, dataVersion }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -140,7 +141,8 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
     () => buildMonthRange(project?.start_date, project?.target_date, rows.map(r => monthKey(r.month))),
     [project?.start_date, project?.target_date, rows]
   )
-  const currentKey = monthKey(today || new Date())
+  // "Bu ay": ekranın referans günü (asOf, 'YYYY-MM-DD'); yoksa bugün (Europe/Istanbul).
+  const currentKey = monthKey(asOf || todayKey())
   const currentIndex = months.findIndex(m => m.key === currentKey)
 
   // Her görevin hücreleri bir kez hesaplanır; filtre/özet/ağaç bunları paylaşır.

@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:e2e": "playwright test",
+    "test:unit": "node scripts/test-unit-tz.mjs",
     "db:backup": "node scripts/db-backup/run-backup.mjs",
     "db:backup:data": "node scripts/db-backup/run-backup.mjs --data"
   },
