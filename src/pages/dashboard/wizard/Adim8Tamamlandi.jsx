@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { GorevKayitOnizleme } from './GorevKayitOnizleme'
 import { callSaveProjectTasks } from './saveProjectTasks'
+import { ENTEGRASYON_6AB_MESAJ, ENTEGRASYON_6AB_YOK, entegrasyonKilidi } from '../../../lib/entegrasyon'
 
 // Varsayılan (Proje Düzenleme'deki 6 adımlık akış — Riskler dahil). Yeni proje
 // oluşturma akışında (YeniProjeWizard.jsx) Riskler adımı yok — bu bileşene kendi
@@ -44,6 +45,7 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
   // Düzenlemede görev listesi önce önizlenir (Ç-B, Karar 59); yeni projede bütün satırlar eklenir, önizleme gerekmez.
   async function handleSave() {
     if (savingRef.current) return
+    if (ENTEGRASYON_6AB_YOK) { setStatus('error'); setErrorMsg(`Kayıt kapalı: ${ENTEGRASYON_6AB_MESAJ} (yerel entegrasyon).`); return }
     setErrorMsg(null)
     if (isEdit && tasksUsable) {
       savingRef.current = true
@@ -273,6 +275,7 @@ export default function Adim8Tamamlandi({ stepsResult, projectType, mode = 'new'
           data-wizard-submit="save"
           onClick={handleSave}
           disabled={isSaving || !stepsResult?.[1]}
+          {...entegrasyonKilidi(btnP)}
         >
           {isSaving ? 'Kaydediliyor…' : isEdit ? 'Projeyi Güncelle →' : 'Projeyi Kaydet →'}
         </button>

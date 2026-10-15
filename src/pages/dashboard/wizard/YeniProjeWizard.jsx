@@ -7,6 +7,7 @@ import Adim5Tedarik             from './Adim5Tedarik'
 import Adim6Butce               from './Adim6Butce'
 import Adim8Tamamlandi          from './Adim8Tamamlandi'
 import { projectWizardDraftKey, loadProjectWizardDraft, saveProjectWizardDraft, clearProjectWizardDraft } from '../../../utils/projectWizardDraft'
+import { entegrasyonKilidi } from '../../../lib/entegrasyon'
 
 // Riskler adımı burada YOK — yeni oluşturulan bir projede henüz görev/satın alma
 // verisi olmadığı için ne otomatik risk motoru bir şey üretebilir ne de manuel risk
@@ -123,6 +124,7 @@ export default function YeniProjeWizard({ onSuccess, onViewProject }) {
             type="button"
             onClick={() => submitCurrentStep('next')}
             style={{ padding: '0.5rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+            {...(step === 6 ? entegrasyonKilidi({ padding: '0.5rem', background: 'var(--color-primary)', color: '#fff', border: 'none', borderRadius: 'var(--radius-md)', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }) : {})}
           >
             {step === 6 ? 'Kaydet' : 'Devam →'}
           </button>

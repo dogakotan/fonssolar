@@ -7,6 +7,7 @@ import { useProjectStructure } from '../../../hooks/useProjectStructure'
 import { wbsAreaErrorMessage } from '../../../utils/wbsAreaErrors'
 import { GorevDuzenleModal, IptalModal, KodAtaModal, TopluAtaModal } from './is-plani/GorevSiniflandirmaModals'
 import { MAX_SELECTION } from './is-plani/modalStyles'
+import { entegrasyonKilidi } from '../../../lib/entegrasyon'
 
 // Adim2IsKalemleri.jsx'teki wizard durum düzenleyicisiyle aynı 5 değer —
 // yalnız target_qty'si olmayan (miktarla ölçülemeyen, kilometre taşı) iş
@@ -350,7 +351,7 @@ function buildDetayTaskRow(task, depth, ctx) {
         <td style={{ ...TD, whiteSpace: 'normal', textDecoration: 'none' }}>
           {canManage && (
             <span style={{ display: 'inline-flex', gap: 4, marginRight: 6 }}>
-              {!cancelled && <button type="button" onClick={() => setEditTask(task)} style={ACTION_BTN}>Sınıflandır</button>}
+              {!cancelled && <button type="button" onClick={() => setEditTask(task)} style={ACTION_BTN} {...entegrasyonKilidi(ACTION_BTN)}>Sınıflandır</button>}
               <button type="button" onClick={() => setCancelTask(task)} style={{ ...ACTION_BTN, color: cancelled ? 'var(--color-primary)' : 'var(--color-danger)' }}>{cancelled ? 'Yeniden aç' : 'İptal et'}</button>
             </span>
           )}
@@ -557,8 +558,8 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '0 0 8px', padding: '8px 10px', borderRadius: 8, background: 'var(--color-bg)', border: '1px solid var(--color-border-md)' }}>
           <strong style={{ fontSize: 12.5 }}>{selected.size} görev seçili</strong>
           {tooMany && <span style={{ fontSize: 12, color: 'var(--color-danger)', fontWeight: 700 }}>En fazla {MAX_SELECTION} görev; WBS/alan filtresiyle daraltın.</span>}
-          <button type="button" style={ACTION_BTN} disabled={tooMany} onClick={() => setBulkOpen(true)}>Toplu ata</button>
-          <button type="button" style={ACTION_BTN} disabled={tooMany} onClick={() => setAssignTasks(selectedTasks)}>Kod ata</button>
+          <button type="button" style={ACTION_BTN} disabled={tooMany} onClick={() => setBulkOpen(true)} {...entegrasyonKilidi(ACTION_BTN)}>Toplu ata</button>
+          <button type="button" style={ACTION_BTN} disabled={tooMany} onClick={() => setAssignTasks(selectedTasks)} {...entegrasyonKilidi(ACTION_BTN)}>Kod ata</button>
           <button type="button" style={{ ...ACTION_BTN, marginLeft: 'auto' }} onClick={() => setSelected(new Set())}>Seçimi temizle</button>
         </div>
       )}

@@ -10,6 +10,7 @@ import Adim6Butce               from './Adim6Butce'
 import Adim8Tamamlandi          from './Adim8Tamamlandi'
 import { projectWizardDraftKey, loadProjectWizardDraft, saveProjectWizardDraft, clearProjectWizardDraft } from '../../../utils/projectWizardDraft'
 import { GorevKayitOnizleme } from './GorevKayitOnizleme'
+import { ENTEGRASYON_6AB_MESAJ, ENTEGRASYON_6AB_YOK, entegrasyonKilidi } from '../../../lib/entegrasyon'
 import { callSaveProjectTasks } from './saveProjectTasks'
 
 const TABLE_MAP = {
@@ -110,6 +111,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
         })
         if (error) throw error
       } else if (stepNo === 2 && !result.skipped && result.rows?.length) {
+        if (ENTEGRASYON_6AB_YOK) throw new Error(`Kayıt kapalı: ${ENTEGRASYON_6AB_MESAJ} (yerel entegrasyon).`)
         // Ç-B (Karar 59): görev listesi önce önizlenir, onaydan sonra save_project_tasks ile kaydedilir.
         const r = await callSaveProjectTasks(projectId, result.rows, { dryRun: true })
         if (!r.missing) {
@@ -196,6 +198,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
               onClick={() => submitCurrentStep('save')}
               disabled={saving}
               style={{ ...btnBase, background: saving ? '#f1f5f9' : '#fff', color: saving ? '#94a3b8' : 'var(--color-primary)', border: `1px solid ${saving ? '#e2e8f0' : 'var(--color-primary)'}`, cursor: saving ? 'not-allowed' : 'pointer' }}
+              {...(step === 2 ? entegrasyonKilidi({ ...btnBase, background: '#fff', color: 'var(--color-primary)', border: '1px solid var(--color-primary)' }) : {})}
             >
               {saving ? 'Kaydediliyor…' : 'Kaydet'}
             </button>
@@ -204,6 +207,7 @@ export default function ProjeEditWizard({ project, onSuccess, onViewProject }) {
             type="button"
             onClick={() => submitCurrentStep('next')}
             style={{ ...btnBase, background: 'var(--color-primary)', color: '#fff' }}
+            {...(step === 7 ? entegrasyonKilidi({ ...btnBase, background: 'var(--color-primary)', color: '#fff' }) : {})}
           >
             {step === 7 ? 'Kaydet' : 'Devam →'}
           </button>
