@@ -366,6 +366,12 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
     `get_project_gantt` yenilemesiyle (görev/ilerleme realtime'ı, sekmeye dönüş)
     yeniden çekilir.
   - **Faz 2:** hücre düzenleme `MonthCell`'in `editable` özelliğine bağlanacak.
+  - **Tarih ve ölçek hesapları `src/lib/isPlan/`'da** (saf, React/Supabase'e bağımlı değil; İş Planı revizyonu Faz 2, `is-plani-revizyon` dalı):
+    - `dates.js`: tarih her yerde `YYYY-MM-DD` metni. Aritmetik UTC gün numarasıyla yapılır; `toISOString`/yerel saat karışımı yok. "Bugün" = `todayKey()` (Europe/Istanbul).
+    - `ganttScale.js`: gün başına sabit piksel (en az 3, kısa projede kapsayıcıyı doldurur). Ay başlığı, tik, çubuk ve "bugün" çizgisi aynı `x()`'ten. Zaman çizelgesi kolonu ölçek genişliğinde sabit; esnetilirse hiza bozulur.
+    - `delay.js`, `filters.js`, `progress.js`: gecikme/sapma, filtre tarihi, durum filtresi, KPI ve durum türetme. Hepsi `asOf` alır.
+    - Kararlar `docs/is-plani-kararlar.md`, denetim `docs/is-plani-denetim.md`.
+    - Bu dosyalarda `new Date('YYYY-MM-DD')`, `toISOString().slice(0,10)` veya `toLocaleDateString` görmek regresyon sinyalidir.
   Proje Finans sekmesi (`ProjeTabFinans.jsx`) rol bazlı: admin ve proje
   yöneticisi (`canApprove = isAdmin || role==='proje_yoneticisi'`) proje içinde
   Genel/Faturalar/Onay Kuyruğu görür (2026-07-24'te proje yöneticisine açıldı;
@@ -1752,6 +1758,11 @@ profiles where role_key='admin'` ile doğrula.
 - Vite 5183 portunda ayrı süreçte çalışır.
 - Canlıya karşı koşmak yalnızca açıkça `PW_TARGET=live` ile mümkün; bu durumda `.env.test` ve 5173 kullanılır.
 
+**Saf birim testleri:** `npm run test:unit` (`scripts/test-unit-tz.mjs`).
+- `node:test` ile `tests-unit/**/*.test.mjs`'yi `TZ=Europe/Istanbul`, `UTC` ve `America/Los_Angeles`'ta ayrı süreçlerle koşar; ek bağımlılık yok.
+- Dosyalar `tests/` dışında, çünkü Playwright'ın `testDir`'i `*.test.*` dosyalarını da toplar.
+- Vitest eklenmedi: test edilen modüller JSX ve Vite içermiyor. Bileşen testi gerekirse yeniden değerlendirilir.
+
 ### Proje Kontrol (Faz A tamamlanıyor, Faz B taslakları hazır — 06-07.10.2026)
 
 Kaynak tasarım: `docs/proje-kontrol/tasarim.md` (**v3, 07.10.2026** — kullanıcının verdiği sürüm; önceki taslak
@@ -1868,7 +1879,7 @@ saklanmaz (`document_texts` yok), `register_audit` yalnızca değişen alanları
 | 89 | Varsayılan kategori ağırlıkları | Yeni projeler için 15 kategori, toplam 100: kolon 10, kiriş 8, aşık 7, panel 17, mekanik 5, DC 10, AC 10, OG 8, köşk 5, topraklama 5, ENH 7, devreye alma 8; mobilizasyon, evrak süreci, satın alma 0. Değişen nesne `fn_seed_default_category_weights()` (`taslak-sql/kategori_agirlik_varsayilan.sql`) + Excel import `mapping.ts`. Mevcut projeler değişmez; ADN1/ADN2 kararı ayrı. Değerler PM ile görüşülüp değişebilir | **ONAYLANDI ve UYGULANDI (14.10.2026, `20261014103635_kategori_agirlik_varsayilan`)**; ADN1/ADN2 için `taslak-sql/adn_kategori_agirlik.sql` ROLLBACK ile test edildi, PM onayı bekliyor |
 | 90 | P3 test hesapları | Test admin hesabını kullanıcı Kullanıcılar sayfasından açar ve `.env.test`'e kendisi yazar. Muhasebe test hesabı açılmaz; T10 test şantiye şefiyle yapılır. Test admin, Karar 75 süzgeci gelene kadar gerçek admin bildirimlerini de alır (kabul). `.env.test` kontrolü (14.10): admin genel hesap, PM test, muhasebe gerçek kişi | **ONAYLANDI (14.10.2026)** |
 | 91 | Dal tabanı | `faz-a-proje-kontrol`: `git merge origin/main` (çakışmalarda `faz-a` sürümü). `faz-2-3-register`: kendi klasöründe `git rebase origin/main` | **ONAYLANDI ve UYGULANDI (14.10.2026)**; lint 0 hata, build başarılı (iki klasör) |
-| 92 | Import Notlar | `import-project-excel` İş Kalemleri M kolonunu `project_tasks.notes`'a yazar; öncül ayrı kolon yerine nota "Öncül: …" olarak. Deploy T1-T12'den önce; T1-T12'ye not/öncül kontrolü (T13) | **ONAYLANDI (14.10.2026)**; kod `hotfix/import-notlar` dalında, PR onay bekliyor |
+| 92 | Import Notlar | `import-project-excel` İş Kalemleri M kolonunu `project_tasks.notes`'a yazar; öncül ayrı kolon yerine nota "Öncül: …" olarak. Deploy T1-T12'den önce; T1-T12'ye not/öncül kontrolü (T13). **Güncelleme (15.10.2026, İP-3):** öncüllerin tek kaynağı `task_dependencies`; nottaki "Öncül: …" metni silinmez ama kaynak değildir, hiçbir hesap okumaz. Import'un öncülü tabloya da yazması ayrı iş (İş Planı bağımlılık fazı) | **ONAYLANDI (14.10.2026)**; kod `hotfix/import-notlar` dalında, PR onay bekliyor; İP-3 ile güncellendi |
 | 93 | Diyarbakır şalt sahası ve ortak altyapı | Pilotta şalt görevleri `elektrik_og` + grup etiketi "Şalt Sahası"; ayrı `salt_sahasi` kategorisi 6b'ye (açık nokta). ENH ve şalt DYB1'de kalır, DYB2'den çıkarılır; DYB2 E19'un Ş5 öncülü nota döner ("Ortak şalt sahası enerjilendirmesi DYB1 ŞS7'ye bağlı"). İki dosyanın tarih tutarsızlığı planlamaya soruldu; şimdilik DYB1 tarihleri | **ONAYLANDI (14.10.2026)** |
 | 94 | Diyarbakır eşleme ve import yolu | Belirsiz görevler: DYB1 E10 → elektrik_dc, E20 → elektrik_og, K4 → elektrik_ac, N2 → evrak_sureci, ŞS7 → devreye_alma, ŞS8 → evrak_sureci, T3/İK2 → devreye_alma, İK4 → evrak_sureci; DYB2 E9 → elektrik_dc, S4 → devreye_alma. Riskler: proje açıldıktan sonra aynı v8 dosyasıyla "Mevcut projeyi güncelle"; şiddet = kaynaktaki Risk Seviyesi, durum açık, kategori Tedarik → Satın Alma, Teknik/Program/Hava → İş Kalemi, diğerleri Diğer. Sorumlu görev notunda ve risk açıklamasında "Sorumlu: <Rol> (AJAN-xx)"; ajan → rol eşlemesi planlamadan teyit bekliyor, AJAN-15 "tanımsız". EK1 kalır, notuna "Teyit bekleniyor". Kapasite kWp/kWe, panel ve inverter adedi alınır. Kaynak ve v8 dosyaları `C:\fons-yedek\veri-kaynak\`, repoya müşteri verisi girmez. **Karar 74 güncellemesi:** Diyarbakır 6b'yi beklemez; T1-T12 geçtikten sonra kullanıcı dashboard'dan import eder | **ONAYLANDI (14.10.2026)** |
 | 95 | Diyarbakır ağırlıkları | DYB1: kolon 10, kiriş 8, aşık 7, panel 17, mekanik 3, DC 12, AC 4, OG 18 (şalt dahil), köşk 5, ENH 8, devreye alma 8. DYB2: kolon 12, kiriş 10, aşık 9, panel 22, DC 18, OG 11, köşk 7, devreye alma 11. Diğerleri 0, toplam 100. Import'tan sonra SQL ile (`taslak-sql/dyb_kategori_agirlik.sql`) | **ONAYLANDI (14.10.2026), değerler PM onayında**; ROLLBACK testi geçti (15/100 iki projede, ilerleme formülü, geri alma), parmak izi birebir; uygulama onayla |
@@ -2355,6 +2366,21 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**15.10.2026 (2. tur) — İş Planı revizyonu Faz 2: tarih ve Gantt ölçeği hataları, `src/lib/isPlan/` (dal `is-plani-revizyon`, commit yok; DB değişikliği yok).**
+- **Düzelen hatalar** (`docs/is-plani-denetim.md`):
+  - H1: Gantt ay başlıkları 7 günlük tik ile ölçülüyordu, DYB'de Kasım 2027'de ≈57 gün kayma vardı; artık 0.
+  - H2: aylık filtre 30 Ekim → 31 Ekim; haftalık cumartesi → pazar.
+  - H3: sapma bir gün eksikti.
+  - Ayrıca Los Angeles saat diliminde tarihler bir gün geri gösteriliyordu ve bugün biten görev "gecikmiş" sayılıyordu.
+  - İlerleme girişinin rapor tarihi Europe/Istanbul bugünü oluyor.
+- **Testler:**
+  - `npm run test:unit` 27 test, üç saat diliminde geçti. Regresyon testleri önce eski kodla koşuldu ve başarısız oldu.
+  - `tests/is-plani-gantt-hiza.spec.js`: tarayıcıda DYB1'de 58 çubuğun ve bugün çizgisinin başlığa göre farkı 0 px.
+- **Görünüm farkları:**
+  - Tikler 01/08/15/22; 29 tiki kalktı, son tik ay sonuna uzanır.
+  - Zaman çizelgesi görev tarihlerini de kapsar; aralık dışı çubuk kırpılmaz.
+  - Gün başına en az 3 px.
 
 **15.10.2026 — İş Planı'na Aylık İş Planı bölümü (Faz 1, salt okunur); iki migration arşivlendi.**
 - **Dal:** `feature/aylik-is-plani` (`main`'den, `GES_Dashboard-aylik` klasörü).
