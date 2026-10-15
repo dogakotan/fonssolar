@@ -16,6 +16,7 @@ paragraf kimlikleri (`w14:paraId`) benzersiz yenilendi.
 - **Başlık altı tarih satırı:** "· 15.10.2026 (Aylık İş Planı: task_monthly_plan, vw_task_monthly_plan_vs_actual, task_dependencies)" eklendi.
 - **3.1 Modül – Tablo Haritası:** "Proje yönetimi" satırına `task_monthly_plan (görev × ay planı)`, `task_dependencies (öncül/ardıl ilişkileri)`.
 - **5.2 Proje Detayı:** İş Planı tanımına "Aylık: görev × ay plan ızgarası, salt okunur".
+- **6.5 Otomatik Risk Motoru:** "15.10.2026 ek kuralları" cümlesi eklendi. Silinen görevin açık gecikme riski kapanır; ilerlemesi %100 olan görev için gecikme riski yeniden açılmaz. Kaynak: migration `20261015074230_close_orphan_task_delay_risks`.
 - **Yeni 6.9 Aylık İş Planı ve Görev Bağımlılıkları (15.10.2026):**
   - bölüm seçimi ve `?view=`;
   - ızgara, hücre modları ve renk eşikleri;
@@ -34,5 +35,4 @@ paragraf kimlikleri (`w14:paraId`) benzersiz yenilendi.
 
 ## Bu güncellemede olmayanlar
 - **Diğer sayılar:** Sistem dokümanındaki "~55 tablo + 7 view" sayısı ve diğer bayat bölümler değiştirilmedi. Veritabanı dokümanı 09.07.2026 sürümüdür; yalnızca yeni nesneler eklendi.
-- **14.10.2026 F5 metni:** Change, Claim, Interface metni (`faz-a-proje-kontrol` dalında `docs/proje-kontrol/docx-guncelleme-14-10.md`) bu dosyalara henüz işlenmemiş görünüyor. Sistem dokümanı en son 07.10'da değişmişti. Bu güncellemenin kapsamı dışında.
-- **Risk motoru:** Sahipsiz gecikme risklerini kapatan migration onay bekliyor. Uygulanınca sistem dokümanının 6.5 bölümüne ayrıca eklenecek.
+- **14.10.2026 F5 metni:** Change, Claim, Interface metni (`faz-a-proje-kontrol` dalında `docs/proje-kontrol/docx-guncelleme-14-10.md`) bu dosyalara henüz işlenmedi. Ayrı iş olarak listede (CLAUDE.md "Bilinen açık noktalar"); bu dalda yapılmayacak.
