@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { splitTaskName } from '../../../utils/taskName'
+import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { StatusDot } from '../../../components/ui/Badge'
 import { TONE } from '../../../components/ui/StatusBadge'
-import { buildGroupTree, collectNodeTasks, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
+import { buildGroupTree, collectNodeTasks, compareTaskCode, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
 
 // Adim2IsKalemleri.jsx'teki wizard durum düzenleyicisiyle aynı 5 değer —
 // yalnız target_qty'si olmayan (miktarla ölçülemeyen, kilometre taşı) iş
@@ -44,6 +46,7 @@ const TASK_STATUS = {
 }
 
 const SORT_OPTIONS = [
+  { v: 'kod', l: 'Koda Göre (M1, M2, …)' },
   { v: 'plan_start', l: 'Plan Başlangıcına Göre' },
   { v: 'sapma', l: 'En Çok Sapmaya Göre' },
   { v: 'ilerleme', l: 'İlerlemeye Göre (Az → Çok)' },
@@ -73,6 +76,7 @@ function computeSapma(task, today) {
 // uygulanır (bkz. sortTreeTasks), grup sırasının kendisi (buildGroupTree'nin
 // GROUP_ORDER/en-erken-tarih mantığı) bundan etkilenmez.
 function sortTaskList(list, sortBy) {
+  if (sortBy === 'kod') return [...list].sort(compareTaskCode)
   const byNullLast = value => (value === null || value === undefined ? Infinity : 0)
   if (sortBy === 'sapma') return [...list].sort((a, b) => (b._sapma ?? -Infinity) - (a._sapma ?? -Infinity))
   if (sortBy === 'ilerleme') return [...list].sort((a, b) => Number(a.progress_pct || 0) - Number(b.progress_pct || 0))
@@ -107,7 +111,7 @@ const TH = {
   position: 'sticky', top: 0, zIndex: 2, borderBottom: '1px solid var(--color-border-md)',
 }
 const TD = { padding: '6px 7px', fontSize: 11.5, color: 'var(--color-text)', whiteSpace: 'nowrap', borderTop: '1px solid var(--color-border)' }
-const BASE_COLUMN_COUNT = 12
+const BASE_COLUMN_COUNT = 13
 
 // Tablo satırı içine sığan, kutu/etiket olmayan sade bir durum seçici —
 // TabIsPlan.jsx'teki (Gantt detay panelindeki) MilestoneStatusControl'ün
@@ -299,21 +303,28 @@ function buildDetayRows(node, ctx) {
 
   const childRows = node.childList.flatMap(child => buildDetayRows(child, ctx))
   const taskRows = node.tasks.map(task => buildDetayTaskRow(task, node.depth, ctx))
-  return [headerRow, ...childRows, ...taskRows]
+  return [headerRow, ...taskRows, ...childRows]
 }
 
 function buildDetayTaskRow(task, depth, ctx) {
-  const { canAddProgress, setProgressTask, onProgressSaved } = ctx
+  const { canAddProgress, setProgressTask, onProgressSaved, detailOpen, toggleDetail } = ctx
   const sapma = task._sapma ?? null
   const duration = task.duration_days || daysBetween(task.planned_start, task.planned_end)
   const isLate = sapma !== null && sapma > 0 && task.status !== 'tamamlandi' && task.status !== 'iptal' && !task.actual_end
   return (
     <tr key={task.id}>
       <td style={TD}><span style={{ fontWeight: 700 }}>{task.task_code || '-'}</span></td>
-      <td style={{ ...TD, whiteSpace: 'normal', minWidth: 160, paddingLeft: 7 + (depth + 1) * GROUP_INDENT_PX }}>
-        {task.task_name || '-'}
+      <td style={{ ...TD, whiteSpace: 'nowrap', minWidth: 160, paddingLeft: 7 + (depth + 1) * GROUP_INDENT_PX }}>
+        {splitTaskName(task.task_name).base || '-'}
         {task.sub_category && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--color-muted)' }}>· {task.sub_category}</span>}
         {isLate && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--color-danger-text)' }}>({riskSeverityLabel(task)})</span>}
+      </td>
+      <td
+        onClick={toggleDetail}
+        title={splitTaskName(task.task_name).detail || undefined}
+        style={{ ...TD, cursor: 'pointer', color: 'var(--color-muted)', textAlign: detailOpen ? 'left' : 'center', ...(detailOpen ? { whiteSpace: 'normal', minWidth: 180, maxWidth: 240 } : { width: 46, maxWidth: 46 }) }}
+      >
+        {detailOpen ? (splitTaskName(task.task_name).detail || '—') : (splitTaskName(task.task_name).detail ? '…' : '')}
       </td>
       <td style={TD}>{task.responsible || task.responsible_role || '—'}</td>
       <td style={TD}>{task.team_size || '—'}</td>
@@ -360,7 +371,8 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [sortBy, setSortBy] = useState('plan_start')
+  const [sortBy, setSortBy] = useState('kod')
+  const [detailOpen, toggleDetail] = useDetailColumn()
   const [collapsed, setCollapsed] = useState(new Set())
   const [progressTask, setProgressTask] = useState(null)
   const columnCount = canAddProgress ? BASE_COLUMN_COUNT + 1 : BASE_COLUMN_COUNT
@@ -447,6 +459,9 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
               <tr>
                 <th style={TH}>Kod</th>
                 <th style={TH}>Görev Adı</th>
+                <th style={{ ...TH, cursor: 'pointer', color: 'var(--color-primary)', userSelect: 'none' }} role="button" tabIndex={0} aria-expanded={detailOpen} onClick={toggleDetail} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleDetail(e) }}>
+                  {detailOpen ? 'Detay ◂' : 'Detay ▸'}
+                </th>
                 <th style={TH}>Sorumlu</th>
                 <th style={TH}>Ekip</th>
                 <th style={TH}>Plan</th>
@@ -461,7 +476,7 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
               </tr>
             </thead>
             <tbody>
-              {groupTree.flatMap(node => buildDetayRows(node, { collapsed, toggleGroup, columnCount, canAddProgress, setProgressTask, onProgressSaved }))}
+              {groupTree.flatMap(node => buildDetayRows(node, { collapsed, toggleGroup, columnCount, canAddProgress, setProgressTask, onProgressSaved, detailOpen, toggleDetail }))}
             </tbody>
           </table>
         </div>

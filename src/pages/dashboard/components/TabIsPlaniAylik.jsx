@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
+import { splitTaskName } from '../../../utils/taskName'
+import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { buildGroupTree, collectNodeTasks, GROUP_INDENT_PX, groupConfigFor } from './TabIsPlan'
 import {
-  buildMonthRange, buildTaskCells, categoryLabel, cellTooltip, fmtPct, fmtQty,
+  buildMonthRange, buildTaskCells, categoryLabel, cellTooltip, displayPlanned, fmtPct, fmtQty,
   indexRowsByTask, isActiveCell, monthKey, monthPhase, performanceTone,
 } from '../../../utils/aylikPlan'
 
@@ -50,10 +52,10 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
   let content = null
 
   if (mode === 'plan') {
-    if (cell.planned > 0) content = fmtQty(cell.planned)
+    if (cell.planned > 0) content = fmtQty(displayPlanned(cell, task))
   } else if (mode === 'plan_gercek') {
     if (cell.planned > 0 || cell.actual > 0) {
-      content = <>{fmtQty(cell.actual)}<span className="aylik-sep">/</span>{fmtQty(cell.planned)}</>
+      content = <>{fmtQty(cell.actual)}<span className="aylik-sep">/</span>{fmtQty(displayPlanned(cell, task))}</>
       const tone = phase === 'future' ? null : performanceTone(cell.planned, cell.actual)
       if (tone) classes.push(`tone-${tone}`)
     }
@@ -86,6 +88,25 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
 
 export default function TabIsPlaniAylik({ projectId, project, tasks, today, dataVersion }) {
   const [rows, setRows] = useState([])
+  const [detailOpen, toggleDetail] = useDetailColumn()
+  const [nameW, setNameW] = useState(200)
+
+  // İş kalemi adları tam sığsın: kolon genişliği en uzun görünen ada göre
+  // ayarlanır (en az 200, en çok 460 px; daha uzunu üç noktayla kesilir).
+  // Her çizimden sonra ölçer; genişlik değişmedikçe state güncellenmez (döngü yok).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const els = document.querySelectorAll('.aylik-table td.aylik-col-ad > span')
+    if (!els.length) return
+    let widest = 0
+    els.forEach(el => {
+      const cell = el.parentElement
+      const pad = cell ? parseFloat(getComputedStyle(cell).paddingLeft) + parseFloat(getComputedStyle(cell).paddingRight) : 0
+      widest = Math.max(widest, el.getBoundingClientRect().width + pad)
+    })
+    const next = Math.min(460, Math.max(200, Math.ceil(widest) + 4))
+    if (next !== nameW) setNameW(next)
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [reloadToken, setReloadToken] = useState(0)
@@ -261,7 +282,7 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
             <strong>{cfg.label}</strong>
           </button>
         </td>
-        <td className="aylik-sticky aylik-group-rest" colSpan={2}>{nodeTasks.length} kalem</td>
+        <td className="aylik-sticky aylik-group-rest" colSpan={3}>{nodeTasks.length} kalem</td>
         {months.map((m, i) => {
           const n = nodeTasks.filter(t => isActiveCell(cellsByTask.get(t.id)?.[i])).length
           return <td key={m.key} className={`aylik-group-count${monthClass(i)}`} title={n ? `${m.label}: ${n} aktif kalem` : undefined}>{n || ''}</td>
@@ -269,19 +290,22 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
       </tr>,
     ]
     if (!isOpen) return out
-    node.childList.forEach(child => out.push(...renderNode(child)))
     node.tasks.forEach(task => {
       const cells = cellsByTask.get(task.id) || []
+      const { base: nameBase, detail } = splitTaskName(task.task_name)
       out.push(
         <tr key={task.id} className="aylik-task-row" data-task-code={task.task_code || ''}>
           <td className="aylik-sticky aylik-col-kod">{task.task_code || '—'}</td>
           <td className="aylik-sticky aylik-col-ad" title={task.task_name || ''}>
             <span style={{ paddingLeft: node.depth * GROUP_INDENT_PX + 14 }}>
               <span className="aylik-kod-mobil">{task.task_code ? `${task.task_code} · ` : ''}</span>
-              {task.task_name || '—'}
+              {nameBase || '—'}
             </span>
           </td>
-          <td className="aylik-sticky aylik-col-birim">{task.unit || '—'}</td>
+          <td className={`aylik-sticky aylik-col-detay${detailOpen ? ' open' : ''}`} onClick={toggleDetail} title={detail || undefined}>
+            {detailOpen ? (detail || '—') : (detail ? '…' : '')}
+          </td>
+          <td className="aylik-sticky aylik-col-birim" title={task.unit || undefined}>{task.unit || '—'}</td>
           <td className="aylik-sticky aylik-col-hedef">{Number(task.target_qty) > 0 ? fmtQty(task.target_qty) : '—'}</td>
           {cells.map(cell => (
             <MonthCell key={cell.monthKey} cell={cell} task={task} mode={mode} phase={monthPhase(cell.monthKey, currentKey)} />
@@ -289,6 +313,7 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
         </tr>
       )
     })
+    node.childList.forEach(child => out.push(...renderNode(child)))
     return out
   }
 
@@ -355,11 +380,14 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
             </div>
           )}
           <div className="aylik-scroll" onMouseOver={handleTipOver} onMouseLeave={hideTip}>
-            <table className="aylik-table">
+            <table className="aylik-table" style={{ '--aylik-detay-w': detailOpen ? '220px' : '58px', '--aylik-ad-w': `${nameW}px` }}>
               <thead>
                 <tr>
                   <th className="aylik-sticky aylik-col-kod">Kod</th>
                   <th className="aylik-sticky aylik-col-ad">İş Kalemi</th>
+                  <th className="aylik-sticky aylik-col-detay" role="button" tabIndex={0} aria-expanded={detailOpen} onClick={toggleDetail} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleDetail(e) }}>
+                    {detailOpen ? 'Detay ◂' : 'Detay ▸'}
+                  </th>
                   <th className="aylik-sticky aylik-col-birim">Birim</th>
                   <th className="aylik-sticky aylik-col-hedef">Hedef</th>
                   {months.map((m, i) => (
@@ -373,7 +401,7 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
               <tfoot>
                 <tr className="aylik-summary-row">
                   <td className="aylik-sticky aylik-group-label" colSpan={2}>Aktif kalem sayısı</td>
-                  <td className="aylik-sticky aylik-group-rest" colSpan={2}>{filteredTasks.length} kalem</td>
+                  <td className="aylik-sticky aylik-group-rest" colSpan={3}>{filteredTasks.length} kalem</td>
                   {activeCounts.map((n, i) => (
                     <td key={months[i].key} className={`aylik-group-count${monthClass(i)}`} data-month={months[i].key}>{n || ''}</td>
                   ))}

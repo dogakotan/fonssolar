@@ -1238,7 +1238,7 @@
 }
 .gantt-board { width: 100%; min-width: var(--gantt-min-width); position: relative; background: #fff; }
 .gantt-header-row, .gantt-task-row { display: grid; grid-template-columns: var(--left-width) minmax(var(--timeline-width), 1fr); }
-.gantt-left-head { display: grid; grid-template-columns: var(--w-no) var(--w-name) var(--w-start) var(--w-end) var(--w-dur) var(--w-progress); background: #f8fafc; border-bottom: 1px solid #e2e8f0; position: sticky; left: 0; z-index: 9; box-shadow: 1px 0 0 #e2e8f0; }
+.gantt-left-head { display: grid; grid-template-columns: var(--w-no) var(--w-name) var(--w-detail) var(--w-start) var(--w-end) var(--w-dur) var(--w-progress); background: #f8fafc; border-bottom: 1px solid #e2e8f0; position: sticky; left: 0; z-index: 9; box-shadow: 1px 0 0 #e2e8f0; }
 .gantt-left-head span, .gantt-month-ticks span { min-height: 25px; display: flex; align-items: center; justify-content: center; color: #64748b; font-size: .56rem; font-weight: 750; border-right: 1px solid #e2e8f0; }
 .gantt-left-head span:nth-child(2) { justify-content: flex-start; padding-left: .55rem; }
 .gantt-timeline-head { display: grid; grid-template-rows: 25px 25px; border-bottom: 1px solid #e2e8f0; background: #fbfdff; }
@@ -1270,7 +1270,7 @@
 .gantt-task-row.selected { box-shadow: inset 0 0 0 1px #3b82f6; z-index: 3; }
 .gantt-task-left {
   display: grid;
-  grid-template-columns: var(--w-no) var(--w-name) var(--w-start) var(--w-end) var(--w-dur) var(--w-progress);
+  grid-template-columns: var(--w-no) var(--w-name) var(--w-detail) var(--w-start) var(--w-end) var(--w-dur) var(--w-progress);
   grid-column: 1;
   grid-row: 1;
   min-width: 0;
@@ -1295,6 +1295,11 @@
 .gantt-code b { padding: 1px 3px; border-radius: .25rem; background: #f59e0b; color: #fff; font-size: .5rem; line-height: 1.2; }
 .gantt-name { color: var(--color-text) !important; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gantt-name.late, .gantt-task-row .late { color: #ef4444 !important; }
+/* Detay kolonu: iş kalemi adının sonundaki parantezli açıklama. Dokununca açılır/kapanır. */
+.gantt-detay-head { cursor: pointer; user-select: none; color: var(--color-primary) !important; }
+.gantt-task-left > span.gantt-detay-col { justify-content: center; cursor: pointer; color: #64748b; overflow: hidden; text-overflow: ellipsis; }
+.gantt-task-left > span.gantt-detay-col.open { justify-content: flex-start; white-space: normal; line-height: 1.25; padding-top: 3px; padding-bottom: 3px; }
+.gantt-task-left > span.gantt-detay-col:hover { background: #eef4ff; }
 .gantt-progress-cell { gap: .35rem; }
 .gantt-progress-cell i { flex: 1; height: 4px; border-radius: 99px; background: #e2e8f0; overflow: hidden; }
 .gantt-progress-cell em { display: block; width: var(--progress); height: 100%; background: var(--bar-color); border-radius: inherit; }
@@ -2000,25 +2005,29 @@ body, #root { overflow-x: hidden; }
 
 .aylik-scroll { overflow: auto; max-height: 640px; border-top: 1px solid var(--color-border); }
 .aylik-table { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 11.5px; }
-.aylik-table th, .aylik-table td { padding: 5px 7px; border-bottom: 1px solid var(--color-border); white-space: nowrap; background: var(--color-surface); }
+.aylik-table th, .aylik-table td { padding: 4px 6px; border-bottom: 1px solid var(--color-border); border-right: 1px solid var(--color-border); white-space: nowrap; background: var(--color-surface); }
 .aylik-table thead th { position: sticky; top: 0; z-index: 3; background: var(--color-bg); color: var(--color-muted); font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .2px; text-align: left; border-bottom: 1px solid var(--color-border-md); }
 .aylik-table thead th.aylik-sticky { z-index: 5; }
 .aylik-table tfoot td { position: sticky; bottom: 0; z-index: 3; background: var(--color-bg); font-weight: 700; border-top: 1px solid var(--color-border-md); }
 .aylik-table tfoot td.aylik-sticky { z-index: 5; }
 
 .aylik-sticky { position: sticky; z-index: 2; }
-.aylik-col-kod { left: 0; width: 58px; min-width: 58px; max-width: 58px; font-weight: 700; color: var(--color-muted); }
-.aylik-col-ad { left: 58px; width: 230px; min-width: 230px; max-width: 230px; overflow: hidden; text-overflow: ellipsis; }
-.aylik-col-birim { left: 288px; width: 84px; min-width: 84px; max-width: 84px; overflow: hidden; text-overflow: ellipsis; color: var(--color-muted); }
-.aylik-col-hedef { left: 372px; width: 84px; min-width: 84px; max-width: 84px; text-align: right; font-variant-numeric: tabular-nums; box-shadow: inset -1px 0 0 var(--color-border-md); }
+.aylik-col-kod { left: 0; width: 46px; min-width: 46px; max-width: 46px; font-weight: 700; color: var(--color-muted); }
+.aylik-col-ad { left: 46px; width: var(--aylik-ad-w); min-width: var(--aylik-ad-w); max-width: var(--aylik-ad-w); overflow: hidden; text-overflow: ellipsis; }
+.aylik-col-detay { left: calc(46px + var(--aylik-ad-w)); width: var(--aylik-detay-w); min-width: var(--aylik-detay-w); max-width: var(--aylik-detay-w); cursor: pointer; color: var(--color-muted); overflow: hidden; text-overflow: ellipsis; }
+.aylik-table td.aylik-col-detay.open { white-space: normal; line-height: 1.25; }
+td.aylik-col-detay:not(.open) { text-align: center; }
+th.aylik-col-detay { color: var(--color-primary) !important; user-select: none; }
+.aylik-col-birim { left: calc(46px + var(--aylik-ad-w) + var(--aylik-detay-w)); width: 70px; min-width: 70px; max-width: 70px; overflow: hidden; text-overflow: ellipsis; color: var(--color-muted); }
+.aylik-col-hedef { left: calc(116px + var(--aylik-ad-w) + var(--aylik-detay-w)); width: 76px; min-width: 76px; max-width: 76px; text-align: right; font-variant-numeric: tabular-nums; box-shadow: inset -1px 0 0 var(--color-border-md); }
 .aylik-kod-mobil { display: none; color: var(--color-muted); font-weight: 700; }
-.aylik-group-label { left: 0; width: 288px; min-width: 288px; max-width: 288px; overflow: hidden; }
-.aylik-group-rest { left: 288px; width: 168px; min-width: 168px; max-width: 168px; text-align: right; color: var(--color-muted); font-size: 10.5px; box-shadow: inset -1px 0 0 var(--color-border-md); }
+.aylik-group-label { left: 0; width: calc(46px + var(--aylik-ad-w)); min-width: calc(46px + var(--aylik-ad-w)); max-width: calc(46px + var(--aylik-ad-w)); overflow: hidden; }
+.aylik-group-rest { left: calc(46px + var(--aylik-ad-w)); width: calc(146px + var(--aylik-detay-w)); min-width: calc(146px + var(--aylik-detay-w)); max-width: calc(146px + var(--aylik-detay-w)); text-align: right; color: var(--color-muted); font-size: 10.5px; box-shadow: inset -1px 0 0 var(--color-border-md); }
 
-.aylik-month { text-align: center !important; min-width: 74px; }
+.aylik-month { text-align: center !important; min-width: 62px; }
 .aylik-month.is-current { color: var(--color-primary) !important; background: var(--color-primary-bg) !important; box-shadow: inset 0 -2px 0 var(--color-primary); }
 
-.aylik-cell { position: relative; text-align: right; min-width: 74px; font-variant-numeric: tabular-nums; color: var(--color-text); }
+.aylik-cell { position: relative; text-align: right; min-width: 62px; font-variant-numeric: tabular-nums; color: var(--color-text); }
 .aylik-cell.phase-current { background: var(--color-primary-bg); }
 .aylik-cell.phase-future { color: var(--color-muted); }
 .aylik-cell.src-hesaplanan { outline: 1px dashed #94a3b8; outline-offset: -3px; }
@@ -2069,8 +2078,8 @@ body, #root { overflow-x: hidden; }
   .aylik-col-kod { display: none; }
   .aylik-kod-mobil { display: inline; }
   .aylik-col-ad { left: 0; width: 150px; min-width: 150px; max-width: 150px; box-shadow: inset -1px 0 0 var(--color-border-md); }
-  .aylik-table td.aylik-col-birim, .aylik-table td.aylik-col-hedef { position: static; }
-  .aylik-table th.aylik-col-birim, .aylik-table th.aylik-col-hedef { left: auto; z-index: 3; }
+  .aylik-table td.aylik-col-detay, .aylik-table td.aylik-col-birim, .aylik-table td.aylik-col-hedef { position: static; }
+  .aylik-table th.aylik-col-detay, .aylik-table th.aylik-col-birim, .aylik-table th.aylik-col-hedef { left: auto; z-index: 3; }
   .aylik-col-hedef { box-shadow: none; }
   .aylik-group-label { width: 150px; min-width: 150px; max-width: 150px; box-shadow: inset -1px 0 0 var(--color-border-md); }
   .aylik-table .aylik-group-rest { position: static; left: auto; width: auto; min-width: 0; max-width: none; box-shadow: none; }

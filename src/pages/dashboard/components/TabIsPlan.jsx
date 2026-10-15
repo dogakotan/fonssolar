@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
+import { splitTaskName } from '../../../utils/taskName'
+import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { useDashboardData } from '../../../hooks/useDashboardData'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
@@ -85,6 +87,15 @@ export function collectNodeTasks(node) {
   return node.tasks.concat(...node.childList.map(collectNodeTasks))
 }
 
+// Görev kodlarını sayısal sırayla karşılaştırır (M1, M2, … M10; "M10" "M2"den
+// sonra gelir). Kodsuz görevler sona düşer.
+export function compareTaskCode(a, b) {
+  const ac = (a?.task_code || '').trim()
+  const bc = (b?.task_code || '').trim()
+  if (!ac || !bc) return ac ? -1 : bc ? 1 : 0
+  return ac.localeCompare(bc, 'tr', { numeric: true, sensitivity: 'base' })
+}
+
 // Düz task listesinden group_label'a göre çok seviyeli bir ağaç kurar.
 // TabIsPlan'daki tek seviyeli grup mantığının (grouped/groupKeys) yerine
 // geçer — bilinen (GROUP_ORDER'da olan) kök segmentler sabit sırada, diğerleri
@@ -109,7 +120,7 @@ export function buildGroupTree(tasks) {
   function finalize(map) {
     return [...map.values()].map(node => {
       const childList = finalize(node.children)
-      const withChildren = { ...node, childList }
+      const withChildren = { ...node, tasks: [...node.tasks].sort(compareTaskCode), childList }
       // Grup başlığının kendi Başlangıç/Bitiş/Süre sütunları — tüm alt
       // dallardaki (kendi + iç içe geçmiş) görevlerin en erken planned_start /
       // en geç planned_end'i, harici planlama aracındaki gibi grup satırında
@@ -200,6 +211,11 @@ const STATUS_LABELS = {
 
 const W_NO = 42
 const W_NAME = 170
+const W_NAME_MAX = 460
+// Detay kolonu (iş kalemi adının sonundaki parantezli açıklama): kapalıyken
+// dar, dokununca açılır.
+const W_DETAIL_CLOSED = 46
+const W_DETAIL_OPEN = 220
 const W_START = 72
 const W_END = 72
 const W_DUR = 54
@@ -215,7 +231,7 @@ export const GROUP_INDENT_PX = 20
 // başlık + "X görev | %Y" özeti) — iki görünüm aynı veri hiyerarşisini
 // paylaşır, yalnızca görsel kimlikleri ayrışık kalır (09.09.2026).
 function renderGanttGroupNode(node, ctx) {
-  const { collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen } = ctx
+  const { collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW } = ctx
   const isOpen = !collapsed.has(node.key)
   const allTasks = collectNodeTasks(node)
   const avg = allTasks.length
@@ -231,8 +247,6 @@ function renderGanttGroupNode(node, ctx) {
         <small>{allTasks.length} görev | %{avg}</small>
       </button>
 
-      {isOpen && node.childList.map(child => renderGanttGroupNode(child, ctx))}
-
       {isOpen && node.tasks.map((task, index) => {
         const taskCfg = groupConfigFor(node.label)
         const barLeft = timelineOffsetPct(task.planned_start, timelineStart, timelineUnits)
@@ -242,6 +256,7 @@ function renderGanttGroupNode(node, ctx) {
         const pct = Math.round(Number(task.progress_pct || 0))
         const isLate = isTaskLate(task, today)
         const isSelected = task.id === selectedTaskId
+        const { base: nameBase, detail } = splitTaskName(task.task_name)
 
         return (
           <button
@@ -249,13 +264,18 @@ function renderGanttGroupNode(node, ctx) {
             className={`gantt-task-row${isSelected ? ' selected' : ''}`}
             onClick={() => { setSelectedTaskId(task.id); setPanelOpen(true) }}
           >
-            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
+            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${nameW}px`, '--w-detail': `${wDetail}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
               <span className="gantt-code">
                 {task.task_code || index + 1}
               </span>
-              <span className={`gantt-name${isLate ? ' late' : ''}`} style={{ paddingLeft: (node.depth + 1) * GROUP_INDENT_PX }}>
-                {task.task_name || '-'}
-                {isLate ? ` (${riskSeverityLabel(task)})` : ''}
+              <span className={`gantt-name${isLate ? ' late' : ''}`} style={{ paddingLeft: (node.depth + 1) * GROUP_INDENT_PX }} title={nameBase || undefined}>
+                <span className="gantt-name-text">
+                  {nameBase || '-'}
+                  {isLate ? ` (${riskSeverityLabel(task)})` : ''}
+                </span>
+              </span>
+              <span className={`gantt-detay-col${detailOpen ? ' open' : ''}`} onClick={toggleDetail} title={detail || undefined}>
+                {detailOpen ? (detail || '—') : (detail ? '…' : '')}
               </span>
               <span>{fmtDate(task.planned_start)}</span>
               <span className={isLate ? 'late' : ''}>{fmtDate(task.planned_end)}</span>
@@ -275,6 +295,8 @@ function renderGanttGroupNode(node, ctx) {
           </button>
         )
       })}
+
+      {isOpen && node.childList.map(child => renderGanttGroupNode(child, ctx))}
     </div>
   )
 }
@@ -436,6 +458,26 @@ function readSection(projectId) {
 export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily', siteChiefView = false }) {
   const { role } = useAuth()
   const [tasks, setTasks] = useState([])
+  const [detailOpen, toggleDetail] = useDetailColumn()
+  const wDetail = detailOpen ? W_DETAIL_OPEN : W_DETAIL_CLOSED
+  const [nameW, setNameW] = useState(W_NAME)
+
+  // İş kalemi adları tam sığsın: kolon genişliği en uzun görünen ada göre
+  // ayarlanır (en az W_NAME, en çok W_NAME_MAX px; daha uzunu üç noktayla kesilir).
+  // Her çizimden sonra ölçer; genişlik değişmedikçe state güncellenmez (döngü yok).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const els = document.querySelectorAll('.gantt-task-left .gantt-name-text')
+    if (!els.length) return
+    let widest = 0
+    els.forEach(el => {
+      const cell = el.parentElement
+      const pad = cell ? parseFloat(getComputedStyle(cell).paddingLeft) + parseFloat(getComputedStyle(cell).paddingRight) : 0
+      widest = Math.max(widest, el.getBoundingClientRect().width + pad)
+    })
+    const next = Math.min(W_NAME_MAX, Math.max(W_NAME, Math.ceil(widest) + 6))
+    if (next !== nameW) setNameW(next)
+  })
   const [project, setProject] = useState(null)
   const [siteChief, setSiteChief] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -732,7 +774,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   // yalnızca renderGanttGroupNode'un KENDİ (renkli/tarihsiz) başlık stiliyle
   // render edilir, Detaylı'nın düz/beyaz+tarihli stili hiç kullanılmaz.
   const topGroupNodes = buildGroupTree(withDates)
-  const leftWidth = W_NO + W_NAME + W_START + W_END + W_DUR + W_PROGRESS
+  const leftWidth = W_NO + nameW + wDetail + W_START + W_END + W_DUR + W_PROGRESS
   const timelineWidth = weeks.length * W_WEEK
   const minWidth = leftWidth + timelineWidth
 
@@ -830,9 +872,12 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
             >
               <div className="gantt-board" style={{ '--gantt-min-width': `${minWidth}px`, '--left-width': `${leftWidth}px`, '--timeline-width': `${timelineWidth}px`, '--week-width': `${W_WEEK}px`, '--week-count': weeks.length }}>
               <div className="gantt-header-row">
-                <div className="gantt-left-head" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
+                <div className="gantt-left-head" style={{ '--w-no': `${W_NO}px`, '--w-name': `${nameW}px`, '--w-detail': `${wDetail}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
                   <span>No</span>
                   <span>İş Kalemi / Bölüm</span>
+                  <span className="gantt-detay-head" role="button" tabIndex={0} aria-expanded={detailOpen} onClick={toggleDetail} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleDetail(e) }}>
+                    {detailOpen ? 'Detay ◂' : 'Detay ▸'}
+                  </span>
                   <span>Başlangıç</span>
                   <span>Bitiş</span>
                   <span>Süre</span>
@@ -860,7 +905,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                 )}
 
                 {topGroupNodes.map(node => renderGanttGroupNode(node, {
-                  collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen,
+                  collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW,
                 }))}
               </div>
               </div>

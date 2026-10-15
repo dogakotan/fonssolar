@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test'
 import { loginUi } from './helpers.js'
 import {
-  buildMonthRange, buildTaskCells, cellTooltip, excelRawText, fmtQty, fmtPct,
-  indexRowsByTask, isActiveCell, monthLabel, monthPhase, performanceTone,
+  buildMonthRange, buildTaskCells, cellTooltip, displayPlanned, excelRawText, fmtQty, fmtPct,
+  indexRowsByTask, isActiveCell, isConvertedSetTask, monthLabel, monthPhase, performanceTone,
 } from '../src/utils/aylikPlan.js'
 
 // Aylık İş Planı (Faz 1, salt okunur). İki blok:
@@ -14,6 +14,21 @@ import {
 const DYB1 = process.env.TEST_PROJECT_DYB1 || 'isdemir-diyarbakir-arazi-faz1'
 
 test.describe('aylikPlan yardımcıları', () => {
+  test('15.10.2026 Set dönüşümü: çalışılan ayda 1 gösterilir, oran ipucunda', () => {
+    const set = { task_code: 'E1', unit: 'Set', target_qty: 1, notes: 'Öncül: M1\nBirim değişikliği (15.10.2026): 2.020.000 mt (kazı) → 1 Set; aylık plan eski oranla dağıtıldı.' }
+    const eskiSet = { task_code: 'M0', unit: 'Set', target_qty: 1, notes: 'Sorumlu: Şantiye Şefi' }
+    expect(isConvertedSetTask(set)).toBe(true)
+    expect(isConvertedSetTask(eskiSet)).toBe(false)
+    expect(isConvertedSetTask({ ...set, target_qty: 2 })).toBe(false)
+    const cell = { monthKey: '2027-03', planned: 0.23, actual: 0, hasRow: true, source: 'excel_aylik', history: [] }
+    expect(displayPlanned(cell, set)).toBe(1)
+    expect(displayPlanned({ ...cell, planned: 0 }, set)).toBe(0)
+    expect(displayPlanned({ ...cell, planned: 0.49 }, eskiSet)).toBe(0.49)
+    const tip = cellTooltip(cell, set, { phase: 'future' })
+    expect(tip).toContain('Bu ayın planı: hücrede 1 Set')
+    expect(tip).toContain('Setin bu aya düşen payı: 0,23 Set')
+  })
+
   test('ay aralığı proje başlangıç–hedef ayları, Türkçe kısa etiket', () => {
     const months = buildMonthRange('2026-09-01', '2027-11-30')
     expect(months).toHaveLength(15)
