@@ -1960,6 +1960,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
+- **Karar 69 ile çelişki — göreve bağlı iki RFI (15.10.2026, salt okunur sorguyla bulundu; KARAR KULLANICIDA).**
+  - Karar 69: 6b'ye kadar register kayıtları göreve bağlanmaz.
+  - Canlıda iki RFI göreve bağlı: `RFI-DYB2-0001` → DYB2 `M6`, `RFI-DYB2-0002` → DYB2 `E2` (ikisi de 15.10.2026'da açıldı).
+  - Bağlar kaldırılmadı (kullanıcı talimatı).
+  - Yan etki: `rfis.task_id` FK'si NO ACTION olduğundan bu iki bağ, sihirbazın DYB2'de görevleri silip yeniden yazmasını tesadüfen engelliyor. Bağ kaldırılırsa DYB2 de DYB1 gibi açıkta kalır (sihirbaz kilidi yayına çıkana kadar).
+  - Karar 69 ya güncellenir ya da bağlar kaldırılır.
+
 - **`salt_sahasi` görev kategorisi 6b'de (Karar 93, 14.10.2026).** Diyarbakır pilotunda şalt sahası görevleri
   `elektrik_og` + grup etiketi "Şalt Sahası" ile giriliyor. Ayrı kategori için gerekenler:
   - `task_category` enum'una değer (görev, ağırlık tabloları ve `vw_delayed_tasks` kullanıyor) ve `fn_seed_default_category_weights` (%0);
