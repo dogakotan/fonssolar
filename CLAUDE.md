@@ -1540,6 +1540,16 @@ Tetikleyiciler `project_tasks`/`purchase_requests`/`purchase_request_items`/
 `gorev_gecikmesi` görevin `progress_pct >= 100` olmasıyla (veya durumu
 `tamamlandi`/`iptal` olunca) kapanır — yalnızca plan bitiş tarihinin ileri
 alınıp "gecikmiş görünmekten çıkması" yetmez, risk açık kalmaya devam eder.
+**15.10.2026 (`20261015074230_close_orphan_task_delay_risks`) iki ek kural geldi:**
+- **Silinen görev:** görevi projede artık bulunmayan açık `gorev_gecikmesi` riski
+  kapanır (`subject_ref` = `task_code`; boş `subject_ref`'e dokunulmaz).
+  `project_tasks` DELETE de motoru tetiklediğinden silme anında kapanır.
+- **İlerlemesi %100 olan görev:** gecikme riski açan döngü bu görevi atlar.
+  Öncesinde durumu `tamamlandi` yapılmamış ama ilerlemesi %100 olan görevin (TIZ E1)
+  riski her tetiklemede yeniden açılıp kapanıyor, `closed_at` her seferinde o ana kayıyordu.
+- **Tek seferlik temizlik:** aynı migration TIZ'deki 12 sahipsiz test riskini
+  (`E2ISP…`, `is-plani-hiyerarsi.spec.js`'in eski sabit geçmiş tarihli görevleri)
+  kapattı.
 `malzeme_fazla_talep` ise miktar tekrar plan sınırına düşse bile OTOMATİK
 kapanmaz — yalnızca `p_close_material_risks=true` geçildiğinde kapanır, bu da
 yalnızca iki "yönetici onayı" anında olur: satın alma talebi `onaylandi`ya
@@ -1752,12 +1762,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
-- **`is-plani-hiyerarsi.spec.js` test projesinde sahipsiz risk bırakıyor (15.10.2026'da bulundu).**
-  - Spec TIZ'e plan bitişi sabit `2026-09-30` olan 3 görev ekliyor. Bu tarih artık geçmişte.
-  - Risk motoru bu görevler için `gorev_gecikmesi` riski açıyor; aynı hesap TIZ'in zaten gecikmiş başka görevleri için de risk açabiliyor.
-  - `afterAll` görevleri siliyor, riskleri silmiyor. 15.10'daki koşudan TIZ'de `subject_ref` `E2ISP…` olan 3 açık risk kaldı.
-  - Bildirim üretmiyor.
-  - **Düzeltme önerisi:** gelecek tarih kullanmak ve temizlikte riskleri de silmek. Temizlik ve düzeltme kullanıcı onayı bekliyor.
+- **Ayrı iş: 14.10.2026 F5 metni docx'lere işlenmedi.** Change, Claim ve Interface için hazırlanan değişiklik metni (`faz-a-proje-kontrol` dalında `docs/proje-kontrol/docx-guncelleme-14-10.md`) iki docx'e henüz işlenmedi. `feature/aylik-is-plani` dalında yapılmayacak (kullanıcı kararı, 15.10.2026).
+
+- ~~`is-plani-hiyerarsi.spec.js` test projesinde sahipsiz risk bırakıyordu~~ — **çözüldü (15.10.2026).**
+  - **Spec:** plan tarihleri bugüne göre ileri (+30/+60 gün); temizlikte bu koşunun otomatik riskleri de siliniyor.
+  - **Kök neden:** risk motoru silinen görevin riskini kapatmıyordu; düzeltildi (bkz. "Otomatik risk motoru").
+  - **Temizlik:** 12 sahipsiz risk migration'la kapatıldı.
 
 - ~~`xlsx` (SheetJS) bağımlılığı — HIGH severity güvenlik açığı~~ — **çözüldü
   (10.09.2026, 2. tur).** Önceki "kabul et/izle" kararı, gerçek saldırı
@@ -2042,6 +2052,16 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 - **Parmak izi:** `projects`, `project_tasks`, `task_monthly_plan` değişmedi.
   - `project_risks` +5: `is-plani-hiyerarsi` kaynaklı ("Bilinen açık noktalar").
   - `notifications` +3: testlerden değil; aynı aralıkta muhasebe rolündeki bir kullanıcının uygulamadan oluşturduğu PV Solution faturası.
+- **Aynı gün, risk motoru düzeltmesi:** `20261015074230_close_orphan_task_delay_risks` uygulandı (kullanıcı onayıyla).
+  - Önce canlıda BEGIN…ROLLBACK provası yapıldı; 13 kontrol geçti:
+    - gövde yalnızca iki ek kadar değişti, yetki aynı;
+    - 12 sahipsiz risk kapandı; E5/E14 açık kaldı, diğer riskler aynı;
+    - ekle-sil testi geçti, E1 kapalı kaldı ve `closed_at`'i değişmedi;
+    - bildirim 0.
+    - Parmak izi prova öncesi ve sonrası birebir.
+  - **Uygulama sonrası:** sahipsiz açık risk 0; `projects`, `project_tasks`, `task_monthly_plan` aynı; bildirim değişmedi.
+  - **Spec düzeltmesi:** `is-plani-hiyerarsi.spec.js` canlıda 2/2 geçti, yeni risk açmadı.
+- **Docx (kural 7):** iki docx yerinde güncellendi (yedekler `.yedek-15-10.docx`). Kayıt: `docs/docx-guncelleme-15-10.md`.
 
 **18.09.2026 (2. tur) — Kullanıcı isteğiyle 4 demo tedarikçi (Güneş Panel A.Ş./
 Elektrik Malzeme Ltd./Nakliye Lojistik A.Ş./Çelik Yapı San. Ltd.,
