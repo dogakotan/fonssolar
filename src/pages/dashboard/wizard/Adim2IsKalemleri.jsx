@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { parseIsKalemleri, downloadProjectTemplate } from '../../../utils/projectExcelImport'
+import { fetchProjectTaskLock, taskLockMessage } from '../../../utils/projectTaskLock'
 
 const CATEGORY_OPTS = [
   { v: 'mobilizasyon', l: 'Mobilizasyon' },
@@ -65,6 +66,21 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
   const [visibleRows, setVisibleRows] = useState(5)
   const loadedRef  = useRef(false)
   const fileRef    = useRef(null)
+  // Düzenleme modunda iş kalemi kilidi (bkz. utils/projectTaskLock.js). null = kontrol sürüyor.
+  // Kontrol bitene kadar ve kilitliyse adım "atlandı" sayılır: görevler silinip yeniden yazılmaz.
+  const [lock, setLock] = useState(null)
+  const blocked = mode === 'edit' && (lock === null || lock.locked)
+
+  useEffect(() => {
+    if (mode !== 'edit') return
+    let cancelled = false
+    fetchProjectTaskLock(supabase, projectId)
+      .then(res => { if (!cancelled) setLock(res) })
+      .catch(() => {
+        if (!cancelled) setLock({ locked: true, reasons: [], message: taskLockMessage({ locked: true, reasons: [] }) })
+      })
+    return () => { cancelled = true }
+  }, [mode, projectId])
 
   // Bir taslak zaten varsa (bkz. projectWizardDraft.js) DB'den taze veri çekmiyoruz —
   // aksi halde kullanıcının az önce girdiği düzenlemeler bu adıma her dönüşte
@@ -88,7 +104,13 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => { onDraftChange?.({ rows, skipped: false, count: rows.length }) }, [rows]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Kilitliyken taslağa görev satırı yazılmaz; aksi halde Adim8'in "Projeyi Güncelle"si adımı
+  // yalnızca görüntülemiş olmakla bile görevleri silip yeniden eklerdi.
+  useEffect(() => {
+    onDraftChange?.(blocked
+      ? { skipped: true, locked: true, count: 0 }
+      : { rows, skipped: false, count: rows.length })
+  }, [rows, blocked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function addRow() { setRows(r => [...r, { ...DEF, _id: Date.now() }]) }
   function upd(_id, k, v) { setRows(r => r.map(row => row._id === _id ? { ...row, [k]: v } : row)) }
@@ -119,6 +141,7 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
 
   function handleSave() {
     setError(null)
+    if (blocked) { onDone({ skipped: true, locked: true, count: 0, lockMessage: lock?.message ?? null }); return }
     if (rows.length === 0) { onDone({ skipped: true, count: 0 }); return }
     const invalid = rows.filter(r => !r.task_name?.trim())
     if (invalid.length > 0) { setError('Her satırda "Görev Adı" zorunludur.'); return }
@@ -172,8 +195,8 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={importing}
-            style={{ ...btnP, fontSize: 12, padding: '0.35rem 0.75rem', background: importing ? '#94a3b8' : '#16a34a' }}
+            disabled={importing || blocked}
+            style={{ ...btnP, fontSize: 12, padding: '0.35rem 0.75rem', background: (importing || blocked) ? '#94a3b8' : '#16a34a', cursor: blocked ? 'not-allowed' : 'pointer' }}
           >
             {importing ? 'Yükleniyor…' : 'Excel\'den İçe Aktar'}
           </button>
@@ -188,6 +211,20 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
       </div>
 
       <div style={{ padding: '1rem 1.5rem', maxHeight: '62vh', overflowY: 'auto' }}>
+        {mode === 'edit' && lock === null && (
+          <div style={{ padding: '0.5rem 1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, color: '#64748b', fontSize: 13, marginBottom: '0.75rem' }}>
+            Görev verileri kontrol ediliyor…
+          </div>
+        )}
+        {mode === 'edit' && lock?.locked && (
+          <div data-testid="task-lock-banner" role="alert" style={{ padding: '0.75rem 1rem', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, color: '#92400e', fontSize: 13, lineHeight: 1.5, marginBottom: '1rem' }}>
+            <strong style={{ display: 'block', marginBottom: 4 }}>İş kalemleri bu projede sihirbazdan kaydedilemez</strong>
+            {lock.message}
+            <div style={{ marginTop: 6 }}>
+              Diğer adımlar (proje bilgileri, ağırlıklar, bütçe vb.) normal şekilde kaydedilebilir; bu adım atlanmış sayılır.
+            </div>
+          </div>
+        )}
         {importMsg && (
           <div style={{ padding: '0.5rem 1rem', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, color: '#166534', fontSize: 13, marginBottom: '0.75rem' }}>
             {importMsg}
@@ -205,6 +242,7 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
           </p>
         )}
 
+        <fieldset disabled={blocked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
         {rows.slice(0, visibleRows).map((row, idx) => (
           <div key={row._id} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '1rem', marginBottom: '0.75rem', background: '#fafafa' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
@@ -291,13 +329,14 @@ export default function Adim2IsKalemleri({ projectId, result, onDone, onBack, on
             </div>
           </div>
         ))}
+        </fieldset>
 
         {rows.length > visibleRows && (
           <button onClick={() => setVisibleRows(count => count + 5)} style={{ ...btnS, width: '100%', justifyContent: 'center', display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }}>
             + {Math.min(5, rows.length - visibleRows)} görev daha göster
           </button>
         )}
-        <button onClick={() => { addRow(); setVisibleRows(count => Math.max(count, rows.length + 1)) }} style={{ ...btnS, width: '100%', justifyContent: 'center', display: 'flex', gap: '0.4rem' }}>
+        <button disabled={blocked} onClick={() => { addRow(); setVisibleRows(count => Math.max(count, rows.length + 1)) }} style={{ ...btnS, width: '100%', justifyContent: 'center', display: 'flex', gap: '0.4rem', cursor: blocked ? 'not-allowed' : 'pointer', opacity: blocked ? 0.5 : 1 }}>
           + Görev Ekle
         </button>
       </div>
