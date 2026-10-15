@@ -85,6 +85,15 @@ export function collectNodeTasks(node) {
   return node.tasks.concat(...node.childList.map(collectNodeTasks))
 }
 
+// Görev kodlarını sayısal sırayla karşılaştırır (M1, M2, … M10; "M10" "M2"den
+// sonra gelir). Kodsuz görevler sona düşer.
+export function compareTaskCode(a, b) {
+  const ac = (a?.task_code || '').trim()
+  const bc = (b?.task_code || '').trim()
+  if (!ac || !bc) return ac ? -1 : bc ? 1 : 0
+  return ac.localeCompare(bc, 'tr', { numeric: true, sensitivity: 'base' })
+}
+
 // Düz task listesinden group_label'a göre çok seviyeli bir ağaç kurar.
 // TabIsPlan'daki tek seviyeli grup mantığının (grouped/groupKeys) yerine
 // geçer — bilinen (GROUP_ORDER'da olan) kök segmentler sabit sırada, diğerleri
@@ -109,7 +118,7 @@ export function buildGroupTree(tasks) {
   function finalize(map) {
     return [...map.values()].map(node => {
       const childList = finalize(node.children)
-      const withChildren = { ...node, childList }
+      const withChildren = { ...node, tasks: [...node.tasks].sort(compareTaskCode), childList }
       // Grup başlığının kendi Başlangıç/Bitiş/Süre sütunları — tüm alt
       // dallardaki (kendi + iç içe geçmiş) görevlerin en erken planned_start /
       // en geç planned_end'i, harici planlama aracındaki gibi grup satırında

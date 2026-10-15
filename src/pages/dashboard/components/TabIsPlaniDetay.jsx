@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { StatusDot } from '../../../components/ui/Badge'
 import { TONE } from '../../../components/ui/StatusBadge'
-import { buildGroupTree, collectNodeTasks, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
+import { buildGroupTree, collectNodeTasks, compareTaskCode, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
 
 // Adim2IsKalemleri.jsx'teki wizard durum düzenleyicisiyle aynı 5 değer —
 // yalnız target_qty'si olmayan (miktarla ölçülemeyen, kilometre taşı) iş
@@ -44,6 +44,7 @@ const TASK_STATUS = {
 }
 
 const SORT_OPTIONS = [
+  { v: 'kod', l: 'Koda Göre (M1, M2, …)' },
   { v: 'plan_start', l: 'Plan Başlangıcına Göre' },
   { v: 'sapma', l: 'En Çok Sapmaya Göre' },
   { v: 'ilerleme', l: 'İlerlemeye Göre (Az → Çok)' },
@@ -73,6 +74,7 @@ function computeSapma(task, today) {
 // uygulanır (bkz. sortTreeTasks), grup sırasının kendisi (buildGroupTree'nin
 // GROUP_ORDER/en-erken-tarih mantığı) bundan etkilenmez.
 function sortTaskList(list, sortBy) {
+  if (sortBy === 'kod') return [...list].sort(compareTaskCode)
   const byNullLast = value => (value === null || value === undefined ? Infinity : 0)
   if (sortBy === 'sapma') return [...list].sort((a, b) => (b._sapma ?? -Infinity) - (a._sapma ?? -Infinity))
   if (sortBy === 'ilerleme') return [...list].sort((a, b) => Number(a.progress_pct || 0) - Number(b.progress_pct || 0))
@@ -360,7 +362,7 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [sortBy, setSortBy] = useState('plan_start')
+  const [sortBy, setSortBy] = useState('kod')
   const [collapsed, setCollapsed] = useState(new Set())
   const [progressTask, setProgressTask] = useState(null)
   const columnCount = canAddProgress ? BASE_COLUMN_COUNT + 1 : BASE_COLUMN_COUNT
