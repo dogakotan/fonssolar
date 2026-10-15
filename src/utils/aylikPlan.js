@@ -103,6 +103,14 @@ export function buildTaskCells(taskRows, months) {
   const sortedKeys = [...rowMap.keys()].sort()
   const firstKey = sortedKeys[0]
   const lastKey = sortedKeys[sortedKeys.length - 1]
+  // İpucundaki hesap açıklaması için: görevin bütün satırları (ay sırasıyla) ve Excel
+  // kaynak değerlerinin toplamı (orantılama paydası).
+  const history = sortedKeys.map(k => {
+    const r = rowMap.get(k)
+    return { key: k, planned: num(r.planned_qty), actual: num(r.actual_qty) }
+  })
+  const excelRows = sortedKeys.map(k => rowMap.get(k)).filter(r => r.source === 'excel_aylik' && r.source_qty != null)
+  const sourceTotal = excelRows.length ? excelRows.reduce((s, r) => s + num(r.source_qty), 0) : null
   let plannedCum = 0
   let actualCum = 0
   let i = 0
@@ -115,6 +123,8 @@ export function buildTaskCells(taskRows, months) {
     }
     const row = rowMap.get(key)
     return {
+      history: history.slice(0, i),
+      sourceTotal,
       monthKey: key,
       hasRow: Boolean(row),
       // Görevin ilk ve son satırlı ayı arasında mı — Kümülatif % modu yalnızca
@@ -175,21 +185,152 @@ export function excelRawText(cell, taskUnit) {
   return `Excel: ${fmtQty(cell.sourceQty)}${cell.sourceUnit ? ` ${cell.sourceUnit}` : ''}`
 }
 
-// Hücre tooltip'i (title niteliği) — satır satır metin.
-export function cellTooltip(cell, task) {
-  const unit = task?.unit ? ` ${task.unit}` : ''
-  const lines = [
-    `${task?.task_code ? `${task.task_code} · ` : ''}${monthLabel(cell.monthKey)}`,
-    `Plan: ${fmtQty(cell.planned)}${unit}`,
-    `Gerçekleşen: ${fmtQty(cell.actual)}${unit}`,
-  ]
-  const target = num(task?.target_qty)
-  if (target > 0) {
-    lines.push(`Kümülatif: plan ${fmtPct(cell.plannedCum, target)} · gerçekleşen ${fmtPct(cell.actualCum, target)}`)
+// ── İpucu: hücredeki her sayının nereden ve nasıl geldiği ────────────────────
+// Satırlar "• " ile başlıyorsa açıklama, başlamıyorsa başlıktır (ipucu kutusu
+// başlıkları kalın gösterir).
+
+// 'YYYY-MM-DD' → UTC gün numarası (saat diliminden bağımsız).
+function dayNo(dateKey) {
+  const [y, m, d] = String(dateKey).slice(0, 10).split('-').map(Number)
+  return Math.round(Date.UTC(y, m - 1, d) / 86400000)
+}
+
+function fmtDay(dateKey) {
+  const [y, m, d] = String(dateKey).slice(0, 10).split('-')
+  return `${d}.${m}.${y}`
+}
+
+function fmtDayShort(n) {
+  const dt = new Date(n * 86400000)
+  return `${String(dt.getUTCDate()).padStart(2, '0')}.${String(dt.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
+// Görevin plan tarihleri içinde, verilen ayda kaç gün var (uç günler dahil).
+export function taskDaysInMonth(task, key) {
+  if (!task?.planned_start || !task?.planned_end) return null
+  const [y, m] = key.split('-').map(Number)
+  const monthStart = Math.round(Date.UTC(y, m - 1, 1) / 86400000)
+  const monthEnd = Math.round(Date.UTC(y, m, 0) / 86400000)
+  const s = dayNo(task.planned_start)
+  const e = dayNo(task.planned_end)
+  if (e < s) return null
+  const from = Math.max(s, monthStart)
+  const to = Math.min(e, monthEnd)
+  return {
+    days: to >= from ? to - from + 1 : 0,
+    total: e - s + 1,
+    from: to >= from ? fmtDayShort(from) : null,
+    to: to >= from ? fmtDayShort(to) : null,
   }
-  if (cell.source) lines.push(`Kaynak: ${SOURCE_LABELS[cell.source] || cell.source}`)
-  const raw = excelRawText(cell, task?.unit)
-  if (raw) lines.push(raw)
-  if (cell.note) lines.push(`Not: ${cell.note}`)
+}
+
+// "4.464 (Kas 26) + 11.160 (Ara 26) = 15.624"; uzun listeler kısaltılır.
+function sumText(parts, field) {
+  const items = parts.filter(p => p[field] > 0)
+  if (items.length === 0) return '0'
+  const total = items.reduce((s, p) => s + p[field], 0)
+  if (items.length === 1) return `${fmtQty(total)} (${monthLabel(items[0].key)})`
+  const fmt = p => `${fmtQty(p[field])} (${monthLabel(p.key)})`
+  const shown = items.length <= 6
+    ? items.map(fmt)
+    : [...items.slice(0, 2).map(fmt), `… ${items.length - 3} ay daha …`, fmt(items[items.length - 1])]
+  return `${shown.join(' + ')} = ${fmtQty(total)}`
+}
+
+function planExplanation(cell, task, unit) {
+  const target = num(task?.target_qty)
+  const lines = []
+  if (!cell.hasRow) {
+    lines.push('• Bu ay için plan yok.')
+    return lines
+  }
+  if (cell.source === 'excel_aylik' && cell.sourceQty != null) {
+    const sq = num(cell.sourceQty)
+    const sUnit = cell.sourceUnit ? ` ${cell.sourceUnit}` : ''
+    const unitDiffers = cell.sourceUnit && !sameUnit(cell.sourceUnit, task?.unit)
+    if (!unitDiffers && Math.abs(sq - cell.planned) < 0.005) {
+      lines.push('• Kaynak: Excel Aylık İş Planı.')
+      lines.push(`• Excel'de bu ay ${fmtQty(sq)}${sUnit} yazıyor; olduğu gibi alındı.`)
+      return lines
+    }
+    const total = num(cell.sourceTotal)
+    lines.push('• Kaynak: Excel Aylık İş Planı, görev hedefine orantılandı.')
+    if (unitDiffers) {
+      lines.push(`• Excel bu işi "${cell.sourceUnit}" biriminde veriyor, görev ise "${task?.unit || '—'}" biriminde.`)
+    }
+    lines.push(`• Excel'de bu ay ${fmtQty(sq)}${sUnit}; Excel'deki bütün ayların toplamı ${fmtQty(total)}${sUnit}.`)
+    if (!unitDiffers) {
+      lines.push(`• Excel toplamı (${fmtQty(total)}) görev hedefine (${fmtQty(target)}) eşit olmadığı için oran kullanıldı.`)
+    }
+    if (total > 0 && target > 0) {
+      const exact = (target * sq) / total
+      lines.push(`• Hesap: hedef × bu ay ÷ Excel toplamı = ${fmtQty(target)} × ${fmtQty(sq)} ÷ ${fmtQty(total)} = ${fmtQty(exact)}`)
+      if (Math.abs(exact - cell.planned) >= 0.005) {
+        lines.push(`• Ayların toplamı tam hedefe eşit olsun diye ${fmtQty(cell.planned)} olarak yuvarlandı.`)
+      }
+    }
+    return lines
+  }
+  if (cell.source === 'hesaplanan') {
+    lines.push('• Kaynak: Excel aylık planında bu iş yok; hedef, plan tarihlerindeki gün sayısına göre aylara bölündü.')
+    const d = taskDaysInMonth(task, cell.monthKey)
+    if (d && d.total > 0 && target > 0) {
+      lines.push(`• Plan tarihleri ${fmtDay(task.planned_start)} – ${fmtDay(task.planned_end)}: toplam ${d.total} gün; bunun ${d.days} günü bu ayda${d.from ? ` (${d.from} – ${d.to})` : ''}.`)
+      const exact = (target * d.days) / d.total
+      lines.push(`• Hesap: hedef × bu aydaki gün ÷ toplam gün = ${fmtQty(target)} × ${d.days} ÷ ${d.total} = ${fmtQty(exact)}${unit}`)
+    }
+    return lines
+  }
+  if (cell.source === 'manuel') {
+    lines.push('• Kaynak: elle girildi.')
+    return lines
+  }
+  lines.push(`• Kaynak: ${SOURCE_LABELS[cell.source] || cell.source || 'bilinmiyor'}.`)
+  return lines
+}
+
+const TONE_TEXT = {
+  iyi: 'yeşil (%100 ve üstü)',
+  orta: 'sarı (%70–99)',
+  kotu: 'kırmızı (%70 altı)',
+}
+
+// Hücre ipucu: başlık, hedef ve tarihler, bu ayın planı (hesabıyla), gerçekleşen,
+// gerçekleşme oranı ve renk kuralı, kümülatif plan/gerçekleşen (toplamıyla), not.
+// opts.phase: 'past' | 'current' | 'future' (renk yalnızca geçmiş ve içinde bulunulan ayda).
+export function cellTooltip(cell, task, opts = {}) {
+  const unit = task?.unit ? ` ${task.unit}` : ''
+  const target = num(task?.target_qty)
+  const month = monthLabel(cell.monthKey)
+  const lines = [
+    `${task?.task_code ? `${task.task_code} · ` : ''}${month}${task?.task_name ? ` — ${task.task_name}` : ''}`,
+  ]
+  const span = task?.planned_start && task?.planned_end
+    ? ` · Plan tarihleri: ${fmtDay(task.planned_start)} – ${fmtDay(task.planned_end)}`
+    : ''
+  lines.push(`• Hedef: ${target > 0 ? `${fmtQty(target)}${unit}` : 'tanımlı değil'}${span}`)
+
+  lines.push(`Bu ayın planı: ${fmtQty(cell.planned)}${unit}`)
+  lines.push(...planExplanation(cell, task, unit))
+
+  lines.push(`Bu ayın gerçekleşeni: ${fmtQty(cell.actual)}${unit}`)
+  lines.push(`• Günlük raporlarda ${month} içinde bu iş için girilen ilerlemelerin toplamı.`)
+  if (opts.phase === 'future') {
+    lines.push('• Gelecek ay: gerçekleşen beklenmez, hücre renklendirilmez.')
+  } else if (cell.planned > 0) {
+    const tone = performanceTone(cell.planned, cell.actual)
+    lines.push(`• Gerçekleşme oranı: ${fmtQty(cell.actual)} ÷ ${fmtQty(cell.planned)} = ${fmtPct(cell.actual, cell.planned)} → ${TONE_TEXT[tone]}`)
+  } else if (cell.actual > 0) {
+    lines.push('• Bu ay plan yokken iş yapılmış: yeşil sayılır.')
+  }
+
+  const history = cell.history || []
+  lines.push('Kümülatif (ilk aydan bu aya kadar)')
+  lines.push(`• Plan: ${sumText(history, 'planned')}${target > 0 ? ` → ÷ ${fmtQty(target)} hedef = ${fmtPct(cell.plannedCum, target)}` : ''}`)
+  lines.push(`• Gerçekleşen: ${sumText(history, 'actual')}${target > 0 ? ` → ÷ ${fmtQty(target)} hedef = ${fmtPct(cell.actualCum, target)}` : ''}`)
+  if (!cell.hasRow && history.length) {
+    lines.push('• Bu ayda yeni plan yok; değer önceki aylardan taşındı.')
+  }
+  if (cell.note) lines.push(`• Not: ${cell.note}`)
   return lines.join('\n')
 }
