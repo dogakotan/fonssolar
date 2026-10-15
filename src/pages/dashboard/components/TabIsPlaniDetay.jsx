@@ -314,7 +314,7 @@ function buildDetayTaskRow(task, depth, ctx) {
   return (
     <tr key={task.id}>
       <td style={TD}><span style={{ fontWeight: 700 }}>{task.task_code || '-'}</span></td>
-      <td style={{ ...TD, whiteSpace: 'normal', minWidth: 160, paddingLeft: 7 + (depth + 1) * GROUP_INDENT_PX }}>
+      <td style={{ ...TD, whiteSpace: 'nowrap', minWidth: 160, paddingLeft: 7 + (depth + 1) * GROUP_INDENT_PX }}>
         {splitTaskName(task.task_name).base || '-'}
         {task.sub_category && <span style={{ marginLeft: 6, fontSize: 10.5, color: 'var(--color-muted)' }}>· {task.sub_category}</span>}
         {isLate && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--color-danger-text)' }}>({riskSeverityLabel(task)})</span>}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
 import { splitTaskName } from '../../../utils/taskName'
@@ -211,6 +211,7 @@ const STATUS_LABELS = {
 
 const W_NO = 42
 const W_NAME = 170
+const W_NAME_MAX = 460
 // Detay kolonu (iş kalemi adının sonundaki parantezli açıklama): kapalıyken
 // dar, dokununca açılır.
 const W_DETAIL_CLOSED = 46
@@ -230,7 +231,7 @@ export const GROUP_INDENT_PX = 20
 // başlık + "X görev | %Y" özeti) — iki görünüm aynı veri hiyerarşisini
 // paylaşır, yalnızca görsel kimlikleri ayrışık kalır (09.09.2026).
 function renderGanttGroupNode(node, ctx) {
-  const { collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail } = ctx
+  const { collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW } = ctx
   const isOpen = !collapsed.has(node.key)
   const allTasks = collectNodeTasks(node)
   const avg = allTasks.length
@@ -263,13 +264,15 @@ function renderGanttGroupNode(node, ctx) {
             className={`gantt-task-row${isSelected ? ' selected' : ''}`}
             onClick={() => { setSelectedTaskId(task.id); setPanelOpen(true) }}
           >
-            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-detail': `${wDetail}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
+            <span className="gantt-task-left" style={{ '--w-no': `${W_NO}px`, '--w-name': `${nameW}px`, '--w-detail': `${wDetail}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
               <span className="gantt-code">
                 {task.task_code || index + 1}
               </span>
-              <span className={`gantt-name${isLate ? ' late' : ''}`} style={{ paddingLeft: (node.depth + 1) * GROUP_INDENT_PX }}>
-                {nameBase || '-'}
-                {isLate ? ` (${riskSeverityLabel(task)})` : ''}
+              <span className={`gantt-name${isLate ? ' late' : ''}`} style={{ paddingLeft: (node.depth + 1) * GROUP_INDENT_PX }} title={nameBase || undefined}>
+                <span className="gantt-name-text">
+                  {nameBase || '-'}
+                  {isLate ? ` (${riskSeverityLabel(task)})` : ''}
+                </span>
               </span>
               <span className={`gantt-detay-col${detailOpen ? ' open' : ''}`} onClick={toggleDetail} title={detail || undefined}>
                 {detailOpen ? (detail || '—') : (detail ? '…' : '')}
@@ -457,6 +460,24 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const [tasks, setTasks] = useState([])
   const [detailOpen, toggleDetail] = useDetailColumn()
   const wDetail = detailOpen ? W_DETAIL_OPEN : W_DETAIL_CLOSED
+  const [nameW, setNameW] = useState(W_NAME)
+
+  // İş kalemi adları tam sığsın: kolon genişliği en uzun görünen ada göre
+  // ayarlanır (en az W_NAME, en çok W_NAME_MAX px; daha uzunu üç noktayla kesilir).
+  // Her çizimden sonra ölçer; genişlik değişmedikçe state güncellenmez (döngü yok).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const els = document.querySelectorAll('.gantt-task-left .gantt-name-text')
+    if (!els.length) return
+    let widest = 0
+    els.forEach(el => {
+      const cell = el.parentElement
+      const pad = cell ? parseFloat(getComputedStyle(cell).paddingLeft) + parseFloat(getComputedStyle(cell).paddingRight) : 0
+      widest = Math.max(widest, el.getBoundingClientRect().width + pad)
+    })
+    const next = Math.min(W_NAME_MAX, Math.max(W_NAME, Math.ceil(widest) + 6))
+    if (next !== nameW) setNameW(next)
+  })
   const [project, setProject] = useState(null)
   const [siteChief, setSiteChief] = useState(null)
   const [searchParams, setSearchParams] = useSearchParams()
@@ -753,7 +774,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   // yalnızca renderGanttGroupNode'un KENDİ (renkli/tarihsiz) başlık stiliyle
   // render edilir, Detaylı'nın düz/beyaz+tarihli stili hiç kullanılmaz.
   const topGroupNodes = buildGroupTree(withDates)
-  const leftWidth = W_NO + W_NAME + wDetail + W_START + W_END + W_DUR + W_PROGRESS
+  const leftWidth = W_NO + nameW + wDetail + W_START + W_END + W_DUR + W_PROGRESS
   const timelineWidth = weeks.length * W_WEEK
   const minWidth = leftWidth + timelineWidth
 
@@ -851,7 +872,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
             >
               <div className="gantt-board" style={{ '--gantt-min-width': `${minWidth}px`, '--left-width': `${leftWidth}px`, '--timeline-width': `${timelineWidth}px`, '--week-width': `${W_WEEK}px`, '--week-count': weeks.length }}>
               <div className="gantt-header-row">
-                <div className="gantt-left-head" style={{ '--w-no': `${W_NO}px`, '--w-name': `${W_NAME}px`, '--w-detail': `${wDetail}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
+                <div className="gantt-left-head" style={{ '--w-no': `${W_NO}px`, '--w-name': `${nameW}px`, '--w-detail': `${wDetail}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
                   <span>No</span>
                   <span>İş Kalemi / Bölüm</span>
                   <span className="gantt-detay-head" role="button" tabIndex={0} aria-expanded={detailOpen} onClick={toggleDetail} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toggleDetail(e) }}>
@@ -884,7 +905,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                 )}
 
                 {topGroupNodes.map(node => renderGanttGroupNode(node, {
-                  collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail,
+                  collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW,
                 }))}
               </div>
               </div>

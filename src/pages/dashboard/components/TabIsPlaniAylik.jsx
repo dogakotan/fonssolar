@@ -89,6 +89,24 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
 export default function TabIsPlaniAylik({ projectId, project, tasks, today, dataVersion }) {
   const [rows, setRows] = useState([])
   const [detailOpen, toggleDetail] = useDetailColumn()
+  const [nameW, setNameW] = useState(230)
+
+  // İş kalemi adları tam sığsın: kolon genişliği en uzun görünen ada göre
+  // ayarlanır (en az 230, en çok 460 px; daha uzunu üç noktayla kesilir).
+  // Her çizimden sonra ölçer; genişlik değişmedikçe state güncellenmez (döngü yok).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    const els = document.querySelectorAll('.aylik-table td.aylik-col-ad > span')
+    if (!els.length) return
+    let widest = 0
+    els.forEach(el => {
+      const cell = el.parentElement
+      const pad = cell ? parseFloat(getComputedStyle(cell).paddingLeft) + parseFloat(getComputedStyle(cell).paddingRight) : 0
+      widest = Math.max(widest, el.getBoundingClientRect().width + pad)
+    })
+    const next = Math.min(460, Math.max(230, Math.ceil(widest) + 6))
+    if (next !== nameW) setNameW(next)
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [reloadToken, setReloadToken] = useState(0)
@@ -362,7 +380,7 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
             </div>
           )}
           <div className="aylik-scroll" onMouseOver={handleTipOver} onMouseLeave={hideTip}>
-            <table className="aylik-table" style={{ '--aylik-detay-w': detailOpen ? '220px' : '46px' }}>
+            <table className="aylik-table" style={{ '--aylik-detay-w': detailOpen ? '220px' : '46px', '--aylik-ad-w': `${nameW}px` }}>
               <thead>
                 <tr>
                   <th className="aylik-sticky aylik-col-kod">Kod</th>
