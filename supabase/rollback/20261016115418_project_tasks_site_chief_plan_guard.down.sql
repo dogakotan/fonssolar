@@ -1,4 +1,4 @@
--- TERS SQL (geri alma) — 20261015130100_project_tasks_site_chief_plan_guard
+-- TERS SQL (geri alma) — 20261016115418_project_tasks_site_chief_plan_guard
 -- Bu klasör (supabase/rollback) migration zincirine girmez; yalnızca geri alma gerektiğinde elle uygulanır.
 --
 -- Şantiye şefi plan korumasını tamamen kaldırır: trigger ve fonksiyon 130100'den önce yoktu.

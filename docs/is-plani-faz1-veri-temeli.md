@@ -5,10 +5,12 @@ sonunda hata fırlatılarak geri alındı (ROLLBACK). Parmak izi P0 (öncesi) ve
 şema, trigger, policy, görev, bağımlılık, risk ve proje satırlarının md5'i ile progress_daily, daily_reports ve
 bildirim sayıları (bildirim 1273, risk 103).
 
+**Canlıya uygulandı (16.10.2026, kullanıcı "başla"; mesai içi ve yedeksiz, kullanıcı koşulu kaldırdı):** `20261016115400`, `20261016115418`. Önce prova (8/8), sonra her adımda parmak izi (bildirim 1278, risk 103, görev/bağımlılık/proje md5) değişmedi; kalıcı kurulumda şef ilerleme yazabildi, plan alanı reddedildi, admin serbest.
+
 | Migration | Ne yapar | Durum |
 |---|---|---|
-| `20261015130000_task_dependencies_cycle_and_site_chief_guard.sql` | Bağımlılıkta döngü kontrolü + şantiye şefi yazamaz | ROLLBACK ile test edildi, onay bekliyor |
-| `20261015130100_project_tasks_site_chief_plan_guard.sql` | Şantiye şefi yalnızca gerçekleşen alanları yazar | ROLLBACK ile 4 rolde test edildi, onay bekliyor |
+| `20261016115400_task_dependencies_cycle_and_site_chief_guard.sql` (eski ad 130000) | Bağımlılıkta döngü kontrolü + şantiye şefi yazamaz | **Canlıya uygulandı (16.10.2026)** |
+| `20261016115418_project_tasks_site_chief_plan_guard.sql` (eski ad 130100) | Şantiye şefi yalnızca gerçekleşen alanları yazar | **Canlıya uygulandı (16.10.2026)** |
 | `20261015130200_isdemir_wbs_from_group_label.sql` | İsdemir WBS + görevlere wbs_id/discipline | ROLLBACK ile test edildi; **eşleştirme tablosu onayı bekliyor** |
 | `20261015130300_isdemir_baseline_freeze.sql` | İsdemir baseline ← plan | **Yazıldı, çalıştırılmadı** (ayrı onay: "teklif planı dondurma") |
 

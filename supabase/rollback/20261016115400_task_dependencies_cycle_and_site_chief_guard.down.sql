@@ -1,4 +1,4 @@
--- TERS SQL (geri alma) — 20261015130000_task_dependencies_cycle_and_site_chief_guard
+-- TERS SQL (geri alma) — 20261016115400_task_dependencies_cycle_and_site_chief_guard
 -- Bu klasör (supabase/rollback) migration zincirine girmez; yalnızca geri alma gerektiğinde elle uygulanır.
 --
 -- fn_task_dependencies_guard'ı 20261015060347_create_task_dependencies'teki ilk hâline döndürür
