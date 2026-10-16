@@ -277,6 +277,7 @@ export default function FaturaFormModal({ invoice = null, onClose, onSaved, defa
             <div>
               <label style={lbl}>KDV Oranı</label>
               <select style={inp} value={form.vat_rate} onChange={e => set('vat_rate', e.target.value)}>
+                <option value="0">%0</option>
                 <option value="8">%8</option>
                 <option value="10">%10</option>
                 <option value="18">%18</option>

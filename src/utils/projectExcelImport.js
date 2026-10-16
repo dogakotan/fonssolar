@@ -1,4 +1,3 @@
-import ExcelJS from 'exceljs'
 import { downloadBlob, XLSX_MIME } from './downloadFile'
 
 // Excel'in 1900-tabanli seri gun sayisini (SheetJS'in SSF.parse_date_code'unun
@@ -100,6 +99,7 @@ function sheetToObjects(ws) {
 // Dosyayı ExcelJS workbook olarak oku
 async function readWorkbook(file) {
   const buf = await file.arrayBuffer()
+  const { default: ExcelJS } = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   try {
     await wb.xlsx.load(buf)
@@ -146,6 +146,7 @@ export async function parseIsKalemleri(file) {
 
 // İndirilebilir örnek Excel şablonu oluştur
 export async function downloadProjectTemplate() {
+  const { default: ExcelJS } = await import('exceljs')
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('İş Kalemleri')
 
