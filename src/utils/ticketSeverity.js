@@ -9,8 +9,6 @@ export const SEVERITY_META = {
   'kritik': { bg: '#7F1D1D', color: '#FEE2E2', label: 'Kritik' },
 }
 
-export const SEVERITY_ORDER = { 'kritik': 4, 'yüksek': 3, 'orta': 2, 'düşük': 1 }
-
 export const SEVERITY_OPTIONS = Object.keys(SEVERITY_META).map(value => ({
   value,
   label: SEVERITY_META[value].label,

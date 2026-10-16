@@ -285,7 +285,7 @@ export function suggestBomMatches(requests, materials, threshold = 0.55) {
   return suggestions.sort((a, b) => b.score - a.score)
 }
 
-export function requestType(request) {
+function requestType(request) {
   if (['malzeme', 'hizmet', 'diger'].includes(request.category)) return request.category
   // Eski kayıtlarda kategori girilmemiş olabilir; başlık/kalem adlarından tahmin ediyoruz.
   const text = `${request.title || ''} ${(request.items || []).map(i => i.name).join(' ')}`.toLocaleLowerCase('tr-TR')
