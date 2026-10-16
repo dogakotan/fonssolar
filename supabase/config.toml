@@ -10,3 +10,6 @@ port = 54322
 
 [studio]
 port = 54323
+
+[functions.agent-chat]
+verify_jwt = true

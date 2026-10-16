@@ -1817,27 +1817,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   (_,i)=>row.values[i+1])` her index'i açıkça ziyaret ettiğinden bu sorunu
   yaşamıyor — düzeltme bu, uzunluk pad'lemek değil. İkisi de yeniden çalıştırılıp
   geçtiği doğrulandı.
-- **`request_no` ara sıra çakışması (`purchase_requests_request_no_key`
-  duplicate key) — KISMEN çözüldü (10.09.2026), tam kapanmadı.** Önceki
-  turlarda "PgBouncer/PostgREST kaynaklı, bu projenin araçlarıyla
-  düzeltilemez" sanılmıştı — bu hipotez YANLIŞ çıktı. Gerçek (ve kanıtlanmış)
-  bir mekanizma bulundu: `fn_next_purchase_request_no()` sayacı normal bir
-  tabloda tutup çağıranın transaction'ı İÇİNDE artırıyordu; PL/pgSQL'in
-  `exception when unique_violation` savepoint-rollback'i bu artışı da geri
-  alıyor, aynı numarayı tekrar tekrar üretiyordu (canlı bir zorlanmış-
-  çakışma testiyle kanıtlandı). Düzeltme: sayaç tablosu yerine yıl başına
-  gerçek bir Postgres `SEQUENCE` (`nextval()` rollback'ten etkilenmez).
-  **AMA** tam regresyon paketi bu düzeltmeden SONRA tekrar çalıştırılınca
-  6/74 test hâlâ aynı imzayla başarısız oldu — kapsamlı canlı adli inceleme
-  (sequence izole test, süreç listesi, `pg_stat_activity`, farklı-proje
-  peer-oturum kontrolü, Supabase branch listesi) kalıntı nedeni AÇIKLAYAMADI.
-  Pragmatik önlem olarak retry sınırı 5'ten 20'ye çıkarıldı
-  (`bump_request_no_retry_cap_to_20`) — kök nedeni çözmüyor, yalnızca
-  kullanıcı etkisini azaltıyor. Ayrıntı için "Son değişiklik" 10.09.2026
-  girdisine (ve altındaki "DÜZELTME" notuna) bak. Etkilenen testler
-  (`procurement-concurrency`, `procurement-two-initiators`,
-  `procurement-workflow`, `purchase-single-item`,
-  `procurement-negotiation-flow`) hâlâ ara sıra flaky olabilir.
+- ~~`request_no` cakismasi (`purchase_requests_request_no_key` duplicate key)~~ - **uygulama akisi kapandi; kalan test yolu izole edildi (24.09.2026).** Talep kodu uretimi yil bazli Postgres `SEQUENCE` ve atomik `nextval()` kullaniyor; `create_purchase_request_with_items` ile aylik plan RPC'leri cakismada yeniden deneyebiliyor. Canli veritabaninin salt okunur kontrolunde sequence son degeri mevcut kodlarin ilerisindeydi ve bos `request_no` yoktu. Belgelenen son hata, `purchase-single-item.spec.js` icindeki eszamanli kalem ekleme testinin talebi dogrudan REST ile olusturup varsayilan kod uretimine istemeden bagimli olmasindan kaynaklaniyordu. Test simdi kendi benzersiz fixture kodunu veriyor; boylece yalnizca kalem ekleme yarisini olcuyor. Bu test calistirmada yeniden kosturulmadi.
 - ~~Tedarikçi bakiyesi/Finans Raporları — `paid_amount`/`remaining_amount`
   TRY'ye çevrilmiyordu~~ — **tam çözüldü (18.08.2026).** Önceki kısmi düzeltme
   (2026-07-31) yalnızca `total_amount_try`'yi kapsıyordu; şimdi `paid_amount`/
@@ -1918,16 +1898,6 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `20260731100738_add_project_risks_delete_policy`)**: `authenticated_delete_risks`
   policy'si eklendi, aynı tablodaki `authenticated_insert_risks`/`authenticated_update_risks`
   ile birebir aynı deseni (`user_has_project_access(project_id)`) kullanıyor.
-- **Migration `20260724072957_invoice_flow_single_approver_with_revision_and_payment_tracking`
-  yerel dosyası eksik.** Bu görev sırasında canlıda uygulanmış ama
-  `supabase/migrations/` altında karşılığı olmadığı fark edildi (muhasebe
-  ayrı bir oturum/araçla doğrudan uygulamış olmalı) — `taslak`/
-  `duzeltme_bekliyor`/`odeme_bekliyor` durumları, `requires_payment_tracking`/
-  `payment_date`/`payment_note` kolonları ve `fn_invoice_approval_submitted`/
-  `fn_invoice_approval_cascade`'in ilk sürümü bu migration'la geldi. Üstüne
-  düzeltme migration'ı (`20260724081031`) eklendi ama orijinali hâlâ yerel
-  dosya olarak yok — fark edilirse (`schema_migrations` ile `supabase/migrations/`
-  karşılaştırması) geriye dönük eklenmesi gerekebilir.
 - ~~Faturalar mobil kart görünümü yok~~ — **bu not bayatmış, düzeltildi
   (2026-07-31).** Gerçek kod zaten tam bir mobil kart görünümüne sahip:
   `FaturaListesi.jsx`'te `.invoice-mobile-list` (article kartları) JSX'i +
@@ -1963,12 +1933,12 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   garantisi yok, ama bir `db reset`'te aynı nihai duruma ulaştırır ve sonraki
   gerçek yerel dosyalarla (`fix_kismen_odendi_status_omissions` vb.) çakışmaz.
   **`invoice_flow_single_approver_with_revision_and_payment_tracking`
-  (07-24 072957) kalıcı olarak kurtarılamaz** — bunu düzelten sonraki migration
-  (`20260724081031_invoice_workflow_single_approver_backend_fix`, yerelde zaten
-  var) `create_invoice_approval_chain()`/`trg_notify_invoice_insert()` gibi
-  fonksiyonları DROP ediyor; bu fonksiyonların orijinal gövdesi artık ne canlı
-  DB'de ne de hiçbir dosyada var — yeniden yazılırsa uydurma olur, kullanıcı
-  kararıyla bu tek migration açık madde olarak bırakıldı. En güncel iki migration
+  (07-24 072957) 24.09.2026'da arşivden kurtarıldı:** canlı
+  `supabase_migrations.schema_migrations.statements` kaydındaki özgün SQL
+  `supabase/migrations/20260724072957_invoice_flow_single_approver_with_revision_and_payment_tracking.sql`
+  dosyasına alındı. Bu fonksiyonların mevcut gövdeleri canlı DB'de artık yoktu;
+  bu nedenle yaşayan şemadan tahmin edilmedi, saklanan migration SQL'i kullanıldı.
+  En güncel iki migration
   (`20260803101019_drop_critical_path_and_dashboard_visible_fields`,
   `20260803101309_update_functions_after_dropping_critical_path_columns` —
   `is_critical`/`dashboard_visible`/`dashboard_order` kaldırma turu) de aynı
@@ -1983,9 +1953,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   yok" görünüyordu, bunların 52'si zaten bilinen zararsız timestamp
   sürüklenmesiydi — ör. DB'de `20260904083650` olan `link_monthly_plan_to_purchase_requests`
   yerelde `20260904090000` adı altında duruyor). Geriye, isimle de eşleşmeyen
-  **15 gerçek boşluk** kaldı — yukarıdaki `invoice_flow_single_approver...`
-  (zaten bilinen/kabul edilmiş) hariç **14'ü yeni bulgu**: `create_procurement_monthly_plan`
-  (20260812060349) + Kaptan Demir Çelik (Adana GES-1/GES-2) projesinin gerçek
+  **15 gerçek boşluk** kaldı: invoice workflow migration'ı,
+  `create_procurement_monthly_plan` ve Kaptan Demir Çelik (Adana GES-1/GES-2)
+  projesinin gerçek verisine dokunan 13 migration. İlk ikisi sonradan
+  arşivlendi; güncel durumda yalnızca aşağıda açıklanan **13 müşteri-verisi
+  migration'i** eksik. 15.09.2026'daki karşılaştırmanın tam listesi:
+  `create_procurement_monthly_plan` (20260812060349) + gerçek proje verisine
+  dokunan
   verisine dokunan 13 migration — `import_kaptan_demir_1ay_plan`,
   7 adet `adana_faz1_*` (WBS'in fotoğraf bazlı yapıya geçirilmesi, task kodu
   formatı, OG/ENH alt-kategori düzeltmeleri, group_label düzleştirme/birleştirme)
@@ -2014,6 +1988,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   Çelik'in WBS/aylık plan verisi hiç oluşmaz — yalnızca bu iki gerçek proje
   için, yalnızca bir `db reset` senaryosunda önemli, günlük geliştirme akışını
   etkilemiyor. Canlı DB'de veri zaten mevcut ve bu karardan hiç etkilenmiyor.
+- **Migration arşiv durumu (24.09.2026):** Canlı `schema_migrations` listesindeki eksik dosyalar yeniden karşılaştırıldı. `20260918132417_allow_muhasebe_self_revize_invoice_from_manager_approval` yaşayan fonksiyon tanımından, `20260724072957_invoice_flow_single_approver_with_revision_and_payment_tracking` ise migration tablosunda saklanan özgün SQL'den arşivlendi. `20260722135051` dosyası canlıdaki `allow_report_creators_delete_own_daily_reports` adına taşındı ve policy tanımıyla karşılaştırıldı. Bu işlemler yalnızca repo tarihçesini tamamladı; canlı veritabanına migration uygulanmadı. Açık kalan 13 migration, önceki karara göre müşteri WBS/plan verisini git'e koymamak için yerel dosya olmadan bırakıldı.
 - **`esbuild` (Vite'ın dahili bundler'ı) — moderate CVE, yalnızca dev-server'a
   özgü, kabul edildi (11.09.2026).** `GHSA-67mh-4wv8-2f99`: herhangi bir web
   sitesi dev server'a istek atıp yanıtı okuyabiliyor — bu yalnızca `npm run dev`
@@ -2062,6 +2037,22 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   - **Uygulama sonrası:** sahipsiz açık risk 0; `projects`, `project_tasks`, `task_monthly_plan` aynı; bildirim değişmedi.
   - **Spec düzeltmesi:** `is-plani-hiyerarsi.spec.js` canlıda 2/2 geçti, yeni risk açmadı.
 - **Docx (kural 7):** iki docx yerinde güncellendi (yedekler `.yedek-15-10.docx`). Kayıt: `docs/docx-guncelleme-15-10.md`.
+
+**24.09.2026 — AI ajanı dosya boyutu sınırı eşitlendi.** İstemci 20 MB dosyaya izin verirken Edge Function'ın Base64 ve toplam istek sınırları bazı seçilen dosyaları gönderim sırasında reddediyordu. İstemci limiti 12 MB'a indirildi ve reddedilen dosyada input temizleniyor; böylece aynı dosya yeniden seçilebilir. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı konuşma geçmişi sunucu sınırında tutuluyor.** Edge Function en fazla 40 mesaj kabul ediyor, istemci geçmişi sınırsız büyütebiliyordu. İstemci şimdi son 38 mesajı ve yeni kullanıcı mesajını gönderiyor; yanıt başarılı olunca geçmişi tam kullanıcı/asistan çiftleriyle kaydediyor (en fazla 40). Başarısız istekler geçmişe yazılmıyor. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı toplam istek boyutu istemcide sınırlandırılıyor.** Geçmişteki dosya ekleri Base64 olarak saklandığından birden fazla eki olan konuşmalar Edge Function'ın 18 MiB sınırını aşabiliyordu. İstemci istek gövdesini hesaplıyor, 17 MiB üstünde en eski tam user/model çiftlerini istekten çıkarıyor ve hâlâ sığmayan tek mesaj için açıklayıcı hata gösteriyor. Görüntülenen sohbet ve kaydedilen geçmiş değişmiyor. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı metin sınırları istemciye uygulandı.** Edge Function mesaj başına 100.000 karakter doğrularken arayüz serbest uzunlukta girişe izin veriyordu; Excel/CSV çıkarımı da tek metin parçası sınırını aşabilirdi. Metin kutusu aynı üst sınıra alındı, tablo çıkarımı sınıra takıldığında kontrollü kısaltılıp kullanıcıya bildiriliyor. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı canlı bağlamı sistem prompt sınırına göre kısaltılıyor.** Bazı context sorguları sınırsız satır döndürdüğünden prompt, Edge Function'ın 100.000 karakter doğrulamasını aşabilirdi. İstemci şimdi statik yönergeleri koruyup proje bağlamını sınır içinde kesiyor ve yanıta kısaltma notu ekliyor. Test çalıştırılmadı.
+
+**24.09.2026 — AI ajanı başarısız istekte kullanıcı içeriğini koruyor.** Gemini çağrısı hata verdiğinde gönderim öncesi temizlenen metin ve dosya kayboluyordu. Hata halinde başarısız mesaj balonu kaldırılıyor, içerik giriş alanına geri yükleniyor ve yeni bir yazı/dosyanın üzerine yazılmıyor; kullanıcı doğrudan yeniden deneyebilir. Test çalıştırılmadı.
+
+**24.09.2026 — ExcelJS yalnızca Excel işlemi gerektiğinde yükleniyor.** Ajan dosya analizi, proje sihirbazı içe aktarımı ve rapor dışa aktarımlarındaki statik importlar dinamik importa çevrildi. Production `index.html` artık 938 kB'lık `vendor-xlsx` dosyasını ön yüklemiyor; kullanıcı bir Excel işlevi çağırınca yükleniyor. Bu ayrı chunk hâlâ büyük olduğu için build boyut uyarısı devam ediyor. Lint ve build başarılı; lint'te 10 önceden var olan Fast Refresh uyarısı bulunuyor.
+
+**24.09.2026 — `fn_next_purchase_request_no` için doğrudan RPC erişimi kapatıldı.** Salt okunur catalog kontrolü, `authenticated` rolünün sequence tabanlı numara üreticisini doğrudan çağırabildiğini doğruladı; keyfi yıl girdileri boş yere sayaç/sequence tüketebilirdi. `20260924110039_revoke_authenticated_execute_on_request_no_allocator` migration'ı kullanıcı onayından sonra uygulandı. Sonraki salt okunur kontrol `authenticated_exec=false`, `service_role_exec=true` ve iki iç satın alma RPC'sinde `postgres_exec=true` gösterdi; uygulama akışı korunurken doğrudan çağrı kapandı.
 
 **18.09.2026 (2. tur) — Kullanıcı isteğiyle 4 demo tedarikçi (Güneş Panel A.Ş./
 Elektrik Malzeme Ltd./Nakliye Lojistik A.Ş./Çelik Yapı San. Ltd.,

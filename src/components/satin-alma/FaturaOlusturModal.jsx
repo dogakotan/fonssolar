@@ -55,7 +55,7 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
     invoice_date: new Date().toISOString().slice(0, 10),
     due_date: '',
     amount: request?.estimated_amount_excl_vat || '',
-    vat_rate: String(request?.estimated_vat_rate || 20),
+    vat_rate: String(request?.estimated_vat_rate ?? 20),
     currency: 'TRY',
     category: ['malzeme', 'hizmet', 'diger'].includes(request?.category) ? request.category : 'diger',
     description: request?.title || '',
@@ -95,7 +95,7 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
       ...current,
       supplier_id: picked.supplier_id || current.supplier_id,
       amount: picked.estimated_amount_excl_vat || current.amount,
-      vat_rate: String(picked.estimated_vat_rate || current.vat_rate),
+      vat_rate: String(picked.estimated_vat_rate ?? current.vat_rate),
       category: ['malzeme', 'hizmet', 'diger'].includes(picked.category) ? picked.category : current.category,
       description: current.description || picked.title,
     }))
@@ -419,7 +419,7 @@ export default function FaturaOlusturModal({ request = null, defaultProjectId = 
                 <label>{mode === 'faturali' ? 'KDV Hariç Tutar *' : 'Tutar *'}<input type="number" min="0" step="0.01" value={form.amount} onChange={event => set('amount', event.target.value)} /></label>
                 {mode === 'faturali' && (
                   <>
-                    <label>KDV Oranı *<select value={form.vat_rate} onChange={event => set('vat_rate', event.target.value)}><option value="8">%8</option><option value="10">%10</option><option value="18">%18</option><option value="20">%20</option></select></label>
+                    <label>KDV Oranı *<select value={form.vat_rate} onChange={event => set('vat_rate', event.target.value)}><option value="0">%0</option><option value="8">%8</option><option value="10">%10</option><option value="18">%18</option><option value="20">%20</option></select></label>
                     <label>KDV Tutarı<input readOnly value={money(vat, form.currency)} /></label>
                     <label>Genel Toplam<input readOnly value={money(total, form.currency)} /></label>
                   </>
