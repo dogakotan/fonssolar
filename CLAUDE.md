@@ -322,6 +322,16 @@ geçerli olduğunu KANITLAMAZ — bu kontrol yalnızca ilk çağrıda yapılır.
     `get_project_gantt` yenilemesiyle (görev/ilerleme realtime'ı, sekmeye dönüş)
     yeniden çekilir.
   - **Faz 2:** hücre düzenleme `MonthCell`'in `editable` özelliğine bağlanacak.
+  - **Ortak sıra ve kolonlar (15.10.2026, üç görünüm):** `buildGroupTree` görevleri
+    `compareTaskCode` ile sıralar (`localeCompare('tr', {numeric:true})`: M1, M2 … M10;
+    kodsuz görevler sonda); her grupta önce grubun kendi görevleri, sonra alt gruplar.
+    Görev adının sonundaki parantezli açıklama (`splitTaskName`, `src/utils/taskName.js`)
+    ayrı **Detay** kolonunda; kolon dokununca açılıp kapanır, durum `useDetailColumn`
+    (`localStorage` `is-plani-detay-kolonu`). Ad kolonu en uzun ada göre ölçülür
+    (Genel 170–460 px, Aylık 200–460 px). Aylık'ta kolonlar daraltıldı, kolon ayrımları çizgili.
+  - **Filtreler görünümler arasında taşınmaz:** Genel'in durum/grup filtresi `TabIsPlan`
+    state'inde kalır; Detaylı (arama/grup/durum/sıralama) ve Aylık (arama/kategori/"yalnızca
+    bu ay") kendi state'ini tutar ve görünüm değişince sıfırlanır. "Sorumlu" filtresi yok.
   Proje Finans sekmesi (`ProjeTabFinans.jsx`) rol bazlı: admin ve proje
   yöneticisi (`canApprove = isAdmin || role==='proje_yoneticisi'`) proje içinde
   Genel/Faturalar/Onay Kuyruğu görür (2026-07-24'te proje yöneticisine açıldı;
@@ -1354,6 +1364,18 @@ açık noktalar" → migration tracking boşluğu).
   migration tooling, hiçbir geçişe izin vermez).
 - `purchase_requests` UPDATE → `handle_purchase_request_approval()`.
 - `tickets` UPDATE → `fn_ticket_history()` → `ticket_history`'ye otomatik log.
+- **İş Planı koruma trigger'ları (16.10.2026, `20261016115400`, `20261016115418`; dosyalar
+  `is-plani-revizyon` dalında, `main`'de yok).**
+  - `project_tasks` BEFORE INSERT/UPDATE → `fn_project_tasks_site_chief_guard`: şantiye şefi
+    yalnızca `actual_start`, `actual_end`, `progress_pct`, `total_progress`, `status`, `notes`,
+    `equipment_notes` (+ `updated_at`) değiştirir; diğer kolonlar ve INSERT 42501 ile reddedilir
+    (izin listesi: yeni kolon varsayılan olarak korunur; GENERATED kolonlar karşılaştırılmaz).
+    Admin, PM, muhasebe ve oturumsuz bağlam etkilenmez. `get_my_role()` DEFINER fonksiyon içinde
+    de çağıranın rolünü döndürdüğü için `add_task_progress`/`set_task_milestone_status` da
+    kontrolden geçer (izinli kolonlara yazarlar).
+  - `task_dependencies` BEFORE INSERT/UPDATE → `fn_task_dependencies_guard`: aynı proje kuralı +
+    şantiye şefi bağ yazamaz (42501) + döngü kontrolü (recursive CTE, 23514; proje bazlı advisory
+    kilit). Geri alma: `supabase/rollback/20261016115400_*`, `20261016115418_*` (aynı dal).
 - `daily_report_issues` INSERT (yalnızca `ticket_id` NULL olan yeni satırlarda)
   → `fn_create_ticket_from_daily_report_issue()`: `tickets`'a yeni satır açar
   (`__ISSUE_META__` öneki soyularak temiz `description` yazılır), id
@@ -1762,6 +1784,14 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
+- **Gantt'ta "bugün" çizgisi ve çubuklar ay/hafta başlıklarından kayıyor (16.10.2026'da yayında ölçüldü).**
+  - Eski ölçek her ayı tam hafta (29–31 gün = 5 × 7 gün) çiziyor; çizgi ve çubuklar gerçek gün sayısıyla konumlanıyor (`timelineOffsetPct`).
+  - DYB1'de bugün −19,8 px (ay başlığına göre ~6 gün sola); kayma her ay 11–14 px büyüyor, proje sonunda ~−163 px (~50 gün).
+  - Düzeltme `is-plani-revizyon` Faz 2'de (`lib/isPlan/ganttScale`, fark 0 px). Ancak 17c27ae `main`'de olmayan 65 commit'lik tabana bağlı (Adım 5 modalları, `useProjectStructure`, `lib/entegrasyon`); bugünkü `main`'e taşımada `TabIsPlan.jsx` (5), `TabIsPlaniDetay.jsx` (3), `Dashboard.css` (1) çatışma. Ya taban da gelir (6b) ya düzeltme bağımsız yeniden yazılır: **karar kullanıcıda**.
+- **İş Planı tarih hesapları saat dilimine bağlı (yayında).** `TabIsPlan.jsx` `getEffectiveFilterDate`: projesiz kullanımda varsayılan `toISOString()` (00:00–03:00 TR bir önceki gün); haftalık ve aylık dönem sonu yerel gece yarısının `toISOString()` ile kesilmesi yüzünden bir gün geri. Aylık'ın "bu ay" vurgusu bu değere bağlı. Faz 2 `todayKey()` ile düzeltiyor.
+- **Tam veritabanı yedeği yok (16.10.2026).** Son yedek 15.10.2026 7 tablonun PostgREST dışa aktarımı (`C:\fons-yedek\yedek-2026-10-15-is-plani-2`, D: kopyası hash'le aynı ama aynı fiziksel disk). `pg_dump` kurulu değil; harici kopya yok.
+- **DYB kablo metrajlarının kaynağı belge olarak yok.** 16.10.2026'daki metraj güncellemeleri (`20261016111121`, `20261016111406`) kullanıcının sohbette paylaştığı iki malzeme listesi ekran görüntüsüne dayanıyor; `C:\fons-yedek\veri-kaynak` ve İndirilenler'deki Diyarbakır Excel'lerinde bu satırlar yok, DB'de Diyarbakır BOM'u (`procurement_items`) boş. Görev adlarındaki eski miktarları düzelten migration taslağı (`data/dyb-kablo-adlari` dalı, `supabase/bekleyen/`) kaynak teyidi bekliyor.
+
 - **Ayrı iş: 14.10.2026 F5 metni docx'lere işlenmedi.** Change, Claim ve Interface için hazırlanan değişiklik metni (`faz-a-proje-kontrol` dalında `docs/proje-kontrol/docx-guncelleme-14-10.md`) iki docx'e henüz işlenmedi. `feature/aylik-is-plani` dalında yapılmayacak (kullanıcı kararı, 15.10.2026).
 
 - ~~`is-plani-hiyerarsi.spec.js` test projesinde sahipsiz risk bırakıyordu~~ — **çözüldü (15.10.2026).**
@@ -2009,6 +2039,17 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   `package.json` aynı kaldı — hepsi mevcut semver aralığı içinde).
 
 ## Son değişiklik
+
+**15–16.10.2026 — İş Planı görünüm düzeltmeleri, DYB veri değişiklikleri ve geri alınması, iki koruma trigger'ı, temizlik (PR #41–#45).**
+- **Ön yüz (PR #41):** kod sırası M1…M10, grubun kendi görevleri önce, Detay kolonu, ad genişliği ölçümü, Aylık kolonları daraltıldı. Ayrıntı: "Frontend yapısı" → İş Planı.
+- **DYB veri (canlı):**
+  - 15.10'da 20 kalem 1 Set yapıldı (`20261015171128`, `20261015173313`); 16.10'da kullanıcı isteğiyle geri alındı (`20261016105501`), "Set = 1" gösterim kodu kaldırıldı (PR #43).
+  - Kablo çekim kalemleri malzeme listesi metrajına göre metre: DYB1 E2/E3 2.225.000, E8 190.000, E16 81.000 (`20261016111121`); DYB2 E2/E3 487.500, E7 60.000, E16 31.200 (`20261016111406`). Aylık plan aynı oranla ölçeklendi, eski değerler görev notunda. Kaynak: sohbetteki ekran görüntüleri ("Bilinen açık noktalar").
+  - Her uygulamada önce canlıda ROLLBACK provası; öncesi/sonrası parmak izi (bildirim, risk, proje ilerlemesi, diğer görev ve planlar) değişmedi.
+- **Koruma trigger'ları (canlı, `20261016115400`, `20261016115418`):** "Trigger zincirleri" bölümünde. Prova 8/8; uygulama sonrası gerçek kullanıcı hatası yok (postgres_logs).
+- **Temizlik:** kullanılmayan export'lar ve iki geliştirme paketi (PR #44); 24-25.09.2026'da `main`'e alınmamış dal birleştirildi (PR #45: 7 migration arşivi, %0 KDV, ExcelJS'in gerektiğinde yüklenmesi, AI ajanı sınırları); birleşmiş worktree/dallar silindi.
+- **Kural 7:** iki docx'e 16.10 metni işlendi (yedekler `*.yedek-16-10.docx`; kayıt `is-plani-revizyon` dalında `docs/docx-guncelleme-16-10.md`).
+- **Mesai dışı ve yedek koşulu:** bu turdaki canlı uygulamalar kullanıcının açık feragatiyle mesai içinde ve yedeksiz yapıldı. Kullanıcı kararı (16.10.2026): bundan sonra bu iki koşul her seferinde açıkça sorulur, feragat edilmiş sayılmaz.
 
 **15.10.2026 — İş Planı'na Aylık İş Planı bölümü (Faz 1, salt okunur); iki migration arşivlendi.**
 - **Dal:** `feature/aylik-is-plani` (`main`'den, `GES_Dashboard-aylik` klasörü).
