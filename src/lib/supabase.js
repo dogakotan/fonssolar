@@ -27,6 +27,3 @@ export const signIn = (email, password) =>
 
 export const signOut = () =>
   supabase.auth.signOut()
-
-export const getSession = () =>
-  supabase.auth.getSession()

@@ -3,7 +3,7 @@ import { supabase } from '../../../lib/supabase'
 
 // Proje kodu (Karar 21, 28, 57): harfle başlar, 2-5 karakter, büyük harf/rakam. Yeni projede zorunlu, düzenlemede
 // salt okunur (project_register_settings.prefix). Activity ID ve register numaralarının önekidir.
-export const PROJECT_CODE_RE = /^[A-Z][A-Z0-9]{1,4}$/
+const PROJECT_CODE_RE = /^[A-Z][A-Z0-9]{1,4}$/
 
 const F = {
   label:        { fontSize: 13, fontWeight: 600, color: 'var(--color-text-sub)', marginBottom: 3, display: 'block' },

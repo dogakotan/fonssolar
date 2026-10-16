@@ -30,7 +30,7 @@ export function parseTRY(text) {
   return digits ? Number(digits) : NaN
 }
 
-export function financeCard(page) {
+function financeCard(page) {
   return page.locator('.stat-card', { has: page.locator('.stat-label', { hasText: 'Finans Özeti' }) })
 }
 
@@ -42,6 +42,3 @@ export function spentAmountValue(page) {
   return page.locator('span:text-is("Gerçekleşen") + strong')
 }
 
-export function scopeSelect(page) {
-  return page.locator('select[title="Görüntülenecek proje kapsamı"]')
-}
