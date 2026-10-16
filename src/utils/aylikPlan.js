@@ -171,22 +171,6 @@ export function fmtPct(part, whole) {
   return `%${QTY_FORMAT.format(Math.round((part / whole) * 1000) / 10)}`
 }
 
-// 15.10.2026'da birimi "Set" (hedef 1) yapılan kalemler: migration notlarına bu satırı yazdı
-// (20261015171128, 20261015173313). Aylık plan verisi oranları tutar (ör. 0,23); ekranda
-// çalışılan her ayda "1" gösterilir, oran ipucunda yazar.
-export const SET_DONUSUM_ISARETI = 'Birim değişikliği (15.10.2026)'
-
-export function isConvertedSetTask(task) {
-  return sameUnit(task?.unit, 'Set') && num(task?.target_qty) === 1
-    && String(task?.notes || '').includes(SET_DONUSUM_ISARETI)
-}
-
-// Plan hücresinde gösterilecek miktar: dönüştürülen Set kaleminde çalışılan ay "1".
-export function displayPlanned(cell, task) {
-  if (cell.planned > 0 && isConvertedSetTask(task)) return 1
-  return cell.planned
-}
-
 function sameUnit(a, b) {
   return String(a || '').trim().toLocaleLowerCase('tr-TR') === String(b || '').trim().toLocaleLowerCase('tr-TR')
 }
@@ -326,12 +310,7 @@ export function cellTooltip(cell, task, opts = {}) {
     : ''
   lines.push(`• Hedef: ${target > 0 ? `${fmtQty(target)}${unit}` : 'tanımlı değil'}${span}`)
 
-  if (cell.planned > 0 && isConvertedSetTask(task)) {
-    lines.push(`Bu ayın planı: hücrede 1${unit} (bu ay setin işi yapılıyor)`)
-    lines.push(`• Setin bu aya düşen payı: ${fmtQty(cell.planned)}${unit}; hesaplar bu payla yapılır.`)
-  } else {
-    lines.push(`Bu ayın planı: ${fmtQty(cell.planned)}${unit}`)
-  }
+  lines.push(`Bu ayın planı: ${fmtQty(cell.planned)}${unit}`)
   lines.push(...planExplanation(cell, task, unit))
 
   lines.push(`Bu ayın gerçekleşeni: ${fmtQty(cell.actual)}${unit}`)
