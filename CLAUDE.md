@@ -1790,7 +1790,22 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   - Düzeltme `is-plani-revizyon` Faz 2'de (`lib/isPlan/ganttScale`, fark 0 px). Ancak 17c27ae `main`'de olmayan 65 commit'lik tabana bağlı (Adım 5 modalları, `useProjectStructure`, `lib/entegrasyon`); bugünkü `main`'e taşımada `TabIsPlan.jsx` (5), `TabIsPlaniDetay.jsx` (3), `Dashboard.css` (1) çatışma. Ya taban da gelir (6b) ya düzeltme bağımsız yeniden yazılır: **karar kullanıcıda**.
 - **İş Planı tarih hesapları saat dilimine bağlı (yayında).** `TabIsPlan.jsx` `getEffectiveFilterDate`: projesiz kullanımda varsayılan `toISOString()` (00:00–03:00 TR bir önceki gün); haftalık ve aylık dönem sonu yerel gece yarısının `toISOString()` ile kesilmesi yüzünden bir gün geri. Aylık'ın "bu ay" vurgusu bu değere bağlı. Faz 2 `todayKey()` ile düzeltiyor.
 - **Tam veritabanı yedeği yok (16.10.2026).** Son yedek 15.10.2026 7 tablonun PostgREST dışa aktarımı (`C:\fons-yedek\yedek-2026-10-15-is-plani-2`, D: kopyası hash'le aynı ama aynı fiziksel disk). `pg_dump` kurulu değil; harici kopya yok.
-- **DYB kablo metrajlarının kaynağı belge olarak yok.** 16.10.2026'daki metraj güncellemeleri (`20261016111121`, `20261016111406`) kullanıcının sohbette paylaştığı iki malzeme listesi ekran görüntüsüne dayanıyor; `C:\fons-yedek\veri-kaynak` ve İndirilenler'deki Diyarbakır Excel'lerinde bu satırlar yok, DB'de Diyarbakır BOM'u (`procurement_items`) boş. Görev adlarındaki eski miktarları düzelten migration taslağı (`data/dyb-kablo-adlari` dalı, `supabase/bekleyen/`) kaynak teyidi bekliyor.
+- **KAYNAK DOĞRULANMADI: `20261016111121` (DYB1) ve `20261016111406` (DYB2) kablo metraj migration'ları.**
+  - Canlıda uygulandı; dayanağı yalnızca kullanıcının 16.10.2026'da sohbette paylaştığı iki malzeme listesi ekran görüntüsü. Görüntülerde dosya, sayfa, hücre yok.
+  - `C:\fons-yedek\veri-kaynak` ve İndirilenler'deki Diyarbakır Excel'lerinde bu satırlar yok; DB'de Diyarbakır BOM'u (`procurement_items`) boş.
+  - Kullanıcı kaynak belgeyi bulunca `C:\fons-yedek\veri-kaynak`'a koyacak; dosya, sayfa ve hücre bu maddeye yazılınca işaret kalkar.
+  - Ekran görüntüsündeki değerler (yalnızca liste):
+
+    | Malzeme (görüntüdeki ad) | Birim | DYB1 | DYB2 | Kullanıldığı görev |
+    |---|---|---|---|---|
+    | DC Kablo (1x6 mm² PV1-F H1Z2Z2-K) | metre | 1.600.000,0 | 475.000,0 | E2, E3 (toplamın parçası) |
+    | DC Kablo (1x10 mm² PV1-F H1Z2Z2-K) | metre | 625.000,0 | 12.500,0 | E2, E3 (toplamın parçası) |
+    | DC Kablo (1x400 mm² AL) | metre | 190.000,0 | 60.000,0 | DYB1 E8, DYB2 E7 |
+    | OG Kablo 1x150/25 NA2XSY | metre | 21.000,0 | 25.000,0 | E16 (toplamın parçası) |
+    | OG Kablo 1x400/35 NA2XSY | metre | 60.000,0 | 6.200,0 | E16 (toplamın parçası) |
+    | E2/E3 toplamı (1x6 + 1x10) | metre | 2.225.000 | 487.500 | |
+    | E16 toplamı (1x150/25 + 1x400/35) | metre | 81.000 | 31.200 | |
+  - Görev adlarından miktarı çıkaran migration taslağı (`data/dyb-kablo-adlari` dalı, `supabase/bekleyen/20261016DYBAD_*`) ROLLBACK provasından geçti; mesai dışı, harici yedek ve kullanıcının "başla"sını bekliyor.
 
 - **Ayrı iş: 14.10.2026 F5 metni docx'lere işlenmedi.** Change, Claim ve Interface için hazırlanan değişiklik metni (`faz-a-proje-kontrol` dalında `docs/proje-kontrol/docx-guncelleme-14-10.md`) iki docx'e henüz işlenmedi. `feature/aylik-is-plani` dalında yapılmayacak (kullanıcı kararı, 15.10.2026).
 
@@ -2044,7 +2059,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 - **Ön yüz (PR #41):** kod sırası M1…M10, grubun kendi görevleri önce, Detay kolonu, ad genişliği ölçümü, Aylık kolonları daraltıldı. Ayrıntı: "Frontend yapısı" → İş Planı.
 - **DYB veri (canlı):**
   - 15.10'da 20 kalem 1 Set yapıldı (`20261015171128`, `20261015173313`); 16.10'da kullanıcı isteğiyle geri alındı (`20261016105501`), "Set = 1" gösterim kodu kaldırıldı (PR #43).
-  - Kablo çekim kalemleri malzeme listesi metrajına göre metre: DYB1 E2/E3 2.225.000, E8 190.000, E16 81.000 (`20261016111121`); DYB2 E2/E3 487.500, E7 60.000, E16 31.200 (`20261016111406`). Aylık plan aynı oranla ölçeklendi, eski değerler görev notunda. Kaynak: sohbetteki ekran görüntüleri ("Bilinen açık noktalar").
+  - Kablo çekim kalemleri malzeme listesi metrajına göre metre: DYB1 E2/E3 2.225.000, E8 190.000, E16 81.000 (`20261016111121`); DYB2 E2/E3 487.500, E7 60.000, E16 31.200 (`20261016111406`). Aylık plan aynı oranla ölçeklendi, eski değerler görev notunda. **Kaynak doğrulanmadı** (yalnızca sohbetteki ekran görüntüleri; "Bilinen açık noktalar").
   - Her uygulamada önce canlıda ROLLBACK provası; öncesi/sonrası parmak izi (bildirim, risk, proje ilerlemesi, diğer görev ve planlar) değişmedi.
 - **Koruma trigger'ları (canlı, `20261016115400`, `20261016115418`):** "Trigger zincirleri" bölümünde. Prova 8/8; uygulama sonrası gerçek kullanıcı hatası yok (postgres_logs).
 - **Temizlik:** kullanılmayan export'lar ve iki geliştirme paketi (PR #44); 24-25.09.2026'da `main`'e alınmamış dal birleştirildi (PR #45: 7 migration arşivi, %0 KDV, ExcelJS'in gerektiğinde yüklenmesi, AI ajanı sınırları); birleşmiş worktree/dallar silindi.
