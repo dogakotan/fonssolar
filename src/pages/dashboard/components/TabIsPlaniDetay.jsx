@@ -5,6 +5,7 @@ import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { StatusDot } from '../../../components/ui/Badge'
 import { TONE } from '../../../components/ui/StatusBadge'
 import { buildGroupTree, collectNodeTasks, compareTaskCode, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
+import { computeSapma, diffDays } from '../../../lib/isPlan'
 
 // Adim2IsKalemleri.jsx'teki wizard durum düzenleyicisiyle aynı 5 değer —
 // yalnız target_qty'si olmayan (miktarla ölçülemeyen, kilometre taşı) iş
@@ -53,22 +54,9 @@ const SORT_OPTIONS = [
   { v: 'ad', l: 'Göreve Göre (A-Z)' },
 ]
 
-function dayDiff(a, b) {
-  return Math.round((new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime()) / 86400000)
-}
-
-// Sapma: gerçek bitiş varsa plan bitişle karşılaştırılır (+ gecikme, - erken).
-// Gerçek bitiş henüz yoksa ama plan bitiş tarihi geçmiş ve görev hâlâ açıksa
-// (tamamlandı/iptal değilse) bugüne kadarki gecikme gösterilir — Gantt'taki
-// "Riskli/Geciken" ile aynı mantık, burada sayısal gün farkı olarak.
-function computeSapma(task, today) {
-  if (task.actual_end && task.planned_end) return dayDiff(task.actual_end, task.planned_end)
-  if (task.planned_end && task.status !== 'tamamlandi' && task.status !== 'iptal') {
-    const end = new Date(`${task.planned_end}T00:00:00`)
-    if (today.getTime() > end.getTime()) return dayDiff(today.toISOString().slice(0, 10), task.planned_end)
-  }
-  return null
-}
+// Sapma (computeSapma, lib/isPlan/delay.js): gerçek bitiş varsa plan bitişle karşılaştırılır
+// (+ gecikme, - erken). Gerçek bitiş henüz yoksa ama plan bitiş tarihi geçmiş ve görev hâlâ açıksa
+// asOf'a kadarki gecikme gösterilir — Gantt'taki "Riskli/Geciken" ile aynı mantık, gün farkı olarak.
 
 // `buildGroupTree`'nin ürettiği düğümlerdeki `tasks` dizisi ham task
 // objeleridir (sapma değeri `_sapma` alanına önceden eklenmiş) — kullanıcının
@@ -85,7 +73,7 @@ function sortTaskList(list, sortBy) {
     const diff = byNullLast(a.planned_start) - byNullLast(b.planned_start)
     if (diff !== 0) return diff
     if (!a.planned_start || !b.planned_start) return 0
-    return new Date(a.planned_start) - new Date(b.planned_start)
+    return diffDays(a.planned_start, b.planned_start)
   })
 }
 
@@ -367,7 +355,7 @@ function buildDetayTaskRow(task, depth, ctx) {
 // Gruplama/aç-kapa Gantt'la aynı görsel dili (.gantt-group-row/tone-*) ve aynı
 // grup sırasını (GROUP_ORDER → bilinmeyenler en erken plan tarihine göre → _diğer
 // en sonda) paylaşır — kullanıcı iki görünüm arasında geçince aynı bölümleri tanır.
-export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddProgress = false, onProgressSaved }) {
+export default function TabIsPlaniDetay({ tasks, asOf, allGroupNames, canAddProgress = false, onProgressSaved }) {
   const [search, setSearch] = useState('')
   const [groupFilter, setGroupFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -387,8 +375,8 @@ export default function TabIsPlaniDetay({ tasks, today, allGroupNames, canAddPro
         if (!hay.includes(term)) return false
       }
       return true
-    }).map(task => ({ task, sapma: computeSapma(task, today) }))
-  }, [tasks, search, groupFilter, statusFilter, today])
+    }).map(task => ({ task, sapma: computeSapma(task, asOf) }))
+  }, [tasks, search, groupFilter, statusFilter, asOf])
 
   // Gantt'ın (Genel İş Planı) kullandığı ÇOK SEVİYELİ ağaç burada da birebir
   // paylaşılıyor — öncesinde bu tablo `resolveGroup` ile tek seviyeli düz bir

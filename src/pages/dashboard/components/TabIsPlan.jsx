@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
-import { createGanttScale, fitPxPerDay, ganttRange, gridBackground } from '../../../lib/isPlan'
+import {
+  createGanttScale, deriveTaskStatusAt, fitPxPerDay, ganttRange, gridBackground, isTaskLate, pctFromDailyProgress, progressFor,
+} from '../../../lib/isPlan'
 import { splitTaskName } from '../../../utils/taskName'
 import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { useDashboardData } from '../../../hooks/useDashboardData'
@@ -231,7 +233,7 @@ export const GROUP_INDENT_PX = 20
 // başlık + "X görev | %Y" özeti) — iki görünüm aynı veri hiyerarşisini
 // paylaşır, yalnızca görsel kimlikleri ayrışık kalır (09.09.2026).
 function renderGanttGroupNode(node, ctx) {
-  const { collapsed, toggleGroup, scale, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW } = ctx
+  const { collapsed, toggleGroup, scale, asOf, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW } = ctx
   const isOpen = !collapsed.has(node.key)
   const allTasks = collectNodeTasks(node)
   const avg = allTasks.length
@@ -253,7 +255,7 @@ function renderGanttGroupNode(node, ctx) {
         const bar = scale.span(task.planned_start, task.planned_end)
         const duration = daysBetween(task.planned_start, task.planned_end)
         const pct = Math.round(Number(task.progress_pct || 0))
-        const isLate = isTaskLate(task, today)
+        const isLate = isTaskLate(task, asOf)
         const isSelected = task.id === selectedTaskId
         const { base: nameBase, detail } = splitTaskName(task.task_name)
 
@@ -318,10 +320,6 @@ export function daysBetween(start, end) {
   return Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1)
 }
 
-function progressFor(task, progressMap) {
-  return Math.round(progressMap[task.id] !== undefined ? progressMap[task.id] : Number(task.progress_pct || 0))
-}
-
 function getEffectiveFilterDate(dateText, period) {
   const fallback = new Date().toISOString().split('T')[0]
   const base = new Date(`${dateText || fallback}T00:00:00`)
@@ -340,33 +338,6 @@ function getEffectiveFilterDate(dateText, period) {
   return dateText || fallback
 }
 
-function deriveTaskStatusAt(task, pct, date) {
-  // target_qty'si olmayan kilometre taşı işlerde durum set_task_milestone_status
-  // RPC'siyle doğrudan/manuel yönetilir (bkz. MilestoneStatusControl) — bu görevler
-  // için DB'deki status alanı zaten tek doğru kaynak, tarih/miktar tahminiyle
-  // ezilirse (ör. plan başlangıcı hâlâ ileride diye) kullanıcının seçtiği durum
-  // hiçbir zaman tabloya yansımaz.
-  if (!(Number(task.target_qty || 0) > 0)) return task.status || 'beklemede'
-
-  // Gerçek durum tamamlandı/iptal ise bu kesin kabul edilir — miktar tahmini asla ezmez
-  // (aksi halde hedefe tam ulaşmayan ama fiilen bitmiş bir görev "devam ediyor" görünür).
-  if (task.status === 'tamamlandi' || task.status === 'iptal') return task.status
-  if (pct >= 100) return 'tamamlandi'
-
-  const selected = new Date(`${date}T00:00:00`)
-  const start = task.planned_start ? new Date(`${task.planned_start}T00:00:00`) : null
-
-  if (start && selected < start) return 'bekliyor'
-  if (pct > 0) return 'devam_ediyor'
-  return task.status || 'bekliyor'
-}
-
-function isTaskLate(task, today) {
-  if (!task.planned_end) return false
-  if (task.status === 'tamamlandi' || task.status === 'iptal') return false
-  return new Date(task.planned_end) < today
-}
-
 export function statusLabel(status) {
   return STATUS_LABELS[status] || status?.replace(/_/g, ' ') || '-'
 }
@@ -380,13 +351,6 @@ export function riskSeverityLabel(task) {
     kritik: 'Kritik',
     çok_kritik: 'Çok Kritik',
   }[severity] || severity.replaceAll('_', ' ')
-}
-
-function pctFromDailyProgress(targetQty, dailyRows) {
-  if (targetQty <= 0) return 0
-
-  const dailyDone = (dailyRows || []).reduce((sum, row) => sum + Number(row.qty_added || 0), 0)
-  return Math.min(100, Math.round((dailyDone / targetQty) * 100))
 }
 
 // Genel İş Planı (Gantt, görsel zaman çizelgesi), Detaylı İş Planı (tam
@@ -594,6 +558,9 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     return () => { alive = false }
   }, [projectId, ganttData, ganttLoading, effectiveDate])
 
+  // Ekranın referans günü ('YYYY-MM-DD'): gecikme ve durum bu güne göre (lib/isPlan/delay).
+  const asOf = effectiveDate
+
   const today = useMemo(() => {
     const date = effectiveDate ? new Date(`${effectiveDate}T00:00:00`) : new Date()
     date.setHours(0, 0, 0, 0)
@@ -616,18 +583,18 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     if (statusFilter === 'devam') return task.status === 'devam_ediyor'
     if (statusFilter === 'tamamlandi') return task.status === 'tamamlandi'
     if (statusFilter === 'geciken') {
-      return isTaskLate(task, today)
+      return isTaskLate(task, asOf)
     }
     return true
-  }), [groupFilter, statusFilter, tasks, today])
+  }), [groupFilter, statusFilter, tasks, asOf])
 
   const withDates = filteredTasks.filter(t => t.planned_start && t.planned_end)
 
   const kpis = useMemo(() => {
     const ongoing = tasks.filter(t => t.status === 'devam_ediyor').length
-    const risky = tasks.filter(t => isTaskLate(t, today)).length
+    const risky = tasks.filter(t => isTaskLate(t, asOf)).length
     return { ongoing, risky }
-  }, [tasks, today])
+  }, [tasks, asOf])
 
   useEffect(() => {
     if (!selectedTaskId && withDates[0]) setSelectedTaskId(withDates[0].id)
@@ -692,7 +659,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
         {sectionToggle}
         <TabIsPlaniDetay
           tasks={tasks}
-          today={today}
+          asOf={asOf}
           allGroupNames={allGroupNames}
           canAddProgress={canAddProgress}
           onProgressSaved={refetch}
@@ -878,7 +845,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                 )}
 
                 {topGroupNodes.map(node => renderGanttGroupNode(node, {
-                  collapsed, toggleGroup, scale, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW,
+                  collapsed, toggleGroup, scale, asOf, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW,
                 }))}
               </div>
               </div>
@@ -898,7 +865,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
             group={selectedTask ? resolveGroup(selectedTask) : null}
             dailyPct={selectedTaskDailyPct}
             siteChief={siteChief}
-            isRisky={selectedTask ? isTaskLate(selectedTask, today) : false}
+            isRisky={selectedTask ? isTaskLate(selectedTask, asOf) : false}
             siteChiefView={siteChiefView}
             onClose={() => setPanelOpen(false)}
           />
