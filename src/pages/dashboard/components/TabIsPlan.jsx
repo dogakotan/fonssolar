@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
+import { createGanttScale, fitPxPerDay, ganttRange, gridBackground } from '../../../lib/isPlan'
 import { splitTaskName } from '../../../utils/taskName'
 import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { useDashboardData } from '../../../hooks/useDashboardData'
@@ -220,7 +221,6 @@ const W_START = 72
 const W_END = 72
 const W_DUR = 54
 const W_PROGRESS = 64
-const W_WEEK = 20
 export const GROUP_INDENT_PX = 20
 
 // Bir grup düğümünü (ve tüm alt dallarını) recursive olarak render eder —
@@ -231,7 +231,7 @@ export const GROUP_INDENT_PX = 20
 // başlık + "X görev | %Y" özeti) — iki görünüm aynı veri hiyerarşisini
 // paylaşır, yalnızca görsel kimlikleri ayrışık kalır (09.09.2026).
 function renderGanttGroupNode(node, ctx) {
-  const { collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW } = ctx
+  const { collapsed, toggleGroup, scale, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW } = ctx
   const isOpen = !collapsed.has(node.key)
   const allTasks = collectNodeTasks(node)
   const avg = allTasks.length
@@ -249,9 +249,8 @@ function renderGanttGroupNode(node, ctx) {
 
       {isOpen && node.tasks.map((task, index) => {
         const taskCfg = groupConfigFor(node.label)
-        const barLeft = timelineOffsetPct(task.planned_start, timelineStart, timelineUnits)
-        const barEnd = timelineOffsetPct(task.planned_end, timelineStart, timelineUnits) + (100 / timelineUnits)
-        const barWidth = Math.max(1.2, barEnd - barLeft)
+        // Çubuk, ay başlıkları ve "bugün" çizgisi aynı ölçekten (lib/isPlan/ganttScale): gün başına sabit piksel.
+        const bar = scale.span(task.planned_start, task.planned_end)
         const duration = daysBetween(task.planned_start, task.planned_end)
         const pct = Math.round(Number(task.progress_pct || 0))
         const isLate = isTaskLate(task, today)
@@ -287,8 +286,10 @@ function renderGanttGroupNode(node, ctx) {
             </span>
             <span
               className={`gantt-bar${isLate ? ' late' : ''}`}
-              style={{ '--bar-left': `${barLeft}%`, '--bar-width': `${barWidth}%`, '--bar-color': taskCfg.bar, '--progress': `${pct}%` }}
+              style={{ '--bar-left': `${bar.left}px`, '--bar-width': `${bar.width}px`, '--bar-color': taskCfg.bar, '--progress': `${pct}%` }}
               title={`${task.task_name || ''} - ${fmtDate(task.planned_start)} / ${fmtDate(task.planned_end)}`}
+              data-start={task.planned_start}
+              data-end={task.planned_end}
             >
               <i />
             </span>
@@ -315,52 +316,6 @@ export function fmtDate(date) {
 export function daysBetween(start, end) {
   if (!start || !end) return 0
   return Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1)
-}
-
-function buildTimeline(startTs, endTs) {
-  const months = []
-  const weeks = []
-  const start = new Date(startTs)
-  const end = new Date(endTs)
-  const timelineStart = new Date(start.getFullYear(), start.getMonth(), 1)
-  let cursor = new Date(start.getFullYear(), start.getMonth(), 1)
-
-  while (cursor.getTime() <= end.getTime()) {
-    const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
-    const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59)
-    const dayCount = monthEnd.getDate()
-    const monthTicks = []
-
-    for (let day = 1; day <= dayCount; day += 7) {
-      const tickDate = new Date(cursor.getFullYear(), cursor.getMonth(), day)
-      const tick = {
-        key: tickDate.toISOString().slice(0, 10),
-        label: String(day).padStart(2, '0'),
-      }
-      monthTicks.push(tick)
-      weeks.push(tick)
-    }
-
-    months.push({
-      key: `${cursor.getFullYear()}-${cursor.getMonth()}`,
-      label: cursor.toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' }),
-      start: monthStart,
-      end: monthEnd,
-      span: monthTicks.length,
-    })
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
-  }
-
-  return { months, weeks, timelineStart }
-}
-
-function timelineOffsetPct(date, timelineStart, timelineUnits) {
-  const start = new Date(timelineStart)
-  start.setHours(0, 0, 0, 0)
-  const current = new Date(date)
-  current.setHours(0, 0, 0, 0)
-  const dayOffset = Math.max(0, (current.getTime() - start.getTime()) / 86400000)
-  return Math.min(100, (dayOffset / timelineUnits) * 100)
 }
 
 function progressFor(task, progressMap) {
@@ -498,6 +453,19 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const topScrollRef = useRef(null)
   const bottomScrollRef = useRef(null)
   const bodyScrollRef = useRef(null)
+  // Gantt gövdesinin görünür genişliği: zaman çizelgesi kısa projede ekranı doldursun diye gün başına
+  // piksel buna göre büyür (en az 3 px). Başlık, çubuk ve "bugün" çizgisi yine aynı ölçeği kullanır.
+  const [scrollBodyWidth, setScrollBodyWidth] = useState(0)
+  const resizeObserverRef = useRef(null)
+  const attachScrollBody = useCallback(node => {
+    bodyScrollRef.current = node
+    resizeObserverRef.current?.disconnect()
+    resizeObserverRef.current = null
+    if (!node || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => setScrollBodyWidth(Math.floor(entry.contentRect.width)))
+    observer.observe(node)
+    resizeObserverRef.current = observer
+  }, [])
 
   const effectiveDate = useMemo(
     () => getEffectiveFilterDate(filterDate, reportPeriod),
@@ -755,16 +723,17 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     )
   }
 
-  const projStartTs = project?.start_date
-    ? new Date(project.start_date).getTime()
-    : Math.min(...withDates.map(t => new Date(t.planned_start).getTime()))
-  const projEndTs = project?.target_date
-    ? new Date(project.target_date).getTime()
-    : Math.max(...withDates.map(t => new Date(t.planned_end).getTime()))
-  const { months, weeks, timelineStart } = buildTimeline(projStartTs, projEndTs)
-  const timelineUnits = Math.max(1, weeks.length * 7)
-  const showToday = today.getTime() >= projStartTs && today.getTime() <= projEndTs
-  const todayOffsetPct = showToday ? timelineOffsetPct(today, timelineStart, timelineUnits) : 0
+  // Zaman çizelgesi: proje başlangıç/hedef tarihleri ve tüm görev tarihlerini kapsayan tam aylar
+  // (aralık dışındaki görev çubuğu kırpılmaz). Gün başına piksel kapsayıcıyı doldurur, en az 3 px.
+  const leftWidth = W_NO + nameW + wDetail + W_START + W_END + W_DUR + W_PROGRESS
+  const range = ganttRange({
+    projectStart: project?.start_date,
+    projectEnd: project?.target_date,
+    taskDates: withDates.flatMap(t => [t.planned_start, t.planned_end]),
+  })
+  const baseScale = createGanttScale(range)
+  const scale = createGanttScale({ ...range, pxPerDay: fitPxPerDay(scrollBodyWidth - leftWidth, baseScale.totalDays) })
+  const showToday = scale.contains(effectiveDate)
 
   // Genel İş Planı da Detaylı gibi çok seviyeli hiyerarşik ağacı kullanır
   // (buildGroupTree, " › " ayracına göre iç içe dallar) — 09.09.2026'da bunu
@@ -774,8 +743,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   // yalnızca renderGanttGroupNode'un KENDİ (renkli/tarihsiz) başlık stiliyle
   // render edilir, Detaylı'nın düz/beyaz+tarihli stili hiç kullanılmaz.
   const topGroupNodes = buildGroupTree(withDates)
-  const leftWidth = W_NO + nameW + wDetail + W_START + W_END + W_DUR + W_PROGRESS
-  const timelineWidth = weeks.length * W_WEEK
+  const timelineWidth = scale.width
   const minWidth = leftWidth + timelineWidth
 
   function toggleGroup(key) {
@@ -866,11 +834,16 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           <div className="gantt-scroll">
             <div
               className="gantt-scroll-body"
-              ref={bodyScrollRef}
+              ref={attachScrollBody}
               onScroll={syncScrollFromBody}
               onWheel={handleGanttWheel}
             >
-              <div className="gantt-board" style={{ '--gantt-min-width': `${minWidth}px`, '--left-width': `${leftWidth}px`, '--timeline-width': `${timelineWidth}px`, '--week-width': `${W_WEEK}px`, '--week-count': weeks.length }}>
+              <div
+                className="gantt-board"
+                style={{ '--gantt-min-width': `${minWidth}px`, '--left-width': `${leftWidth}px`, '--timeline-width': `${timelineWidth}px`, '--gantt-grid': gridBackground(scale) }}
+                data-px-per-day={scale.pxPerDay}
+                data-timeline-start={scale.startKey}
+              >
               <div className="gantt-header-row">
                 <div className="gantt-left-head" style={{ '--w-no': `${W_NO}px`, '--w-name': `${nameW}px`, '--w-detail': `${wDetail}px`, '--w-start': `${W_START}px`, '--w-end': `${W_END}px`, '--w-dur': `${W_DUR}px`, '--w-progress': `${W_PROGRESS}px` }}>
                   <span>No</span>
@@ -883,15 +856,15 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
                   <span>Süre</span>
                   <span>İlerleme</span>
                 </div>
-                <div className="gantt-timeline-head" style={{ '--week-count': weeks.length }}>
+                <div className="gantt-timeline-head">
                   <div className="gantt-months">
-                    {months.map(month => (
-                      <span key={month.key} style={{ '--month-span': month.span }}>{month.label}</span>
+                    {scale.months.map(month => (
+                      <span key={month.key} style={{ width: `${month.width}px` }} data-month-start={month.start}>{month.label}</span>
                     ))}
                   </div>
                   <div className="gantt-month-ticks">
-                    {weeks.map(week => (
-                      <span key={week.key}>{week.label}</span>
+                    {scale.ticks.map(tick => (
+                      <span key={tick.key} style={{ width: `${tick.width}px` }}>{tick.label}</span>
                     ))}
                   </div>
                 </div>
@@ -899,13 +872,13 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
 
               <div className="gantt-body">
                 {showToday && (
-                  <div className="gantt-today-line" style={{ '--today-left': `calc(${leftWidth}px + (100% - ${leftWidth}px) * ${todayOffsetPct / 100})` }}>
+                  <div className="gantt-today-line" style={{ '--today-left': `${leftWidth + scale.x(effectiveDate)}px` }} data-date={effectiveDate}>
                     <span>Bugün</span>
                   </div>
                 )}
 
                 {topGroupNodes.map(node => renderGanttGroupNode(node, {
-                  collapsed, toggleGroup, timelineStart, timelineUnits, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW,
+                  collapsed, toggleGroup, scale, today, selectedTaskId, setSelectedTaskId, setPanelOpen, detailOpen, toggleDetail, wDetail, nameW,
                 }))}
               </div>
               </div>
