@@ -633,6 +633,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           asOf={asOf}
           allGroupNames={allGroupNames}
           canAddProgress={canAddProgress}
+          role={role}
           onProgressSaved={refetch}
         />
       </div>
