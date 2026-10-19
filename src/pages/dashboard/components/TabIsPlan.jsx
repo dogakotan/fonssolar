@@ -2,7 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
 import {
-  createGanttScale, deriveTaskStatusAt, fitPxPerDay, ganttRange, gridBackground, isTaskLate, pctFromDailyProgress, progressFor,
+  createGanttScale, dayNumber, daysInclusive, deriveTaskStatusAt, effectiveFilterDate, fitPxPerDay, formatDate, ganttRange,
+  gridBackground, isTaskLate, pctFromDailyProgress, progressFor,
 } from '../../../lib/isPlan'
 import { splitTaskName } from '../../../utils/taskName'
 import { useDetailColumn } from '../../../hooks/useDetailColumn'
@@ -139,7 +140,7 @@ export function buildGroupTree(tasks) {
   }
 
   function earliestStart(node) {
-    return node.rangeStart ? new Date(node.rangeStart).getTime() : Infinity
+    return node.rangeStart ? dayNumber(node.rangeStart) : Infinity
   }
 
   function sortLevel(arr, isTop) {
@@ -310,33 +311,10 @@ export function resolveGroup(task) {
   return CATEGORY_FALLBACK_GROUP[task.category] || '_diger'
 }
 
-export function fmtDate(date) {
-  if (!date) return '-'
-  return new Date(date).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })
-}
-
-export function daysBetween(start, end) {
-  if (!start || !end) return 0
-  return Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1)
-}
-
-function getEffectiveFilterDate(dateText, period) {
-  const fallback = new Date().toISOString().split('T')[0]
-  const base = new Date(`${dateText || fallback}T00:00:00`)
-
-  if (period === 'weekly') {
-    const day = base.getDay()
-    const end = new Date(base)
-    end.setDate(base.getDate() + (day === 0 ? 0 : 7 - day))
-    return end.toISOString().slice(0, 10)
-  }
-
-  if (period === 'monthly') {
-    return new Date(base.getFullYear(), base.getMonth() + 1, 0).toISOString().slice(0, 10)
-  }
-
-  return dateText || fallback
-}
+// Tarih yardımcıları lib/isPlan/dates.js'te (saat diliminden bağımsız); eski adlar TabIsPlaniDetay ve
+// diğer içe aktaranlar için korunur.
+export const fmtDate = formatDate
+export const daysBetween = daysInclusive
 
 export function statusLabel(status) {
   return STATUS_LABELS[status] || status?.replace(/_/g, ' ') || '-'
@@ -431,8 +409,10 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     resizeObserverRef.current = observer
   }, [])
 
-  const effectiveDate = useMemo(
-    () => getEffectiveFilterDate(filterDate, reportPeriod),
+  // Ekranın referans günü (Karar İP-5): seçili filtre tarihi; günlükte o gün, haftalıkta haftanın pazarı,
+  // aylıkta ayın son günü. Tarih yoksa bugün (Europe/Istanbul). Gecikme ve durum bu güne göre hesaplanır.
+  const asOf = useMemo(
+    () => effectiveFilterDate(filterDate, reportPeriod),
     [filterDate, reportPeriod]
   )
 
@@ -456,7 +436,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
 
   const { data: ganttData, loading: ganttLoading, refreshing, error, refetch } = useDashboardData(
     'get_project_gantt',
-    { p_project_id: projectId, p_filter_date: effectiveDate },
+    { p_project_id: projectId, p_filter_date: asOf },
     { enabled: !!projectId }
   )
   const authorized = ganttData?.authorized ?? true
@@ -481,7 +461,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           ...task,
           // İlerleme her zaman günlük rapor/miktar verisinden gelir — durum etiketi
           // (tamamlandı/devam ediyor) bunu ezmez, sadece ayrı bir alan olarak gösterilir.
-          status: deriveTaskStatusAt(task, Number(task.progress_pct || 0), effectiveDate),
+          status: deriveTaskStatusAt(task, Number(task.progress_pct || 0), asOf),
         })))
         setSiteChief(null)
         setTaskTargetsAll([])
@@ -489,7 +469,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
         setLoading(false)
       })
     return () => { alive = false }
-  }, [projectId, effectiveDate])
+  }, [projectId, asOf])
 
   useEffect(() => {
     if (!projectId) return
@@ -508,7 +488,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           // İlerleme günlük rapor/miktar verisinden gelir (get_project_gantt'ın
           // progress_daily geçmişinden hesapladığı pct) — durum etiketi bunu ezmez.
           progress_pct: pct,
-          status: deriveTaskStatusAt(task, pct, effectiveDate),
+          status: deriveTaskStatusAt(task, pct, asOf),
         }
       })
 
@@ -532,7 +512,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           .from('daily_reports')
           .select('id')
           .eq('project_id', projectId)
-          .eq('report_date', effectiveDate)
+          .eq('report_date', asOf)
           .maybeSingle(),
       ])
 
@@ -556,16 +536,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
 
     load().catch(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [projectId, ganttData, ganttLoading, effectiveDate])
-
-  // Ekranın referans günü ('YYYY-MM-DD'): gecikme ve durum bu güne göre (lib/isPlan/delay).
-  const asOf = effectiveDate
-
-  const today = useMemo(() => {
-    const date = effectiveDate ? new Date(`${effectiveDate}T00:00:00`) : new Date()
-    date.setHours(0, 0, 0, 0)
-    return date
-  }, [effectiveDate])
+  }, [projectId, ganttData, ganttLoading, asOf])
 
   // Genel ve Detaylı İş Planı AYNI tam (ham, " › " dahil) group_label kümesini
   // paylaşır — ikisi de çok seviyeli hiyerarşiyi (buildGroupTree) kullanır,
@@ -642,7 +613,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           projectId={projectId}
           project={project}
           tasks={tasks}
-          today={today}
+          asOf={asOf}
           dataVersion={ganttData}
         />
       </div>
@@ -700,7 +671,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   })
   const baseScale = createGanttScale(range)
   const scale = createGanttScale({ ...range, pxPerDay: fitPxPerDay(scrollBodyWidth - leftWidth, baseScale.totalDays) })
-  const showToday = scale.contains(effectiveDate)
+  const showToday = scale.contains(asOf)
 
   // Genel İş Planı da Detaylı gibi çok seviyeli hiyerarşik ağacı kullanır
   // (buildGroupTree, " › " ayracına göre iç içe dallar) — 09.09.2026'da bunu
@@ -839,7 +810,7 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
 
               <div className="gantt-body">
                 {showToday && (
-                  <div className="gantt-today-line" style={{ '--today-left': `${leftWidth + scale.x(effectiveDate)}px` }} data-date={effectiveDate}>
+                  <div className="gantt-today-line" style={{ '--today-left': `${leftWidth + scale.x(asOf)}px` }} data-date={asOf}>
                     <span>Bugün</span>
                   </div>
                 )}

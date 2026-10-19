@@ -5,7 +5,7 @@ import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { StatusDot } from '../../../components/ui/Badge'
 import { TONE } from '../../../components/ui/StatusBadge'
 import { buildGroupTree, collectNodeTasks, compareTaskCode, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
-import { computeSapma, diffDays } from '../../../lib/isPlan'
+import { computeSapma, diffDays, formatDate, todayKey, toKey } from '../../../lib/isPlan'
 
 // Adim2IsKalemleri.jsx'teki wizard durum düzenleyicisiyle aynı 5 değer —
 // yalnız target_qty'si olmayan (miktarla ölçülemeyen, kilometre taşı) iş
@@ -24,7 +24,7 @@ const MILESTONE_STATUS_OPTIONS = [
 // kullanılmıyor.
 function fmtShort(date) {
   if (!date) return null
-  return new Date(date).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+  return toKey(date) ? formatDate(date, { shortYear: true }) : null
 }
 
 // Yalnız başlangıcı olan (hâlâ açık) görevde "?" gibi kafa karıştıran bir
@@ -177,7 +177,8 @@ function ProgressEntryModal({ task, onClose, onSaved }) {
       p_task_id: task.id,
       p_qty: qty,
       p_note: note.trim() || null,
-      p_report_date: new Date().toISOString().slice(0, 10),
+      // Bugün (Europe/Istanbul); eski toISOString() 00:00-03:00 arası girişi bir önceki güne yazıyordu.
+      p_report_date: todayKey(),
     })
     setSaving(false)
     if (rpcError) {

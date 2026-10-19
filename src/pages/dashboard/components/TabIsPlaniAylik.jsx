@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { splitTaskName } from '../../../utils/taskName'
 import { useDetailColumn } from '../../../hooks/useDetailColumn'
+import { todayKey } from '../../../lib/isPlan'
 import { buildGroupTree, collectNodeTasks, GROUP_INDENT_PX, groupConfigFor } from './TabIsPlan'
 import {
   buildMonthRange, buildTaskCells, categoryLabel, cellTooltip, fmtPct, fmtQty,
@@ -86,7 +87,7 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
   )
 }
 
-export default function TabIsPlaniAylik({ projectId, project, tasks, today, dataVersion }) {
+export default function TabIsPlaniAylik({ projectId, project, tasks, asOf, dataVersion }) {
   const [rows, setRows] = useState([])
   const [detailOpen, toggleDetail] = useDetailColumn()
   const [nameW, setNameW] = useState(200)
@@ -220,7 +221,8 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, today, data
     () => buildMonthRange(project?.start_date, project?.target_date, rows.map(r => monthKey(r.month))),
     [project?.start_date, project?.target_date, rows]
   )
-  const currentKey = monthKey(today || new Date())
+  // "Bu ay": ekranın referans günü (asOf, 'YYYY-MM-DD'); yoksa bugün (Europe/Istanbul).
+  const currentKey = monthKey(asOf || todayKey())
   const currentIndex = months.findIndex(m => m.key === currentKey)
 
   // Her görevin hücreleri bir kez hesaplanır; filtre/özet/ağaç bunları paylaşır.
