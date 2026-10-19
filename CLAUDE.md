@@ -1784,7 +1784,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Bilinen açık noktalar / ertelenmiş kararlar
 
-- **`supabase db push` bu depoda ÇALIŞTIRILMAZ** (canlıda olup yerelde olmayan 72, yerelde olup canlıda olmayan 56 sürüm var); kalıcı çözüm Karar 71 baseline paketi. (19.10.2026'da `supabase_migrations.schema_migrations` ile `supabase/migrations/` karşılaştırılarak sayıldı.) Canlıya migration bugüne kadar olduğu gibi tek tek `apply_migration` ile uygulanır; dosya canlı sürüm numarasıyla `supabase/migrations/`'a yazılır.
+- **`supabase db push` bu depoda ÇALIŞTIRILMAZ** (canlıda olup yerelde olmayan 72, yerelde olup canlıda olmayan 56 sürüm var); kalıcı çözüm Karar 71 baseline paketi. (19.10.2026'da `supabase_migrations.schema_migrations` ile `supabase/migrations/` karşılaştırılarak sayıldı; 72, canlıdaki iki İş Planı koruma migration'ının dosyalarını ekleyen PR #48 birleştikten sonraki sayı, ondan önce `main`'de 74.) Canlıya migration bugüne kadar olduğu gibi tek tek `apply_migration` ile uygulanır; dosya canlı sürüm numarasıyla `supabase/migrations/`'a yazılır.
 
 - **Gantt'ta "bugün" çizgisi ve çubuklar ay/hafta başlıklarından kayıyor (16.10.2026'da yayında ölçüldü).**
   - Eski ölçek her ayı tam hafta (29–31 gün = 5 × 7 gün) çiziyor; çizgi ve çubuklar gerçek gün sayısıyla konumlanıyor (`timelineOffsetPct`).
