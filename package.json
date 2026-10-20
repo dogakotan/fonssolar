@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test:e2e": "playwright test",
     "db:backup": "node scripts/db-backup/run-backup.mjs",
-    "test:unit": "node --test tests-unit/*.test.mjs"
+    "test:unit": "node scripts/test-unit-tz.mjs"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
