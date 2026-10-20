@@ -1,7 +1,21 @@
 # Register ekranı — yayın sırası (yalnızca okuma, ilk sürüm)
 
-Dal: `faz-2-3-register`. Hiçbir adım uygulanmadı. Her canlı adım ayrı onayla, SQL gösterilerek yapılır (CLAUDE.md kural 1).
+Dal: `register-ekran` (`origin/main`'den; yalnızca iki register commit'i). Hiçbir adım uygulanmadı.
+Her canlı adım ayrı onayla, SQL gösterilerek yapılır (CLAUDE.md kural 1). **Adım 1 kullanıcı "başla" demeden uygulanmaz.**
 **Mesai dışı ve harici yedek koşulu her canlı adımda ayrıca sorulur**; feragat edilmedikçe geçerlidir ("uygula" demek feragat değildir).
+
+## Durum (20.10.2026 10:20 İstanbul)
+
+| # | Adım | Durum |
+|---|---|---|
+| 0 | Ön kontrol | Parmak izi 20.10 07:20 UTC'de alındı: değerler aşağıdaki tabloyla aynı, yalnızca `bildirim` 1282. Prova bu tarihten sonra yeniden koşulacak |
+| 1 | Okuma fonksiyonları | **Bekliyor — kullanıcının "başla"sı** (mesai dışı / yedek sorusu o anda) |
+| 2 | Entegrasyon testi | Adım 1'i bekliyor |
+| 3 | PR (`register-ekran`) | Dal hazır, push yok; Adım 2'yi bekliyor |
+| 4 | Navigasyon | Adım 3'ün yayınını bekliyor |
+
+Bu sıranın dışında, ayrı: F5 migration dosyası dalı `migrations/f5-changes-claims-interfaces` (yalnızca
+`supabase/migrations/20261014082055_f5_changes_claims_interfaces.sql`; push/PR yok). Register adımlarına bağlı değil.
 
 ## Sıra (karar: 19.10.2026)
 
@@ -108,28 +122,24 @@ yalnızca görerek (gerçek kişi hesabı araçla kullanılmaz). Muhasebe 2 alt 
 
 ## Sonrası
 
-- Kural 7: `docs/proje-kontrol/docx-guncelleme-register.md` metni iki docx'e, Adım 1 doğrulandıktan sonra işlenir
+- Kural 7: `docs/register-docx-metni.md` metni iki docx'e, Adım 1 doğrulandıktan sonra işlenir
   (ekran bölümü Adım 4'ten sonra).
 - B1/B3 uygulandığında `register_view_allowed` gövdesi `register_can(p_register, 'view')` ile değiştirilir.
 
-## PR kapsamı (19.10.2026, `origin/main` = 65ca584)
+## PR kapsamı (20.10.2026, dal `register-ekran`, `origin/main` = 65ca584)
 
-`git diff --name-status origin/main...faz-2-3-register` 99 dosya; register işi dışında kalanlar **CLAUDE.md'den fazla**:
+Karar (20.10): `faz-2-3-register` olduğu gibi PR'a açılmaz. `register-ekran` `origin/main`'den açıldı; yalnızca iki
+register commit'i alındı (778a5df → 0f92ecf, 56979a5 → d60e069). Merge commit caab5f3 ve 14.10 geçmişi alınmadı.
+56979a5'teki iki `docs/proje-kontrol/` dosyası bu dala girmedi: durum tablosu değişikliği yalnızca `faz-2-3-register`'da,
+docx metni `docs/register-docx-metni.md`'ye taşındı. `docs/proje-kontrol/` hiçbir PR'da `main`'e girmez.
 
-| Dosya(lar) | Nereden geliyor |
-|---|---|
-| `docs/proje-kontrol/**` (73 dosya, hepsi yeni) | Dalın kendi geçmişi: 049ca92 … ceac9ba (14.10, Karar 73 ile dala alınan taslak SQL'ler, kararlar, rehber, şablonlar). `main`'de `docs/proje-kontrol/` yok |
-| `supabase/migrations/20261014082055_f5_changes_claims_interfaces.sql` | fbf5e3e — F5 canlıya 14.10'da uygulandı, `main`'de dosyası yok (repo tarihçesi eksiği) |
-| `scripts/db-backup/run-backup.mjs`, `scripts/db-backup/README.md` | 049ca92, 66c9260 (Karar 67, 76: pg_dump, OneDrive dışı yollar) |
-| `package.json` | `db:backup:data` betiği (049ca92); merge'de `test:unit` ile birlikte tutuldu |
-| `CLAUDE.md` | Dalın 14.10 girişleri + register girişi |
+`git diff --name-status origin/main...register-ekran`: 25 dosya. Register dışında yalnızca `CLAUDE.md`
+("Son değişiklik"e iki girdi; çakışma `main` sürümü alınıp girdiler eklenerek çözüldü).
 
-Register'a ait olanlar: `src/lib/register/`, `src/pages/dashboard/components/register/`, `Sidebar.jsx` (+1 öğe),
-`index.jsx` (+3 satır), `supabase/bekleyen/*register*`/`REGISTER_parmak_izi.sql`/`README.md`/`register_prova_sablon.sql`,
-`supabase/rollback/2026102009*`, `scripts/uret-register-prova.cjs`, `tests-unit/register-config.test.mjs`,
-`tests-register-mock/`, `playwright.register-mock.config.js`, `tests/register-canli-tiz.spec.js`, `docs/register-*.md`,
-`docs/proje-kontrol/register-gap-analizi.md` (durum tablosu), `docs/proje-kontrol/docx-guncelleme-register.md`.
+Register dosyaları: `src/lib/register/`, `src/pages/dashboard/components/register/`, `Sidebar.jsx` (+1 öğe),
+`index.jsx` (+3 satır), `supabase/bekleyen/` (6), `supabase/rollback/2026102009*` (2), `scripts/uret-register-prova.cjs`,
+`tests-unit/register-config.test.mjs`, `tests-register-mock/`, `playwright.register-mock.config.js`,
+`tests/register-canli-tiz.spec.js`, `docs/register-*.md` (3).
 
-Öneri (karar kullanıcıda): PR için `origin/main`'den yeni bir dal açıp yalnızca register commit'lerini almak
-(`git cherry-pick`; CLAUDE.md'de "Son değişiklik" çakışması beklenir). Böylece 14.10 belgeleri ve F5 migration dosyası
-ayrı bir karar/PR'a kalır. Alternatif: dalı olduğu gibi PR'a açmak (proje kontrol belgeleri `main`'e girer).
+Bu dalda (20.10): build başarılı, `npm run test:unit` 24/24, lint 0 hata (11 uyarı, önceden var), ağ taklitli Playwright 9/9.
+Eksik bağımlılık çıkmadı (`test:unit` betiği `main`'de zaten var).

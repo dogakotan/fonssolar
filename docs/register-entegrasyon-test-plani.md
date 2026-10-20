@@ -1,5 +1,14 @@
 # Register ekranı — entegrasyon test planı (yerel uygulama → canlı veritabanı, yalnızca okuma)
 
+> **Önce (kullanıcı):** ana klasördeki (`GES_Dashboard`) `.env` ve `.env.test` dosyalarını bu dalın klasörüne
+> (`GES_Dashboard-faz23`) **siz** kopyalayın. İçerik araçla okunmaz, yazdırılmaz.
+> İkisi de `.gitignore`'da (20.10.2026'da doğrulandı: `.gitignore` satır 19 `.env`, satır 22 `.env.test`; ikisi de git'te
+> takip edilmiyor), kopyalandıktan sonra commit'e girmez.
+>
+> **Okuma fonksiyonları canlıya uygulanmadan canlı spec koşmaz:** `tests/register-canli-tiz.spec.js` ilk iş
+> `get_register_list`'i arar; canlıda yoksa testi "get_register_list canlıda yok" diyerek atlar (geçti sayılmaz).
+> Bu yüzden bu plan yayın sırasındaki Adım 1'den (kullanıcı "başla" dedikten ve doğrulama tuttuktan) sonra uygulanır.
+
 Ne zaman: yayın sırasında Adım 1 (okuma fonksiyonları) canlıya uygulanıp doğrulandıktan sonra, PR açılmadan önce
 (`docs/register-yayin-sirasi.md`). Navigasyon satırları henüz yokken yapılır.
 
@@ -13,8 +22,8 @@ Kurallar:
 
 1. `.env.test`'teki `TEST_ADMIN_EMAIL`'in **test admin hesabı** olduğunu doğrulayın (14.10.2026'da genel "Admin"
    hesabıydı, Karar 90). Genel hesap ya da kişisel hesapsa önce test admin hesabını açıp `.env.test`'e yazın.
-2. `GES_Dashboard-faz23` klasöründe `.env` ve `.env.test` yok (19.10.2026). Ana klasördeki iki dosyayı bu klasöre
-   **siz** kopyalayın (içerik araçla okunmaz). Her ikisi de `.gitignore`'da.
+2. `.env` / `.env.test` kopyası (yukarıdaki kutu). 20.10.2026'da bu klasörde yoklardı. Klasör şu anda `register-ekran`
+   dalında; testi bu dalda koşun (`git branch --show-current`).
 3. 5173 portunda başka bir klasörün dev sunucusu çalışıyor (19.10: `GES_Dashboard-entegrasyon`). Playwright
    `reuseExistingServer` ile o sunucuya bağlanır ve **yanlış kodu** test eder. Bu yüzden ayrı port kullanılır (adım 2.1).
 
