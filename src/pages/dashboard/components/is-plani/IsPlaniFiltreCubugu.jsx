@@ -1,4 +1,4 @@
-import { DURUM_OPTIONS } from '../../../../lib/isPlan'
+import { DURUM_OPTIONS, SORUMLUSUZ } from '../../../../lib/isPlan'
 import { categoryLabel } from '../../../../utils/aylikPlan'
 import { groupConfigFor } from '../TabIsPlan'
 
@@ -28,9 +28,10 @@ export default function IsPlaniFiltreCubugu({ filters, setFilters, resetFilters,
         <option value="all">Tüm Kategoriler</option>
         {withSelected(categories, filters.kategori).map(c => <option key={c} value={c}>{categoryLabel(c)}</option>)}
       </select>
-      <select value={filters.sorumlu} onChange={event => setFilters({ sorumlu: event.target.value })} aria-label="Sorumlu" disabled={!responsibles.length && filters.sorumlu === 'all'}>
-        <option value="all">{responsibles.length ? 'Tüm Sorumlular' : 'Sorumlu atanmamış'}</option>
-        {withSelected(responsibles, filters.sorumlu).map(r => <option key={r} value={r}>{r}</option>)}
+      <select value={filters.sorumlu} onChange={event => setFilters({ sorumlu: event.target.value })} aria-label="Sorumlu">
+        <option value="all">Tüm Sorumlular</option>
+        <option value={SORUMLUSUZ}>Sorumlusuz</option>
+        {withSelected(responsibles, filters.sorumlu === SORUMLUSUZ ? 'all' : filters.sorumlu).map(r => <option key={r} value={r}>{r}</option>)}
       </select>
       <label className="is-plani-filtre-buay">
         <input type="checkbox" checked={filters.buAy} onChange={event => setFilters({ buAy: event.target.checked })} />

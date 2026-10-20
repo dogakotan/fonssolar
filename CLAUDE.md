@@ -2041,7 +2041,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 ## Son değişiklik
 
 **20.10.2026 — İş Planı 3A: ortak filtreler (`faz3-tek-sayfa`, yalnızca ön yüz; veritabanı değişikliği yok, push yok).**
-- Genel, Detaylı ve Aylık İş Planı tek filtre durumunu paylaşır: arama, durum (beklemede / devam / geciken / tamamlandı / askıda / iptal), grup, kategori, sorumlu (`responsible`, yoksa `responsible_role`; `get_project_gantt` zaten döndürüyor) ve "sadece bu ay".
+- Genel, Detaylı ve Aylık İş Planı tek filtre durumunu paylaşır: arama, durum (beklemede / devam / geciken / tamamlandı / askıda / iptal), grup, kategori, sorumlu (`responsible`, yoksa `responsible_role`; `get_project_gantt` zaten döndürüyor; "Sorumlusuz" seçeneği ikisi de boş olan görevler) ve "sadece bu ay".
 - Filtre çubuğu `components/is-plani/IsPlaniFiltreCubugu.jsx`, bölüm seçicinin altında; Gantt'ın durum/grup seçicileri, Detaylı'nın arama/durum/grup ve Aylık'ın arama/kategori/"bu ay" kontrolleri buraya taşındı. Detaylı'nın sıralaması ve Aylık'ın hücre modu yerinde.
 - Durum `src/hooks/useIsPlaniFiltreleri.js`: ekran değeri bileşen durumundan (anında), adres çubuğuna `replace` ile `?q=&grup=&durum=&kategori=&sorumlu=&buay=1` (varsayılanlar yazılmaz, `view` korunur) ve projeye özel `is-plani-filtre-<projectId>` localStorage'a yazılır. Adres yalnızca dışarıdan filtreli bir değere değişirse ekranı değiştirir; React Router v7 adresi geçiş içinde güncellediği için kontrollü girişler doğrudan adresten okunmaz (aksi halde arama kutusu harf kaybeder).
 - Süzme tek saf fonksiyonda: `filterTasks` (`src/lib/isPlan/filters.js`). "Bu ay": Genel ve Detaylı'da plan aralığı referans ayla çakışan görev; Aylık'ta referans ayda planı/gerçekleşeni olan görev (önceki davranış).

@@ -4,7 +4,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   DEFAULT_FILTERS, filterTasks, hasFilterParams, isFiltered, normalizeFilters, parseFilterParams, responsibleLabel,
-  taskOverlapsMonth, writeFilterParams,
+  SORUMLUSUZ, taskOverlapsMonth, writeFilterParams,
 } from '../../src/lib/isPlan/filters.js'
 
 const T = (id, extra = {}) => ({
@@ -44,6 +44,9 @@ test('grup, kategori, sorumlu ve arama birlikte (VE)', () => {
   assert.deepEqual(ids(filterTasks(tasks, { grup: 'Elektrik' }, { asOf })), ['E1', 'E2'])
   assert.deepEqual(ids(filterTasks(tasks, { kategori: 'elektrik_dc', sorumlu: 'Elektrik Şefi' }, { asOf })), ['E2'])
   assert.deepEqual(ids(filterTasks(tasks, { sorumlu: 'Ali Usta', durum: 'beklemede' }, { asOf })), [])
+  // Sorumlusuz: ne kişi ne rol atanmış (E1 kişili, E2 rollü)
+  assert.deepEqual(ids(filterTasks(tasks, { sorumlu: SORUMLUSUZ }, { asOf })), ['M1', 'M2', 'İ1', 'X1', 'S1'])
+  assert.deepEqual(parseFilterParams(writeFilterParams(new URLSearchParams(), { sorumlu: SORUMLUSUZ })).sorumlu, SORUMLUSUZ)
   // Türkçe büyük/küçük harf: "işletme" → "İşletme Binası"; kodda arama
   assert.deepEqual(ids(filterTasks(tasks, { q: 'işletme' }, { asOf })), ['İ1'])
   assert.deepEqual(ids(filterTasks(tasks, { q: '  e2 ' }, { asOf })), ['E2'])

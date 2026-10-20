@@ -89,6 +89,10 @@ export function responsibleLabel(task) {
   return String(task.responsible || task.responsible_role || '').trim()
 }
 
+// Sorumlu filtresinde "Sorumlusuz": ne kişi ne rol atanmış görevler. Gerçek bir ad olarak çıkmaması için
+// alt çizgili ayrılmış değer.
+export const SORUMLUSUZ = '_sorumlusuz'
+
 // Görevin plan aralığı referans günün ayıyla çakışıyor mu (Genel ve Detaylı'da "bu ay").
 export function taskOverlapsMonth(task, asOf) {
   const start = toKey(task.planned_start)
@@ -112,7 +116,7 @@ export function filterTasks(tasks, filters, { asOf, groupOf = t => t.group_label
   return tasks.filter(task => {
     if (f.grup !== 'all' && groupOf(task) !== f.grup) return false
     if (f.kategori !== 'all' && task.category !== f.kategori) return false
-    if (f.sorumlu !== 'all' && responsibleLabel(task) !== f.sorumlu) return false
+    if (f.sorumlu === SORUMLUSUZ ? responsibleLabel(task) !== '' : f.sorumlu !== 'all' && responsibleLabel(task) !== f.sorumlu) return false
     if (!matchesDurum(task, f.durum, asOf)) return false
     if (term) {
       const hay = `${task.task_code || ''} ${task.task_name || ''}`.toLocaleLowerCase('tr-TR')
