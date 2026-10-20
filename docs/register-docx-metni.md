@@ -1,7 +1,7 @@
 # Docx güncelleme metni — Register ekranı (yalnızca okuma) ve okuma fonksiyonları
 
 Bu metin `fons_solar_sistem_dokumantasyonu.docx` ve `fons_solar_veritabani_dokumantasyonu.docx`'e işlenir (CLAUDE.md
-kural 7). **Henüz işlenmedi.** Her bölüm, ilgili yayın adımı canlıda doğrulandıktan sonra işlenir
+kural 7). **20.10.2026: A.1, B.1, B.2 iki belgeye işlendi** (yedekler `*.yedek-20-10.docx`: sistem belgesi Masaüstü, veritabanı belgesi `C:/Users/fonss/Claude/Projects/Fons Solar/`); A.2, A.3, B.3 Adım 4 sonrası. Her bölüm, ilgili yayın adımı canlıda doğrulandıktan sonra işlenir
 (`docs/register-yayin-sirasi.md`); `<tarih>` ve `<sürüm>` o gün doldurulur.
 
 | Bölüm | Ne zaman işlenir |

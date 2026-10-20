@@ -1,5 +1,5 @@
 // Register ekranı — CANLI, yalnızca okuma, yalnızca TIZ (Karar 72). Hiçbir kayıt yazmaz.
-// Koşar: PW_TARGET=live VE canlıda get_register_list varsa (20261020090000_register_okuma_rpc uygulandıktan sonra).
+// Koşar: PW_TARGET=live VE canlıda get_register_list varsa (20261020080127_register_okuma_rpc, 20.10.2026 canlıda).
 // Yoksa atlanır. İki aşamada koşulabilir (docs/register-yayin-sirasi.md):
 //   * navigasyon ÖNCESİ (entegrasyon testi): yalnızca admin (tabs_unrestricted) sekmeye adresle girer; sidebar'da
 //     "Register" görünmemeli. Diğer roller atlanır (sekme izinleri henüz yok).
