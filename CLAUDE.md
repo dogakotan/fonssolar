@@ -2040,6 +2040,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**20.10.2026 (32. tur, `register-ekran`) — Register yayın hazırlığı; canlıya kalıcı değişiklik yok, push yok.**
+- Yayın sırası: okuma fonksiyonları → entegrasyon testi → PR → birleştirme → navigasyon. Belge `docs/register-yayin-sirasi.md` (beklenen md5'ler canlıda ROLLBACK içinde alındı), test planı `docs/register-entegrasyon-test-plani.md` (admin test hesabı; DYB2'deki iki RFI için elle kontrol listesi), docx metni `docs/register-docx-metni.md` (işlenmedi; CLAUDE.md kural 7).
+- Disiplin alanı Türkçe etikete eşleniyor (`DISCIPLINE_LABELS`); eşlemede olmayan değer ham. Canlıda disiplin kolonlarında kısıt/sözlük yok; dolu tek değer iki RFI'de serbest metin.
+- Yan panel geçmiş saati ve zaman damgalı tarih sütunları artık yerel saate göre (önce UTC'den kesiliyordu).
+- `tests/register-canli-tiz.spec.js`: varsayılan yalnızca admin (`REGISTER_LIVE_ROLES`); navigasyon öncesi de koşabiliyor.
+- Dal `origin/main`'den açıldı; yalnızca iki register commit'i alındı (`faz-2-3-register` dalındaki `docs/proje-kontrol/` dosyaları ve 14.10 geçmişi bu dala alınmadı).
+
 **19.10.2026 (31. tur, `register-ekran`) — Register ekranı ilk sürüm (yalnızca okuma); canlıya kalıcı değişiklik yok, push yok.**
 - Ön yüz: sidebar'da tek "Register" öğesi (`Sidebar.jsx`, `index.jsx` `register` sekmesi) → `components/register/TabRegister.jsx`. Adres `/dashboard/register?tur=<kod>&kayit=<id>`; proje seçimi `register-project` (localStorage), sütun seçimi register başına.
   - Alt sekmeler rol bazlı (Proje Kontrol Karar 6, görüntüleme kolonu): admin/PM 9; şantiye şefi RFI, Doküman (çizim süzgeci), Karar, Aksiyon, Teknik Sunum, Malzeme Onayı, Arayüz (Interface); muhasebe Değişiklik, Hak Talebi. Risk ilk sürümde yok (Satın Alma › Riskler). Kural tek yerde: `src/lib/register/registerConfig.js` (`REGISTER_TABS`; yeni register bu diziye eklenir).

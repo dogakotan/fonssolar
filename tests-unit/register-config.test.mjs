@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import {
   REGISTER_TABS, canViewRegister, visibleRegisterTabs, resolveRegisterTab, allColumns, defaultVisibleColumnKeys,
   parseRegisterNo, sortRows, filterRows, paginate, formatValue, PRIORITY_MAP, personIdsIn,
+  DISCIPLINE_LABELS, disciplineLabel,
 } from '../src/lib/register/registerConfig.js'
 
 const ROLLER = ['admin', 'proje_yoneticisi', 'santiye_sefi', 'muhasebe']
@@ -137,4 +138,40 @@ test('biçimlendirme: boş değer, tarih, kişi', () => {
   assert.equal(formatValue(kisi, 'u1', { names: new Map([['u1', { full_name: 'Ayşe' }]]) }), 'Ayşe')
   assert.equal(formatValue(kisi, 'u2', { names: new Map() }), '—')
   assert.deepEqual(personIdsIn([{ assigned_to: 'a', raised_by: 'b' }, { assigned_to: 'a' }], tab).sort(), ['a', 'b'])
+})
+
+test('disiplin: anahtar Türkçe etikete, eşlemede olmayan değer ham haliyle', () => {
+  const beklenen = { civil: 'İnşaat', mechanical: 'Mekanik', dc: 'DC', ac: 'AC', mv: 'Orta gerilim', hv: 'Yüksek gerilim',
+    enh: 'ENH', scada: 'SCADA', general: 'Genel' }
+  assert.deepEqual(DISCIPLINE_LABELS, beklenen)
+  for (const [k, v] of Object.entries(beklenen)) assert.equal(disciplineLabel(k), v)
+  // 19.10.2026 canlı: iki RFI'de serbest metin
+  assert.equal(disciplineLabel('Elektrik / Tasarım'), 'Elektrik / Tasarım')
+  assert.equal(disciplineLabel('CIVIL'), 'CIVIL')
+  assert.equal(disciplineLabel(null), '—')
+  assert.equal(disciplineLabel(''), '—')
+})
+
+test('disiplin sütunu üç register\'da etiketle biçimlenir ve aranır', () => {
+  for (const key of ['rfi', 'document', 'submittal']) {
+    const c = allColumns(REGISTER_TABS.find(t => t.key === key)).find(x => x.key === 'discipline')
+    assert.equal(c.type, 'discipline', key)
+    assert.equal(formatValue(c, 'mv'), 'Orta gerilim')
+    assert.equal(formatValue(c, 'Elektrik / Tasarım'), 'Elektrik / Tasarım')
+  }
+  const c = allColumns(REGISTER_TABS[0]).find(x => x.key === 'discipline')
+  const rows = [{ discipline: 'mv' }, { discipline: 'dc' }, { discipline: 'Elektrik / Tasarım' }]
+  assert.equal(filterRows(rows, 'orta gerilim', [c]).length, 1)
+  assert.equal(filterRows(rows, 'elektrik', [c]).length, 1)
+  const sirali = sortRows(rows, c, 'asc').map(r => formatValue(c, r.discipline))
+  assert.deepEqual(sirali, ['DC', 'Elektrik / Tasarım', 'Orta gerilim'])
+})
+test('zaman damgası kullanıcının yerel gününe çevrilir; date değeri olduğu gibi', () => {
+  const c = allColumns(REGISTER_TABS[0]).find(x => x.key === 'created_at')
+  assert.equal(formatValue(c, '2026-10-15'), '2026-10-15')
+  const ts = '2026-10-15T22:30:00Z'
+  const d = new Date(ts)
+  const beklenen = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  assert.equal(formatValue(c, ts), beklenen)
+  assert.equal(formatValue(c, 'tarih değil'), 'tarih değil')
 })

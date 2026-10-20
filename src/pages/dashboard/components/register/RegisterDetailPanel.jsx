@@ -5,6 +5,14 @@ import { StatusDot } from '../../../../components/ui/Badge'
 import { allColumns, parseRegisterNo } from '../../../../lib/register/registerConfig'
 import RegisterCell from './RegisterCell'
 
+// Geçmiş zamanı UTC saklanır; kullanıcının yerel saatiyle gösterilir (ör. 06:08 UTC → 09:08 İstanbul).
+function formatDateTime(value) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value)
+  return d.toLocaleString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
 // Yan panel: kaydın bütün alanları + durum geçmişi (get_register_status_history). Yalnızca okuma.
 export default function RegisterDetailPanel({ tab, registerKey, row, prefix, names, onClose }) {
   const [history, setHistory] = useState({ loading: true, data: null, error: '' })
@@ -91,7 +99,7 @@ export default function RegisterDetailPanel({ tab, registerKey, row, prefix, nam
             <ol className="register-history-list">
               {history.data.history.map((h, i) => (
                 <li key={i}>
-                  <span className="register-muted">{String(h.changed_at || '').slice(0, 16).replace('T', ' ')}</span>
+                  <span className="register-muted">{formatDateTime(h.changed_at)}</span>
                   <span>
                     {h.old_status
                       ? <><StatusDot map={statusColumn.map} value={h.old_status} /> → </>

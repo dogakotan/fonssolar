@@ -27,6 +27,26 @@ export const REVISION_STATUS_MAP = {
   as_built: { label: 'As-built',            tone: 'success' },
 }
 
+// Disiplin anahtarı → Türkçe etiket (Karar 20 listesi). Eşlemede olmayan değer ham haliyle gösterilir:
+// 19.10.2026'da canlıda disiplin kolonlarında kısıt/sözlük tablosu yok; dolu tek değer iki RFI'de serbest metin
+// "Elektrik / Tasarım" (documents/technical_submittals boş).
+export const DISCIPLINE_LABELS = {
+  civil: 'İnşaat',
+  mechanical: 'Mekanik',
+  dc: 'DC',
+  ac: 'AC',
+  mv: 'Orta gerilim',
+  hv: 'Yüksek gerilim',
+  enh: 'ENH',
+  scada: 'SCADA',
+  general: 'Genel',
+}
+
+export function disciplineLabel(value) {
+  if (value === null || value === undefined || value === '') return '—'
+  return DISCIPLINE_LABELS[value] || String(value)
+}
+
 const ONAY_DURUMLARI = {
   draft:                  { label: 'Taslak',            tone: 'muted' },
   submitted:              { label: 'Gönderildi',        tone: 'primary' },
@@ -66,7 +86,7 @@ export const REGISTER_TABS = [
       col('due_date', 'Termin', 'date', { default: true }),
       col('assigned_to', 'Sorumlu', 'person', { default: true }),
       col('raised_by', 'Açan', 'person'),
-      col('discipline', 'Disiplin'),
+      col('discipline', 'Disiplin', 'discipline'),
       col('answered_date', 'Cevap tarihi', 'date'),
     ],
     detail: [col('question', 'Soru', 'long'), col('description', 'Açıklama', 'long'), col('response', 'Cevap', 'long')],
@@ -83,7 +103,7 @@ export const REGISTER_TABS = [
       col('revision_no', 'Revizyon', 'text', { default: true }),
       col('revision_status', 'Revizyon durumu', 'status', { default: true, map: REVISION_STATUS_MAP }),
       col('document_type', 'Tür', 'text', { default: true }),
-      col('discipline', 'Disiplin'),
+      col('discipline', 'Disiplin', 'discipline'),
       col('issue_date', 'Yayın tarihi', 'date'),
       col('drawing_type', 'Çizim türü'),
       col('created_by', 'Oluşturan', 'person'),
@@ -133,7 +153,7 @@ export const REGISTER_TABS = [
       col('revision', 'Revizyon', 'text', { default: true }),
       col('submitted_date', 'Gönderim', 'date', { default: true }),
       col('due_date', 'Termin', 'date', { default: true }),
-      col('discipline', 'Disiplin'),
+      col('discipline', 'Disiplin', 'discipline'),
       col('supplier_name', 'Tedarikçi'),
       col('reviewer_id', 'İnceleyen', 'person'),
       col('reviewed_date', 'İnceleme tarihi', 'date'),
@@ -271,9 +291,14 @@ export function formatValue(column, value, { names } = {}) {
   if (value === null || value === undefined || value === '') return '—'
   switch (column.type) {
     case 'date': {
-      const s = String(value).slice(0, 10)
-      return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : String(value)
+      const s = String(value)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s // date kolonu: olduğu gibi
+      const d = new Date(s) // timestamptz: kullanıcının yerel gününe çevrilir (UTC kesmesi gece yarısı kayardı)
+      if (Number.isNaN(d.getTime())) return s
+      const p = n => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
     }
+    case 'discipline': return disciplineLabel(value)
     case 'money': return Number(value).toLocaleString('tr-TR', { maximumFractionDigits: 2 })
     case 'person': return names?.get?.(value)?.full_name || '—'
     case 'enum':
