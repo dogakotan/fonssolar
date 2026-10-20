@@ -1994,17 +1994,27 @@ body, #root { overflow-x: hidden; }
   .invoice-detail-approval-actions button { min-width:0!important; padding:8px 7px!important; font-size:10px!important; }
 }
 
+/* ── İş Planı ortak filtre çubuğu (is-plani/IsPlaniFiltreCubugu.jsx) ────────
+   Bölüm seçicinin altında; Genel, Detaylı ve Aylık aynı filtreyi kullanır. */
+.is-plani-filtre { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 12px; }
+.is-plani-filtre select,
+.is-plani-filtre-ara { border: 1px solid var(--color-border-md); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-family: inherit; color: var(--color-text); background: var(--color-surface); }
+.is-plani-filtre-ara { min-width: 200px; flex: 0 1 240px; }
+.is-plani-filtre select:disabled { color: var(--color-muted); }
+.is-plani-filtre-buay { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text); white-space: nowrap; cursor: pointer; }
+.is-plani-filtre-temizle { background: none; border: 0; padding: 7px 4px; font: 600 12px/1 inherit; font-family: inherit; color: var(--color-primary); cursor: pointer; }
+@media (max-width: 700px) {
+  .is-plani-filtre select, .is-plani-filtre-ara { flex: 1 1 140px; min-width: 0; }
+}
+
 /* ── Aylık İş Planı (TabIsPlaniAylik.jsx) ──────────────────────────────────
    Görev × ay ızgarası. Sol 4 kolon (Kod, İş Kalemi, Birim, Hedef) yatay
    kaydırmada sabit; mobilde yalnızca İş Kalemi sabit (kod onun içine alınır). */
-.aylik-plan .gantt-toolbar select,
-.aylik-search { border: 1px solid var(--color-border-md); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-family: inherit; color: var(--color-text); background: var(--color-surface); }
-.aylik-search { min-width: 180px; }
+.aylik-plan .gantt-toolbar select { border: 1px solid var(--color-border-md); border-radius: 8px; padding: 7px 10px; font-size: 12.5px; font-family: inherit; color: var(--color-text); background: var(--color-surface); }
 .aylik-mode { display: inline-flex; border: 1px solid var(--color-border-md); border-radius: 8px; overflow: hidden; }
 .aylik-mode button { background: var(--color-surface); border: 0; border-left: 1px solid var(--color-border-md); padding: 7px 10px; font: 600 12px/1 inherit; font-family: inherit; color: var(--color-muted); cursor: pointer; white-space: nowrap; }
 .aylik-mode button:first-child { border-left: 0; }
 .aylik-mode button.active { background: var(--color-primary); color: #fff; }
-.aylik-only-current { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text); white-space: nowrap; cursor: pointer; }
 
 .aylik-scroll { overflow: auto; max-height: 640px; border-top: 1px solid var(--color-border); }
 .aylik-table { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 11.5px; }
@@ -2074,7 +2084,6 @@ th.aylik-col-detay { color: var(--color-primary) !important; user-select: none; 
 .aylik-legend .sw-current { background: var(--color-primary-bg); border-color: var(--color-primary); }
 
 @media (max-width: 700px) {
-  .aylik-search { min-width: 0; flex: 1 1 160px; }
   .aylik-mode { width: 100%; }
   .aylik-mode button { flex: 1; padding: 7px 6px; }
   .aylik-scroll { max-height: 70vh; }

@@ -4,19 +4,8 @@ import { splitTaskName } from '../../../utils/taskName'
 import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { StatusDot } from '../../../components/ui/Badge'
 import { TONE } from '../../../components/ui/StatusBadge'
-import { buildGroupTree, collectNodeTasks, compareTaskCode, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
-import { computeSapma, diffDays, formatDate, todayKey, toKey } from '../../../lib/isPlan'
-
-// Adim2IsKalemleri.jsx'teki wizard durum düzenleyicisiyle aynı 5 değer —
-// yalnız target_qty'si olmayan (miktarla ölçülemeyen, kilometre taşı) iş
-// kalemlerinde gösterilen durum güncelleme seçici için.
-const MILESTONE_STATUS_OPTIONS = [
-  { v: 'beklemede', l: 'Beklemede' },
-  { v: 'devam_ediyor', l: 'Devam Ediyor' },
-  { v: 'tamamlandi', l: 'Tamamlandı' },
-  { v: 'askida', l: 'Askıda' },
-  { v: 'iptal', l: 'İptal' },
-]
+import { buildGroupTree, collectNodeTasks, compareTaskCode, daysBetween, GROUP_INDENT_PX, riskSeverityLabel } from './TabIsPlan'
+import { computeSapma, diffDays, formatDate, milestoneStatusMenu, todayKey, toKey } from '../../../lib/isPlan'
 
 // Tablo başlıkla birlikte sayfaya sığsın diye tam yıl yerine 2 haneli yıl —
 // Plan/Gerçek başlangıç-bitiş tek kolonda "gg.aa.yy – gg.aa.yy" olarak
@@ -104,8 +93,11 @@ const BASE_COLUMN_COUNT = 13
 // Tablo satırı içine sığan, kutu/etiket olmayan sade bir durum seçici —
 // TabIsPlan.jsx'teki (Gantt detay panelindeki) MilestoneStatusControl'ün
 // aynı RPC'yi (set_task_milestone_status) çağıran, satır-içi sıkıştırılmış hâli.
-function InlineMilestoneStatus({ task, onSaved }) {
+// Seçenekler role göre (lib/isPlan/statusMenu.js): şantiye şefi İptal'i görmez, iptal edilmiş görevde menü
+// salt okunur (DB'deki 130100 eki ile aynı kural).
+function InlineMilestoneStatus({ task, role, onSaved }) {
   const [status, setStatus] = useState(task.status)
+  const menu = milestoneStatusMenu(role, task.status)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -135,14 +127,17 @@ function InlineMilestoneStatus({ task, onSaved }) {
       <select
         value={status}
         onChange={handleChange}
-        disabled={saving}
+        disabled={saving || menu.readOnly}
+        title={menu.reason || undefined}
+        aria-readonly={menu.readOnly || undefined}
         style={{
           border: '1px solid var(--color-border-md)', borderRadius: 6,
           padding: '3px 5px', font: 'inherit', fontSize: 10.5, fontWeight: 600,
-          color: 'var(--color-text)', background: '#fff', cursor: saving ? 'wait' : 'pointer',
+          color: 'var(--color-text)', background: menu.readOnly ? 'var(--color-bg)' : '#fff',
+          cursor: menu.readOnly ? 'not-allowed' : saving ? 'wait' : 'pointer',
         }}
       >
-        {MILESTONE_STATUS_OPTIONS.map(opt => (
+        {menu.options.map(opt => (
           <option key={opt.v} value={opt.v}>{opt.l}</option>
         ))}
       </select>
@@ -296,7 +291,7 @@ function buildDetayRows(node, ctx) {
 }
 
 function buildDetayTaskRow(task, depth, ctx) {
-  const { canAddProgress, setProgressTask, onProgressSaved, detailOpen, toggleDetail } = ctx
+  const { canAddProgress, role, setProgressTask, onProgressSaved, detailOpen, toggleDetail } = ctx
   const sapma = task._sapma ?? null
   const duration = task.duration_days || daysBetween(task.planned_start, task.planned_end)
   const isLate = sapma !== null && sapma > 0 && task.status !== 'tamamlandi' && task.status !== 'iptal' && !task.actual_end
@@ -341,7 +336,7 @@ function buildDetayTaskRow(task, depth, ctx) {
               + İlerleme Gir
             </button>
           ) : (
-            <InlineMilestoneStatus task={task} onSaved={onProgressSaved} />
+            <InlineMilestoneStatus task={task} role={role} onSaved={onProgressSaved} />
           )}
         </td>
       )}
@@ -356,28 +351,19 @@ function buildDetayTaskRow(task, depth, ctx) {
 // Gruplama/aç-kapa Gantt'la aynı görsel dili (.gantt-group-row/tone-*) ve aynı
 // grup sırasını (GROUP_ORDER → bilinmeyenler en erken plan tarihine göre → _diğer
 // en sonda) paylaşır — kullanıcı iki görünüm arasında geçince aynı bölümleri tanır.
-export default function TabIsPlaniDetay({ tasks, asOf, allGroupNames, canAddProgress = false, onProgressSaved }) {
-  const [search, setSearch] = useState('')
-  const [groupFilter, setGroupFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+// `tasks` üst bileşende ortak filtreyle (arama/grup/durum/kategori/sorumlu/bu ay, 3A) süzülmüş gelir;
+// burada yalnızca sıralama yerel.
+export default function TabIsPlaniDetay({ tasks, filtered = false, asOf, canAddProgress = false, role = null, onProgressSaved }) {
   const [sortBy, setSortBy] = useState('kod')
   const [detailOpen, toggleDetail] = useDetailColumn()
   const [collapsed, setCollapsed] = useState(new Set())
   const [progressTask, setProgressTask] = useState(null)
   const columnCount = canAddProgress ? BASE_COLUMN_COUNT + 1 : BASE_COLUMN_COUNT
 
-  const filteredRows = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('tr-TR')
-    return tasks.filter(task => {
-      if (groupFilter !== 'all' && resolveGroup(task) !== groupFilter) return false
-      if (statusFilter !== 'all' && task.status !== statusFilter) return false
-      if (term) {
-        const hay = `${task.task_code || ''} ${task.task_name || ''}`.toLocaleLowerCase('tr-TR')
-        if (!hay.includes(term)) return false
-      }
-      return true
-    }).map(task => ({ task, sapma: computeSapma(task, asOf) }))
-  }, [tasks, search, groupFilter, statusFilter, asOf])
+  const filteredRows = useMemo(
+    () => tasks.map(task => ({ task, sapma: computeSapma(task, asOf) })),
+    [tasks, asOf]
+  )
 
   // Gantt'ın (Genel İş Planı) kullandığı ÇOK SEVİYELİ ağaç burada da birebir
   // paylaşılıyor — öncesinde bu tablo `resolveGroup` ile tek seviyeli düz bir
@@ -403,37 +389,15 @@ export default function TabIsPlaniDetay({ tasks, asOf, allGroupNames, canAddProg
     })
   }
 
-  function resetFilter(setter) {
-    return event => setter(event.target.value)
-  }
-
   return (
     <div className="card gantt-card">
       <div className="gantt-card-header">
         <div>
           <h3>Detaylı İş Planı</h3>
-          <p>{filteredRows.length} iş kalemi{search || groupFilter !== 'all' || statusFilter !== 'all' ? ' (filtrelendi)' : ''}</p>
+          <p>{filteredRows.length} iş kalemi{filtered ? ' (filtrelendi)' : ''}</p>
         </div>
         <div className="gantt-toolbar" style={{ flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            value={search}
-            onChange={event => setSearch(event.target.value)}
-            placeholder="Kod veya görev adı ara…"
-            style={{
-              border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '7px 10px',
-              fontSize: 12.5, fontFamily: 'inherit', minWidth: 180, color: 'var(--color-text)', background: 'var(--color-surface)',
-            }}
-          />
-          <select value={statusFilter} onChange={resetFilter(setStatusFilter)}>
-            <option value="all">Tüm Durumlar</option>
-            {Object.entries(TASK_STATUS).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
-          </select>
-          <select value={groupFilter} onChange={resetFilter(setGroupFilter)}>
-            <option value="all">Tüm Gruplar</option>
-            {allGroupNames.map(group => <option key={group} value={group}>{groupConfigFor(group).label}</option>)}
-          </select>
-          <select value={sortBy} onChange={resetFilter(setSortBy)}>
+          <select value={sortBy} onChange={event => setSortBy(event.target.value)} aria-label="Sıralama">
             {SORT_OPTIONS.map(opt => <option key={opt.v} value={opt.v}>{opt.l}</option>)}
           </select>
         </div>
@@ -465,7 +429,7 @@ export default function TabIsPlaniDetay({ tasks, asOf, allGroupNames, canAddProg
               </tr>
             </thead>
             <tbody>
-              {groupTree.flatMap(node => buildDetayRows(node, { collapsed, toggleGroup, columnCount, canAddProgress, setProgressTask, onProgressSaved, detailOpen, toggleDetail }))}
+              {groupTree.flatMap(node => buildDetayRows(node, { collapsed, toggleGroup, columnCount, canAddProgress, role, setProgressTask, onProgressSaved, detailOpen, toggleDetail }))}
             </tbody>
           </table>
         </div>
