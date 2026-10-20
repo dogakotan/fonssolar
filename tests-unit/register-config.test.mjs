@@ -29,7 +29,7 @@ test('çizim, doküman kuralını izler; risk ilk sürümde yok', () => {
 })
 
 test('ön yüz matrisi veritabanındaki register_view_allowed ile aynı', () => {
-  const sql = readFileSync(new URL('../supabase/bekleyen/20261020090000_register_okuma_rpc.sql', import.meta.url), 'utf8')
+  const sql = readFileSync(new URL('../supabase/migrations/20261020080127_register_okuma_rpc.sql', import.meta.url), 'utf8')
   const govde = sql.slice(sql.indexOf('function public.register_view_allowed'), sql.indexOf('function public.get_register_list'))
   const dallar = [...govde.matchAll(/when p_register in \(([^)]*)\)\s*then coalesce\(p_role in \(([^)]*)\)/g)]
   assert.equal(dallar.length, 2)

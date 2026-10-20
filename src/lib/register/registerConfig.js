@@ -1,6 +1,6 @@
 // Register ekranının saf yapılandırması ve yardımcıları (React/Supabase bağımlılığı yok; tests-unit'ten doğrudan
 // test edilir). Rol görünürlüğü Karar 6 "G" kolonudur; veritabanındaki register_view_allowed() ile aynı olmalı
-// (supabase/bekleyen/20261020090000_register_okuma_rpc.sql). B1 gelince ikisi de register_permissions'tan okunur.
+// (supabase/migrations/20261020080127_register_okuma_rpc.sql). B1 gelince ikisi de register_permissions'tan okunur.
 
 const TEKNIK_ROLLER = ['admin', 'proje_yoneticisi', 'santiye_sefi']
 const SOZLESME_ROLLER = ['admin', 'proje_yoneticisi', 'muhasebe']

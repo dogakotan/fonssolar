@@ -9,9 +9,9 @@ const repo = path.resolve(__dirname, '..')
 const read = p => fs.readFileSync(path.join(repo, p), 'utf8')
 const md5 = s => crypto.createHash('md5').update(s, 'utf8').digest('hex')
 
-const mig = read('supabase/bekleyen/20261020090000_register_okuma_rpc.sql')
+const mig = read('supabase/migrations/20261020080127_register_okuma_rpc.sql')
 const nav = read('supabase/bekleyen/20261020090100_register_navigasyon.sql')
-const migDown = read('supabase/rollback/20261020090000_register_okuma_rpc.down.sql')
+const migDown = read('supabase/rollback/20261020080127_register_okuma_rpc.down.sql')
 const navDown = read('supabase/rollback/20261020090100_register_navigasyon.down.sql')
 let t = read('supabase/bekleyen/register_prova_sablon.sql')
 for (const [k, v] of Object.entries({ '@@MIGRATION@@': mig, '@@NAVIGATION@@': nav,

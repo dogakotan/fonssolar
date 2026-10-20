@@ -78,7 +78,7 @@ Kapak tarih satırı:
 | `get_register_status_history(p_register, p_record_id)` | okuma, SECURITY INVOKER | Kaydın `register_status_history` satırları (eski/yeni durum, değiştiren, zaman). Kayıt çağıranın erişebildiği ana tablodan okunamıyorsa ya da matris izin vermiyorsa `{authorized: false}`; geçmiş tutulmayan register'larda (`document`, `submittal`, `material_approval`) `tracked: false` |
 
 > Üçü de `authenticated` rolüne açık; `anon` ve PUBLIC'e kapalı. Çağıranın yetkisiyle çalıştıkları için tabloların
-> satır düzeyi kurallarından geniş veri döndüremezler. Migration: `<sürüm>_register_okuma_rpc`.
+> satır düzeyi kurallarından geniş veri döndüremezler. Migration: `20261020080127_register_okuma_rpc` (20.10.2026).
 
 ### B.2 Güvenlik notu (B.1'in altına)
 

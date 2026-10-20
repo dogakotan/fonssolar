@@ -1,16 +1,16 @@
 # Register ekranı — yayın sırası (yalnızca okuma, ilk sürüm)
 
-Dal: `register-ekran` (`origin/main`'den; yalnızca iki register commit'i). Hiçbir adım uygulanmadı.
+Dal: `register-ekran` (`origin/main`'den; yalnızca iki register commit'i). Adım 1 uygulandı (20.10.2026); diğerleri bekliyor.
 Her canlı adım ayrı onayla, SQL gösterilerek yapılır (CLAUDE.md kural 1). **Adım 1 kullanıcı "başla" demeden uygulanmaz.**
 **Mesai dışı ve harici yedek koşulu her canlı adımda ayrıca sorulur**; feragat edilmedikçe geçerlidir ("uygula" demek feragat değildir).
 
-## Durum (20.10.2026 10:20 İstanbul)
+## Durum (20.10.2026 11:05 İstanbul)
 
 | # | Adım | Durum |
 |---|---|---|
-| 0 | Ön kontrol | Parmak izi 20.10 07:20 UTC'de alındı: değerler aşağıdaki tabloyla aynı, yalnızca `bildirim` 1282. Prova bu tarihten sonra yeniden koşulacak |
-| 1 | Okuma fonksiyonları | **Bekliyor — kullanıcının "başla"sı** (mesai dışı / yedek sorusu o anda) |
-| 2 | Entegrasyon testi | Adım 1'i bekliyor |
+| 0 | Ön kontrol | **Tamam (20.10 10:54 İstanbul):** askıda işlem 0; parmak izi aşağıdaki tabloyla aynı (`bildirim` 1282); prova 11/11, prova sonrası parmak izi birebir |
+| 1 | Okuma fonksiyonları | **Uygulandı (20.10.2026 ~11:01 İstanbul), canlı sürüm `20261020080127`.** Kullanıcı bu adım için mesai dışı ve harici yedek koşulundan açıkça feragat etti (gerekçe: yalnızca yeni fonksiyon, veri değişmiyor, ters SQL hazır). Doğrulama "Adım 1" bölümünde |
+| 2 | Entegrasyon testi | Koşulabilir; kullanıcıdan `.env`/`.env.test` kopyası ve test admin hesabı teyidi bekleniyor |
 | 3 | PR (`register-ekran`) | Dal hazır, push yok; Adım 2'yi bekliyor |
 | 4 | Navigasyon | Adım 3'ün yayınını bekliyor |
 
@@ -22,7 +22,7 @@ Bu sıranın dışında, ayrı: F5 migration dosyası dalı `migrations/f5-chang
 | # | Adım | Dosya | Ters SQL |
 |---|---|---|---|
 | 0 | Ön kontrol: parmak izi + prova | `supabase/bekleyen/REGISTER_parmak_izi.sql`, `supabase/bekleyen/20261020090000_register_okuma_rpc_prova.sql` | — (prova ROLLBACK ile biter) |
-| 1 | Okuma fonksiyonları | `supabase/bekleyen/20261020090000_register_okuma_rpc.sql` | `supabase/rollback/20261020090000_register_okuma_rpc.down.sql` |
+| 1 | Okuma fonksiyonları | `supabase/migrations/20261020080127_register_okuma_rpc.sql` | `supabase/rollback/20261020080127_register_okuma_rpc.down.sql` |
 | 2 | Entegrasyon testi (yerel uygulama → canlı DB, yalnızca okuma) | `docs/register-entegrasyon-test-plani.md` | — |
 | 3 | PR → inceleme → `main`'e birleştirme → Vercel yayını | PR kapsamı: aşağıda | Vercel'de önceki yayına dönüş |
 | 4 | Navigasyon satırları | `supabase/bekleyen/20261020090100_register_navigasyon.sql` | `supabase/rollback/20261020090100_register_navigasyon.down.sql` |
@@ -57,8 +57,20 @@ Bu sıranın dışında, ayrı: F5 migration dosyası dalı `migrations/f5-chang
 
 ## Adım 1 — okuma fonksiyonları
 
-`apply_migration` (ad: `register_okuma_rpc`), içerik `20261020090000_register_okuma_rpc.sql`'in birebir metni.
-Uygulanınca dosya aynı sürüm numarasıyla `supabase/migrations/`'a taşınır.
+`apply_migration` (ad: `register_okuma_rpc`), içerik dosyanın birebir metni (LF, 15413 bayt, md5 `7839a774be578cc4a09d4dbc50251214`).
+
+**Sonuç (20.10.2026):** canlı sürüm `20261020080127`; `schema_migrations.statements[1]` md5'i dosyayla aynı
+(`7839a774…`). Dosya `supabase/migrations/20261020080127_register_okuma_rpc.sql`'e taşındı. İçerik değişmedi: başlık
+yorumundaki "BEKLEYEN" ifadesi ve eski ters SQL yolu, dosya canlı metinle birebir kalsın diye düzeltilmedi. Ters SQL
+`supabase/rollback/20261020080127_register_okuma_rpc.down.sql`.
+- Uygulamadan önce tam metin ROLLBACK içinde kurulup ölçüldü: `pg_get_functiondef` md5'leri aşağıdaki beklenen değerlerle
+  aynı (değerler zaten tam metinden alınmıştı, yorum satırı dahil). Ek referans `md5(prosrc)`:
+  `register_view_allowed` `3cf0507a79de7d041bcf0dee2180a6b4`, `get_register_list` `d3a16f045ac61c6ad658651da2cba42f`,
+  `get_register_status_history` `5d2cb21ece0127ce20d7e8198e95de29`.
+- Uygulama sonrası: üç `pg_get_functiondef` md5'i beklenenle aynı; `prosecdef` false; ACL
+  `{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}`; anon EXECUTE yok, PUBLIC (grantee 0) yok,
+  authenticated var. Parmak izinde yalnızca `register_fn_n` 0 → 3, `fonksiyon_n` 119 → 122; bildirim 1282 ve diğer
+  bütün alanlar aynı; askıda işlem 0.
 
 **Doğrulama (salt okunur):**
 

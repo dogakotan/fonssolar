@@ -111,5 +111,5 @@ burada yok; ekrandakini SQL Editor'deki kayıtla karşılaştırın).
 ## 4. Sonuç kaydı
 
 Sonuçlar `CLAUDE.md` "Son değişiklik"e ve `register-gap-analizi.md` durum tablosuna yazılır. Bir kontrol tutmazsa
-PR açılmaz; gerekirse fonksiyon ters SQL'i (`supabase/rollback/20261020090000_register_okuma_rpc.down.sql`) uygulanır
+PR açılmaz; gerekirse fonksiyon ters SQL'i (`supabase/rollback/20261020080127_register_okuma_rpc.down.sql`) uygulanır
 (kullanıcı etkisi yok, ön yüz henüz yayında değil).

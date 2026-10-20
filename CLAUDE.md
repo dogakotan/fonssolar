@@ -2040,6 +2040,13 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**20.10.2026 (33. tur, `register-ekran`) — Register okuma fonksiyonları canlıya uygulandı (`20261020080127_register_okuma_rpc`); navigasyon uygulanmadı, push yok.**
+- Kullanıcı bu adım için mesai dışı ve harici yedek koşulundan açıkça feragat etti (yalnızca yeni fonksiyon, veri değişmiyor, ters SQL hazır). Uygulama 11:01 İstanbul.
+- Önce: askıda işlem 0, parmak izi alındı, ROLLBACK provası 11/11 (prova sonrası parmak izi birebir); tam metin ROLLBACK içinde kurulup `pg_get_functiondef` md5'leri ölçüldü (beklenenle aynı).
+- Sonra: üç fonksiyonun md5'i beklenenle aynı (`a0d725a1…`, `fe99a25d…`, `3341771f…`); anon ve PUBLIC EXECUTE yok, authenticated var; SECURITY INVOKER; parmak izinde yalnızca `register_fn_n` 0 → 3 ve `fonksiyon_n` 119 → 122. Canlı `schema_migrations` metninin md5'i dosyayla aynı (`7839a774…`).
+- Dosya `supabase/migrations/20261020080127_register_okuma_rpc.sql` (içerik değişmedi), ters SQL `supabase/rollback/20261020080127_register_okuma_rpc.down.sql`. Ön yüz bu fonksiyonları henüz yayında çağırmıyor; navigasyon satırları (`supabase/bekleyen/20261020090100_register_navigasyon.sql`) ön yüz yayınından sonra.
+- Sıradaki: entegrasyon testi (`docs/register-entegrasyon-test-plani.md`), sonra PR. Kural 7: `docs/register-docx-metni.md` A.1, B.1, B.2 bölümleri şimdi iki docx'e işlenebilir.
+
 **20.10.2026 (32. tur, `register-ekran`) — Register yayın hazırlığı; canlıya kalıcı değişiklik yok, push yok.**
 - Yayın sırası: okuma fonksiyonları → entegrasyon testi → PR → birleştirme → navigasyon. Belge `docs/register-yayin-sirasi.md` (beklenen md5'ler canlıda ROLLBACK içinde alındı), test planı `docs/register-entegrasyon-test-plani.md` (admin test hesabı; DYB2'deki iki RFI için elle kontrol listesi), docx metni `docs/register-docx-metni.md` (işlenmedi; CLAUDE.md kural 7).
 - Disiplin alanı Türkçe etikete eşleniyor (`DISCIPLINE_LABELS`); eşlemede olmayan değer ham. Canlıda disiplin kolonlarında kısıt/sözlük yok; dolu tek değer iki RFI'de serbest metin.
@@ -2051,7 +2058,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 - Ön yüz: sidebar'da tek "Register" öğesi (`Sidebar.jsx`, `index.jsx` `register` sekmesi) → `components/register/TabRegister.jsx`. Adres `/dashboard/register?tur=<kod>&kayit=<id>`; proje seçimi `register-project` (localStorage), sütun seçimi register başına.
   - Alt sekmeler rol bazlı (Proje Kontrol Karar 6, görüntüleme kolonu): admin/PM 9; şantiye şefi RFI, Doküman (çizim süzgeci), Karar, Aksiyon, Teknik Sunum, Malzeme Onayı, Arayüz (Interface); muhasebe Değişiklik, Hak Talebi. Risk ilk sürümde yok (Satın Alma › Riskler). Kural tek yerde: `src/lib/register/registerConfig.js` (`REGISTER_TABS`; yeni register bu diziye eklenir).
   - Tablo: arama, sıralama, sütun menüsü, `StatusDot` rozetleri, 10 satır sayfalama, boş durum; yan panel alanlar + durum geçmişi (document/submittal/material_approval'da geçmiş tetikleyicisi yok, not gösterilir). Görev bağı salt okunur. Ekle/düzenle yok. `ProjeDetay.jsx`, `DailyReportList.jsx`, `projectExcelBridge.js`'e dokunulmadı.
-- DB (bekleyen, uygulanmadı): `supabase/bekleyen/20261020090000_register_okuma_rpc.sql` (SECURITY INVOKER; tablo RLS'inden geniş veri dönemez; yetki matrisi tablosu gelince `register_view_allowed` → `register_can`) ve `20261020090100_register_navigasyon.sql`; ters SQL'ler `supabase/rollback/`. Canlıda ROLLBACK provası 11/11, `REGISTER_parmak_izi` öncesi/sonrası birebir.
+- DB: `supabase/migrations/20261020080127_register_okuma_rpc.sql` (20.10.2026 canlıya uygulandı) (SECURITY INVOKER; tablo RLS'inden geniş veri dönemez; yetki matrisi tablosu gelince `register_view_allowed` → `register_can`) ve `20261020090100_register_navigasyon.sql`; ters SQL'ler `supabase/rollback/`. Canlıda ROLLBACK provası 11/11, `REGISTER_parmak_izi` öncesi/sonrası birebir.
 - Testler: `tests-unit/register-config.test.mjs` (ön yüz matrisi SQL'deki `register_view_allowed` ile karşılaştırılır), `tests-register-mock/` (ağ taklitli Playwright, 9; `npx playwright test -c playwright.register-mock.config.js`), `tests/register-canli-tiz.spec.js` (canlı TIZ, yalnızca okuma; fonksiyon canlıda yoksa atlanır; muhasebe hesabı kullanılmaz).
 
 **15–16.10.2026 — İş Planı görünüm düzeltmeleri, DYB veri değişiklikleri ve geri alınması, iki koruma trigger'ı, temizlik (PR #41–#45).**
