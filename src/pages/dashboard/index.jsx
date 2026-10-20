@@ -26,6 +26,7 @@ const TabSantiyeSefi = lazy(() => import('./components/TabSantiyeSefi'))
 const TabKullanicilar = lazy(() => import('./components/TabKullanicilar'))
 const TabIsPlan = lazy(() => import('./components/TabIsPlan'))
 const TabBildirimler = lazy(() => import('./components/TabBildirimler'))
+const TabRegister = lazy(() => import('./components/register/TabRegister'))
 const ProjeDetay = lazy(() => import('./components/ProjeDetay'))
 const TabProjeYonetimi = lazy(() => import('./components/TabProjeYonetimi'))
 const DailyReportForm = lazy(() => import('../../components/daily-report/DailyReportForm'))
@@ -45,6 +46,7 @@ const TABS = {
   'rapor-listesi':   { title: 'Raporlarım',         subtitle: 'Geçmiş günlük raporlar' },
   'is-plani':        { title: 'İş Planı',           subtitle: 'Proje iş programı ve görev takibi' },
   bildirimler:       { title: 'Bildirimler',        subtitle: 'Tüm bildirimleriniz' },
+  register:          { title: 'Register',           subtitle: 'Proje kontrol kayıtları (yalnızca görüntüleme)' },
 }
 
 function getHeaderInitials(name) {
@@ -497,6 +499,7 @@ export default function Dashboard() {
           />
         )}
         {activeTab === 'kullanicilar' && (isAdmin || role === 'proje_yoneticisi') && <TabKullanicilar />}
+        {activeTab === 'register'     && <TabRegister />}
         {activeTab === 'proje-ekle'  && (isAdmin || role === 'proje_yoneticisi') && (
           <TabProjeYonetimi
             onViewProject={(id, name) => {
