@@ -2,10 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { splitTaskName } from '../../../utils/taskName'
 import { useDetailColumn } from '../../../hooks/useDetailColumn'
-import { todayKey } from '../../../lib/isPlan'
-import { buildGroupTree, collectNodeTasks, GROUP_INDENT_PX, groupConfigFor } from './TabIsPlan'
+import { filterTasks, todayKey } from '../../../lib/isPlan'
+import { buildGroupTree, collectNodeTasks, GROUP_INDENT_PX, groupConfigFor, resolveGroup } from './TabIsPlan'
 import {
-  buildMonthRange, buildTaskCells, categoryLabel, cellTooltip, fmtPct, fmtQty,
+  buildMonthRange, buildTaskCells, cellTooltip, fmtPct, fmtQty,
   indexRowsByTask, isActiveCell, monthKey, monthPhase, performanceTone,
 } from '../../../utils/aylikPlan'
 
@@ -87,7 +87,9 @@ function MonthCell({ cell, task, mode, phase, editable = false }) {
   )
 }
 
-export default function TabIsPlaniAylik({ projectId, project, tasks, asOf, dataVersion }) {
+// Filtreler (arama/grup/durum/kategori/sorumlu/bu ay) üç bölümde ortak, üst bileşenden gelir (3A).
+// "Bu ay" burada ay hücresine göredir: referans ayda planı ya da gerçekleşeni olan görev.
+export default function TabIsPlaniAylik({ projectId, project, tasks, filters, filtered = false, asOf, dataVersion }) {
   const [rows, setRows] = useState([])
   const [detailOpen, toggleDetail] = useDetailColumn()
   const [nameW, setNameW] = useState(200)
@@ -112,9 +114,6 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, asOf, dataV
   const [error, setError] = useState('')
   const [reloadToken, setReloadToken] = useState(0)
   const [mode, setMode] = useState(readMode)
-  const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [onlyCurrent, setOnlyCurrent] = useState(false)
   const [collapsed, setCollapsed] = useState(new Set())
   const [tip, setTip] = useState(null) // { text, anchor: hücrenin ekran dikdörtgeni }
   const tipCellRef = useRef(null)
@@ -232,26 +231,11 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, asOf, dataV
     return map
   }, [tasks, rowsByTask, months])
 
-  const categories = useMemo(
-    () => [...new Set(tasks.map(t => t.category).filter(Boolean))].sort((a, b) => categoryLabel(a).localeCompare(categoryLabel(b), 'tr')),
-    [tasks]
-  )
-
-  const filteredTasks = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('tr-TR')
-    return tasks.filter(task => {
-      if (categoryFilter !== 'all' && task.category !== categoryFilter) return false
-      if (term) {
-        const hay = `${task.task_code || ''} ${task.task_name || ''}`.toLocaleLowerCase('tr-TR')
-        if (!hay.includes(term)) return false
-      }
-      if (onlyCurrent) {
-        if (currentIndex === -1) return false
-        if (!isActiveCell(cellsByTask.get(task.id)?.[currentIndex])) return false
-      }
-      return true
-    })
-  }, [tasks, search, categoryFilter, onlyCurrent, currentIndex, cellsByTask])
+  const filteredTasks = useMemo(() => filterTasks(tasks, filters, {
+    asOf,
+    groupOf: resolveGroup,
+    inMonth: task => currentIndex !== -1 && isActiveCell(cellsByTask.get(task.id)?.[currentIndex]),
+  }), [tasks, filters, asOf, currentIndex, cellsByTask])
 
   const groupTree = useMemo(() => buildGroupTree(filteredTasks), [filteredTasks])
 
@@ -319,8 +303,6 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, asOf, dataV
     return out
   }
 
-  const filtered = Boolean(search.trim()) || categoryFilter !== 'all' || onlyCurrent
-
   return (
     <div className="card gantt-card aylik-plan">
       <div className="gantt-card-header">
@@ -339,21 +321,6 @@ export default function TabIsPlaniAylik({ projectId, project, tasks, asOf, dataV
               </button>
             ))}
           </div>
-          <input
-            type="text"
-            className="aylik-search"
-            value={search}
-            onChange={event => setSearch(event.target.value)}
-            placeholder="Kod veya iş kalemi ara…"
-          />
-          <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)}>
-            <option value="all">Tüm Kategoriler</option>
-            {categories.map(c => <option key={c} value={c}>{categoryLabel(c)}</option>)}
-          </select>
-          <label className="aylik-only-current">
-            <input type="checkbox" checked={onlyCurrent} onChange={event => setOnlyCurrent(event.target.checked)} />
-            Sadece bu ay aktif olanlar
-          </label>
         </div>
       </div>
 

@@ -4,7 +4,7 @@ import { splitTaskName } from '../../../utils/taskName'
 import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { StatusDot } from '../../../components/ui/Badge'
 import { TONE } from '../../../components/ui/StatusBadge'
-import { buildGroupTree, collectNodeTasks, compareTaskCode, daysBetween, GROUP_INDENT_PX, groupConfigFor, resolveGroup, riskSeverityLabel } from './TabIsPlan'
+import { buildGroupTree, collectNodeTasks, compareTaskCode, daysBetween, GROUP_INDENT_PX, riskSeverityLabel } from './TabIsPlan'
 import { computeSapma, diffDays, formatDate, milestoneStatusMenu, todayKey, toKey } from '../../../lib/isPlan'
 
 // Tablo başlıkla birlikte sayfaya sığsın diye tam yıl yerine 2 haneli yıl —
@@ -351,28 +351,19 @@ function buildDetayTaskRow(task, depth, ctx) {
 // Gruplama/aç-kapa Gantt'la aynı görsel dili (.gantt-group-row/tone-*) ve aynı
 // grup sırasını (GROUP_ORDER → bilinmeyenler en erken plan tarihine göre → _diğer
 // en sonda) paylaşır — kullanıcı iki görünüm arasında geçince aynı bölümleri tanır.
-export default function TabIsPlaniDetay({ tasks, asOf, allGroupNames, canAddProgress = false, role = null, onProgressSaved }) {
-  const [search, setSearch] = useState('')
-  const [groupFilter, setGroupFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+// `tasks` üst bileşende ortak filtreyle (arama/grup/durum/kategori/sorumlu/bu ay, 3A) süzülmüş gelir;
+// burada yalnızca sıralama yerel.
+export default function TabIsPlaniDetay({ tasks, filtered = false, asOf, canAddProgress = false, role = null, onProgressSaved }) {
   const [sortBy, setSortBy] = useState('kod')
   const [detailOpen, toggleDetail] = useDetailColumn()
   const [collapsed, setCollapsed] = useState(new Set())
   const [progressTask, setProgressTask] = useState(null)
   const columnCount = canAddProgress ? BASE_COLUMN_COUNT + 1 : BASE_COLUMN_COUNT
 
-  const filteredRows = useMemo(() => {
-    const term = search.trim().toLocaleLowerCase('tr-TR')
-    return tasks.filter(task => {
-      if (groupFilter !== 'all' && resolveGroup(task) !== groupFilter) return false
-      if (statusFilter !== 'all' && task.status !== statusFilter) return false
-      if (term) {
-        const hay = `${task.task_code || ''} ${task.task_name || ''}`.toLocaleLowerCase('tr-TR')
-        if (!hay.includes(term)) return false
-      }
-      return true
-    }).map(task => ({ task, sapma: computeSapma(task, asOf) }))
-  }, [tasks, search, groupFilter, statusFilter, asOf])
+  const filteredRows = useMemo(
+    () => tasks.map(task => ({ task, sapma: computeSapma(task, asOf) })),
+    [tasks, asOf]
+  )
 
   // Gantt'ın (Genel İş Planı) kullandığı ÇOK SEVİYELİ ağaç burada da birebir
   // paylaşılıyor — öncesinde bu tablo `resolveGroup` ile tek seviyeli düz bir
@@ -398,37 +389,15 @@ export default function TabIsPlaniDetay({ tasks, asOf, allGroupNames, canAddProg
     })
   }
 
-  function resetFilter(setter) {
-    return event => setter(event.target.value)
-  }
-
   return (
     <div className="card gantt-card">
       <div className="gantt-card-header">
         <div>
           <h3>Detaylı İş Planı</h3>
-          <p>{filteredRows.length} iş kalemi{search || groupFilter !== 'all' || statusFilter !== 'all' ? ' (filtrelendi)' : ''}</p>
+          <p>{filteredRows.length} iş kalemi{filtered ? ' (filtrelendi)' : ''}</p>
         </div>
         <div className="gantt-toolbar" style={{ flexWrap: 'wrap' }}>
-          <input
-            type="text"
-            value={search}
-            onChange={event => setSearch(event.target.value)}
-            placeholder="Kod veya görev adı ara…"
-            style={{
-              border: '1px solid var(--color-border-md)', borderRadius: 8, padding: '7px 10px',
-              fontSize: 12.5, fontFamily: 'inherit', minWidth: 180, color: 'var(--color-text)', background: 'var(--color-surface)',
-            }}
-          />
-          <select value={statusFilter} onChange={resetFilter(setStatusFilter)}>
-            <option value="all">Tüm Durumlar</option>
-            {Object.entries(TASK_STATUS).map(([key, meta]) => <option key={key} value={key}>{meta.label}</option>)}
-          </select>
-          <select value={groupFilter} onChange={resetFilter(setGroupFilter)}>
-            <option value="all">Tüm Gruplar</option>
-            {allGroupNames.map(group => <option key={group} value={group}>{groupConfigFor(group).label}</option>)}
-          </select>
-          <select value={sortBy} onChange={resetFilter(setSortBy)}>
+          <select value={sortBy} onChange={event => setSortBy(event.target.value)} aria-label="Sıralama">
             {SORT_OPTIONS.map(opt => <option key={opt.v} value={opt.v}>{opt.l}</option>)}
           </select>
         </div>

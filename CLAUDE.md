@@ -2040,6 +2040,14 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**20.10.2026 — İş Planı 3A: ortak filtreler (`faz3-tek-sayfa`, yalnızca ön yüz; veritabanı değişikliği yok, push yok).**
+- Genel, Detaylı ve Aylık İş Planı tek filtre durumunu paylaşır: arama, durum (beklemede / devam / geciken / tamamlandı / askıda / iptal), grup, kategori, sorumlu (`responsible`, yoksa `responsible_role`; `get_project_gantt` zaten döndürüyor) ve "sadece bu ay".
+- Filtre çubuğu `components/is-plani/IsPlaniFiltreCubugu.jsx`, bölüm seçicinin altında; Gantt'ın durum/grup seçicileri, Detaylı'nın arama/durum/grup ve Aylık'ın arama/kategori/"bu ay" kontrolleri buraya taşındı. Detaylı'nın sıralaması ve Aylık'ın hücre modu yerinde.
+- Durum `src/hooks/useIsPlaniFiltreleri.js`: ekran değeri bileşen durumundan (anında), adres çubuğuna `replace` ile `?q=&grup=&durum=&kategori=&sorumlu=&buay=1` (varsayılanlar yazılmaz, `view` korunur) ve projeye özel `is-plani-filtre-<projectId>` localStorage'a yazılır. Adres yalnızca dışarıdan filtreli bir değere değişirse ekranı değiştirir; React Router v7 adresi geçiş içinde güncellediği için kontrollü girişler doğrudan adresten okunmaz (aksi halde arama kutusu harf kaybeder).
+- Süzme tek saf fonksiyonda: `filterTasks` (`src/lib/isPlan/filters.js`). "Bu ay": Genel ve Detaylı'da plan aralığı referans ayla çakışan görev; Aylık'ta referans ayda planı/gerçekleşeni olan görev (önceki davranış).
+- KPI şeridi süzülmüş listeden ve iptal hariç (`taskKpis`); önceden bütün görevler (iptal dahil) sayılıyordu.
+- Testler: `tests-unit/is-plan/filters.test.mjs` (üç saat diliminde, toplam 47/47); `tests/is-plani-filtre.spec.js` (canlı DYB1, yalnızca okur, yazma isteği 0 — bölüm değişimi, yenileme, parametresiz adreste geri yükleme, hızlı yazma, temizleme). Derlenmiş pakete karşı (`GANTT_HIZA_DIST`) filtre spec'i ve hiza spec'i (üç saat dilimi) geçti.
+
 **15–16.10.2026 — İş Planı görünüm düzeltmeleri, DYB veri değişiklikleri ve geri alınması, iki koruma trigger'ı, temizlik (PR #41–#45).**
 - **Ön yüz (PR #41):** kod sırası M1…M10, grubun kendi görevleri önce, Detay kolonu, ad genişliği ölçümü, Aylık kolonları daraltıldı. Ayrıntı: "Frontend yapısı" → İş Planı.
 - **DYB veri (canlı):**

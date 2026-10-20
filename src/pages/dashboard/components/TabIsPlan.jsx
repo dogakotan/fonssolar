@@ -2,17 +2,20 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../../lib/supabase'
 import {
-  createGanttScale, dayNumber, daysInclusive, deriveTaskStatusAt, effectiveFilterDate, fitPxPerDay, formatDate, ganttRange,
-  gridBackground, isTaskLate, pctFromDailyProgress, progressFor,
+  createGanttScale, dayNumber, daysInclusive, deriveTaskStatusAt, effectiveFilterDate, filterTasks, fitPxPerDay, formatDate,
+  ganttRange, gridBackground, isTaskLate, pctFromDailyProgress, progressFor, responsibleLabel, taskKpis,
 } from '../../../lib/isPlan'
+import { categoryLabel } from '../../../utils/aylikPlan'
 import { splitTaskName } from '../../../utils/taskName'
 import { useDetailColumn } from '../../../hooks/useDetailColumn'
 import { useDashboardData } from '../../../hooks/useDashboardData'
+import { useIsPlaniFiltreleri } from '../../../hooks/useIsPlaniFiltreleri'
 import { useRealtimeRefresh } from '../../../hooks/useRealtimeRefresh'
 import DataStatusBanner, { UnauthorizedScopeNotice } from '../../../components/ui/DataStatusBanner'
 import { useAuth } from '../../../context/AuthContext'
 import TabIsPlaniDetay from './TabIsPlaniDetay'
 import TabIsPlaniAylik from './TabIsPlaniAylik'
+import IsPlaniFiltreCubugu from './is-plani/IsPlaniFiltreCubugu'
 
 // Gantt grupları project_tasks.group_label kolonundan DOĞRUDAN gelir — bu
 // kolon serbest metin (admin elle giriyor, ör. "KABUL", "ENH", "Mekanik
@@ -388,8 +391,8 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   const [dailyProgressRowsAll, setDailyProgressRowsAll] = useState([])
   const [loading, setLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(new Set())
-  const [statusFilter, setStatusFilter] = useState('all')
-  const [groupFilter, setGroupFilter] = useState('all')
+  // Arama/grup/durum/kategori/sorumlu/bu ay: üç bölümde ortak, adres çubuğunda (3A).
+  const { filters, setFilters, resetFilters, filtered } = useIsPlaniFiltreleri(projectId)
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [panelOpen, setPanelOpen] = useState(true)
   const topScrollRef = useRef(null)
@@ -549,23 +552,27 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   // korunuyor, yalnızca stili kendine özgü kalıyor.
   const allGroupNames = useMemo(() => [...new Set(tasks.map(t => resolveGroup(t)))].sort(), [tasks])
 
-  const filteredTasks = useMemo(() => tasks.filter(task => {
-    if (groupFilter !== 'all' && resolveGroup(task) !== groupFilter) return false
-    if (statusFilter === 'devam') return task.status === 'devam_ediyor'
-    if (statusFilter === 'tamamlandi') return task.status === 'tamamlandi'
-    if (statusFilter === 'geciken') {
-      return isTaskLate(task, asOf)
-    }
-    return true
-  }), [groupFilter, statusFilter, tasks, asOf])
+  // Filtre seçenekleri projenin bütün görevlerinden (bir filtre diğerinin seçeneklerini daraltmasın).
+  const categories = useMemo(
+    () => [...new Set(tasks.map(t => t.category).filter(Boolean))].sort((a, b) => categoryLabel(a).localeCompare(categoryLabel(b), 'tr')),
+    [tasks]
+  )
+  const responsibles = useMemo(
+    () => [...new Set(tasks.map(responsibleLabel).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'tr')),
+    [tasks]
+  )
+
+  // Genel ve Detaylı aynı süzülmüş listeyi kullanır ("bu ay" = plan aralığı referans ayla çakışan görev).
+  // Aylık "bu ay"ı kendi ay hücresinden ölçtüğü için süzmeyi kendisi yapar (aynı filterTasks).
+  const filteredTasks = useMemo(
+    () => filterTasks(tasks, filters, { asOf, groupOf: resolveGroup }),
+    [tasks, filters, asOf]
+  )
 
   const withDates = filteredTasks.filter(t => t.planned_start && t.planned_end)
 
-  const kpis = useMemo(() => {
-    const ongoing = tasks.filter(t => t.status === 'devam_ediyor').length
-    const risky = tasks.filter(t => isTaskLate(t, asOf)).length
-    return { ongoing, risky }
-  }, [tasks, asOf])
+  // KPI'lar süzülmüş listeden (iptaller hariç); filtre yokken bütün proje.
+  const kpis = useMemo(() => taskKpis(filteredTasks, asOf), [filteredTasks, asOf])
 
   useEffect(() => {
     if (!selectedTaskId && withDates[0]) setSelectedTaskId(withDates[0].id)
@@ -599,7 +606,18 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
   }
 
   const sectionToggle = (
-    <SectionToggle section={section} onChange={setSection} showAylik={Boolean(projectId)} />
+    <>
+      <SectionToggle section={section} onChange={setSection} showAylik={Boolean(projectId)} />
+      <IsPlaniFiltreCubugu
+        filters={filters}
+        setFilters={setFilters}
+        resetFilters={resetFilters}
+        filtered={filtered}
+        groupNames={allGroupNames}
+        categories={categories}
+        responsibles={responsibles}
+      />
+    </>
   )
 
   // Aylık İş Planı da tarihsiz görevleri gösterir (satır sırası ve hiyerarşi
@@ -613,6 +631,8 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
           projectId={projectId}
           project={project}
           tasks={tasks}
+          filters={filters}
+          filtered={filtered}
           asOf={asOf}
           dataVersion={ganttData}
         />
@@ -629,9 +649,9 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
         <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
         {sectionToggle}
         <TabIsPlaniDetay
-          tasks={tasks}
+          tasks={filteredTasks}
+          filtered={filtered}
           asOf={asOf}
-          allGroupNames={allGroupNames}
           canAddProgress={canAddProgress}
           role={role}
           onProgressSaved={refetch}
@@ -645,15 +665,8 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
       <div className="gantt-page">
         <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
         {sectionToggle}
-        <KpiStrip total={tasks.length} devam={kpis.ongoing} risky={kpis.risky} />
-        <GanttShell
-          project={project}
-          statusFilter={statusFilter}
-          setStatusFilter={setStatusFilter}
-          groupFilter={groupFilter}
-          setGroupFilter={setGroupFilter}
-          allGroupNames={allGroupNames}
-        >
+        <KpiStrip total={kpis.total} devam={kpis.ongoing} risky={kpis.risky} filtered={filtered} />
+        <GanttShell project={project}>
           <p className="gantt-empty">
             {tasks.length === 0 ? 'Henüz iş kalemi eklenmemiş.' : 'Seçilen filtreye uyan tarihli iş kalemi bulunamadı.'}
           </p>
@@ -753,17 +766,10 @@ export default function TabIsPlan({ projectId, filterDate, reportPeriod = 'daily
     <div className="gantt-page">
       <DataStatusBanner error={error} refreshing={refreshing} onRetry={refetch} />
       {sectionToggle}
-      <KpiStrip total={tasks.length} devam={kpis.ongoing} risky={kpis.risky} />
+      <KpiStrip total={kpis.total} devam={kpis.ongoing} risky={kpis.risky} filtered={filtered} />
 
       <div className={`gantt-workspace${panelOpen ? ' has-panel' : ''}`}>
-        <GanttShell
-          project={project}
-          statusFilter={statusFilter}
-          setStatusFilter={setStatusFilter}
-          groupFilter={groupFilter}
-          setGroupFilter={setGroupFilter}
-          allGroupNames={allGroupNames}
-        >
+        <GanttShell project={project}>
           <ScrollTrack
             className="gantt-edge-scroll gantt-top-scroll"
             scrollRef={topScrollRef}
@@ -877,7 +883,8 @@ function SectionToggle({ section, onChange, showAylik }) {
   )
 }
 
-function GanttShell({ project, statusFilter, setStatusFilter, groupFilter, setGroupFilter, allGroupNames, children }) {
+// Durum/grup seçicileri 3A'da üç bölümün ortak filtre çubuğuna (IsPlaniFiltreCubugu) taşındı.
+function GanttShell({ project, children }) {
   return (
     <div className="card gantt-card">
       <div className="gantt-card-header">
@@ -892,29 +899,16 @@ function GanttShell({ project, statusFilter, setStatusFilter, groupFilter, setGr
             </p>
           )}
         </div>
-        <div className="gantt-toolbar">
-          <select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}>
-            <option value="all">Tüm Durumlar</option>
-            <option value="devam">Devam Eden</option>
-            <option value="geciken">Geciken</option>
-            <option value="tamamlandi">Tamamlanan</option>
-          </select>
-          <select value={groupFilter} onChange={event => setGroupFilter(event.target.value)}>
-            <option value="all">Tüm Gruplar</option>
-            {allGroupNames.map(group => (
-              <option key={group} value={group}>{GROUP_CONFIG[group]?.label || group}</option>
-            ))}
-          </select>
-        </div>
       </div>
       {children}
     </div>
   )
 }
 
-function KpiStrip({ total, devam, risky }) {
+// Sayılar süzülmüş listeden, iptal görevler hariç (taskKpis).
+function KpiStrip({ total, devam, risky, filtered = false }) {
   const cards = [
-    { label: 'Toplam Görev', value: total, note: 'Tüm iş kalemleri', icon: 'clipboard', tone: 'blue' },
+    { label: 'Toplam Görev', value: total, note: filtered ? 'Filtreye uyan iş kalemleri (iptal hariç)' : 'Tüm iş kalemleri (iptal hariç)', icon: 'clipboard', tone: 'blue' },
     { label: 'Devam Eden', value: devam, note: 'Aktif görevler', icon: 'play', tone: 'green' },
     { label: 'Riskli / Geciken', value: risky, note: 'Tarihi geçmiş işler', icon: 'warning', tone: 'red' },
   ]
