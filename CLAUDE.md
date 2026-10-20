@@ -2040,11 +2040,17 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**20.10.2026 (34. tur, `register-ekran`) — Register navigasyon satırları canlıya uygulandı (`20261020083341_register_navigasyon`); ön yüz henüz yayında değil, push yok.**
+- Kullanıcı kararıyla yayın sırası değişti: navigasyon (Adım 4) PR/yayından önce uygulandı, Register yerelde (5192, bu dal) menüde görünsün diye. Eski canlı ön yüz `register` anahtarını yok sayar (`Sidebar.jsx` sabit öğe listesini süzer, `index.jsx` sekmeyi `TABS[...]`'ta arar, `AuthContext` yalnızca listeyi okur; varsayılan sekme `roles.default_tab`'ten); canlı sitede görünür değişiklik yok.
+- Doğrulama: `register` satırları sekme 3 (muhasebe:11, proje_yoneticisi:11, santiye_sefi:7), sidebar 4 (admin:8, muhasebe:11, proje_yoneticisi:11, santiye_sefi:6); toplam 20 → 23 / 27 → 31; `nav_*` md5'leri beklenenle aynı; `roles`, fonksiyon sayısı, RFI, bildirim değişmedi. Dosya `supabase/migrations/20261020083341_register_navigasyon.sql`, ters SQL `supabase/rollback/20261020083341_register_navigasyon.down.sql`.
+- Kalıcı kural (kullanıcı, 20.10.2026): yalnızca ekleme yapan, ters SQL'i hazır ve ROLLBACK provası geçmiş adımlarda mesai dışı ve yedek koşulu sorulmaz; mevcut veriyi değiştiren/silen adımlarda yalnızca etkilenen tabloların tek seferlik dışa aktarımı alınır.
+- Kural 7: `docs/register-docx-metni.md` A.2, A.3, B.3 bölümleri artık işlenebilir (ekran canlıda yayına çıkınca A.2'nin anlattığı menü görünür).
+
 **20.10.2026 (33. tur, `register-ekran`) — Register okuma fonksiyonları canlıya uygulandı (`20261020080127_register_okuma_rpc`); navigasyon uygulanmadı, push yok.**
 - Kullanıcı bu adım için mesai dışı ve harici yedek koşulundan açıkça feragat etti (yalnızca yeni fonksiyon, veri değişmiyor, ters SQL hazır). Uygulama 11:01 İstanbul.
 - Önce: askıda işlem 0, parmak izi alındı, ROLLBACK provası 11/11 (prova sonrası parmak izi birebir); tam metin ROLLBACK içinde kurulup `pg_get_functiondef` md5'leri ölçüldü (beklenenle aynı).
 - Sonra: üç fonksiyonun md5'i beklenenle aynı (`a0d725a1…`, `fe99a25d…`, `3341771f…`); anon ve PUBLIC EXECUTE yok, authenticated var; SECURITY INVOKER; parmak izinde yalnızca `register_fn_n` 0 → 3 ve `fonksiyon_n` 119 → 122. Canlı `schema_migrations` metninin md5'i dosyayla aynı (`7839a774…`).
-- Dosya `supabase/migrations/20261020080127_register_okuma_rpc.sql` (içerik değişmedi), ters SQL `supabase/rollback/20261020080127_register_okuma_rpc.down.sql`. Ön yüz bu fonksiyonları henüz yayında çağırmıyor; navigasyon satırları (`supabase/bekleyen/20261020090100_register_navigasyon.sql`) ön yüz yayınından sonra.
+- Dosya `supabase/migrations/20261020080127_register_okuma_rpc.sql` (içerik değişmedi), ters SQL `supabase/rollback/20261020080127_register_okuma_rpc.down.sql`. Ön yüz bu fonksiyonları henüz yayında çağırmıyor; navigasyon satırları (`supabase/migrations/20261020083341_register_navigasyon.sql`) ön yüz yayınından sonra.
 - Sıradaki: entegrasyon testi (`docs/register-entegrasyon-test-plani.md`), sonra PR. Kural 7: `docs/register-docx-metni.md` A.1, B.1, B.2 bölümleri şimdi iki docx'e işlenebilir.
 
 **20.10.2026 (32. tur, `register-ekran`) — Register yayın hazırlığı; canlıya kalıcı değişiklik yok, push yok.**

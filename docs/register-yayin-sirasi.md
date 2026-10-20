@@ -1,18 +1,18 @@
 # Register ekranı — yayın sırası (yalnızca okuma, ilk sürüm)
 
-Dal: `register-ekran` (`origin/main`'den; yalnızca iki register commit'i). Adım 1 uygulandı (20.10.2026); diğerleri bekliyor.
-Her canlı adım ayrı onayla, SQL gösterilerek yapılır (CLAUDE.md kural 1). **Adım 1 kullanıcı "başla" demeden uygulanmaz.**
-**Mesai dışı ve harici yedek koşulu her canlı adımda ayrıca sorulur**; feragat edilmedikçe geçerlidir ("uygula" demek feragat değildir).
+Dal: `register-ekran` (`origin/main`'den; yalnızca iki register commit'i). Adım 1 ve Adım 4 uygulandı (20.10.2026); Adım 2-3 bekliyor (sıra kullanıcı kararıyla değişti, aşağıda).
+Her canlı adım ayrı onayla, SQL gösterilerek yapılır (CLAUDE.md kural 1). **Mesai dışı / yedek (kalıcı kural, 20.10.2026):** yalnızca ekleme yapan (silme/güncelleme yok), ters SQL'i hazır ve ROLLBACK provası geçmiş adımlarda
+kullanıcı bu iki koşuldan kalıcı olarak feragat etti. Mevcut veriyi değiştiren/silen adımlarda etkilenen tabloların tek seferlik dışa aktarımı alınır.
 
-## Durum (20.10.2026 11:05 İstanbul)
+## Durum (20.10.2026 11:35 İstanbul)
 
 | # | Adım | Durum |
 |---|---|---|
 | 0 | Ön kontrol | **Tamam (20.10 10:54 İstanbul):** askıda işlem 0; parmak izi aşağıdaki tabloyla aynı (`bildirim` 1282); prova 11/11, prova sonrası parmak izi birebir |
 | 1 | Okuma fonksiyonları | **Uygulandı (20.10.2026 ~11:01 İstanbul), canlı sürüm `20261020080127`.** Kullanıcı bu adım için mesai dışı ve harici yedek koşulundan açıkça feragat etti (gerekçe: yalnızca yeni fonksiyon, veri değişmiyor, ters SQL hazır). Doğrulama "Adım 1" bölümünde |
-| 2 | Entegrasyon testi | Koşulabilir; kullanıcıdan `.env`/`.env.test` kopyası ve test admin hesabı teyidi bekleniyor |
+| 2 | Entegrasyon testi | Koşulabilir: `.env`/`.env.test` faz23'e kopyalandı (20.10), test admin hesabı kullanıcı tarafından teyit edildi |
 | 3 | PR (`register-ekran`) | Dal hazır, push yok; Adım 2'yi bekliyor |
-| 4 | Navigasyon | Adım 3'ün yayınını bekliyor |
+| 4 | Navigasyon | **Uygulandı (20.10.2026 11:33 İstanbul), canlı sürüm `20261020083341`** — kullanıcı kararıyla ön yüz yayınından ÖNCE (yerel 5192'de menüde görmek için). Eski canlı ön yüz `register` anahtarını tanımadığı için yok sayar (Sidebar sabit listeyi süzer, `index.jsx` `TABS[...]` ister); canlı sitede kullanıcı bir şey görmez. Doğrulama "Adım 4" bölümünde |
 
 Bu sıranın dışında, ayrı: F5 migration dosyası dalı `migrations/f5-changes-claims-interfaces` (yalnızca
 `supabase/migrations/20261014082055_f5_changes_claims_interfaces.sql`; push/PR yok). Register adımlarına bağlı değil.
@@ -25,7 +25,7 @@ Bu sıranın dışında, ayrı: F5 migration dosyası dalı `migrations/f5-chang
 | 1 | Okuma fonksiyonları | `supabase/migrations/20261020080127_register_okuma_rpc.sql` | `supabase/rollback/20261020080127_register_okuma_rpc.down.sql` |
 | 2 | Entegrasyon testi (yerel uygulama → canlı DB, yalnızca okuma) | `docs/register-entegrasyon-test-plani.md` | — |
 | 3 | PR → inceleme → `main`'e birleştirme → Vercel yayını | PR kapsamı: aşağıda | Vercel'de önceki yayına dönüş |
-| 4 | Navigasyon satırları | `supabase/bekleyen/20261020090100_register_navigasyon.sql` | `supabase/rollback/20261020090100_register_navigasyon.down.sql` |
+| 4 | Navigasyon satırları | `supabase/migrations/20261020083341_register_navigasyon.sql` | `supabase/rollback/20261020083341_register_navigasyon.down.sql` |
 
 **Okuma fonksiyonları (1) ile navigasyon (4) arasında ön yüzün (3) yayına çıkmış olması şarttır.**
 - Navigasyon satırları menüde "Register"i açar. Bu menünün çağırdığı `get_register_list` (1) canlıda yoksa ekran
@@ -108,7 +108,13 @@ admin test hesabıyla girilir (navigasyon yokken yalnızca admin girebilir); men
 
 ## Adım 4 — navigasyon satırları
 
-`apply_migration` (ad: `register_navigasyon`), içerik `20261020090100_register_navigasyon.sql`.
+`apply_migration` (ad: `register_navigasyon`), içerik dosyanın birebir metni (LF, 1817 bayt, md5 `eaf6dd76e6ddb1cc61989eb49f382a9e`).
+
+**Sonuç (20.10.2026):** canlı sürüm `20261020083341`, kayıtlı metnin md5'i dosyayla aynı. `register` satırları:
+sekme muhasebe:11, proje_yoneticisi:11, santiye_sefi:7; sidebar admin:8, muhasebe:11, proje_yoneticisi:11, santiye_sefi:6.
+Toplam sekme 20 → 23, sidebar 27 → 31; `nav_sekme_md5` `2ec9ed18…`, `nav_sidebar_md5` `342ad99f…` (beklenenle aynı).
+`roles` (varsayılan sekme, kısıtsız bayrağı), fonksiyon sayısı (122), RFI ve bildirim (1282) değişmedi.
+Dosya `supabase/migrations/20261020083341_register_navigasyon.sql`'e taşındı (içerik değişmedi).
 
 **Doğrulama (salt okunur):**
 
