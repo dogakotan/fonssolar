@@ -15,7 +15,7 @@ const T = (id, extra = {}) => ({
 const tasks = [
   T('M1'),
   T('M2', { planned_end: '2026-10-10' }),                                            // 20.10'da gecikmiş
-  T('E1', { group_label: 'Elektrik', category: 'elektrik_dc', responsible: 'Ali Usta' }),
+  T('E1', { group_label: 'Elektrik', category: 'elektrik_dc', responsible: 'Kurgu Sorumlu' }),
   T('E2', { group_label: 'Elektrik', category: 'elektrik_dc', responsible_role: 'Elektrik Şefi', status: 'beklemede',
     planned_start: '2026-11-01', planned_end: '2026-11-30' }),
   T('İ1', { task_name: 'İşletme Binası', status: 'tamamlandi', planned_end: '2026-10-05' }),
@@ -43,7 +43,7 @@ test('durum: ham durumlar ve geciken (kapalı ve iptal hariç)', () => {
 test('grup, kategori, sorumlu ve arama birlikte (VE)', () => {
   assert.deepEqual(ids(filterTasks(tasks, { grup: 'Elektrik' }, { asOf })), ['E1', 'E2'])
   assert.deepEqual(ids(filterTasks(tasks, { kategori: 'elektrik_dc', sorumlu: 'Elektrik Şefi' }, { asOf })), ['E2'])
-  assert.deepEqual(ids(filterTasks(tasks, { sorumlu: 'Ali Usta', durum: 'beklemede' }, { asOf })), [])
+  assert.deepEqual(ids(filterTasks(tasks, { sorumlu: 'Kurgu Sorumlu', durum: 'beklemede' }, { asOf })), [])
   // Sorumlusuz: ne kişi ne rol atanmış (E1 kişili, E2 rollü)
   assert.deepEqual(ids(filterTasks(tasks, { sorumlu: SORUMLUSUZ }, { asOf })), ['M1', 'M2', 'İ1', 'X1', 'S1'])
   assert.deepEqual(parseFilterParams(writeFilterParams(new URLSearchParams(), { sorumlu: SORUMLUSUZ })).sorumlu, SORUMLUSUZ)
