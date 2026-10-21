@@ -122,6 +122,18 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
       ),
     },
     {
+      // Proje kontrol register'ları (RFI, Doküman, Karar…). Alt sekmeler TabRegister'da, rol bazlı (Karar 6).
+      key: 'register', label: 'Register',
+      icon: (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="4" y="3" width="16" height="18" rx="2"/>
+          <line x1="8" y1="8" x2="16" y2="8"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+          <line x1="8" y1="16" x2="12" y2="16"/>
+        </svg>
+      ),
+    },
+    {
       key: 'bildirimler', label: 'Bildirimler',
       icon: (
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

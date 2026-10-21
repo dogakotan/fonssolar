@@ -1,0 +1,83 @@
+# Register ekranı — entegrasyon test planı (yerel uygulama → canlı veritabanı, yalnızca okuma)
+
+> **Önce (kullanıcı):** ana klasördeki (`GES_Dashboard`) `.env` ve `.env.test` dosyalarını bu dalın klasörüne
+> (`GES_Dashboard-faz23`) **siz** kopyalayın. İçerik araçla okunmaz, yazdırılmaz.
+> İkisi de `.gitignore`'da (20.10.2026'da doğrulandı: `.gitignore` satır 19 `.env`, satır 22 `.env.test`; ikisi de git'te
+> takip edilmiyor), kopyalandıktan sonra commit'e girmez.
+>
+> **Okuma fonksiyonları canlıya uygulanmadan canlı spec koşmaz:** `tests/register-canli-tiz.spec.js` ilk iş
+> `get_register_list`'i arar; canlıda yoksa testi "get_register_list canlıda yok" diyerek atlar (geçti sayılmaz).
+> Bu yüzden bu plan yayın sırasındaki Adım 1'den (kullanıcı "başla" dedikten ve doğrulama tuttuktan) sonra uygulanır.
+
+Ne zaman: yayın sırasında Adım 1 (okuma fonksiyonları) canlıya uygulanıp doğrulandıktan sonra, PR açılmadan önce
+(`docs/register-yayin-sirasi.md`). Navigasyon satırları henüz yokken yapılır.
+
+Kurallar:
+- Yalnızca okuma. Ekranda ekle/düzenle yok; spec yazma isteği görürse düşer.
+- Otomatik test yalnızca **admin test hesabıyla** (Karar 90). Gerçek kişi hesabı araçla kullanılmaz; **muhasebe hesabı hiç kullanılmaz**.
+- Yalnızca TIZ (Karar 72). DYB2 kontrolü aşağıda, kullanıcının kendi hesabıyla, elle ve yalnızca görerek.
+- Kimlik bilgileri sohbete/araca yazılmaz; `.env*` dosyalarını kullanıcı kopyalar.
+
+## 1. Hazırlık (kullanıcı)
+
+1. `.env.test`'teki `TEST_ADMIN_EMAIL`'in **test admin hesabı** olduğunu doğrulayın (14.10.2026'da genel "Admin"
+   hesabıydı, Karar 90). Genel hesap ya da kişisel hesapsa önce test admin hesabını açıp `.env.test`'e yazın.
+2. `.env` / `.env.test` kopyası (yukarıdaki kutu). 20.10.2026'da bu klasörde yoklardı. Klasör şu anda `register-ekran`
+   dalında; testi bu dalda koşun (`git branch --show-current`).
+3. 5173 portunda başka bir klasörün dev sunucusu çalışıyor (19.10: `GES_Dashboard-entegrasyon`). Playwright
+   `reuseExistingServer` ile o sunucuya bağlanır ve **yanlış kodu** test eder. Bu yüzden ayrı port kullanılır (adım 2.1).
+
+## 2. Otomatik test — `tests/register-canli-tiz.spec.js`
+
+PowerShell, `GES_Dashboard-faz23` klasöründe:
+
+```powershell
+# 2.1 Bu dalın kodunu canlı veritabanına bağlı, ayrı portta başlat (ayrı pencerede açık kalsın)
+node node_modules/vite/bin/vite.js --port 5192 --strictPort
+
+# 2.2 Testi koş (yalnızca admin; navigasyon yokken admin sekmeye adresle girer, menüde "Register" görünmemeli)
+$env:PW_TARGET = 'live'
+$env:BASE_URL = 'http://localhost:5192'
+$env:REGISTER_LIVE_ROLES = 'admin'
+npx playwright test tests/register-canli-tiz.spec.js
+```
+
+Beklenen (navigasyon öncesi): 1 geçti.
+- `get_register_list` canlıda yoksa test "get_register_list canlıda yok" diyerek atlanır.
+- Admin: menüde "Register" **yok**; 9 alt sekme; başlıkta "Proje kodu: TIZ"; Teknik Sunum'da "Bu projede henüz Teknik Sunum kaydı yok."
+- Yazma isteği yok.
+
+Navigasyon (Adım 4) uygulandıktan sonra aynı komut menüde "Register"in **göründüğünü** doğrular.
+PM ve şef test hesapları yalnızca açıkça istenirse eklenir (`REGISTER_LIVE_ROLES='admin,proje_yoneticisi,santiye_sefi'`);
+bu hesapların gerçek kişiye ait olmadığı önce doğrulanmalı.
+
+Ağ taklitli testler (veritabanı gerekmez, her zaman koşulabilir):
+`npx playwright test -c playwright.register-mock.config.js` (9 test) ve `npm run test:unit`.
+
+## 3. Elle kontrol — DYB2'deki iki RFI (kullanıcının kendi hesabı)
+
+Navigasyon yokken ekran yalnızca admin rolünde adresle açılır: `http://localhost:5192/dashboard/register?tur=rfi`.
+Hesabınız admin değilse bu kontrol Adım 4'ten sonra yapılır (rolünüz Karar 6'ya göre RFI'yi görmeli: admin,
+proje yöneticisi ya da DYB2'ye bağlı şantiye şefi). Proje seçicide DYB2 projesini seçin.
+
+Beklenen değerler (kayıt sayısı, numaralar, durum, öncelik, tarihler, görev bağı, durum geçmişi) burada yok:
+müşteri projesinin kaydı oldukları için repoya yazılmadı. Ekrandakini SQL Editor'deki kayıtla
+(`select * from rfis where project_id = '<DYB2 proje id>'`) karşılaştırın.
+
+**Liste ve panel**
+- Başlıkta `Proje kodu: DYB2`; varsayılan sıra numara azalan.
+- Varsayılan sütunlar: Numara, Başlık, Durum, Öncelik, Açılış, Termin, Sorumlu, Görev; diğerleri sütun menüsünden.
+- Satıra tıklayınca yan panel açılır (adres `?tur=rfi&kayit=<id>`); Kapat / Esc paneli kapatır, `kayit` adresten silinir.
+- Görev bağı salt okunur (Karar 69); boş alanlar `—`.
+
+**Genel**
+- Hiçbir ekle/düzenle/sil butonu yok.
+- Arama kutusuna "RFI-DYB2-0001" yazınca yalnızca o kayıt kalır.
+- Sayfa yenilenince (F5) aynı sekme ve açık kayıt geri gelir.
+- Tarayıcı geliştirici araçlarında Network: yalnızca `rpc/get_*` POST ve GET istekleri.
+
+## 4. Sonuç kaydı
+
+Sonuçlar `CLAUDE.md` "Son değişiklik"e ve `register-gap-analizi.md` durum tablosuna yazılır. Bir kontrol tutmazsa
+PR açılmaz; gerekirse fonksiyon ters SQL'i (`supabase/rollback/20261020080127_register_okuma_rpc.down.sql`) uygulanır
+(kullanıcı etkisi yok, ön yüz henüz yayında değil).
