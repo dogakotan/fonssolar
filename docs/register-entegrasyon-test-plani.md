@@ -58,49 +58,17 @@ Ağ taklitli testler (veritabanı gerekmez, her zaman koşulabilir):
 
 Navigasyon yokken ekran yalnızca admin rolünde adresle açılır: `http://localhost:5192/dashboard/register?tur=rfi`.
 Hesabınız admin değilse bu kontrol Adım 4'ten sonra yapılır (rolünüz Karar 6'ya göre RFI'yi görmeli: admin,
-proje yöneticisi ya da DYB2'ye bağlı şantiye şefi). Proje seçicide DYB2 projesini seçin ("İsdemir (Diyarbakır GES-2)").
+proje yöneticisi ya da DYB2'ye bağlı şantiye şefi). Proje seçicide DYB2 projesini seçin.
 
-Beklenen değerler 19.10.2026'da canlıdan salt okunur okundu (konu/soru/açıklama metinleri müşteri verisi olduğu için
-burada yok; ekrandakini SQL Editor'deki kayıtla karşılaştırın).
+Beklenen değerler (kayıt sayısı, numaralar, durum, öncelik, tarihler, görev bağı, durum geçmişi) burada yok:
+müşteri projesinin kaydı oldukları için repoya yazılmadı. Ekrandakini SQL Editor'deki kayıtla
+(`select * from rfis where project_id = '<DYB2 proje id>'`) karşılaştırın.
 
-**Liste**
-
-| Kontrol | Beklenen |
-|---|---|
-| Başlıktaki proje kodu | `Proje kodu: DYB2` |
-| Kayıt sayısı | 2 kayıt, sayfalama yok |
-| Varsayılan sıra | Numara azalan: `RFI-DYB2-0002` üstte |
-| Sütunlar (varsayılan) | Numara, Başlık, Durum, Öncelik, Açılış, Termin, Sorumlu, Görev |
-
-| Alan | RFI-DYB2-0001 | RFI-DYB2-0002 |
-|---|---|---|
-| Durum | ● Açık | ● Açık |
-| Öncelik | ● Yüksek | ● Orta |
-| Açılış | 2026-10-15 | 2026-10-15 |
-| Termin | 2026-10-30 | 2026-12-31 |
-| Sorumlu | — (kayıtta boş) | — (kayıtta boş) |
-| Görev (Karar 69, salt okunur) | `M6` + görev adı | `E2` + görev adı |
-
-**Sütun menüsünden açılanlar**
-
-| Alan | İkisinde de |
-|---|---|
-| Açan | — (kayıtta boş; kayıt panelden girildi, Karar 78) |
-| Disiplin | `Elektrik / Tasarım` (serbest metin; eşleme tablosunda olmadığı için ham haliyle) |
-| Cevap tarihi | — |
-| WBS / Alan | — |
-| Oluşturulma / Güncellenme | 2026-10-15 |
-
-**Yan panel** (satıra tıklayınca; adres `?tur=rfi&kayit=<id>` olur)
-
-| Kontrol | Beklenen |
-|---|---|
-| Başlık | Numara + konu metni; altında "Proje kodu DYB2 · sıra 1" (0002 için sıra 2) |
-| Soru | Var (0001: 138 karakter, 0002: 116 karakter) |
-| Açıklama | Var (0001: 516, 0002: 480 karakter) |
-| Cevap | Bölüm görünmez (kayıtta boş) |
-| Durum geçmişi | 1 satır: "Açıldı: ● Açık", 15.10.2026 09:08 (İstanbul; UTC 06:08), kaydeden "Sistem / panel" |
-| Kapat / Esc | Panel kapanır, adresten `kayit` silinir |
+**Liste ve panel**
+- Başlıkta `Proje kodu: DYB2`; varsayılan sıra numara azalan.
+- Varsayılan sütunlar: Numara, Başlık, Durum, Öncelik, Açılış, Termin, Sorumlu, Görev; diğerleri sütun menüsünden.
+- Satıra tıklayınca yan panel açılır (adres `?tur=rfi&kayit=<id>`); Kapat / Esc paneli kapatır, `kayit` adresten silinir.
+- Görev bağı salt okunur (Karar 69); boş alanlar `—`.
 
 **Genel**
 - Hiçbir ekle/düzenle/sil butonu yok.
