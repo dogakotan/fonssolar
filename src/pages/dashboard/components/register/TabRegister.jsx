@@ -3,13 +3,12 @@ import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../../../context/AuthContext'
 import { useScope } from '../../../../context/ScopeContext'
 import { useDashboardData } from '../../../../hooks/useDashboardData'
-import { supabase } from '../../../../lib/supabase'
 import { fetchProfileNames } from '../../../../utils/profileNames'
 import Pager from '../../../../components/ui/Pager'
 import {
   visibleRegisterTabs, resolveRegisterTab, allColumns, defaultVisibleColumnKeys,
   sortRows, filterRows, paginate, personIdsIn, canViewRegister, getRegisterTab,
-  statusOptions, filterByStatus, normalizeRiskRow,
+  statusOptions, filterByStatus,
 } from '../../../../lib/register/registerConfig'
 import RegisterDetailPanel from './RegisterDetailPanel'
 import RegisterCell from './RegisterCell'
@@ -18,32 +17,6 @@ import './register.css'
 const PROJECT_KEY = 'register-project'
 const columnsKey = registerKey => `register-columns-${registerKey}`
 const NO_ACCESS = 'Bu bölüme erişimin yok.'
-
-const RISK_SELECT = '*, wbs:project_wbs!project_risks_wbs_fk(wbs_code, name), '
-  + 'area:project_areas!project_risks_area_fk(area_code, name), task:project_tasks!project_risks_task_fk(task_code, task_name)'
-
-// Risk register'ı get_register_list'te yok: project_risks'ten okunur (RLS: proje erişimi). Dönüş get_register_list
-// biçiminde ({ authorized, register, rows }) ki tablo aynı kodla çizilsin.
-function useRiskRows(projectId, enabled) {
-  const [state, setState] = useState({ data: null, loading: false, error: '' })
-  useEffect(() => {
-    if (!enabled || !projectId) return undefined
-    let active = true
-    setState(s => ({ ...s, loading: true, error: '' }))
-    supabase.from('project_risks').select(RISK_SELECT).eq('project_id', projectId)
-      .then(({ data, error }) => {
-        if (!active) return
-        if (error) {
-          console.error('project_risks error:', error)
-          setState({ data: null, loading: false, error: 'Riskler yüklenemedi.' })
-          return
-        }
-        setState({ data: { authorized: true, register: 'risk', projectId, rows: (data || []).map(normalizeRiskRow) }, loading: false, error: '' })
-      })
-    return () => { active = false }
-  }, [projectId, enabled])
-  return state
-}
 
 function readStored(key, fallback) {
   try {
@@ -59,7 +32,7 @@ function writeStored(key, value) {
 
 // Register ekranı — yalnızca okuma (ekle/düzenle yok). İki kip:
 //  - fixedRegister verilirse (menüdeki register-* sayfaları, /dashboard/register-rfi?kayit=<id>): tek register,
-//    sekme şeridi yok. 'drawing' doküman listesinin çizim süzgecidir; 'risk' project_risks'ten okunur.
+//    sekme şeridi yok. 'drawing' doküman listesinin çizim süzgecidir.
 //  - verilmezse eski sekmeli görünüm (/dashboard/register?tur=<kod>&kayit=<id>); menüden kaldırılınca silinecek.
 // Veri get_register_list / get_register_status_history'den (SECURITY INVOKER; Karar 6 görüntüleme matrisi).
 export default function TabRegister({ fixedRegister = null }) {
@@ -73,7 +46,6 @@ export default function TabRegister({ fixedRegister = null }) {
     : resolveRegisterTab(role, requested)
   const drawingOnly = requested === 'drawing' && tab?.key === 'document'
   const registerKey = drawingOnly ? 'drawing' : tab?.key
-  const isRisk = tab?.source === 'project_risks'
   const recordId = searchParams.get('kayit')
 
   const [projectId, setProjectId] = useState(() => readStored(PROJECT_KEY, null))
@@ -101,18 +73,15 @@ export default function TabRegister({ fixedRegister = null }) {
     setMenuOpen(false)
   }, [tab?.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const rpc = useDashboardData(
+  const { data, loading, error, refreshing } = useDashboardData(
     'get_register_list',
     { p_project_id: effectiveProjectId, p_register: registerKey },
-    { enabled: Boolean(effectiveProjectId && registerKey && !isRisk) },
+    { enabled: Boolean(effectiveProjectId && registerKey) },
   )
-  const risk = useRiskRows(effectiveProjectId, Boolean(isRisk))
-  const { data, loading, error } = isRisk ? risk : rpc
-  const refreshing = isRisk ? risk.loading : rpc.refreshing
   // useDashboardData önceki veriyi korur; başka sekme/projenin satırları bir an görünmesin. Yetkisiz yanıtta
   // register alanı yok; yenileme bitince gösterilir.
   const current = data && effectiveProjectId
-    && (isRisk ? data.projectId === effectiveProjectId : (data.register === registerKey || (data.authorized === false && !refreshing)))
+    && (data.register === registerKey || (data.authorized === false && !refreshing))
     ? data : null
   const rows = useMemo(() => current?.rows || [], [current])
 
@@ -198,7 +167,7 @@ export default function TabRegister({ fixedRegister = null }) {
               </select>
             </label>
           )}
-          {project && current && current.authorized !== false && !isRisk && (
+          {project && current && current.authorized !== false && (
             current.prefix
               ? <span className="register-code" title="Register numaraları bu proje kodundan üretilir">Proje kodu: <b>{current.prefix}</b></span>
               : <span className="register-code warn">Bu projenin register kodu tanımlı değil; bu projede register numarası alınamaz.</span>
@@ -267,7 +236,7 @@ export default function TabRegister({ fixedRegister = null }) {
 
           {current?.authorized && rows.length === 0 && (
             <div className="register-empty" role="status">
-              <strong>Bu projede henüz {drawingOnly ? 'çizim' : isRisk ? 'risk' : `${tab.label} kaydı`} yok.</strong>
+              <strong>Bu projede henüz {drawingOnly ? 'çizim' : tab.key === 'risk' ? 'risk' : `${tab.label} kaydı`} yok.</strong>
               <span>Bu sürümde kayıtlar yalnızca görüntülenir; ekrandan kayıt eklenmez.</span>
             </div>
           )}

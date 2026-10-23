@@ -19,7 +19,7 @@ export default function RegisterDetailPanel({ tab, registerKey, row, prefix, nam
   const [historyNames, setHistoryNames] = useState(new Map())
 
   useEffect(() => {
-    // Geçmişi tutulmayan register (ör. risk; get_register_status_history'de yok) için çağrı yapılmaz.
+    // Geçmişi tutulmayan register için çağrı yapılmaz (bugün hepsi tutuluyor; bayrak yeni register'lar için).
     if (!tab.historyTracked) return undefined
     let active = true
     setHistory({ loading: true, data: null, error: '' })
@@ -58,7 +58,7 @@ export default function RegisterDetailPanel({ tab, registerKey, row, prefix, nam
       >
         <header className="register-panel-head">
           <div>
-            {tab.hasNumber !== false && <div className="register-no">{row.no || '—'}</div>}
+            <div className="register-no">{row.no || '—'}</div>
             <h3>{row.title || '—'}</h3>
             {parsed.project && (
               <div className="register-panel-sub">

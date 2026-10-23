@@ -38,9 +38,9 @@ export function groupSidebarItems(itemKeys, sectionOf = {}, sections = []) {
 
 const TEKNIK = ['admin', 'proje_yoneticisi', 'santiye_sefi']
 
-// v_register_alerts RLS'i rol matrisini tam uygulamıyor (rfis/decisions/project_actions/project_risks okuması yalnızca
-// proje erişimine bakıyor): muhasebe RFI/karar/aksiyon uyarılarını da alır. Ekranda rolün göremediği register'ın
-// uyarısı gösterilmez. Bu bir görüntü süzgecidir, yetki değil.
+// v_register_alerts 20261023134000'den beri register satırlarını register_view_allowed ile süzüyor; yalnızca
+// 'procurement' (critical_material_due) satırı rol süzgeçsiz (purchase_requests RLS'i). Ekranda rolün göremediği
+// register'ın uyarısı yine gösterilmez: görüntü süzgeci, yetki değil (görünüm eski haline dönerse de doğru kalır).
 export function canSeeAlert(role, alert) {
   const code = alert?.register_code
   if (code === 'risk' || code === 'procurement') return TEKNIK.includes(role)

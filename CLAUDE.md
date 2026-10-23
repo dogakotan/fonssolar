@@ -2040,6 +2040,22 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**23.10.2026 (2. tur, `register-menu-bolumler`, push yok) — Başka oturumun 23.10 migration'ları repoya alındı; risk sayfası `get_register_list`'e geçti.**
+- **Repo:** canlıda uygulanmış ama repoda olmayan 8 migration `supabase/migrations/`'a sürümleri korunarak alındı (`20261023122123` … `20261023122724`, `20261023134000`). Kaynak `supabase_migrations.schema_migrations.statements`; her dosyanın md5'i canlı metinle aynı. Hepsi canlıda kalıyor.
+- **Geri alma:** `supabase/rollback/20261023134000_register_role_hardening_risk_numbering_alert_filter.down.sql` yalnızca acil geri dönüş için duruyor; **uygulanmadı, uygulanmayacak** (kullanıcı kararı). Çalıştırılırsa önce `project_risks`, `project_register_counters`, `register_status_history` dışa aktarılır.
+- **Canlı durum (bu migration'larla):**
+  - `register_view_allowed` risk dahil (admin/PM/şef).
+  - Dokuz register tablosunun ve `register_status_history`'nin okuma kuralı proje erişimi + rol.
+  - `v_register_alerts` rol süzgeçli; yalnızca `procurement` satırı süzgeçsiz.
+  - Riskler RSK numaralı (beş projede 103/103).
+  - Durum geçmişi rfi, decision, action, change, claim, interface, submittal, material_approval, document ve risk için tutuluyor.
+- **Ön yüz:**
+  - Riskler sayfası `get_register_list('risk')`'ten okur (doğrudan `project_risks` sorgusu ve `normalizeRiskRow` kalktı).
+  - Numara sütunu ve proje kodu rozeti var.
+  - Yan panelde durum geçmişi var; doküman, teknik sunum ve malzeme onayında da geçmiş gösterilir.
+  - `historyTracked` listesi birim testinde migration'daki listeyle karşılaştırılır.
+- **Testler:** birim 3/3 saat dilimi; taklit 20/20; lint 0 hata; build başarılı. Canlı spec koşulmadı.
+
 **23.10.2026 (`register-menu-bolumler`, push yok) — Sol menüye bölümler; register sayfaları menüye bağlandı. Veritabanı adımı canlıda: `20261023130558_menu_bolumler` (23.10.2026, kullanıcı onayı; öncesinde iki menü tablosu `C:\fons-yedek\menu-oncesi-2026-10-23\`'e aktarıldı). Ön yüz henüz yayında değil.**
 - **Veritabanı:**
   - `sidebar_sections` (yalnızca okunur) ve `role_sidebar_items.section_key` eklendi.
@@ -2051,7 +2067,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   - RFI/Aksiyonlar/Kararlar/Claim rozetleri `v_register_alerts`'ten gelir (`useRegisterAlerts`).
   - Her register-* sayfası `TabRegister fixedRegister=…` açar: durum süzgeci, "Bu bölüme erişimin yok."; risk `project_risks`'ten, numara sütunu yok.
   - Genel ekranda uyarı kartları (`RegisterAlertCards`, uyarı yoksa çizilmez).
-- **Bilinen:** `v_register_alerts` muhasebeye RFI/karar/aksiyon/risk satırlarını da döndürüyor (alttaki tabloların SELECT kuralı yalnızca proje erişimi); ön yüz rolün göremediği register'ın uyarısını saymaz (görüntü süzgeci, yetki değil).
+- ~~**Bilinen:** `v_register_alerts` muhasebeye RFI/karar/aksiyon/risk satırlarını da döndürüyor~~ — `20261023134000` ile kapandı (yukarıdaki girdi); ön yüzün görüntü süzgeci yine duruyor.
 
 **20.10.2026 (34. tur, `register-ekran`) — Register navigasyon satırları canlıya uygulandı (`20261020083341_register_navigasyon`); ön yüz henüz yayında değil, push yok.**
 - Kullanıcı kararıyla yayın sırası değişti: navigasyon (Adım 4) PR/yayından önce uygulandı, Register yerelde (5192, bu dal) menüde görünsün diye. Eski canlı ön yüz `register` anahtarını yok sayar (`Sidebar.jsx` sabit öğe listesini süzer, `index.jsx` sekmeyi `TABS[...]`'ta arar, `AuthContext` yalnızca listeyi okur; varsayılan sekme `roles.default_tab`'ten); canlı sitede görünür değişiklik yok.

@@ -25,7 +25,7 @@ export const EXPECTED_TABS = {
 }
 const VIEW = {
   admin: 'all', proje_yoneticisi: 'all',
-  santiye_sefi: ['document', 'drawing', 'rfi', 'decision', 'action', 'submittal', 'material_approval', 'interface'],
+  santiye_sefi: ['document', 'drawing', 'rfi', 'decision', 'action', 'submittal', 'material_approval', 'interface', 'risk'],
   muhasebe: ['change', 'claim'],
 }
 const canView = (role, reg) => VIEW[role] === 'all' || VIEW[role].includes(reg)
@@ -79,9 +79,10 @@ export const ALERTS = [
   { alert_type: 'critical_material_due', register_code: 'procurement', project_id: 'kurgu-izmir' },
 ]
 
-const RISKS = [
-  { id: 'cccccccc-0000-4000-8000-000000000001', project_id: 'kurgu-izmir', title: 'Kurgu risk: trafo teslim gecikmesi', status: 'açık', severity: 'kritik', probability: 4, impact: 5, risk_score: 20, mitigation_due_date: '2026-11-15', risk_owner: 'aaaaaaaa-0000-4000-8000-000000000001', source: 'manuel', category: 'satin_alma', description: 'Kurgu açıklama.', mitigation: 'Kurgu önlem.', wbs: { wbs_code: 'W-01', name: 'Kurgu WBS' }, area: null, task: null },
-  { id: 'cccccccc-0000-4000-8000-000000000002', project_id: 'kurgu-izmir', title: 'Kurgu risk: hava', status: 'kapatıldı', severity: 'orta', probability: 2, impact: 2, risk_score: 4, mitigation_due_date: null, risk_owner: null, source: 'otomatik', category: 'is_kalemi', description: null, mitigation: null, wbs: null, area: null, task: { task_code: 'M6', task_name: 'Kurgu görev' } },
+// get_register_list 'risk' dalının biçimi (20261023134000): no = risk_no, priority = severity.
+const riskRows = prefix => [
+  { id: 'cccccccc-0000-4000-8000-000000000001', no: `RSK-${prefix}-0002`, title: 'Kurgu risk: trafo teslim gecikmesi', status: 'açık', priority: 'kritik', severity: 'kritik', probability: 4, impact: 5, risk_score: 20, mitigation_due_date: '2026-11-15', due_date: '2026-11-15', risk_owner: 'aaaaaaaa-0000-4000-8000-000000000001', source: 'manuel', category: 'satin_alma', description: 'Kurgu açıklama.', mitigation: 'Kurgu önlem.', wbs_code: 'W-01', wbs_name: 'Kurgu WBS', area_code: null, area_name: null, task_code: null, task_name: null, created_at: '2026-10-02T08:00:00Z', updated_at: '2026-10-02T08:00:00Z' },
+  { id: 'cccccccc-0000-4000-8000-000000000002', no: `RSK-${prefix}-0001`, title: 'Kurgu risk: hava', status: 'kapatıldı', priority: 'orta', severity: 'orta', probability: 2, impact: 2, risk_score: 4, mitigation_due_date: null, due_date: null, risk_owner: null, source: 'otomatik', category: 'is_kalemi', description: null, mitigation: null, wbs_code: null, wbs_name: null, area_code: null, area_name: null, task_code: 'M6', task_name: 'Kurgu görev', created_at: '2026-10-01T08:00:00Z', updated_at: '2026-10-01T08:00:00Z' },
 ]
 
 const PEOPLE = {
@@ -125,6 +126,7 @@ const ROWS = prefix => ({
   change: [{ id: id('chg', 1), no: `CHG-${prefix}-0001`, title: 'Kurgu değişiklik', status: 'submitted', priority: 'medium', record_state: 'pending_approval', origin: 'site_condition', cost_estimate: 125000, currency: 'TRY', time_impact_days: 5, assigned_to: P1, due_date: '2026-11-01', created_at: '2026-10-13T08:00:00Z', updated_at: '2026-10-13T08:00:00Z' }],
   claim: [{ id: id('clm', 1), no: `CLM-${prefix}-0001`, title: 'Kurgu hak talebi', status: 'notice_sent', record_state: 'draft', notice_type: 'time', event_date: '2026-10-09', notice_deadline: '2026-10-30', amount_claimed: null, currency: 'TRY', time_claimed_days: 10, created_at: '2026-10-14T08:00:00Z', updated_at: '2026-10-14T08:00:00Z' }],
   interface: [],
+  risk: riskRows(prefix),
 })
 
 function b64url(obj) {
@@ -181,8 +183,20 @@ export async function installMock(page, role, { projectKey = 'tiz', calls = [], 
       }
       if (fn === 'get_register_status_history') {
         if (!canView(role, args.p_register)) return json({ authorized: false })
-        if (!['rfi', 'decision', 'action', 'change', 'claim', 'interface'].includes(args.p_register)) {
+        // 20261023134000 sonrası canlıdaki liste
+        if (!['rfi', 'decision', 'action', 'change', 'claim', 'interface', 'submittal', 'material_approval', 'document', 'risk'].includes(args.p_register)) {
           return json({ authorized: true, tracked: false, history: [] })
+        }
+        if (args.p_register === 'document') {
+          return json({ authorized: true, tracked: true, history: [
+            { old_status: null, new_status: 'active', changed_by: null, changed_at: '2026-10-06T08:00:00Z' },
+          ] })
+        }
+        if (args.p_register === 'risk') {
+          return json({ authorized: true, tracked: true, history: [
+            { old_status: null, new_status: 'açık', changed_by: P2, changed_at: '2026-10-01T08:00:00Z' },
+            { old_status: 'açık', new_status: 'kapatıldı', changed_by: P1, changed_at: '2026-10-04T10:00:00Z' },
+          ] })
         }
         return json({ authorized: true, tracked: true, history: [
           { old_status: null, new_status: 'open', changed_by: P2, changed_at: '2026-10-01T08:00:00Z' },
@@ -211,10 +225,6 @@ export async function installMock(page, role, { projectKey = 'tiz', calls = [], 
         : json({ code: '42703', message: 'column role_sidebar_items.section_key does not exist' }, 400)
     }
     if (path === '/rest/v1/v_register_alerts') return json(menu === 'bolumlu' ? ALERTS : [])
-    if (path === '/rest/v1/project_risks') {
-      const pid = (url.searchParams.get('project_id') || '').replace(/^eq\./, '')
-      return json(RISKS.filter(r => r.project_id === pid))
-    }
     if (path === '/rest/v1/profiles') return json({ full_name: user.name, project_id: role === 'santiye_sefi' ? PROJECTS.tiz.id : null })
     if (path.startsWith('/rest/v1/')) {
       const single = (req.headers()['accept'] || '').includes('vnd.pgrst.object')

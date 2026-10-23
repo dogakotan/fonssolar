@@ -7,7 +7,7 @@ import {
   ALERT_CARDS, visibleAlertCards,
 } from '../src/lib/menu/sidebarMenu.js'
 import {
-  RISK_TAB, getRegisterTab, allColumns, normalizeRiskRow, statusOptions, filterByStatus, canViewRegister,
+  RISK_TAB, getRegisterTab, allColumns, statusOptions, filterByStatus, canViewRegister, REGISTER_TABS, parseRegisterNo,
 } from '../src/lib/register/registerConfig.js'
 
 const ROLLER = ['admin', 'proje_yoneticisi', 'santiye_sefi', 'muhasebe']
@@ -51,7 +51,7 @@ test('register menü öğeleri: anahtar → register kodu', () => {
 })
 
 test('migration dosyasındaki rol listesi ön yüz yetki kuralıyla aynı', () => {
-  const sql = readFileSync(new URL('../supabase/bekleyen/MENU_bolumler.sql', import.meta.url), 'utf8')
+  const sql = readFileSync(new URL('../supabase/migrations/20261023130558_menu_bolumler.sql', import.meta.url), 'utf8')
   const rows = [...sql.matchAll(/\('(register-[a-z-]+)',\s*'[a-z-]+',\s*\d+,\s*array\[([^\]]*)\]\)/g)]
   assert.equal(rows.length, Object.keys(REGISTER_MENU_ITEMS).length)
   for (const [, key, roles] of rows) {
@@ -96,16 +96,25 @@ test('Genel ekran kartları: beş tür, sayısı 0 olan gizli', () => {
   assert.deepEqual(visibleAlertCards({}), [])
 })
 
-test('risk: project_risks kolonları, numara sütunu yok, durum/şiddet etiketleri CHECK değerlerini kapsıyor', () => {
+test('risk: get_register_list kolonları, RSK numara sütunu, geçmiş tutuluyor, etiketler CHECK değerlerini kapsıyor', () => {
   const keys = allColumns(RISK_TAB).map(c => c.key)
-  assert.equal(keys.includes('no'), false)
+  assert.equal(keys[0], 'no')
   for (const k of ['title', 'status', 'severity', 'probability', 'impact', 'risk_score', 'mitigation_due_date', 'risk_owner', 'wbs_code', 'area_code', 'task_code']) {
     assert.ok(keys.includes(k), k)
   }
+  assert.equal(keys.includes('priority'), false)
+  assert.equal(RISK_TAB.historyTracked, true)
+  assert.deepEqual(parseRegisterNo('RSK-TIZ-0012'), { type: 'RSK', project: 'TIZ', seq: 12 })
   assert.deepEqual(Object.keys(RISK_TAB.statusMap), ['açık', 'azaltıldı', 'kabul_edildi', 'kapatıldı'])
   assert.deepEqual(Object.keys(allColumns(RISK_TAB).find(c => c.key === 'severity').map), ['kritik', 'yüksek', 'orta', 'düşük'])
-  const row = normalizeRiskRow({ id: 'r1', title: 'x', wbs: { wbs_code: 'W1', name: 'İnşaat' }, area: null, task: { task_code: 'M6', task_name: 'Görev' } })
-  assert.equal(row.wbs_code, 'W1'); assert.equal(row.area_code, null); assert.equal(row.task_code, 'M6'); assert.equal(row.no, null)
+})
+
+test('durum geçmişi: get_register_status_history listesindeki register\'larla aynı (20261023134000)', () => {
+  const sql = readFileSync(new URL('../supabase/migrations/20261023134000_register_role_hardening_risk_numbering_alert_filter.sql', import.meta.url), 'utf8')
+  const m = /p_register not in \(([^)]*)\)/.exec(sql)
+  const tracked = m[1].split(',').map(s => s.trim().replace(/'/g, '')).sort()
+  const ui = [...REGISTER_TABS, RISK_TAB].filter(t => t.historyTracked).map(t => t.key).sort()
+  assert.deepEqual(ui, tracked)
 })
 
 test('durum süzgeci', () => {

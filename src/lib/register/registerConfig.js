@@ -1,6 +1,7 @@
 // Register ekranının saf yapılandırması ve yardımcıları (React/Supabase bağımlılığı yok; tests-unit'ten doğrudan
 // test edilir). Rol görünürlüğü Karar 6 "G" kolonudur; veritabanındaki register_view_allowed() ile aynı olmalı
-// (supabase/migrations/20261020080127_register_okuma_rpc.sql). B1 gelince ikisi de register_permissions'tan okunur.
+// (son hali supabase/migrations/20261023134000_register_role_hardening_risk_numbering_alert_filter.sql; risk dahil).
+// B1 gelince ikisi de register_permissions'tan okunur.
 
 const TEKNIK_ROLLER = ['admin', 'proje_yoneticisi', 'santiye_sefi']
 const SOZLESME_ROLLER = ['admin', 'proje_yoneticisi', 'muhasebe']
@@ -92,7 +93,7 @@ export const REGISTER_TABS = [
     detail: [col('question', 'Soru', 'long'), col('description', 'Açıklama', 'long'), col('response', 'Cevap', 'long')],
   },
   {
-    key: 'document', label: 'Doküman', subtitle: 'Dokümanlar ve çizimler', roles: TEKNIK_ROLLER, historyTracked: false,
+    key: 'document', label: 'Doküman', subtitle: 'Dokümanlar ve çizimler', roles: TEKNIK_ROLLER, historyTracked: true,
     drawingFilter: true,
     statusMap: {
       active: { label: 'Aktif',    tone: 'success' },
@@ -148,7 +149,7 @@ export const REGISTER_TABS = [
   },
   {
     key: 'submittal', label: 'Teknik Sunum', subtitle: 'Teknik sunumlar (submittal)', roles: TEKNIK_ROLLER,
-    historyTracked: false, hasPriority: false, statusMap: ONAY_DURUMLARI,
+    historyTracked: true, hasPriority: false, statusMap: ONAY_DURUMLARI,
     columns: [
       col('revision', 'Revizyon', 'text', { default: true }),
       col('submitted_date', 'Gönderim', 'date', { default: true }),
@@ -162,7 +163,7 @@ export const REGISTER_TABS = [
   },
   {
     key: 'material_approval', label: 'Malzeme Onayı', subtitle: 'Malzeme onayları', roles: TEKNIK_ROLLER,
-    historyTracked: false, hasPriority: false, statusMap: ONAY_DURUMLARI,
+    historyTracked: true, hasPriority: false, statusMap: ONAY_DURUMLARI,
     columns: [
       col('manufacturer', 'Üretici', 'text', { default: true }),
       col('revision', 'Revizyon', 'text', { default: true }),
@@ -248,12 +249,12 @@ export const RISK_SEVERITY_MAP = {
   'düşük':  { label: 'Düşük',  tone: 'muted' },
 }
 
-// Risk register'ı get_register_list'te yok: project_risks'ten doğrudan okunur (source). Görünürlük risk yazma
-// yetkisiyle aynı (admin, proje yöneticisi, şantiye şefi). Sekmeli eski görünüme (REGISTER_TABS) bilinçli olarak
-// eklenmedi; yalnızca menüdeki "Riskler" sayfası kullanır. Numara yok (Karar 14'ün RSK numarası henüz uygulanmadı).
+// Risk register'ı: get_register_list 'risk' dalı (RSK numarası, Karar 14) ve get_register_status_history
+// (20261023134000). Görünürlük admin, proje yöneticisi, şantiye şefi. Sekmeli eski görünüme (REGISTER_TABS)
+// bilinçli olarak eklenmedi; yalnızca menüdeki "Riskler" sayfası kullanır.
 export const RISK_TAB = {
-  key: 'risk', label: 'Riskler', subtitle: 'Proje riskleri', roles: TEKNIK_ROLLER, historyTracked: false,
-  hasPriority: false, hasNumber: false, source: 'project_risks', defaultSort: { key: 'risk_score', dir: 'desc' },
+  key: 'risk', label: 'Riskler', subtitle: 'Proje riskleri', roles: TEKNIK_ROLLER, historyTracked: true,
+  hasPriority: false, defaultSort: { key: 'risk_score', dir: 'desc' },
   statusMap: {
     'açık':         { label: 'Açık',         tone: 'warning' },
     'azaltıldı':    { label: 'Azaltıldı',    tone: 'primary' },
@@ -273,17 +274,6 @@ export const RISK_TAB = {
     } }),
   ],
   detail: [col('description', 'Açıklama', 'long'), col('mitigation', 'Önlem', 'long')],
-}
-
-// project_risks satırını liste biçimine çevirir (WBS/alan/görev gömülü ilişkilerden).
-export function normalizeRiskRow(r) {
-  return {
-    ...r,
-    no: null,
-    wbs_code: r.wbs?.wbs_code ?? null, wbs_name: r.wbs?.name ?? null,
-    area_code: r.area?.area_code ?? null, area_name: r.area?.name ?? null,
-    task_code: r.task?.task_code ?? null, task_name: r.task?.task_name ?? null,
-  }
 }
 
 // Görüntüleme kuralı: Karar 6 'G'. 'drawing' doküman sekmesinin süzgecidir, rol kuralı dokümanla aynı.
@@ -323,7 +313,7 @@ export function getRegisterTab(key) {
 // Tabloda sabit sütunlar + register sütunları + bağlantı sütunları.
 export function allColumns(tab) {
   const base = [
-    ...(tab.hasNumber === false ? [] : [{ key: 'no', label: 'Numara', type: 'no', fixed: true }]),
+    { key: 'no', label: 'Numara', type: 'no', fixed: true },
     { key: 'title', label: 'Başlık', type: 'text', fixed: true },
     { key: 'status', label: 'Durum', type: 'status', fixed: true, map: tab.statusMap },
   ]
