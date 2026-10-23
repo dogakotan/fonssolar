@@ -2040,7 +2040,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
-**23.10.2026 (`register-menu-bolumler`, push yok) — Sol menüye bölümler; register sayfaları menüye bağlandı. Veritabanı adımı (`supabase/bekleyen/MENU_bolumler.sql`) onay bekliyor, canlıda ROLLBACK provası geçti.**
+**23.10.2026 (`register-menu-bolumler`, push yok) — Sol menüye bölümler; register sayfaları menüye bağlandı. Veritabanı adımı canlıda: `20261023130558_menu_bolumler` (23.10.2026, kullanıcı onayı; öncesinde iki menü tablosu `C:\fons-yedek\menu-oncesi-2026-10-23\`'e aktarıldı). Ön yüz henüz yayında değil.**
 - **Veritabanı:**
   - `sidebar_sections` (yalnızca okunur) ve `role_sidebar_items.section_key` eklendi.
   - Yeni menü anahtarları `register-rfi|action|decision|risk|interface|document|drawing|submittal|material-approval|change|claim`. Roller `register_view_allowed` ile aynı; risk admin/PM/şef.
