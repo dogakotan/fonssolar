@@ -37,6 +37,53 @@ const NAV = {
   muhasebe:         { tabs_unrestricted: false, default_tab: 'genel', tabs: ['genel', 'finans', 'satin-alma', 'bildirimler', 'odemeler', 'register'], sidebar: ['genel', 'finans', 'satin-alma', 'bildirimler', 'odemeler', 'register'] },
 }
 
+// Bölümlü menü: MENU_bolumler.sql uygulandıktan sonraki satırlar (22.10.2026 canlı ROLLBACK provasındaki çıktıdan elle).
+// [item_key, section_key]; eski "register" öğesi de durur (ön yüz gizlemeli).
+const R_TEKNIK = [
+  ['register-rfi', 'proje-kontrol'], ['register-action', 'proje-kontrol'], ['register-decision', 'proje-kontrol'],
+  ['register-risk', 'proje-kontrol'], ['register-interface', 'proje-kontrol'],
+  ['register-document', 'dokuman'], ['register-drawing', 'dokuman'], ['register-submittal', 'dokuman'],
+  ['register-material-approval', 'dokuman'],
+]
+const R_TICARI = [['register-change', 'ticari'], ['register-claim', 'ticari']]
+export const MENU_BOLUMLU = {
+  admin: [['genel', null], ['projeler', 'proje'], ...R_TEKNIK, ...R_TICARI, ['satin-alma', 'satinalma-finans'], ['finans', 'satinalma-finans'],
+    ['tickets', 'iletisim'], ['bildirimler', 'iletisim'], ['proje-ekle', 'yonetim'], ['kullanicilar', 'yonetim'], ['register', null]],
+  proje_yoneticisi: [['genel', null], ['projeler', 'proje'], ...R_TEKNIK, ...R_TICARI, ['satin-alma', 'satinalma-finans'], ['finans', 'satinalma-finans'],
+    ['tickets', 'iletisim'], ['bildirimler', 'iletisim'], ['proje-ekle', 'yonetim'], ['kullanicilar', 'yonetim'], ['register', null]],
+  santiye_sefi: [['genel', null], ['is-plani', 'proje'], ['rapor-listesi', 'proje'], ...R_TEKNIK, ['satin-alma', 'satinalma-finans'],
+    ['tickets', 'iletisim'], ['bildirimler', 'iletisim'], ['register', null]],
+  muhasebe: [['genel', null], ...R_TICARI, ['satin-alma', 'satinalma-finans'], ['finans', 'satinalma-finans'], ['odemeler', 'satinalma-finans'],
+    ['bildirimler', 'iletisim'], ['register', null]],
+}
+const SECTIONS = [
+  { section_key: 'proje', label: 'Proje', order_index: 1 },
+  { section_key: 'proje-kontrol', label: 'Proje kontrol', order_index: 2 },
+  { section_key: 'dokuman', label: 'Doküman ve teknik', order_index: 3 },
+  { section_key: 'ticari', label: 'Ticari', order_index: 4 },
+  { section_key: 'satinalma-finans', label: 'Satın alma ve finans', order_index: 5 },
+  { section_key: 'iletisim', label: 'İletişim', order_index: 6 },
+  { section_key: 'yonetim', label: 'Yönetim', order_index: 7 },
+]
+
+// v_register_alerts (kurgu). Görünümün RLS'i muhasebeye RFI/karar/aksiyon satırlarını da verir (canlıdaki gibi);
+// ön yüz rolün göremediği register'ın uyarısını saymamalı.
+export const ALERTS = [
+  { alert_type: 'rfi_overdue', register_code: 'rfi', project_id: 'kurgu-izmir' },
+  { alert_type: 'rfi_overdue', register_code: 'rfi', project_id: 'kurgu-izmir' },
+  { alert_type: 'rfi_overdue', register_code: 'rfi', project_id: 'kurgu-izmir' },
+  { alert_type: 'action_overdue', register_code: 'action', project_id: 'kurgu-izmir' },
+  { alert_type: 'decision_overdue', register_code: 'decision', project_id: 'kurgu-izmir' },
+  { alert_type: 'claim_notice_due', register_code: 'claim', project_id: 'kurgu-izmir' },
+  { alert_type: 'claim_notice_due', register_code: 'claim', project_id: 'kurgu-izmir' },
+  { alert_type: 'critical_material_due', register_code: 'procurement', project_id: 'kurgu-izmir' },
+]
+
+const RISKS = [
+  { id: 'cccccccc-0000-4000-8000-000000000001', project_id: 'kurgu-izmir', title: 'Kurgu risk: trafo teslim gecikmesi', status: 'açık', severity: 'kritik', probability: 4, impact: 5, risk_score: 20, mitigation_due_date: '2026-11-15', risk_owner: 'aaaaaaaa-0000-4000-8000-000000000001', source: 'manuel', category: 'satin_alma', description: 'Kurgu açıklama.', mitigation: 'Kurgu önlem.', wbs: { wbs_code: 'W-01', name: 'Kurgu WBS' }, area: null, task: null },
+  { id: 'cccccccc-0000-4000-8000-000000000002', project_id: 'kurgu-izmir', title: 'Kurgu risk: hava', status: 'kapatıldı', severity: 'orta', probability: 2, impact: 2, risk_score: 4, mitigation_due_date: null, risk_owner: null, source: 'otomatik', category: 'is_kalemi', description: null, mitigation: null, wbs: null, area: null, task: { task_code: 'M6', task_name: 'Kurgu görev' } },
+]
+
 const PEOPLE = {
   'aaaaaaaa-0000-4000-8000-000000000001': 'Kurgu Mühendis A',
   'aaaaaaaa-0000-4000-8000-000000000002': 'Kurgu Mühendis B',
@@ -84,7 +131,9 @@ function b64url(obj) {
   return Buffer.from(JSON.stringify(obj)).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_')
 }
 
-export async function installMock(page, role, { projectKey = 'tiz', calls = [] } = {}) {
+// menu: 'duz' (bugünkü canlı: tek "register") | 'bolumlu' (MENU_bolumler.sql sonrası).
+// unauthorized: get_register_list'in authorized:false döneceği register kodu (yetki mesajı testi).
+export async function installMock(page, role, { projectKey = 'tiz', calls = [], menu = 'duz', unauthorized = null } = {}) {
   const user = USERS[role]
   const exp = Math.floor(Date.now() / 1000) + 3600 * 24
   const token = `${b64url({ alg: 'HS256', typ: 'JWT' })}.${b64url({ sub: user.id, role: 'authenticated', exp })}.sig`
@@ -120,7 +169,8 @@ export async function installMock(page, role, { projectKey = 'tiz', calls = [] }
       if (fn === 'get_profile_names') return json((args.p_ids || []).filter(x => PEOPLE[x]).map(x => ({ id: x, full_name: PEOPLE[x] })))
       if (fn === 'get_register_list') {
         const proj = Object.values(PROJECTS).find(p => p.id === args.p_project_id)
-        if (!proj || !user.projects.some(k => PROJECTS[k].id === proj.id) || !canView(role, args.p_register)) {
+        if (!proj || !user.projects.some(k => PROJECTS[k].id === proj.id) || !canView(role, args.p_register)
+          || args.p_register === unauthorized) {
           return json({ authorized: false })
         }
         const all = ROWS(proj.prefix)
@@ -143,11 +193,27 @@ export async function installMock(page, role, { projectKey = 'tiz', calls = [] }
     }
     if (path === '/rest/v1/roles') {
       const n = NAV[role]
+      const sidebar = menu === 'bolumlu' ? MENU_BOLUMLU[role].map(([k]) => k) : n.sidebar
+      const extraTabs = menu === 'bolumlu' && role !== 'admin' ? sidebar.filter(k => k.startsWith('register-')) : []
       return json({
         display_name: role, is_manager: role === 'admin' || role === 'muhasebe', tabs_unrestricted: n.tabs_unrestricted, default_tab: n.default_tab,
-        role_allowed_tabs: n.tabs.map((tab_key, order_index) => ({ tab_key, order_index })),
-        role_sidebar_items: n.sidebar.map((item_key, order_index) => ({ item_key, order_index })),
+        role_allowed_tabs: [...n.tabs, ...extraTabs].map((tab_key, order_index) => ({ tab_key, order_index })),
+        role_sidebar_items: sidebar.map((item_key, order_index) => ({ item_key, order_index })),
       })
+    }
+    // Bölüm migration'ı öncesi: tablo/kolon yok → PostgREST hatası (ön yüz düz menüye düşmeli)
+    if (path === '/rest/v1/sidebar_sections') {
+      return menu === 'bolumlu' ? json(SECTIONS) : json({ code: '42P01', message: 'relation "public.sidebar_sections" does not exist' }, 404)
+    }
+    if (path === '/rest/v1/role_sidebar_items') {
+      return menu === 'bolumlu'
+        ? json(MENU_BOLUMLU[role].map(([item_key, section_key]) => ({ item_key, section_key })))
+        : json({ code: '42703', message: 'column role_sidebar_items.section_key does not exist' }, 400)
+    }
+    if (path === '/rest/v1/v_register_alerts') return json(menu === 'bolumlu' ? ALERTS : [])
+    if (path === '/rest/v1/project_risks') {
+      const pid = (url.searchParams.get('project_id') || '').replace(/^eq\./, '')
+      return json(RISKS.filter(r => r.project_id === pid))
     }
     if (path === '/rest/v1/profiles') return json({ full_name: user.name, project_id: role === 'santiye_sefi' ? PROJECTS.tiz.id : null })
     if (path.startsWith('/rest/v1/')) {

@@ -2040,6 +2040,19 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**23.10.2026 (`register-menu-bolumler`, push yok) — Sol menüye bölümler; register sayfaları menüye bağlandı. Veritabanı adımı (`supabase/bekleyen/MENU_bolumler.sql`) onay bekliyor, canlıda ROLLBACK provası geçti.**
+- **Veritabanı:**
+  - `sidebar_sections` (yalnızca okunur) ve `role_sidebar_items.section_key` eklendi.
+  - Yeni menü anahtarları `register-rfi|action|decision|risk|interface|document|drawing|submittal|material-approval|change|claim`. Roller `register_view_allowed` ile aynı; risk admin/PM/şef.
+  - Eski tek `register` öğesi ayrı adımda kalkar (`MENU_register_kaldir.sql`), yeni sayfalar yayına çıkıp doğrulandıktan sonra.
+- **Ön yüz:**
+  - `AuthContext` bölümleri ayrı sorguyla okur; tablo/kolon yoksa menü düz liste kalır.
+  - `Sidebar` veritabanı sırasıyla bölümlü çizer; boş bölüm gizli; eski `register` öğesi register-* varken gizli.
+  - RFI/Aksiyonlar/Kararlar/Claim rozetleri `v_register_alerts`'ten gelir (`useRegisterAlerts`).
+  - Her register-* sayfası `TabRegister fixedRegister=…` açar: durum süzgeci, "Bu bölüme erişimin yok."; risk `project_risks`'ten, numara sütunu yok.
+  - Genel ekranda uyarı kartları (`RegisterAlertCards`, uyarı yoksa çizilmez).
+- **Bilinen:** `v_register_alerts` muhasebeye RFI/karar/aksiyon/risk satırlarını da döndürüyor (alttaki tabloların SELECT kuralı yalnızca proje erişimi); ön yüz rolün göremediği register'ın uyarısını saymaz (görüntü süzgeci, yetki değil).
+
 **20.10.2026 (34. tur, `register-ekran`) — Register navigasyon satırları canlıya uygulandı (`20261020083341_register_navigasyon`); ön yüz henüz yayında değil, push yok.**
 - Kullanıcı kararıyla yayın sırası değişti: navigasyon (Adım 4) PR/yayından önce uygulandı, Register yerelde (5192, bu dal) menüde görünsün diye. Eski canlı ön yüz `register` anahtarını yok sayar (`Sidebar.jsx` sabit öğe listesini süzer, `index.jsx` sekmeyi `TABS[...]`'ta arar, `AuthContext` yalnızca listeyi okur; varsayılan sekme `roles.default_tab`'ten); canlı sitede görünür değişiklik yok.
 - Doğrulama: `register` satırları sekme 3 (muhasebe:11, proje_yoneticisi:11, santiye_sefi:7), sidebar 4 (admin:8, muhasebe:11, proje_yoneticisi:11, santiye_sefi:6); toplam 20 → 23 / 27 → 31; `nav_*` md5'leri beklenenle aynı; `roles`, fonksiyon sayısı, RFI, bildirim değişmedi. Dosya `supabase/migrations/20261020083341_register_navigasyon.sql`, ters SQL `supabase/rollback/20261020083341_register_navigasyon.down.sql`.

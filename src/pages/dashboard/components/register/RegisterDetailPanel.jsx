@@ -19,6 +19,8 @@ export default function RegisterDetailPanel({ tab, registerKey, row, prefix, nam
   const [historyNames, setHistoryNames] = useState(new Map())
 
   useEffect(() => {
+    // Geçmişi tutulmayan register (ör. risk; get_register_status_history'de yok) için çağrı yapılmaz.
+    if (!tab.historyTracked) return undefined
     let active = true
     setHistory({ loading: true, data: null, error: '' })
     supabase.rpc('get_register_status_history', { p_register: registerKey, p_record_id: row.id })
@@ -33,7 +35,7 @@ export default function RegisterDetailPanel({ tab, registerKey, row, prefix, nam
         fetchProfileNames((data?.history || []).map(h => h.changed_by)).then(map => { if (active) setHistoryNames(map) })
       })
     return () => { active = false }
-  }, [registerKey, row.id])
+  }, [registerKey, row.id, tab.historyTracked])
 
   useEffect(() => {
     function onKey(e) { if (e.key === 'Escape') onClose() }
@@ -56,7 +58,7 @@ export default function RegisterDetailPanel({ tab, registerKey, row, prefix, nam
       >
         <header className="register-panel-head">
           <div>
-            <div className="register-no">{row.no || '—'}</div>
+            {tab.hasNumber !== false && <div className="register-no">{row.no || '—'}</div>}
             <h3>{row.title || '—'}</h3>
             {parsed.project && (
               <div className="register-panel-sub">

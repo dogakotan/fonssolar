@@ -22,9 +22,9 @@ test('Karar 6: rol × alt sekme görünürlüğü', () => {
   assert.deepEqual(keys('bilinmeyen'), [])
 })
 
-test('çizim, doküman kuralını izler; risk ilk sürümde yok', () => {
+test('çizim, doküman kuralını izler; risk ayrı sayfada (admin, PM, şef), sekmeli görünümde yok', () => {
   for (const r of ROLLER) assert.equal(canViewRegister(r, 'drawing'), canViewRegister(r, 'document'))
-  for (const r of ROLLER) assert.equal(canViewRegister(r, 'risk'), false)
+  assert.deepEqual(ROLLER.filter(r => canViewRegister(r, 'risk')), ['admin', 'proje_yoneticisi', 'santiye_sefi'])
   assert.equal(REGISTER_TABS.some(t => t.key === 'risk'), false)
 })
 
