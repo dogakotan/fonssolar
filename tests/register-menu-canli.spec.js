@@ -6,6 +6,7 @@ import { test, expect } from '@playwright/test'
 import { signIn, loginUi } from './helpers.js'
 
 const LIVE = process.env.PW_TARGET === 'live'
+const TIZ = process.env.TEST_PROJECT_IZMIR
 const PK = ['RFI', 'Aksiyonlar', 'Kararlar', 'Riskler', 'Arayüzler']
 const DOK = ['Dokümanlar', 'Çizimler', 'Teknik sunumlar', 'Malzeme onayları']
 
@@ -39,6 +40,7 @@ for (const r of ROLES) {
       if (u.pathname.startsWith('/auth/v1/token')) return
       if (req.method() !== 'GET' && !/^\/rest\/v1\/rpc\/get_[a-z_]+$/.test(u.pathname)) writes.push(`${req.method()} ${u.pathname}`)
     })
+    if (TIZ) await page.addInitScript(pid => window.localStorage.setItem('register-project', JSON.stringify(pid)), TIZ)
     await loginUi(page, r.email, r.password)
     const nav = page.locator('.sidebar-nav')
     for (const [label, items] of Object.entries(r.sections)) {
@@ -52,6 +54,14 @@ for (const r of ROLES) {
     await expect(page.locator('.register-title')).toHaveText('RFI')
     await nav.getByRole('button', { name: /^Riskler/ }).click()
     await expect(page.locator('.register-title')).toHaveText('Riskler')
+    if (TIZ) {
+      // 20261023134000: riskler get_register_list'ten, RSK numaralı (TIZ'de risk var)
+      await expect(page.locator('.register-table th').first()).toContainText('Numara')
+      await expect(page.locator('.register-table tbody tr').first()).toContainText(/RSK-TIZ-\d{4}/)
+      await page.locator('.register-table tbody tr').first().click()
+      await expect(page.getByRole('dialog').locator('.register-history')).toBeVisible()
+      await expect(page.getByRole('dialog')).not.toContainText('Durum geçmişi yüklenemedi')
+    }
     expect(writes, 'ekran yazma isteği atmamalı').toEqual([])
   })
 }
