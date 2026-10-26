@@ -7,7 +7,8 @@ import { fetchProfileNames } from '../../../../utils/profileNames'
 import Pager from '../../../../components/ui/Pager'
 import {
   visibleRegisterTabs, resolveRegisterTab, allColumns, defaultVisibleColumnKeys,
-  sortRows, filterRows, paginate, personIdsIn,
+  sortRows, filterRows, paginate, personIdsIn, canViewRegister, getRegisterTab,
+  statusOptions, filterByStatus,
 } from '../../../../lib/register/registerConfig'
 import RegisterDetailPanel from './RegisterDetailPanel'
 import RegisterCell from './RegisterCell'
@@ -15,6 +16,7 @@ import './register.css'
 
 const PROJECT_KEY = 'register-project'
 const columnsKey = registerKey => `register-columns-${registerKey}`
+const NO_ACCESS = 'Bu bölüme erişimin yok.'
 
 function readStored(key, fallback) {
   try {
@@ -28,15 +30,20 @@ function writeStored(key, value) {
   try { window.localStorage.setItem(key, JSON.stringify(value)) } catch { /* depolama kapalı */ }
 }
 
-// Register ekranı — ilk sürüm yalnızca okuma (ekle/düzenle yok). Adres: /dashboard/register?tur=<kod>&kayit=<id>.
+// Register ekranı — yalnızca okuma (ekle/düzenle yok). İki kip:
+//  - fixedRegister verilirse (menüdeki register-* sayfaları, /dashboard/register-rfi?kayit=<id>): tek register,
+//    sekme şeridi yok. 'drawing' doküman listesinin çizim süzgecidir.
+//  - verilmezse eski sekmeli görünüm (/dashboard/register?tur=<kod>&kayit=<id>); menüden kaldırılınca silinecek.
 // Veri get_register_list / get_register_status_history'den (SECURITY INVOKER; Karar 6 görüntüleme matrisi).
-export default function TabRegister() {
+export default function TabRegister({ fixedRegister = null }) {
   const { role } = useAuth()
   const { projects, loadingProjects } = useScope()
   const [searchParams, setSearchParams] = useSearchParams()
   const tabs = useMemo(() => visibleRegisterTabs(role), [role])
-  const requested = searchParams.get('tur')
-  const tab = resolveRegisterTab(role, requested)
+  const requested = fixedRegister || searchParams.get('tur')
+  const tab = fixedRegister
+    ? (canViewRegister(role, fixedRegister) ? getRegisterTab(fixedRegister) : null)
+    : resolveRegisterTab(role, requested)
   const drawingOnly = requested === 'drawing' && tab?.key === 'document'
   const registerKey = drawingOnly ? 'drawing' : tab?.key
   const recordId = searchParams.get('kayit')
@@ -48,7 +55,8 @@ export default function TabRegister() {
   const project = projects.find(p => p.id === effectiveProjectId) || null
 
   const [query, setQuery] = useState('')
-  const [sort, setSort] = useState({ key: 'no', dir: 'desc' })
+  const [status, setStatus] = useState('')
+  const [sort, setSort] = useState(() => tab?.defaultSort || { key: 'no', dir: 'desc' })
   const [page, setPage] = useState(0)
   const [visibleKeys, setVisibleKeys] = useState(() => (tab ? readStored(columnsKey(tab.key), defaultVisibleColumnKeys(tab)) : []))
   const [menuOpen, setMenuOpen] = useState(false)
@@ -59,19 +67,21 @@ export default function TabRegister() {
     if (!tab) return
     setVisibleKeys(readStored(columnsKey(tab.key), defaultVisibleColumnKeys(tab)))
     setQuery('')
-    setSort({ key: 'no', dir: 'desc' })
+    setStatus('')
+    setSort(tab.defaultSort || { key: 'no', dir: 'desc' })
     setPage(0)
     setMenuOpen(false)
   }, [tab?.key]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { data, loading, refreshing, error } = useDashboardData(
+  const { data, loading, error, refreshing } = useDashboardData(
     'get_register_list',
     { p_project_id: effectiveProjectId, p_register: registerKey },
     { enabled: Boolean(effectiveProjectId && registerKey) },
   )
   // useDashboardData önceki veriyi korur; başka sekme/projenin satırları bir an görünmesin. Yetkisiz yanıtta
   // register alanı yok; yenileme bitince gösterilir.
-  const current = data && effectiveProjectId && (data.register === registerKey || (data.authorized === false && !refreshing))
+  const current = data && effectiveProjectId
+    && (data.register === registerKey || (data.authorized === false && !refreshing))
     ? data : null
   const rows = useMemo(() => current?.rows || [], [current])
 
@@ -86,8 +96,8 @@ export default function TabRegister() {
   const shownColumns = useMemo(() => columns.filter(c => c.fixed || visibleKeys.includes(c.key)), [columns, visibleKeys])
   const sortColumn = columns.find(c => c.key === sort.key) || columns[0]
   const filtered = useMemo(
-    () => sortRows(filterRows(rows, query, shownColumns, names), sortColumn, sort.dir, names),
-    [rows, query, shownColumns, names, sortColumn, sort.dir],
+    () => sortRows(filterRows(filterByStatus(rows, status), query, shownColumns, names), sortColumn, sort.dir, names),
+    [rows, status, query, shownColumns, names, sortColumn, sort.dir],
   )
   const pageData = paginate(filtered, page)
   const selected = recordId ? rows.find(r => r.id === recordId) || null : null
@@ -119,28 +129,33 @@ export default function TabRegister() {
   }
 
   if (!tab) {
-    return <div className="register-empty" role="status">Register kayıtlarını görme yetkiniz yok.</div>
+    return <div className="register-empty" role="status">{fixedRegister ? NO_ACCESS : 'Register kayıtlarını görme yetkiniz yok.'}</div>
   }
+
+  const title = drawingOnly && fixedRegister ? 'Çizimler' : tab.label
+  const options = statusOptions(tab)
 
   return (
     <div className="register-page">
-      <div className="register-tabs" role="tablist" aria-label="Register türleri">
-        {tabs.map(t => (
-          <button
-            key={t.key}
-            type="button"
-            role="tab"
-            aria-selected={t.key === tab.key}
-            className={`register-tab${t.key === tab.key ? ' active' : ''}`}
-            onClick={() => setParams({ tur: t.key, kayit: null })}
-          >{t.label}</button>
-        ))}
-      </div>
+      {!fixedRegister && (
+        <div className="register-tabs" role="tablist" aria-label="Register türleri">
+          {tabs.map(t => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={t.key === tab.key}
+              className={`register-tab${t.key === tab.key ? ' active' : ''}`}
+              onClick={() => setParams({ tur: t.key, kayit: null })}
+            >{t.label}</button>
+          ))}
+        </div>
+      )}
 
       <div className="register-head">
         <div>
-          <h2 className="register-title">{tab.label}</h2>
-          <div className="register-subtitle">{tab.subtitle}</div>
+          <h2 className="register-title">{title}</h2>
+          <div className="register-subtitle">{drawingOnly && fixedRegister ? 'Çizim türündeki dokümanlar' : tab.subtitle}</div>
         </div>
         <div className="register-head-right">
           {projects.length > 1 && (
@@ -152,7 +167,7 @@ export default function TabRegister() {
               </select>
             </label>
           )}
-          {project && current && (
+          {project && current && current.authorized !== false && (
             current.prefix
               ? <span className="register-code" title="Register numaraları bu proje kodundan üretilir">Proje kodu: <b>{current.prefix}</b></span>
               : <span className="register-code warn">Bu projenin register kodu tanımlı değil; bu projede register numarası alınamaz.</span>
@@ -175,7 +190,18 @@ export default function TabRegister() {
               value={query}
               onChange={e => { setQuery(e.target.value); setPage(0) }}
             />
-            {tab.drawingFilter && (
+            {options.length > 0 && (
+              <select
+                className="register-filter"
+                aria-label="Durum süzgeci"
+                value={status}
+                onChange={e => { setStatus(e.target.value); setPage(0) }}
+              >
+                <option value="">Tüm durumlar</option>
+                {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            )}
+            {tab.drawingFilter && !fixedRegister && (
               <div className="register-segment" role="group" aria-label="Doküman süzgeci">
                 <button type="button" className={!drawingOnly ? 'active' : ''} aria-pressed={!drawingOnly}
                   onClick={() => setParams({ tur: 'document', kayit: null })}>Tümü</button>
@@ -202,13 +228,15 @@ export default function TabRegister() {
 
           {error && <div className="register-error" role="alert">{error}</div>}
           {current && current.authorized === false && (
-            <div className="register-empty" role="status">Bu register'ı bu projede görme yetkiniz yok.</div>
+            <div className="register-empty" role="status">
+              {fixedRegister ? NO_ACCESS : "Bu register'ı bu projede görme yetkiniz yok."}
+            </div>
           )}
           {loading && !current && !error && <div className="register-empty" role="status">Yükleniyor…</div>}
 
           {current?.authorized && rows.length === 0 && (
             <div className="register-empty" role="status">
-              <strong>Bu projede henüz {drawingOnly ? 'çizim' : `${tab.label} kaydı`} yok.</strong>
+              <strong>Bu projede henüz {drawingOnly ? 'çizim' : tab.key === 'risk' ? 'risk' : `${tab.label} kaydı`} yok.</strong>
               <span>Bu sürümde kayıtlar yalnızca görüntülenir; ekrandan kayıt eklenmez.</span>
             </div>
           )}
@@ -247,7 +275,7 @@ export default function TabRegister() {
                 </table>
               </div>
               {filtered.length === 0
-                ? <div className="register-empty" role="status">Aramayla eşleşen kayıt yok.</div>
+                ? <div className="register-empty" role="status">Arama veya süzgeçle eşleşen kayıt yok.</div>
                 : (
                   <div className="register-footer">
                     <span>{filtered.length} kayıt</span>

@@ -88,7 +88,7 @@ test('yan panel: alanlar ve durum geçmişi; adres kayit parametresini taşır',
   assertReadOnly(calls)
 })
 
-test('geçmişi tutulmayan register için not; çizim süzgeci', async ({ page }) => {
+test('doküman durum geçmişi (20261023122724); çizim süzgeci', async ({ page }) => {
   const calls = []
   await installMock(page, 'santiye_sefi', { calls })
   await page.goto('/dashboard/register?tur=document')
@@ -98,7 +98,11 @@ test('geçmişi tutulmayan register için not; çizim süzgeci', async ({ page }
   await expect(page.locator('.register-table tbody tr')).toHaveCount(1)
   await expect(page.locator('.register-table tbody tr')).toContainText('DRW-TIZ-0001')
   await page.locator('.register-table tbody tr').first().click()
-  await expect(page.getByRole('dialog')).toContainText('Bu register için durum geçmişi tutulmuyor.')
+  const items = page.getByRole('dialog').locator('.register-history-list li')
+  await expect(items).toHaveCount(1)
+  await expect(items.first()).toContainText('Açıldı:')
+  await expect(items.first()).toContainText('Aktif')
+  await expect(items.first()).toContainText('Sistem / panel')
   assertReadOnly(calls)
 })
 

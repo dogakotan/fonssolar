@@ -1,6 +1,7 @@
 // Register ekranının saf yapılandırması ve yardımcıları (React/Supabase bağımlılığı yok; tests-unit'ten doğrudan
 // test edilir). Rol görünürlüğü Karar 6 "G" kolonudur; veritabanındaki register_view_allowed() ile aynı olmalı
-// (supabase/migrations/20261020080127_register_okuma_rpc.sql). B1 gelince ikisi de register_permissions'tan okunur.
+// (son hali supabase/migrations/20261023134000_register_role_hardening_risk_numbering_alert_filter.sql; risk dahil).
+// B1 gelince ikisi de register_permissions'tan okunur.
 
 const TEKNIK_ROLLER = ['admin', 'proje_yoneticisi', 'santiye_sefi']
 const SOZLESME_ROLLER = ['admin', 'proje_yoneticisi', 'muhasebe']
@@ -60,8 +61,8 @@ const ONAY_DURUMLARI = {
 
 // Ortak sütunlar (WBS/alan/görev bağlantısı ve kayıt tarihleri) — her register'ın sonuna eklenir.
 const BAG_SUTUNLARI = [
-  { key: 'wbs_code',   label: 'WBS',          type: 'code', nameKey: 'wbs_name' },
-  { key: 'area_code',  label: 'Alan',         type: 'code', nameKey: 'area_name' },
+  { key: 'wbs_code',   label: 'WBS',          type: 'code', nameKey: 'wbs_name', default: true },
+  { key: 'area_code',  label: 'Alan',         type: 'code', nameKey: 'area_name', default: true },
   // Karar 69: mevcut görev bağları salt okunur gösterilir (varsayılan açık); ekranda bağ kurulmaz.
   { key: 'task_code',  label: 'Görev',        type: 'code', nameKey: 'task_name', default: true },
   { key: 'created_at', label: 'Oluşturulma',  type: 'date' },
@@ -92,7 +93,7 @@ export const REGISTER_TABS = [
     detail: [col('question', 'Soru', 'long'), col('description', 'Açıklama', 'long'), col('response', 'Cevap', 'long')],
   },
   {
-    key: 'document', label: 'Doküman', subtitle: 'Dokümanlar ve çizimler', roles: TEKNIK_ROLLER, historyTracked: false,
+    key: 'document', label: 'Doküman', subtitle: 'Dokümanlar ve çizimler', roles: TEKNIK_ROLLER, historyTracked: true,
     drawingFilter: true,
     statusMap: {
       active: { label: 'Aktif',    tone: 'success' },
@@ -148,7 +149,7 @@ export const REGISTER_TABS = [
   },
   {
     key: 'submittal', label: 'Teknik Sunum', subtitle: 'Teknik sunumlar (submittal)', roles: TEKNIK_ROLLER,
-    historyTracked: false, hasPriority: false, statusMap: ONAY_DURUMLARI,
+    historyTracked: true, hasPriority: false, statusMap: ONAY_DURUMLARI,
     columns: [
       col('revision', 'Revizyon', 'text', { default: true }),
       col('submitted_date', 'Gönderim', 'date', { default: true }),
@@ -162,7 +163,7 @@ export const REGISTER_TABS = [
   },
   {
     key: 'material_approval', label: 'Malzeme Onayı', subtitle: 'Malzeme onayları', roles: TEKNIK_ROLLER,
-    historyTracked: false, hasPriority: false, statusMap: ONAY_DURUMLARI,
+    historyTracked: true, hasPriority: false, statusMap: ONAY_DURUMLARI,
     columns: [
       col('manufacturer', 'Üretici', 'text', { default: true }),
       col('revision', 'Revizyon', 'text', { default: true }),
@@ -241,11 +242,54 @@ export const REGISTER_TABS = [
   },
 ]
 
+export const RISK_SEVERITY_MAP = {
+  'kritik': { label: 'Kritik', tone: 'danger' },
+  'yüksek': { label: 'Yüksek', tone: 'warning' },
+  'orta':   { label: 'Orta',   tone: 'primary' },
+  'düşük':  { label: 'Düşük',  tone: 'muted' },
+}
+
+// Risk register'ı: get_register_list 'risk' dalı (RSK numarası, Karar 14) ve get_register_status_history
+// (20261023134000). Görünürlük admin, proje yöneticisi, şantiye şefi. Sekmeli eski görünüme (REGISTER_TABS)
+// bilinçli olarak eklenmedi; yalnızca menüdeki "Riskler" sayfası kullanır.
+export const RISK_TAB = {
+  key: 'risk', label: 'Riskler', subtitle: 'Proje riskleri', roles: TEKNIK_ROLLER, historyTracked: true,
+  hasPriority: false, defaultSort: { key: 'risk_score', dir: 'desc' },
+  statusMap: {
+    'açık':         { label: 'Açık',         tone: 'warning' },
+    'azaltıldı':    { label: 'Azaltıldı',    tone: 'primary' },
+    'kabul_edildi': { label: 'Kabul edildi', tone: 'muted' },
+    'kapatıldı':    { label: 'Kapatıldı',    tone: 'success' },
+  },
+  columns: [
+    col('severity', 'Şiddet', 'status', { default: true, map: RISK_SEVERITY_MAP }),
+    col('probability', 'Olasılık', 'number', { default: true }),
+    col('impact', 'Etki', 'number', { default: true }),
+    col('risk_score', 'Skor', 'number', { default: true }),
+    col('mitigation_due_date', 'Önlem termini', 'date', { default: true }),
+    col('risk_owner', 'Risk sahibi', 'person', { default: true }),
+    col('source', 'Kaynak', 'enum', { map: { manuel: { label: 'Elle' }, otomatik: { label: 'Otomatik' } } }),
+    col('category', 'Kategori', 'enum', { map: {
+      is_kalemi: { label: 'İş kalemi' }, satin_alma: { label: 'Satın alma' }, diger: { label: 'Diğer' },
+    } }),
+  ],
+  detail: [col('description', 'Açıklama', 'long'), col('mitigation', 'Önlem', 'long')],
+}
+
 // Görüntüleme kuralı: Karar 6 'G'. 'drawing' doküman sekmesinin süzgecidir, rol kuralı dokümanla aynı.
 export function canViewRegister(role, registerKey) {
   const key = registerKey === 'drawing' ? 'document' : registerKey
-  const tab = REGISTER_TABS.find(t => t.key === key)
+  const tab = key === 'risk' ? RISK_TAB : REGISTER_TABS.find(t => t.key === key)
   return Boolean(tab && role && tab.roles.includes(role))
+}
+
+// Durum süzgeci seçenekleri: register'ın durum haritası, sırası korunur.
+export function statusOptions(tab) {
+  return Object.entries(tab?.statusMap || {}).map(([value, meta]) => ({ value, label: meta.label }))
+}
+
+export function filterByStatus(rows, status) {
+  return status ? rows.filter(r => r.status === status) : rows
 }
 
 export function visibleRegisterTabs(role) {
@@ -262,7 +306,8 @@ export function resolveRegisterTab(role, requested) {
 }
 
 export function getRegisterTab(key) {
-  return REGISTER_TABS.find(t => t.key === key) || null
+  if (key === 'risk') return RISK_TAB
+  return REGISTER_TABS.find(t => t.key === (key === 'drawing' ? 'document' : key)) || null
 }
 
 // Tabloda sabit sütunlar + register sütunları + bağlantı sütunları.

@@ -115,6 +115,18 @@ export function AuthProvider({ children }) {
         .sort((a, b) => a.order_index - b.order_index)
         .map(item => item.item_key)
 
+      // Menü bölümleri (sidebar_sections + role_sidebar_items.section_key). Ayrı sorgu: bölüm migration'ı
+      // uygulanmamış bir veritabanında kolon/tablo yoksa giriş bozulmasın, menü düz liste olarak kalır.
+      const [{ data: sectionRows, error: sectionsError }, { data: sectionItems, error: sectionItemsError }] = await Promise.all([
+        supabase.from('sidebar_sections').select('section_key, label, order_index'),
+        supabase.from('role_sidebar_items').select('item_key, section_key').eq('role_key', roleKey),
+      ])
+      const sectionsOk = !sectionsError && !sectionItemsError
+      const sidebarSections = sectionsOk ? (sectionRows || []) : []
+      const sectionOf = sectionsOk
+        ? Object.fromEntries((sectionItems || []).map(r => [r.item_key, r.section_key]))
+        : {}
+
       const projects = Array.isArray(projectData) ? projectData : []
       const homeProjectId = profileData?.project_id ?? null
       // Tek projeli kullanıcı doğrudan o projeyi kullanır. Birden fazla proje
@@ -139,6 +151,8 @@ export function AuthProvider({ children }) {
           tabs: roleRow?.tabs_unrestricted ? null : allowedTabs,
           defaultTab: roleRow?.default_tab ?? null,
           sidebarItems,
+          sidebarSections,
+          sectionOf,
         },
       })
     } catch (err) {

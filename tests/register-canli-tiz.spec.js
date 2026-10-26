@@ -27,6 +27,7 @@ let ready = false
 let navPresent = false
 let skipReason = 'PW_TARGET=live değil'
 let tizSubmittals = null
+let registerPages = false
 
 test.beforeAll(async () => {
   if (!LIVE) return
@@ -36,6 +37,9 @@ test.beforeAll(async () => {
   if (error) { skipReason = `get_register_list canlıda yok (${error.code})`; return }
   const { data: nav } = await client.from('role_sidebar_items').select('role_key').eq('item_key', 'register')
   navPresent = Boolean(nav && nav.length > 0)
+  // Bölümlü menü (MENU_bolumler.sql) geldiyse eski tek "Register" öğesi ön yüzde gizlenir; sekmeli görünüm adresle açılır.
+  const { data: pages } = await client.from('role_sidebar_items').select('role_key').like('item_key', 'register-%')
+  registerPages = Boolean(pages && pages.length > 0)
   tizSubmittals = data?.rows?.length ?? null
   ready = true
 })
@@ -54,8 +58,9 @@ for (const r of ROLES) {
     await page.addInitScript(pid => window.localStorage.setItem('register-project', JSON.stringify(pid)), TIZ)
     await loginUi(page, r.email, r.password)
     await page.goto('/dashboard/register?tur=submittal')
-    const menu = page.locator('.sidebar-nav').getByRole('button', { name: 'Register' })
-    if (navPresent) await expect(menu).toBeVisible()
+    const menu = page.locator('.sidebar-nav').getByRole('button', { name: 'Register', exact: true })
+    if (registerPages) await expect(menu).toHaveCount(0)
+    else if (navPresent) await expect(menu).toBeVisible()
     else await expect(menu).toHaveCount(0)
     await expect(page.getByRole('tablist', { name: 'Register türleri' }).getByRole('tab')).toHaveText(r.tabs)
     await expect(page.locator('.register-code')).toContainText('TIZ')

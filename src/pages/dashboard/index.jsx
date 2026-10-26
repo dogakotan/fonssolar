@@ -6,6 +6,7 @@ import { useScope } from '../../context/ScopeContext'
 import Sidebar from '../../components/layouts/Sidebar'
 import FloatingAgent from '../../components/agent/FloatingAgent'
 import NotificationBell from '../../components/ui/NotificationBell'
+import { REGISTER_MENU_ITEMS, registerForTab } from '../../lib/menu/sidebarMenu'
 import './Dashboard.css'
 
 // Aktif sekmeye göre yalnızca biri render edildiğinden (activeTab kontrollü
@@ -27,6 +28,7 @@ const TabKullanicilar = lazy(() => import('./components/TabKullanicilar'))
 const TabIsPlan = lazy(() => import('./components/TabIsPlan'))
 const TabBildirimler = lazy(() => import('./components/TabBildirimler'))
 const TabRegister = lazy(() => import('./components/register/TabRegister'))
+const RegisterAlertCards = lazy(() => import('./components/register/RegisterAlertCards'))
 const ProjeDetay = lazy(() => import('./components/ProjeDetay'))
 const TabProjeYonetimi = lazy(() => import('./components/TabProjeYonetimi'))
 const DailyReportForm = lazy(() => import('../../components/daily-report/DailyReportForm'))
@@ -47,6 +49,8 @@ const TABS = {
   'is-plani':        { title: 'İş Planı',           subtitle: 'Proje iş programı ve görev takibi' },
   bildirimler:       { title: 'Bildirimler',        subtitle: 'Tüm bildirimleriniz' },
   register:          { title: 'Register',           subtitle: 'Proje kontrol kayıtları (yalnızca görüntüleme)' },
+  // Menüdeki register sayfaları (register-rfi, register-risk, …): hepsi TabRegister'ı sabit bir register ile açar.
+  ...Object.fromEntries(Object.entries(REGISTER_MENU_ITEMS).map(([key, meta]) => [key, { title: meta.label, subtitle: 'Proje kontrol kayıtları (yalnızca görüntüleme)' }])),
 }
 
 function getHeaderInitials(name) {
@@ -406,6 +410,7 @@ export default function Dashboard() {
 
         <div className="dash-content">
         <Suspense fallback={<div style={{ padding: 24, color: 'var(--color-muted)', fontSize: 13 }}>Yükleniyor…</div>}>
+        {activeTab === 'genel'        && <RegisterAlertCards onNavigate={handleTabChange} />}
         {activeTab === 'genel'        && role === 'santiye_sefi' && (
           <TabSantiyeSefi
             key={reportViewKey}
@@ -500,6 +505,7 @@ export default function Dashboard() {
         )}
         {activeTab === 'kullanicilar' && (isAdmin || role === 'proje_yoneticisi') && <TabKullanicilar />}
         {activeTab === 'register'     && <TabRegister />}
+        {registerForTab(activeTab)    && <TabRegister key={activeTab} fixedRegister={registerForTab(activeTab)} />}
         {activeTab === 'proje-ekle'  && (isAdmin || role === 'proje_yoneticisi') && (
           <TabProjeYonetimi
             onViewProject={(id, name) => {
