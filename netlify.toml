@@ -1,0 +1,29 @@
+# Netlify yayını — vercel.json ile aynı davranış (*.vercel.app bazı Türk servis sağlayıcılarında engelli; ikinci adres).
+# Ortam değişkenleri (VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY) Netlify site ayarlarında; repoya yazılmaz.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "24"
+
+# TCMB kur proxy'si (vercel.json: /tcmb-kurlar/:path* → tcmb.gov.tr/kurlar/:path*)
+[[redirects]]
+  from = "/tcmb-kurlar/*"
+  to = "https://www.tcmb.gov.tr/kurlar/:splat"
+  status = 200
+  force = true
+
+# Tek sayfa uygulama: bütün yollar index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

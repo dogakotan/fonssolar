@@ -2040,6 +2040,21 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**26.10.2026 (`register-menu-kaldir`, push yok) — PR #53 yayında; eski tek "Register" menü öğesi canlıdan kaldırıldı (`20261026081752_menu_register_kaldir`).**
+- **Sıra (kullanıcı kararı):**
+  - PR #53 birleşti (`72fa33c`), Vercel Production yayına aldı.
+  - Yayındaki siteye karşı canlı spec'ler 4/4 geçti (`register-menu-canli` admin/PM/şef, `register-canli-tiz` admin).
+  - İki tablo `C:\fons-yedek\register-kaldir-oncesi-2026-10-26\`'e aktarıldı (64 + 45 satır, md5 doğrulandı).
+  - `apply_migration` ile uygulandı.
+- **Doğrulama:**
+  - Uygulanan metnin md5'i dosyayla aynı (`8d9d3e2b…`).
+  - `register` satırları 4 → 0 (menü) ve 3 → 0 (sekme izni); toplam 64 → 60 ve 45 → 42.
+  - register-* satırları 33/22 değişmedi; kalan satırların md5'i yedekten "register" çıkarılmış hâliyle aynı.
+  - Bildirim 1290, değişmedi.
+  - Yayındaki sitede spec'ler yeniden 4/4.
+- **Repo:** dosyalar `supabase/bekleyen/`'den `supabase/migrations/20261026081752_menu_register_kaldir.sql` ve `supabase/rollback/20261026081752_menu_register_kaldir.down.sql`'e taşındı. Ters SQL satırları listenin sonuna, bölümsüz ekler; uygulandığında yeni ön yüzde öğe zaten gizlidir.
+- **Eski `/dashboard/register?tur=` adresi:** ön yüzde duruyor. Admin (kısıtsız) adresle açabilir; diğer roller `register` sekme iznini kaybettiği için açamaz, menüdeki register-* sayfalarını kullanır.
+
 **23.10.2026 (2. tur, `register-menu-bolumler`, push yok) — Başka oturumun 23.10 migration'ları repoya alındı; risk sayfası `get_register_list`'e geçti.**
 - **Repo:** canlıda uygulanmış ama repoda olmayan 8 migration `supabase/migrations/`'a sürümleri korunarak alındı (`20261023122123` … `20261023122724`, `20261023134000`). Kaynak `supabase_migrations.schema_migrations.statements`; her dosyanın md5'i canlı metinle aynı. Hepsi canlıda kalıyor.
 - **Geri alma:** `supabase/rollback/20261023134000_register_role_hardening_risk_numbering_alert_filter.down.sql` yalnızca acil geri dönüş için duruyor; **uygulanmadı, uygulanmayacak** (kullanıcı kararı). Çalıştırılırsa önce `project_risks`, `project_register_counters`, `register_status_history` dışa aktarılır.
@@ -2060,7 +2075,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 - **Veritabanı:**
   - `sidebar_sections` (yalnızca okunur) ve `role_sidebar_items.section_key` eklendi.
   - Yeni menü anahtarları `register-rfi|action|decision|risk|interface|document|drawing|submittal|material-approval|change|claim`. Roller `register_view_allowed` ile aynı; risk admin/PM/şef.
-  - Eski tek `register` öğesi ayrı adımda kalkar (`MENU_register_kaldir.sql`), yeni sayfalar yayına çıkıp doğrulandıktan sonra.
+  - Eski tek `register` öğesi ayrı adımda kalktı (26.10.2026, `20261026081752_menu_register_kaldir`).
 - **Ön yüz:**
   - `AuthContext` bölümleri ayrı sorguyla okur; tablo/kolon yoksa menü düz liste kalır.
   - `Sidebar` veritabanı sırasıyla bölümlü çizer; boş bölüm gizli; eski `register` öğesi register-* varken gizli.
