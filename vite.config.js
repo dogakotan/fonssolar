@@ -23,19 +23,6 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/tcmb-kurlar/, '/kurlar'),
       },
-      '/anthropic': {
-        target: 'https://api.anthropic.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/anthropic/, ''),
-        secure: true,
-        configure: (proxy) => {
-          proxy.on('proxyReq', (proxyReq) => {
-            // Origin ve Referer'ı sil — Anthropic bunları görünce CORS modu devreye giriyor
-            proxyReq.removeHeader('origin')
-            proxyReq.removeHeader('referer')
-          })
-        },
-      },
     },
   },
   build: {
