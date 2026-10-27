@@ -47,9 +47,9 @@ const R_TEKNIK = [
 ]
 const R_TICARI = [['register-change', 'ticari'], ['register-claim', 'ticari']]
 export const MENU_BOLUMLU = {
-  admin: [['genel', null], ['projeler', 'proje'], ...R_TEKNIK, ...R_TICARI, ['satin-alma', 'satinalma-finans'], ['finans', 'satinalma-finans'],
+  admin: [['genel', null], ['projeler', null], ...R_TEKNIK, ...R_TICARI, ['satin-alma', 'satinalma-finans'], ['finans', 'satinalma-finans'],
     ['tickets', 'iletisim'], ['bildirimler', 'iletisim'], ['proje-ekle', 'yonetim'], ['kullanicilar', 'yonetim'], ['register', null]],
-  proje_yoneticisi: [['genel', null], ['projeler', 'proje'], ...R_TEKNIK, ...R_TICARI, ['satin-alma', 'satinalma-finans'], ['finans', 'satinalma-finans'],
+  proje_yoneticisi: [['genel', null], ['projeler', null], ...R_TEKNIK, ...R_TICARI, ['satin-alma', 'satinalma-finans'], ['finans', 'satinalma-finans'],
     ['tickets', 'iletisim'], ['bildirimler', 'iletisim'], ['proje-ekle', 'yonetim'], ['kullanicilar', 'yonetim'], ['register', null]],
   santiye_sefi: [['genel', null], ['is-plani', 'proje'], ['rapor-listesi', 'proje'], ...R_TEKNIK, ['satin-alma', 'satinalma-finans'],
     ['tickets', 'iletisim'], ['bildirimler', 'iletisim'], ['register', null]],

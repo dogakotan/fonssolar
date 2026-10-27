@@ -19,12 +19,12 @@ const TICARI = ['Değişiklikler', 'Claim']
 
 const EXPECTED_MENU = {
   admin: [
-    [null, ['Genel Bakış']], ['Proje', ['Projeler']], ['Proje kontrol', PROJE_KONTROL], ['Doküman ve teknik', DOKUMAN],
+    [null, ['Genel Bakış', 'Projeler']], ['Proje kontrol', PROJE_KONTROL], ['Doküman ve teknik', DOKUMAN],
     ['Ticari', TICARI], ['Satın alma ve finans', ['Satın Alma', 'Finans']], ['İletişim', ['Tickets', 'Bildirimler']],
     ['Yönetim', ['Proje Yönetimi', 'Kullanıcılar']],
   ],
   proje_yoneticisi: [
-    [null, ['Genel Bakış']], ['Proje', ['Projeler']], ['Proje kontrol', PROJE_KONTROL], ['Doküman ve teknik', DOKUMAN],
+    [null, ['Genel Bakış', 'Projeler']], ['Proje kontrol', PROJE_KONTROL], ['Doküman ve teknik', DOKUMAN],
     ['Ticari', TICARI], ['Satın alma ve finans', ['Satın Alma', 'Finans']], ['İletişim', ['Tickets', 'Bildirimler']],
     ['Yönetim', ['Proje Yönetimi', 'Kullanıcılar']],
   ],
@@ -84,7 +84,10 @@ test('açılır-kapanır bölümler: register bölümleri kapalı başlar, rozet
   const nav = page.locator('.sidebar-nav')
   const toggle = name => nav.getByRole('button', { name: new RegExp(`^${name}`) })
   // Varsayılan: günlük bölümler açık, register bölümleri kapalı
-  for (const name of ['Proje', 'Satın alma ve finans', 'İletişim', 'Yönetim']) {
+  // Projeler bölümsüz (Genel Bakış gibi); PM'de Proje bölümü yok
+  await expect(nav.getByRole('button', { name: 'Projeler', exact: true })).toBeVisible()
+  await expect(nav.getByRole('group', { name: 'Proje', exact: true })).toHaveCount(0)
+  for (const name of ['Satın alma ve finans', 'İletişim', 'Yönetim']) {
     await expect(nav.getByRole('button', { name, exact: true })).toHaveAttribute('aria-expanded', 'true')
   }
   for (const name of ['Proje kontrol', 'Doküman ve teknik', 'Ticari']) await expect(toggle(name)).toHaveAttribute('aria-expanded', 'false')
