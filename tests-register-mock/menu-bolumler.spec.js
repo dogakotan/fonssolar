@@ -77,6 +77,48 @@ for (const role of Object.keys(EXPECTED_MENU)) {
   })
 }
 
+test('açılır-kapanır bölümler: register bölümleri kapalı başlar, rozet toplamı, aç/kapa hatırlanır, etkin bölüm açılır', async ({ page }) => {
+  const calls = []
+  await installMock(page, 'proje_yoneticisi', { calls, menu: 'bolumlu' })
+  await page.goto('/dashboard/bildirimler')
+  const nav = page.locator('.sidebar-nav')
+  const toggle = name => nav.getByRole('button', { name: new RegExp(`^${name}`) })
+  // Varsayılan: günlük bölümler açık, register bölümleri kapalı
+  for (const name of ['Proje', 'Satın alma ve finans', 'İletişim', 'Yönetim']) {
+    await expect(nav.getByRole('button', { name, exact: true })).toHaveAttribute('aria-expanded', 'true')
+  }
+  for (const name of ['Proje kontrol', 'Doküman ve teknik', 'Ticari']) await expect(toggle(name)).toHaveAttribute('aria-expanded', 'false')
+  await expect(nav.getByRole('button', { name: /^RFI/ })).toBeHidden()
+  await expect(nav.getByRole('button', { name: 'Finans', exact: true })).toBeVisible()
+  // Kapalı bölüm başlığında uyarı toplamı (RFI 3 + aksiyon 1 + karar 1)
+  await expect(toggle('Proje kontrol')).toHaveAccessibleName('Proje kontrol, 5 uyarı')
+  await expect(toggle('Ticari')).toHaveAccessibleName('Ticari, 2 uyarı')
+  await page.screenshot({ path: `${SHOTS}/menu-acilir-kapali.png` })
+  // Aç: öğeler görünür, başlık rozeti kalkar (rozet öğelerde)
+  await toggle('Proje kontrol').click()
+  await expect(toggle('Proje kontrol')).toHaveAttribute('aria-expanded', 'true')
+  await expect(toggle('Proje kontrol')).toHaveAccessibleName('Proje kontrol')
+  await expect(nav.getByRole('button', { name: 'RFI, 3 uyarı' })).toBeVisible()
+  // Kapat: Yönetim
+  await nav.getByRole('button', { name: 'Yönetim', exact: true }).click()
+  await expect(nav.getByRole('button', { name: 'Kullanıcılar', exact: true })).toBeHidden()
+  await page.screenshot({ path: `${SHOTS}/menu-acilir-acik.png` })
+  // Yenileyince seçim hatırlanır
+  await page.reload()
+  await expect(toggle('Proje kontrol')).toHaveAttribute('aria-expanded', 'true')
+  await expect(nav.getByRole('button', { name: 'Yönetim', exact: true })).toHaveAttribute('aria-expanded', 'false')
+  // Kapalı bölümdeki sayfaya adresle gidince o bölüm açılır
+  await page.goto('/dashboard/register-claim')
+  await expect(toggle('Ticari')).toHaveAttribute('aria-expanded', 'true')
+  await expect(nav.getByRole('button', { name: /^Claim/ })).toHaveAttribute('aria-current', 'page')
+  // Menü ikon moduna daraltılınca başlık yok, bütün ikonlar görünür
+  await page.locator('.sidebar-brand').click()
+  await expect(nav.locator('.nav-section-toggle')).toHaveCount(0)
+  await expect(nav.getByRole('button', { name: 'Kullanıcılar', exact: true })).toBeVisible()
+  await page.locator('.sidebar-brand').click()
+  assertReadOnly(calls)
+})
+
 test('bölüm migration\'ı uygulanmamışsa giriş bozulmaz, menü düz kalır', async ({ page }) => {
   const calls = []
   await installMock(page, 'proje_yoneticisi', { calls, menu: 'duz' })
@@ -90,6 +132,7 @@ test('menüden RFI: sekme şeridi yok, durum süzgeci ve arama, yan panelde duru
   const calls = []
   await installMock(page, 'proje_yoneticisi', { calls, menu: 'bolumlu' })
   await page.goto('/dashboard/bildirimler')
+  await page.locator('.sidebar-nav').getByRole('button', { name: /^Proje kontrol/ }).click()
   await page.locator('.sidebar-nav').getByRole('button', { name: /^RFI/ }).click()
   await expect(page).toHaveURL(/\/dashboard\/register-rfi$/)
   await expect(page.locator('.register-title')).toHaveText('RFI')
