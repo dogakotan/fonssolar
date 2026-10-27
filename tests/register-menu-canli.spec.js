@@ -38,7 +38,7 @@ for (const r of ROLES) {
       const u = new URL(req.url())
       if (!u.pathname.startsWith('/rest/v1/') && !u.pathname.startsWith('/auth/v1/')) return
       if (u.pathname.startsWith('/auth/v1/token')) return
-      if (req.method() !== 'GET' && !/^\/rest\/v1\/rpc\/get_[a-z_]+$/.test(u.pathname)) writes.push(`${req.method()} ${u.pathname}`)
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method()) && !/^\/rest\/v1\/rpc\/get_[a-z_]+$/.test(u.pathname)) writes.push(`${req.method()} ${u.pathname}`)
     })
     if (TIZ) await page.addInitScript(pid => window.localStorage.setItem('register-project', JSON.stringify(pid)), TIZ)
     await loginUi(page, r.email, r.password)
