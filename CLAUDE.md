@@ -2040,6 +2040,22 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
 
 ## Son değişiklik
 
+**27.10.2026 (`menu-acilir-kapanir`, PR #55) — Sol menü bölümleri açılır-kapanır; ikinci yayın adresi Netlify.**
+- **Menü (`Sidebar.jsx`, `sidebarMenu.js`):**
+  - Bölüm başlığı düğme (`aria-expanded`, ok).
+  - İlk girişte `DEFAULT_OPEN_SECTIONS` (proje, satinalma-finans, iletisim, yonetim) açık; register bölümleri (proje-kontrol, dokuman, ticari) kapalı.
+  - Etkin sayfa kapalı bölümdeyse o bölüm açılır.
+  - Seçim `localStorage['sidebar-open-sections']`'ta.
+  - Kapalı bölüm başlığında uyarı toplamı (`sectionBadge`).
+  - İkon modunda başlık yok, bütün ikonlar görünür.
+  - Menüden kapalı register bölümüne tıklayan testler önce bölümü açar.
+- **Netlify:**
+  - `*.vercel.app` (ve `pages.dev`, `workers.dev`) bazı Türk servis sağlayıcılarında TLS SNI ile engelli.
+  - Aynı uygulama `https://fonssolar.netlify.app`'te (`netlify.toml`, vercel.json'un karşılığı; PR #54).
+  - Netlify'da ortam değişkeni yalnızca iki Supabase değişkeni.
+  - GitHub otomatik yayını kullanıcının bağlamasını bekliyor; o zamana kadar yayın CLI ile.
+  - Vercel'de `panel.fonssolar.com` eklendi ama DNS (bartuaksun) erişimi olmadığı için CNAME yok.
+
 **26.10.2026 (`register-menu-kaldir`, push yok) — PR #53 yayında; eski tek "Register" menü öğesi canlıdan kaldırıldı (`20261026081752_menu_register_kaldir`).**
 - **Sıra (kullanıcı kararı):**
   - PR #53 birleşti (`72fa33c`), Vercel Production yayına aldı.
