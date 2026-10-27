@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   REGISTER_MENU_ITEMS, registerForTab, groupSidebarItems, canSeeAlert, alertCounts, menuBadge,
-  ALERT_CARDS, visibleAlertCards,
+  ALERT_CARDS, visibleAlertCards, sectionBadge, openSectionsFor, toggleSection, DEFAULT_OPEN_SECTIONS,
 } from '../src/lib/menu/sidebarMenu.js'
 import {
   RISK_TAB, getRegisterTab, allColumns, statusOptions, filterByStatus, canViewRegister, REGISTER_TABS, parseRegisterNo,
@@ -88,6 +88,24 @@ test('rozet: yalnızca RFI, aksiyon, karar, claim; 0 ise yok', () => {
   assert.equal(menuBadge('register-risk', counts), null)
   assert.equal(menuBadge('register-rfi', {}), null)
   assert.equal(menuBadge('genel', counts), null)
+})
+
+test('açılır-kapanır bölümler: varsayılan, etkin bölüm, aç/kapa, kapalı bölüm rozeti', () => {
+  // İlk giriş: günlük bölümler açık, register bölümleri kapalı
+  assert.deepEqual(openSectionsFor(null, null), DEFAULT_OPEN_SECTIONS)
+  for (const k of ['proje-kontrol', 'dokuman', 'ticari']) assert.equal(DEFAULT_OPEN_SECTIONS.includes(k), false, k)
+  // Etkin sayfa kapalı bölümdeyse o bölüm de açılır; saklanan seçim korunur
+  assert.deepEqual(openSectionsFor(null, 'proje-kontrol'), [...DEFAULT_OPEN_SECTIONS, 'proje-kontrol'])
+  assert.deepEqual(openSectionsFor(['ticari'], 'ticari'), ['ticari'])
+  assert.deepEqual(openSectionsFor([], 'iletisim'), ['iletisim'])
+  assert.deepEqual(openSectionsFor('bozuk', null), DEFAULT_OPEN_SECTIONS)
+  assert.deepEqual(openSectionsFor(['a', 3, null], null), ['a'])
+  assert.deepEqual(toggleSection(['a', 'b'], 'a'), ['b'])
+  assert.deepEqual(toggleSection(['b'], 'a'), ['b', 'a'])
+  const counts = alertCounts(ALERTS, 'admin')
+  assert.equal(sectionBadge(['register-rfi', 'register-action', 'register-decision', 'register-risk'], counts), 4)
+  assert.equal(sectionBadge(['register-document', 'register-drawing'], counts), null)
+  assert.equal(sectionBadge(undefined, counts), null)
 })
 
 test('Genel ekran kartları: beş tür, sayısı 0 olan gizli', () => {

@@ -62,6 +62,26 @@ export function menuBadge(tabKey, counts) {
   return n > 0 ? n : null
 }
 
+// Kapalı bölüm başlığında gösterilen toplam uyarı (bölümdeki öğelerin rozetleri); yoksa null.
+export function sectionBadge(itemKeys, counts) {
+  const n = (itemKeys || []).reduce((sum, key) => sum + (menuBadge(key, counts) || 0), 0)
+  return n > 0 ? n : null
+}
+
+// İlk girişte açık bölümler: günlük kullanılanlar. Register bölümleri (proje-kontrol, dokuman, ticari) kapalı başlar.
+export const DEFAULT_OPEN_SECTIONS = ['proje', 'satinalma-finans', 'iletisim', 'yonetim']
+
+// Açık bölümler. stored: tarayıcıda saklanan liste (yoksa null → varsayılan). Etkin sayfa kapalı bir bölümdeyse
+// o bölüm de açılır (kullanıcının açıp kapattıkları korunur).
+export function openSectionsFor(stored, activeSection) {
+  const open = Array.isArray(stored) ? stored.filter(k => typeof k === 'string') : [...DEFAULT_OPEN_SECTIONS]
+  return activeSection && !open.includes(activeSection) ? [...open, activeSection] : open
+}
+
+export function toggleSection(open, sectionKey) {
+  return open.includes(sectionKey) ? open.filter(k => k !== sectionKey) : [...open, sectionKey]
+}
+
 // Genel ekrandaki uyarı kartları. tab: karta tıklayınca açılan menü sayfası.
 export const ALERT_CARDS = [
   { type: 'rfi_overdue',           label: 'Gecikmiş RFI',                    tab: 'register-rfi' },

@@ -2,7 +2,11 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../../context/AuthContext'
 import { useRegisterAlerts } from '../../hooks/useRegisterAlerts'
-import { REGISTER_MENU_ITEMS, groupSidebarItems, menuBadge } from '../../lib/menu/sidebarMenu'
+import {
+  REGISTER_MENU_ITEMS, groupSidebarItems, menuBadge, sectionBadge, openSectionsFor, toggleSection,
+} from '../../lib/menu/sidebarMenu'
+
+const OPEN_SECTIONS_KEY = 'sidebar-open-sections'
 
 const svg = children => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{children}</svg>
@@ -38,6 +42,21 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
   useEffect(() => {
     try { localStorage.setItem('sidebar-collapsed', String(collapsed)) } catch {}
   }, [collapsed])
+
+  // Açılır-kapanır bölümler: ilk girişte günlük bölümler açık, register bölümleri kapalı (DEFAULT_OPEN_SECTIONS);
+  // etkin sayfa kapalı bir bölüme geçince o bölüm açılır. Kullanıcının seçimi tarayıcıda saklanır.
+  const activeSection = navigation?.sectionOf?.[active] || null
+  const [openSections, setOpenSections] = useState(() => {
+    let stored = null
+    try { stored = JSON.parse(localStorage.getItem(OPEN_SECTIONS_KEY)) } catch {}
+    return openSectionsFor(stored, activeSection)
+  })
+  useEffect(() => {
+    if (activeSection) setOpenSections(prev => (prev.includes(activeSection) ? prev : [...prev, activeSection]))
+  }, [activeSection])
+  useEffect(() => {
+    try { localStorage.setItem(OPEN_SECTIONS_KEY, JSON.stringify(openSections)) } catch {}
+  }, [openSections])
 
   const showFull = !collapsed || isOpen
 
@@ -238,18 +257,41 @@ export default function Sidebar({ active, onTab, onLogout, isOpen }) {
       </div>
 
       <nav className="sidebar-nav" aria-label="Ana menü">
-        {groups.map(group => (
-          group.label ? (
-            <div key={group.key} className="nav-section" role="group" aria-label={group.label}>
-              {showFull
-                ? <div className="nav-section-label" aria-hidden="true">{group.label}</div>
-                : <div className="nav-section-sep" aria-hidden="true" />}
-              {group.items.map(renderItem)}
+        {groups.map(group => {
+          if (!group.label) return <div key="bolumsuz" className="nav-section">{group.items.map(renderItem)}</div>
+          // İkon modunda başlık yok, bütün ikonlar görünür (bölümler ince çizgiyle ayrılır).
+          if (!showFull) {
+            return (
+              <div key={group.key} className="nav-section" role="group" aria-label={group.label}>
+                <div className="nav-section-sep" aria-hidden="true" />
+                {group.items.map(renderItem)}
+              </div>
+            )
+          }
+          const open = openSections.includes(group.key)
+          const total = open ? null : sectionBadge(group.items, alertCountsByType)
+          const listId = `nav-section-${group.key}`
+          return (
+            <div key={group.key} className={`nav-section${open ? ' open' : ''}`} role="group" aria-label={group.label}>
+              <button
+                type="button"
+                className="nav-section-toggle"
+                aria-expanded={open}
+                aria-controls={listId}
+                aria-label={total ? `${group.label}, ${total} uyarı` : group.label}
+                onClick={() => setOpenSections(prev => toggleSection(prev, group.key))}
+              >
+                <span className="nav-section-label">{group.label}</span>
+                {total && <span className="nav-badge" aria-hidden="true">{total}</span>}
+                <svg className="nav-section-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+              </button>
+              <div id={listId} className="nav-section-items" hidden={!open}>
+                {group.items.map(renderItem)}
+              </div>
             </div>
-          ) : (
-            <div key="bolumsuz" className="nav-section">{group.items.map(renderItem)}</div>
           )
-        ))}
+        })}
       </nav>
 
       {tooltip && createPortal(

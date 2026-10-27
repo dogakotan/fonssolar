@@ -45,6 +45,9 @@ for (const r of ROLES) {
     const nav = page.locator('.sidebar-nav')
     for (const [label, items] of Object.entries(r.sections)) {
       const group = nav.getByRole('group', { name: label, exact: true })
+      // Açılır-kapanır bölüm: kapalıysa aç (register bölümleri ilk girişte kapalı)
+      const toggle = group.locator('.nav-section-toggle')
+      if (await toggle.count() && (await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click()
       await expect(group.locator('.nav-label')).toHaveText(items)
     }
     for (const label of r.noSection || []) await expect(nav.getByRole('group', { name: label, exact: true })).toHaveCount(0)
