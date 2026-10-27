@@ -2053,7 +2053,7 @@ kilometre taşları, teknik ayrıntı için ilgili "Sistem mimarisi" alt bölüm
   - `*.vercel.app` (ve `pages.dev`, `workers.dev`) bazı Türk servis sağlayıcılarında TLS SNI ile engelli.
   - Aynı uygulama `https://fonssolar.netlify.app`'te (`netlify.toml`, vercel.json'un karşılığı; PR #54).
   - Netlify'da ortam değişkeni yalnızca iki Supabase değişkeni.
-  - GitHub otomatik yayını kullanıcının bağlamasını bekliyor; o zamana kadar yayın CLI ile.
+  - Otomatik yayın: `main`'e her push Netlify'da derlenir. Bağlantı manuel: Netlify deploy anahtarı GitHub'da salt okunur deploy key, `push` webhook'u Netlify deploy hook'una gider, Netlify build ayarı `repo_path = git@github.com:dogakotan/fonssolar.git`. Site ayarı güncellenirse deploy hook adresi değişebilir; webhook adresi yeniden eşitlenmeli.
   - Vercel'de `panel.fonssolar.com` eklendi ama DNS (bartuaksun) erişimi olmadığı için CNAME yok.
 
 **26.10.2026 (`register-menu-kaldir`, push yok) — PR #53 yayında; eski tek "Register" menü öğesi canlıdan kaldırıldı (`20261026081752_menu_register_kaldir`).**
