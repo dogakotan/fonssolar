@@ -1,0 +1,18 @@
+# Bu depo HERKESE AÇIK. Gerçek proje verisi, kayıtlar ve sırlar asla git'e girmez.
+runs/
+veri/
+inbox/
+*.xlsx
+*.xls
+*.csv
+*.pdf
+*.dwg
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+# Şirket içi solar beceri dosyaları (public depoya konmaz)
+knowledge/beceriler/
+# Yerel proje eşlemeleri (yerel yol + müşteri klasör adları); yalnızca örnek paylaşılır
+config/projeler/*
+!config/projeler/ornek.yaml

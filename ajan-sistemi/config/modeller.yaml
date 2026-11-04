@@ -1,0 +1,31 @@
+# =====================================================================
+# MODEL VE PARAMETRELER — tek yerden değiştirilir
+# =====================================================================
+# mod:
+#   deneme : Hiç API çağrısı yapılmaz, ücretsizdir. Ajanlar yerine sabit
+#            örnek yanıtlar üretilir; yönlendirme, kayıt ve kurallar
+#            gerçek koddaki gibi çalışır. (Aşama 1-2 bu modda test edilir.)
+#   canli  : Claude Agent SDK ile gerçek modeller çağrılır. ANTHROPIC_API_KEY
+#            ortam değişkeni gerekir ve kullanım ücretlidir.
+mod: deneme
+
+# Bir çalıştırmanın (mühendisin tek bir talebi) toplam harcama üst sınırı.
+# Aşılırsa orkestratör yeni ajan çağrısı yapmadan durur.
+calistirma_butcesi_usd: 1.00
+
+# Bir çalıştırmada en fazla kaç ajan etkinleştirmesi yapılabilir (sonsuz döngü koruması).
+calistirma_adim_siniri: 120
+
+# Her ajan için varsayılan. Maliyeti düşük tutmak için en ucuz model.
+varsayilan:
+  model: claude-haiku-5-5
+  max_turns: 6          # bir ajanın tek görevde yapabileceği en fazla tur
+  effort: low
+
+# Ajan bazında üzerine yazma. Çapraz kontrol ve birleştirme yapan
+# yöneticiler daha güçlü modelle çalışır; uzmanlar varsayılanı kullanır.
+ajanlar:
+  proje_direktoru:   { model: claude-sonnet-5-5, effort: medium, max_turns: 10 }
+  proje_muduru:      { model: claude-sonnet-5-5 }
+  saha_koordinatoru: { model: claude-sonnet-5-5 }
+  ticari_direktor:   { model: claude-sonnet-5-5 }

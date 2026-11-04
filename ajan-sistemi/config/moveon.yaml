@@ -1,0 +1,24 @@
+# =====================================================================
+# MOVE ON ENTEGRASYONU — Aşama 5: SALT OKUNUR
+# =====================================================================
+# Move On'un API'si doğrulanamadığı için geçici çözüm kullanılır: Move On'dan
+# alınan sevkiyat dışa aktarımı (CSV veya Excel) aşağıdaki klasöre bırakılır.
+# Orkestratör klasördeki EN GÜNCEL dosyayı okur. Klasör git'e girmez.
+#
+# - Yalnızca Lojistik Ajanı okuyabilir (kodda sabit; buradan değiştirilemez).
+# - Sistem Move On'a hiçbir şey YAZMAZ. Yazma ileride, insan onayı kapısından
+#   geçen ayrı bir yürütücü olarak eklenecek.
+# - Yalnızca aşağıdaki standart alanlara eşlenen sütunlar okunur. Şoför adı,
+#   telefon, plaka, navlun bedeli gibi sütunlar ajana HİÇ verilmez.
+klasor: inbox/moveon
+
+# Proje sütununda bu metni içeren satırlar okunur (boş: hepsi). Talep sırasında
+# proje eşlemesindeki `moveon_proje` değeri bunun yerine geçer.
+proje_filtresi: null
+
+# Move On dışa aktarımındaki sütun adları farklıysa buraya ekleyin.
+# Standart alanlar: sevkiyat_no, proje, malzeme, miktar, birim, cikis_tarihi,
+# planlanan_teslim, gerceklesen_teslim, durum
+sutunlar: {}
+#  sevkiyat_no: ["Sefer No"]
+#  planlanan_teslim: ["Termin"]
