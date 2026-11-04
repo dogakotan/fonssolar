@@ -1,0 +1,38 @@
+# =====================================================================
+# VERİ ERİŞİMİ — hangi ajan hangi veri etiketini görebilir
+# =====================================================================
+# Her mesaj ve her veri dosyası bir veya daha fazla etiket taşır.
+# Orkestratör, alıcının yetkisi olmayan etiketi taşıyan mesajı reddeder.
+# Etiket listede yoksa ("genel") herkes görebilir.
+
+etiketler:
+  genel:   "Etiketsiz proje verisi (tasarım, metraj, program, saha ilerlemesi)"
+  ticari:  "Fiyat teklifleri, birim fiyatlar, sözleşmeler, tedarikçi ticari şartları"
+
+# etiket -> bu etiketi görebilen katılımcılar
+erisim:
+  ticari:
+    - muhendis
+    - proje_direktoru      # VARSAYIM: merkez ajan ticari özeti mühendise taşıyabilmeli.
+                           # Proje Direktörü ticari etiketli veriyi saha/proje koluna
+                           # iletemez (orkestratör reddeder). İstenirse bu satır silinir.
+    - ticari_direktor
+    - satin_alma_muduru
+    - teklif_maliyet
+    - satin_alma
+    - lojistik
+
+# Proje veri klasöründeki alt klasör -> etiket. Bu klasörlerdeki her dosya
+# etiketi taşır; etiketi göremeyen ajan dosyayı listede bile görmez.
+# Etiketli dosyayı okuyan ajanın raporları da otomatik olarak etiketlenir.
+klasor_etiketleri:
+  ticari: ticari
+  teklifler: ticari
+  sozlesmeler: ticari
+  fiyatlar: ticari
+
+# Ajan -> her mesajına KOŞULSUZ eklenen etiketler. Teklif & Maliyet'in işi fiyattır;
+# ne okuduğundan bağımsız olarak çıktısı ticari sayılır ve yalnızca ticari kola
+# (ve oradan Proje Direktörü'ne / mühendise) akar.
+ajan_etiketleri:
+  teklif_maliyet: [ticari]

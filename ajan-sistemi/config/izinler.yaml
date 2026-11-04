@@ -1,0 +1,68 @@
+# =====================================================================
+# İZİN TABLOSU — "kim kime, hangi tür mesaj atabilir"
+# =====================================================================
+# Orkestratör bu tabloda AÇIKÇA yazılı olmayan her mesajı reddeder ve
+# runs/<tarih>/_reddedilenler.jsonl dosyasına kaydeder (varsayılan: YASAK).
+#
+# Mesaj türleri:
+#   gorev  : üst → bir alt (görevi yalnızca bir üst verir)
+#   rapor  : alt → bir üst (rapor yalnızca bir üste verilir)
+#   talep  : mühendis → Proje Direktörü
+#   sunum  : Proje Direktörü → mühendis (Aşama 2'de onay kapısından geçer)
+#
+# Tutarlılık: `python -m orkestrator dogrula` bu tabloyu agents/*.yaml
+# dosyalarındaki `ust:` alanlarıyla karşılaştırır; uyuşmazlık varsa hata verir.
+# =====================================================================
+
+izinler:
+  # --- Mühendis <-> Proje Direktörü ---
+  - { gonderen: muhendis,          alici: proje_direktoru,   turler: [talep] }
+  - { gonderen: proje_direktoru,   alici: muhendis,          turler: [sunum] }
+
+  # --- Proje Direktörü <-> baş ajanlar ---
+  - { gonderen: proje_direktoru,   alici: saha_koordinatoru, turler: [gorev] }
+  - { gonderen: saha_koordinatoru, alici: proje_direktoru,   turler: [rapor] }
+  - { gonderen: proje_direktoru,   alici: ticari_direktor,   turler: [gorev] }
+  - { gonderen: ticari_direktor,   alici: proje_direktoru,   turler: [rapor] }
+  - { gonderen: proje_direktoru,   alici: proje_muduru,      turler: [gorev] }
+  - { gonderen: proje_muduru,      alici: proje_direktoru,   turler: [rapor] }
+
+  # --- Saha kolu ---
+  - { gonderen: saha_koordinatoru, alici: saha_sefi,         turler: [gorev] }
+  - { gonderen: saha_sefi,         alici: saha_koordinatoru, turler: [rapor] }
+  - { gonderen: saha_sefi,         alici: elektrik_sefi,     turler: [gorev] }
+  - { gonderen: elektrik_sefi,     alici: saha_sefi,         turler: [rapor] }
+  - { gonderen: saha_sefi,         alici: mekanik_sef,       turler: [gorev] }
+  - { gonderen: mekanik_sef,       alici: saha_sefi,         turler: [rapor] }
+  - { gonderen: saha_sefi,         alici: depocu,            turler: [gorev] }
+  - { gonderen: depocu,            alici: saha_sefi,         turler: [rapor] }
+  - { gonderen: saha_sefi,         alici: kaliteci,          turler: [gorev] }
+  - { gonderen: kaliteci,          alici: saha_sefi,         turler: [rapor] }
+
+  # --- Proje kolu ---
+  - { gonderen: proje_muduru,      alici: proje_tasarim,     turler: [gorev] }
+  - { gonderen: proje_tasarim,     alici: proje_muduru,      turler: [rapor] }
+  - { gonderen: proje_muduru,      alici: hafriyat,          turler: [gorev] }
+  - { gonderen: hafriyat,          alici: proje_muduru,      turler: [rapor] }
+  - { gonderen: proje_muduru,      alici: evrak_takip,       turler: [gorev] }
+  - { gonderen: evrak_takip,       alici: proje_muduru,      turler: [rapor] }
+  - { gonderen: proje_muduru,      alici: drenaj,            turler: [gorev] }
+  - { gonderen: drenaj,            alici: proje_muduru,      turler: [rapor] }
+  - { gonderen: proje_muduru,      alici: cctv_telcit,       turler: [gorev] }
+  - { gonderen: cctv_telcit,       alici: proje_muduru,      turler: [rapor] }
+
+  # --- Ticari kol ---
+  - { gonderen: ticari_direktor,   alici: satin_alma_muduru, turler: [gorev] }
+  - { gonderen: satin_alma_muduru, alici: ticari_direktor,   turler: [rapor] }
+  - { gonderen: satin_alma_muduru, alici: teklif_maliyet,    turler: [gorev] }
+  - { gonderen: teklif_maliyet,    alici: satin_alma_muduru, turler: [rapor] }
+  - { gonderen: satin_alma_muduru, alici: satin_alma,        turler: [gorev] }
+  - { gonderen: satin_alma,        alici: satin_alma_muduru, turler: [rapor] }
+  - { gonderen: satin_alma_muduru, alici: lojistik,          turler: [gorev] }
+  - { gonderen: lojistik,          alici: satin_alma_muduru, turler: [rapor] }
+
+# Ek güvence: bu çiftler arasında HİÇBİR yönde, HİÇBİR türde mesaj geçemez.
+# Yukarıdaki tabloya yanlışlıkla eklense bile orkestratör reddeder ve
+# `dogrula` komutu tabloyu hatalı sayar.
+kesin_yasaklar:
+  - [saha_koordinatoru, ticari_direktor]

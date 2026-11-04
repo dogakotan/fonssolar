@@ -1,0 +1,12 @@
+# Proje eşleme örneği. Kopyalayıp <proje-adı>.yaml olarak kaydedin (git'e girmez).
+# Kullanım: python -m orkestrator talep "..." --proje <proje-adı>
+ad: ornek-ges
+klasor: veri/ornek-ges            # ajan-sistemi klasörüne göre veya mutlak yol; salt okunur kullanılır
+alanlar:                          # klasör öneki -> alan (en uzun önek kazanır; büyük/küçük harf ve Türkçe karakter duyarsız)
+  hafriyat: hafriyat
+  evrak: evrak
+  tasarim: tasarim
+etiketler:                        # klasör öneki -> veri etiketi (config/veri_erisimi.yaml'da tanımlı olmalı)
+  ticari: ticari
+moveon_proje: "Örnek GES"        # Move On dışa aktarımındaki proje adı (satır filtresi)
+gerekli_dokumanlar: null          # ör. "EK-11 .../EK11-Teklif Dosyalarında Bulunması Gereken Dokümanlar.docx"

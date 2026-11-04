@@ -1724,6 +1724,20 @@ Playwright regresyon suite'i (`npm run test:e2e`), kimlik bilgileri `.env.test`'
 yazılmaz.** Admin test hesabının `profiles.id`'si değişebilir — `select id from
 profiles where role_key='admin'` ile doğrula.
 
+### Ajan sistemi (`ajan-sistemi/`)
+Dashboard'dan bağımsız Python alt projesi: hiyerarşik yapay zekâ ajanları için
+orkestratör (Claude Agent SDK, şu an `mod: deneme` — API çağrısı yok; 6 aşama
+tamam: 18 ajanın tümü devrede, Move On salt okunur (yalnızca Lojistik,
+`inbox/moveon/` dışa aktarımı; projede `moveon_proje` yoksa okunmaz), standart rapor, çapraz kontrol,
+kaynak/konum doğrulaması, ticari etiket yayılımı, insan onayı kapısı). Gerçek
+proje klasörleri `ajan-sistemi/config/projeler/<ad>.yaml` ile salt okunur
+bağlanır (git'e girmez). Proje verisi `ajan-sistemi/veri/<proje>/` altında (git'e girmez). Vite/
+Netlify build'ine dahil değil. Ayrıntılar `ajan-sistemi/README.md`'de. Kurallar:
+iletişim izinleri yalnızca `ajan-sistemi/config/izinler.yaml`'da tanımlanır
+(varsayılan yasak); bu depo public olduğu için gerçek proje verisi ve `runs/`
+kayıtları ve `knowledge/beceriler/` (şirket içi beceri kopyaları) asla commit
+edilmez. Test: `cd ajan-sistemi && python -m pytest -q`.
+
 ---
 
 ## Tamamlanan büyük görevler (özet)

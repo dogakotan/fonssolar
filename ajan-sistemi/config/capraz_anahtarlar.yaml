@@ -1,0 +1,45 @@
+# =====================================================================
+# ÇAPRAZ KONTROL ANAHTARLARI
+# =====================================================================
+# Ajanlar raporlarındaki sayıları bu ortak anahtarlarla yazar
+# (sayisal_degerler[].anahtar). Orkestratör aynı görevdeki TÜM raporlarda
+# aynı anahtara sahip değerleri karşılaştırır; fark toleransı aşarsa
+# mühendise giden sunumda "TUTARSIZLIK" olarak işaretler. Bu kontrol
+# kodla yapılır, ajanın fark etmesine bağlı değildir.
+#
+# tolerans_yuzde: değerler arasındaki izin verilen en büyük göreli fark.
+# Listede olmayan bir anahtar da karşılaştırılır (varsayılan tolerans).
+varsayilan_tolerans_yuzde: 0.0
+#
+# ifadeler (isteğe bağlı): DENEME modunda PDF/Word metninde bu ifadelerin
+# hemen önünde/arkasında yazan miktar okunur (ör. "Nebati toprak sıyırma: 120.400 m³",
+# "≈640.000 m³ nebati sıyırma"). Belirsiz ifadeler (ör. tek başına "kazı")
+# bilerek eklenmez; yorum canlı modun işidir.
+
+anahtarlar:
+  dc_guc_mwp:            { birim: MWp,  aciklama: "DC kurulu güç" }
+  ac_guc_mwe:            { birim: MWe,  aciklama: "AC güç / bağlantı gücü" }
+  modul_adedi:           { birim: adet, aciklama: "Toplam PV modül adedi" }
+  modul_gucu_wp:         { birim: Wp,   aciklama: "Tek modül gücü" }
+  string_adedi:          { birim: adet }
+  inverter_adedi:        { birim: adet }
+  tracker_masa_adedi:    { birim: adet }
+  kazik_adedi:           { birim: adet }
+  trafo_kosk_adedi:      { birim: adet }
+  siyirma_hacmi_m3:      { birim: m3, tolerans_yuzde: 1.0, ifadeler: ["sıyırma", "nebati toprak sıyırma"] }
+  kazi_hacmi_m3:         { birim: m3, tolerans_yuzde: 1.0, ifadeler: ["toplam kazı", "toplam kazı hacmi"] }
+  dolgu_hacmi_m3:        { birim: m3, tolerans_yuzde: 1.0, ifadeler: ["toplam dolgu"] }
+  yol_dolgusu_m3:        { birim: m3, tolerans_yuzde: 1.0, ifadeler: ["toplam yol dolgusu"] }
+  kablo_hendegi_m:       { birim: m,  tolerans_yuzde: 1.0 }
+  saha_yolu_m:           { birim: m,  tolerans_yuzde: 1.0 }
+  dc_kablo_m:            { birim: m,  tolerans_yuzde: 1.0 }
+  ac_kablo_m:            { birim: m,  tolerans_yuzde: 1.0 }
+  tel_cit_m:             { birim: m,  tolerans_yuzde: 1.0, ifadeler: ["toplam tel çit", "tel çit toplamı"] }
+  kamera_adedi:          { birim: adet, ifadeler: ["toplam kamera"] }
+  drenaj_kanali_m:       { birim: m,  tolerans_yuzde: 1.0, ifadeler: ["toplam kanal", "toplam drenaj kanalı"] }
+  menfez_adedi:          { birim: adet, ifadeler: ["toplam menfez"] }
+  q50_debi_m3s:          { birim: m3/s, tolerans_yuzde: 1.0, ifadeler: ["en büyük debi q50", "tasarım debisi q50"],
+                           aciklama: "En büyük tasarım debisi (Q50)" }
+  pvsyst_sistem_gucu_mwp: { birim: MWp, ifadeler: ["system power"],
+                           aciklama: "PvSyst simülasyonundaki sistem gücü (alternatif senaryolar ayrı dosyalarda olabilir)" }
+  proje_alani_m2:        { birim: m2, tolerans_yuzde: 0.5 }
